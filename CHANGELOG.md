@@ -11,6 +11,59 @@ its entry here in the same PR.
 
 ### Changed
 
+- **Fleet: every figure in Latin digits, in Arabic as in English — and the car record's
+  «المخالفات» count and count wording.** The owner, 23 November: «اى ارقام خليها بالانجلش حتى لو
+  عربى», for his own papers «اى ارقام بالانجلش», and «انا عاوزك تعدل حاجات الحركة فقط»; on the car
+  record, 22 November: «أيوه صلحها» (the violations count) and «اه» (the counts' grammar). This
+  replaces his earlier «كل الأرقام عربي ما عدا الفلوس», which was never built.
+  - **Every figure an Arabic reader sees in «الحركة» is written 0-9:** the count beside the filters
+    of «السيارات», «التراخيص», «الإخطارات», «السائقون», «التمامات», «عدادات السيارات», «صيانة
+    السيارات», «إنذارات الصيانة», «التوكيل», «خصم الإيصالات» and «مصروفات العهدة»; the dates of
+    every Excel and PDF sheet the registers write; the two dates of «طباعة التقرير» on the car
+    record («تاريخ الانضمام للأسطول», «انتهاء الترخيص») and the licence date of the driver's
+    licence print; the kilometres and days of the odometer and workshop dialogs («الخادم يتوقع
+    150,250 كم أو أكثر», «دخلت على 120,000 كم»); the violations boards (the four lines' counts,
+    both badges, «معروض 100 من 440»); the makes' maintenance interval; the transfer log's day; the
+    zoom readout of every Fleet image viewer («100%»); and every Arabic catalogue word of Fleet that
+    carried a figure («اعرض آخر 12 شهر», «فترة بـ 0 كم», «حتى 10 ميجابايت», «0 = لا قاعدة صيانة
+    دورية لهذا النوع», «(من 1 إلى 30)», «أعلى 5 سيارات» / «أقل 5 سيارات», and the go-live
+    notice's dates). A date keeps its order and its marks — «07‏/11‏/2026», day first — only the
+    digits change. English is byte for byte what it was.
+  - **The custody Word letters print Latin digits** — «صرف عهدة», «استعاضه عهدة» and «تسويه عهدة»:
+    «( 200,000)», «(81,908)», «(124,139.46)», «التاريخ29/ 09 / 2026», «5/10/2026», the period «من
+    01ـ09ـ2026» (the tatweel stays), the table's serials and «الاجمالي 81,908». A reason typed with
+    Arabic-Indic digits («نظير ٢٤ سياره تجديد») prints «24». The letters never read the UI
+    language, so an English-UI print is the same paper, and a reprint of an old operation prints
+    Latin. Pagination is unchanged (it counts characters).
+  - **One Fleet module for it, `lib/fleet-figures`** — `latinNumber`, `latinDate`,
+    `latinDateTime`, the Latin twins of the shared `formatNumber` / `formatDate` /
+    `formatDateTime`: the same options, the same «—» for a missing value, the same English. The
+    shared helpers are untouched, so HR, ATM, operations, gold, IT, organization, administration
+    and the home page keep their digits. `ZoomableImage` gains an opt-in `latinFigures` prop that
+    every Fleet viewer passes; its default — Operations' shipment receipt viewer — still reads
+    «١٠٠٪». A guard (`fleet-latin-figures.spec.ts`) reads the whole module and the Arabic `fleet.*`
+    catalogue and refuses a shared digit helper, an Arabic-Indic `ar-EG` (five month and weekday
+    names excepted), formatting on the reader's locale, a digit built from its code point, an
+    Arabic-Indic word, and a viewer without `latinFigures`.
+  - **The car record's «المخالفات» counts what its link opens.** The link opens both halves of
+    «مخالفات السيارات» on the car's code; the count is now the rollup those halves draw
+    (`GET /fleet/violations/rollup?vehicleCodes=<code>`, old-book rows under the code included),
+    summed as the boards count — a statement «×5» is five, a driver's fine one — so it equals the
+    company half's «الإجمالي» lines plus the drivers' badge. It counted documents by the car's id:
+    a «×5» statement read 1, and the old book was missed. A new API spec pins the arithmetic (7 =
+    5 + 2; the old figure 2).
+  - **The record's counts agree with their number**, Arabic's five forms through `pluralKey`, as
+    the custody boards count: «قراءة واحدة · قراءتان · 3 قراءات · 11 قراءة · 1,234 قراءة», «عملية
+    واحدة · 3 عمليات · 14 عملية», «حادث واحد · حادثان · 3 حوادث · 11 حادثًا · 100 حادث»,
+    «مخالفة واحدة · مخالفتان · 3 مخالفات · 11 مخالفة». «سجل نظيف» and «سائق نشط» are unchanged.
+    The odometer screen's count beside its filters takes the same words, so the record and the
+    screen still read alike («73 قراءة»). The four flat keys `fleet.vehicle.count.{odometer,
+    maintenance,accidents,violations}` are replaced by their five forms; English keeps one form.
+  - Unchanged: identifiers (car codes, plates, employee codes, phones, card numbers), typed text,
+    the numeric cells of every Excel file (the date columns are text cells and follow the screens),
+    the API and the contracts (no endpoint, permission, event, data or migration), the browser's
+    own date boxes (their digits follow the browser's language), and the insurer form's
+    pre-printed «٢٠٢» year box, which is the insurer's image.
 - **Fleet: the owner's follow-ups of 22 November — «أرقام الفترة» removed, «إجمالي العهدة», no
   English on the error panel, the six small fixes, and «الطقم الثابت» without its page header.**
   His answers to the six open items left after #759: «أرقام الفترة» شيله · اجمالى العهدة · لا سيبها

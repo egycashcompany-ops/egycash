@@ -153,7 +153,7 @@ counts' grammar). His earlier «كل الأرقام عربي ما عدا الف�
 ## Verification
 
 The CI gate in CI order (`CI=true`, `.wip-notes/digits/gate.sh`), run alone on the final tree
-under the machine-wide lock, green on the first run:
+under the machine-wide lock, green on the first run (after the review fixes too, HEAD f975c0ca):
 
 | step | result |
 |---|---|
@@ -167,14 +167,18 @@ under the machine-wide lock, green on the first run:
 | `check-formal-arabic` | rc 0 |
 | contracts tests | 54 files, 1,374 tests passed |
 | api tests (integration included) | 711 files, 12,234 tests passed |
-| web tests | 618 files, 14,608 tests passed |
+| web tests | 618 files, 14,622 tests passed |
 | build | rc 0 |
 | `dependency-audit` | rc 0 |
 
 Also, before the gate, each package's own specs one file at a time (hand-offs P1-P5), the guard
-alone (15 tests) and with a planted offender (`zz-probe.tsx`: a shared `formatDate`,
+alone (25 tests) and with planted offenders (`zz-probe.tsx`: a shared `formatDate`,
 `toLocaleString()`, `'ar-EG'`, `fromCharCode(0x0660 + n)` and a viewer without `latinFigures` —
-(a), (b), (c), (d) and (f) each failed; the probe was deleted), and the English block of
+(a), (b), (c), (d) and (f) each failed; then the review's missed cases — «٣ سيارات» in code,
+`'٠١٢٣٤٥٦٧٨٩'[d]`, `fromCharCode(1632 + d)`, `'ar-SA'`, `'ar-u-nu-arab'`,
+`RelativeTimeFormat('ar')`, `toLocaleString(lang)`, `NumberFormat(intlLocale(locale))`, «٬» / «٪»
+literals, and `Pagination` / `FileUploadList` / `ListView` imports — (b), (c), (d), (h) and (i)
+each failed; the probes were deleted), and the English block of
 `i18n.ts` diffed against the base. Inside the web suite, `money-format.spec.ts` (the shared
 Arabic-Indic money, untouched), `formal-arabic.spec.ts` and the guard pass.
 
@@ -211,8 +215,12 @@ Arabic-Indic money, untouched), `formal-arabic.spec.ts` and the guard pass.
   `lib/image-zoom.ts`, `CompanyViolationsPanel`, `CompanyViolationsDetailLayer` and some specs)
   were already not prettier-clean at the base in lines this PR does not touch; only the new hunks
   are formatted. CI does not run `prettier --check`.
-- **Pictures for the owner** (plan §6, dark, Arabic) are taken after this gate and are not part of
-  the diff.
+- **Pictures for the owner** (plan §6 items 1-14, dark, Arabic, device scale 2, the real pages on a
+  mocked API) were taken after the gate and are not part of the diff; their captions are in
+  `.wip-notes/digits/owner-shots-list.md`. Every figure in them is Latin (a text scan of each page
+  found no Arabic-Indic digit or mark); the record reads «1,234 قراءة · 14 عملية · 3 حوادث · 7
+  مخالفات · سائق نشط», and the link's board 7 = «إجمالي الشركة» 5 + the drivers 2. Internal only:
+  Operations' shipment receipt viewer still reads «١٠٠٪».
 
 ---
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

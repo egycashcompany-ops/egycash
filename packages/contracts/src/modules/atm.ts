@@ -685,18 +685,34 @@ export const ATM_MACHINE_CODES_MAX = 200;
 
 /**
  * A separator that always ends a machine code: a comma, a semicolon (Latin or Arabic), a line
- * break. No code holds one.
+ * break, a tab (a column copied out of a sheet). No code holds one.
  */
-const ATM_CODE_BREAK = /[,،;؛\n\r]/u;
+const ATM_CODE_BREAK = /[,،;؛\n\r\t]/u;
 
-/**
- * Whether a code may go on past a space. Most codes are digits, or letters run into digits
- * (`BRKN0004`, `HDB-ATM0003`), and a space after them ends them — a list read off a message is
- * `1056 1112`. But some are written with a space inside (2026-11-23, «HDB-ATM 9501 … بسبب المسافة
- * اللى فيها بتتقسم كأنها ماكينتين»: «HDB-ATM 9501», «HDB - 1234»): a code that so far ENDS with a
- * letter or a dash is not finished, and the space belongs to it.
- */
-const continuesPastSpace = (code: string): boolean => /[\p{L}-]$/u.test(code);
+// Most codes are digits, or letters run into digits (`BRKN0004`, `HDB-ATM0003`), and a space after
+// them ends them — a list read off a message is `1056 1112`. But two shapes are written with a
+// space INSIDE (2026-11-23, «HDB-ATM 9501 … بسبب المسافة اللى فيها بتتقسم كأنها ماكينتين»): Latin
+// letters joined by a dash, a space, digits — «HDB-ATM 9501» — and Latin letters, « - », digits —
+// «HDB - 1234». A space joins the words of those two shapes and no others: a word, a name or a
+// bank next to a code («NBE 1056», «الماكينات المطلوبة 1056»), a numbered or bulleted list
+// («1- 1056», «- 1056»), «1056 - 1112» — all stay apart, and the code among them is still found.
+
+/** Latin letters joined by dashes — «HDB-ATM» — waiting for its digits. */
+const DASHED_PREFIX = /^[A-Za-z]+(?:-[A-Za-z]+)+$/u;
+/** Latin letters alone — «HDB» — which may go on as «HDB - …». */
+const LETTERS = /^[A-Za-z]+$/u;
+/** Latin letters and a dash — «HDB -» — waiting for its digits. */
+const SPACED_DASH_PREFIX = /^[A-Za-z]+ -$/u;
+const DIGITS = /^\p{Nd}+$/u;
+
+/** Whether the word after a space belongs to the code before it. */
+const joinsCode = (code: string, next: string): boolean =>
+  ((DASHED_PREFIX.test(code) || SPACED_DASH_PREFIX.test(code)) && DIGITS.test(next)) ||
+  (LETTERS.test(code) && next === '-');
+
+/** Whether a code followed by a space may still go on — what is typed next decides. */
+const mayGoOn = (code: string): boolean =>
+  DASHED_PREFIX.test(code) || LETTERS.test(code) || SPACED_DASH_PREFIX.test(code);
 
 /** One code as written: its text (spaces inside it single) and where it starts in what was typed. */
 interface AtmCodeSpan {
@@ -705,18 +721,18 @@ interface AtmCodeSpan {
 }
 
 /**
- * What was typed or pasted, read as codes. A line break, a comma or a semicolon always ends a code;
- * a space ends one unless the code so far ends with a letter or a dash, or the next word starts
- * with a dash (`continuesPastSpace`) — so `HDB-ATM 9501 1056` is two codes, `HDB-ATM 9501` and
- * `1056`, and `1056 1112` two as well. `settled` says whether the last code is FINISHED — a
- * separator that ends it follows it — or may still be being typed.
+ * What was typed or pasted, read as codes. A line break, a tab, a comma or a semicolon always ends
+ * a code; a space ends one unless it is inside one of the two spaced shapes (`joinsCode`) — so
+ * `HDB-ATM 9501 1056` is two codes, `HDB-ATM 9501` and `1056`, and `1056 1112` two as well.
+ * `settled` says whether the last code is FINISHED — a separator that ends it follows it — or may
+ * still be being typed (`HDB-ATM `, `HDB `, `HDB - `).
  */
 const readAtmCodeSpans = (raw: string): { spans: AtmCodeSpan[]; settled: boolean } => {
   const spans: AtmCodeSpan[] = [];
   let open: AtmCodeSpan | null = null;
   let spaced = false;
   let broken = false;
-  for (const token of raw.matchAll(/[,،;؛\n\r]|[^\S\n\r]+|[^\s,،;؛]+/gu)) {
+  for (const token of raw.matchAll(/[,،;؛\n\r\t]|[^\S\n\r\t]+|[^\s,،;؛]+/gu)) {
     const text = token[0];
     if (ATM_CODE_BREAK.test(text)) {
       if (open !== null) spans.push(open);
@@ -726,7 +742,7 @@ const readAtmCodeSpans = (raw: string): { spans: AtmCodeSpan[]; settled: boolean
     } else if (/^\s+$/u.test(text)) {
       spaced = true;
     } else {
-      if (open !== null && spaced && (continuesPastSpace(open.text) || text.startsWith('-'))) {
+      if (open !== null && spaced && joinsCode(open.text, text)) {
         open.text = `${open.text} ${text}`;
       } else {
         if (open !== null) spans.push(open);
@@ -738,7 +754,7 @@ const readAtmCodeSpans = (raw: string): { spans: AtmCodeSpan[]; settled: boolean
   }
   if (open === null) return { spans, settled: true };
   spans.push(open);
-  return { spans, settled: broken || (spaced && !continuesPastSpace(open.text)) };
+  return { spans, settled: broken || (spaced && !mayGoOn(open.text)) };
 };
 
 /** The codes of a list, normalized (`normalizeAtmMachineCode`), each once, in the order first written. */
@@ -754,9 +770,9 @@ const uniqueCodes = (texts: readonly string[]): string[] => {
 /**
  * Machine codes typed or pasted into the ID filter → the codes, normalized exactly as every entry
  * point normalizes them (`normalizeAtmMachineCode`), each once, in the order first written. Commas,
- * semicolons (Latin or Arabic) and line breaks separate; so does a space, unless the code before it
- * ends with a letter or a dash — `HDB-ATM 9501` is ONE code (`readAtmCodeSpans`). What is left
- * empty — or only zeros — names no machine and is dropped.
+ * semicolons (Latin or Arabic), tabs and line breaks separate; so does a space, except inside the
+ * two shapes written with one — `HDB-ATM 9501` and `HDB - 1234` are ONE code each
+ * (`readAtmCodeSpans`). What is left empty — or only zeros — names no machine and is dropped.
  */
 export const splitAtmMachineCodeList = (raw: string | readonly string[]): string[] => {
   const parts = Array.isArray(raw) ? (raw as readonly string[]).map(String) : [String(raw)];
@@ -766,7 +782,8 @@ export const splitAtmMachineCodeList = (raw: string | readonly string[]): string
 /**
  * What is typed into the ID filter's box, read as it is typed: the codes already FINISHED — each
  * followed by a separator that ends it — and the text still being typed, exactly as it stands in
- * the box (a code that may go on past a space keeps the space: `HDB-ATM ` is still being typed).
+ * the box (a code that may go on past a space keeps the space: `HDB-ATM ` is still being typed,
+ * `HDB ` too — it may be `HDB - 1234`).
  */
 export const readTypedAtmMachineCodes = (raw: string): { chosen: string[]; typing: string } => {
   const { spans, settled } = readAtmCodeSpans(raw);

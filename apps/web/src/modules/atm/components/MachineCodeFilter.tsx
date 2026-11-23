@@ -3,8 +3,8 @@
 //
 // An operator usually reads codes off a message, so the search box doubles as the input: each code
 // is taken the moment its separator (a space, a comma, a new line) is typed, and Enter takes the
-// last one. A space after a code that ends with a letter or a dash does not end it: some codes are
-// written with one inside (2026-11-23, «HDB-ATM 9501»), and the box keeps it as the code goes on
+// last one. The space inside the two shapes of code written with one (2026-11-23, «HDB-ATM 9501»,
+// «HDB - 1234») does not end them: the box keeps it as the code goes on
 // (`readTypedAtmMachineCodes`). A PASTED list is taken whole, its last code too
 // (`readMachineCodeInput`). Codes — and the fragment searched for — are normalized as every entry
 // point normalizes them (`0123` is machine 123), and Arabic-Indic digits read as digits. One filter

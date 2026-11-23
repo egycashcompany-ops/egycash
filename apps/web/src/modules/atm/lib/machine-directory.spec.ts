@@ -116,8 +116,14 @@ describe('a typed or pasted ID list', () => {
       chosen: ['HDB-ATM 9501', '1056'],
       typing: '',
     });
-    // What the picker then searches for: the whole code, its space included.
+    // What the picker then searches for: the whole code, its space included — and single, as the
+    // code taken from the box has it.
     expect(machineCodeSearchTerm('HDB-ATM 95')).toBe('HDB-ATM 95');
+    expect(machineCodeSearchTerm('HDB-ATM  95')).toBe('HDB-ATM 95');
+    expect(readMachineCodeInput('HDB-ATM  9501', 'HDB-ATM  9501 ')).toEqual({
+      chosen: ['HDB-ATM 9501'],
+      typing: '',
+    });
   });
 
   it('still reads one keystroke at a time as typing — the code in progress stays the search', () => {

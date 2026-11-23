@@ -62,7 +62,7 @@ const CODE_SEPARATOR = /[\s,،;؛]/u;
  * What is typed into the ID picker's box: the codes already COMPLETED — each followed by a
  * separator that ends it — and the text still being typed, which is what the picker searches for.
  * `0123 0456 78` takes 123 and 456 and leaves `78` in the box; `HDB-ATM 95` takes nothing, the
- * space belonging to a code written with one (`readTypedAtmMachineCodes`).
+ * space belonging to one of the codes written with one (`readTypedAtmMachineCodes`).
  */
 export const readTypedMachineCodes = readTypedAtmMachineCodes;
 
@@ -85,9 +85,11 @@ export const readMachineCodeInput = (
 /**
  * The fragment the ID picker searches for, normalized as every stored code is
  * (`normalizeAtmMachineCode`): `0123` looks for machine 123, which a stored `0123` never is. Only
- * zeros ask for nothing in particular.
+ * zeros ask for nothing in particular. Spaces inside are single, as a code taken from the box has
+ * them: `HDB-ATM  95` looks for `HDB-ATM 95`.
  */
-export const machineCodeSearchTerm = (typing: string): string => normalizeAtmMachineCode(typing);
+export const machineCodeSearchTerm = (typing: string): string =>
+  normalizeAtmMachineCode(typing.replace(/\s+/gu, ' '));
 
 /**
  * `codes` added to the ID filter's `value`, each once, up to the most one filter may ask

@@ -3,13 +3,15 @@
 //
 // Each day: the date and status, the hours worked; then the arrival time, the bar, the departure
 // time. On the bar: the expected shift as a faint outline, the worked span solid green, the late
-// part (shift start → arrival) as a soft red stripe, overtime past the shift's end in blue, and
-// every repeat press as a thin tick. The axis follows the reading direction — in Arabic the day
+// part (shift start → arrival) as a soft red stripe, the early-leave part (departure → the hour
+// they were due to leave) as an orange stripe leaning the other way, overtime past the shift's end
+// in blue, and every repeat press as a thin tick. BOTH ENDS OF A SHORT DAY ARE DRAWN: the day the
+// engine calls «تأخير وانصراف مبكر» used to show only the late end. The axis follows the reading direction — in Arabic the day
 // starts on the right, beside the arrival time. A day's scans open under it.
 import { useState, type CSSProperties } from 'react';
 import { cn } from '../../../../shared/lib/cn';
 import { useT } from '../../../../platform/localization/useT';
-import { FIG, INK, INK2, INK3, RowMenu, SOFT, StatusIcon, statusTone, type Tone } from './view-parts';
+import { EARLY_SOFT, FIG, INK, INK2, INK3, RowMenu, SOFT, StatusIcon, statusTone, type Tone } from './view-parts';
 import { clock, hm } from './view-format';
 import { useViewLabels } from './view-labels';
 import { hourLabel, pct, ticksOf, trackRangeFor, type TrackRange, type TrackScan } from './roster';
@@ -38,6 +40,7 @@ export const DayLegend = (): JSX.Element => {
     <ul className={cn('flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12px]', INK2)}>
       <Key swatch="h-2 w-4 rounded-full bg-[var(--att-ok)]" label={t('worked')} />
       <Key swatch="att-late-stripe h-2 w-4 rounded-full" label={status('late')} />
+      <Key swatch="att-early-stripe h-2 w-4 rounded-full" label={t('earlyLeaveCol')} />
       <Key swatch="h-2 w-4 rounded-full bg-[var(--att-info)]" label={t('overtime')} />
       <Key swatch="h-2 w-4 rounded-full border border-[var(--att-line-strong)]" label={t('expected')} />
       <Key swatch="h-3 w-[2px] rounded bg-[var(--att-ink-2)]" label={tt('attendanceView.role.repeat')} />
@@ -100,7 +103,18 @@ export const DayTimelineList = ({
           const isOpen = openDay === d.date;
           const title = dayTitle(d.date);
           const late = d.lateMinutes !== null && d.lateMinutes > 0 ? d.lateMinutes : null;
-          const short = d.shortfall !== null && d.shortfall > 0 && late === null ? d.shortfall : null;
+          // THE STATUS DECIDES, not the clock. Under the flexible-hours rule a departure before
+          // the hour costs nothing once the hours are complete, and the engine has already applied
+          // that (and the out-grace) in `earlyLeaveMinutes`. Gating on the status as well is what
+          // stops a future reading of the figure from drawing early leave on a day the engine
+          // calls «حاضر».
+          const early =
+            (d.status === 'earlyLeave' || d.status === 'lateAndEarly') &&
+            d.earlyLeave !== null &&
+            d.earlyLeave > 0
+              ? d.earlyLeave
+              : null;
+          const short = d.shortfall !== null && d.shortfall > 0 && late === null && early === null ? d.shortfall : null;
           const menu = actionsLabel !== undefined && d.action !== undefined ? <RowMenu label={actionsLabel}>{d.action}</RowMenu> : null;
           if (quiet) {
             return (
@@ -130,6 +144,11 @@ export const DayTimelineList = ({
                 {late !== null && (
                   <span className={cn('rounded-full px-2 py-0.5 text-[11.5px] font-semibold', SOFT.bad)}>
                     {status('late')} <bdi className={FIG}>{hm(late, locale)}</bdi>
+                  </span>
+                )}
+                {early !== null && (
+                  <span className={cn('rounded-full px-2 py-0.5 text-[11.5px] font-semibold', EARLY_SOFT)}>
+                    {t('earlyLeaveCol')} <bdi className={FIG}>{hm(early, locale)}</bdi>
                   </span>
                 )}
                 {short !== null && (
@@ -220,6 +239,19 @@ const Ruler = ({ range }: { range: TrackRange }): JSX.Element => {
 const DayBar = ({ range, day, marks }: { range: TrackRange; day: EmployeeDay; marks: TrackScan[] }): JSX.Element => {
   const { inAt, outAt, expected } = day;
   const lateFrom = expected !== null && inAt !== null && (day.lateMinutes ?? 0) > 0 && inAt > expected.start ? expected.start : null;
+  // The other end of a short day: departure → the hour they were due to leave. The same shape as
+  // `lateFrom` and the same guards — the engine's status and its figure, then the clock as a
+  // sanity check, so a bar is never drawn backwards. `expected.end` is already the real end for a
+  // night or 24-hour shift (the span is resolved per date by the server and crosses midnight as
+  // minutes past this day's start), so no special case is needed here either.
+  const earlyTo =
+    expected !== null &&
+    outAt !== null &&
+    (day.status === 'earlyLeave' || day.status === 'lateAndEarly') &&
+    (day.earlyLeave ?? 0) > 0 &&
+    outAt < expected.end
+      ? expected.end
+      : null;
   const workEnd = outAt === null ? null : expected !== null && inAt !== null && outAt > expected.end && inAt < expected.end ? expected.end : outAt;
   const overtimeFrom = outAt !== null && workEnd !== null && workEnd < outAt ? workEnd : null;
   const at = (m: number): CSSProperties => ({ insetInlineStart: `${pct(m, range)}%` });
@@ -233,6 +265,7 @@ const DayBar = ({ range, day, marks }: { range: TrackRange; day: EmployeeDay; ma
         ))}
         {expected !== null && <span className="absolute -inset-y-[3px] rounded-full border border-[var(--att-line-strong)]" style={seg(expected.start, expected.end)} />}
         {lateFrom !== null && inAt !== null && <span className="att-late-stripe absolute inset-y-0 rounded-full" style={seg(lateFrom, inAt)} />}
+        {earlyTo !== null && outAt !== null && <span className="att-early-stripe absolute inset-y-0 rounded-full" style={seg(outAt, earlyTo)} />}
         {inAt !== null && workEnd !== null && <span className="absolute inset-y-0 rounded-full bg-[var(--att-ok)]" style={seg(inAt, workEnd)} />}
         {overtimeFrom !== null && outAt !== null && <span className="absolute inset-y-0 rounded-full bg-[var(--att-info)]" style={seg(overtimeFrom, outAt)} />}
         {marks.map((s, i) =>

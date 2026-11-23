@@ -249,6 +249,48 @@ const seedSheet =
 const sheet = (options: Parameters<typeof render>[1] = {}): string =>
   render(<DailySheetPage />, { seed: seedSheet([sheetRow()]), ...options });
 
+describe('the daily sheet names both ends of a short day', () => {
+  /**
+   * The status column carried the late minutes and nothing at the other end, so a row the engine
+   * calls «تأخير وانصراف مبكر» told half its story. `+` is time arrived late, `−` time left early,
+   * and the early figure takes the colour the timeline gives it so the two read apart at a glance.
+   *
+   * THE ENGINE DECIDES: under the flexible-hours rule a departure before the hour costs nothing
+   * once the day's hours are complete, so the figure is drawn only on a status that already says
+   * early — never from the number alone.
+   */
+  /** The row AND its figures from ONE day — `sheetRow` derives its default from its own. */
+  const shortDay = (over: Partial<AttendanceDayDto> = {}): AttendanceSheetRowDto => {
+    const d = day({
+      status: 'lateAndEarly',
+      lateMinutes: 67,
+      earlyLeaveMinutes: 15,
+      shortfallMinutes: 82,
+      ...over,
+    });
+    return sheetRow({ status: d.status, day: d, figures: figuresOf(d) });
+  };
+
+  it('shows the early-leave minutes beside the late ones, in their own colour', () => {
+    const html = sheet({ permissions: ['attendance.view'], seed: seedSheet([shortDay()]) });
+    expect(html).toContain('text-[color:var(--att-early)]');
+    expect(html).toContain('title="Left early"');
+    // And the late minutes keep the colour and the sign they always had.
+    expect(html).toContain('text-[color:var(--att-warn)]');
+    expect(html).toContain('title="Late"');
+  });
+
+  it('shows nothing early on a day the engine does not call early', () => {
+    const html = sheet({
+      permissions: ['attendance.view'],
+      // The engine calls it only late; the early figure is still in the DTO and must not be drawn.
+      seed: seedSheet([shortDay({ status: 'late' })]),
+    });
+    expect(html).not.toContain('text-[color:var(--att-early)]');
+    expect(html).toContain('text-[color:var(--att-warn)]');
+  });
+});
+
 describe('the daily sheet reads quantities and offers only what the caller may do', () => {
   it('renders the derived numbers for the day', () => {
     const html = sheet({ permissions: ['attendance.view'] });

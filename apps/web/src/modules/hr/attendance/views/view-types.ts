@@ -50,6 +50,8 @@ export interface SheetRow {
    */
   worked: number | null;
   lateMinutes: number | null;
+  /** «انصراف مبكر» — the engine's figure, shown under the status pill beside the late minutes. */
+  earlyLeaveMinutes: number | null;
   /** How much of the required day is missing — «النقص». Different from `lateMinutes`. */
   shortfallMinutes: number | null;
   /** Approved / derived overtime in minutes; both 0 hides the cell. */
@@ -147,6 +149,14 @@ export interface EmployeeDay {
   /** Worked minutes; null when it cannot be counted (no check-out). */
   worked: number | null;
   lateMinutes: number | null;
+  /**
+   * «انصراف مبكر» — the expected end minus the departure, when the day fell short. The ENGINE
+   * decides it (`derive-day.ts`): under the flexible-hours rule leaving before the hour costs
+   * nothing once the hours are complete, so this is 0 on a day that is only `present`. The views
+   * draw it only on a day whose status already says `earlyLeave` or `lateAndEarly`, and never
+   * compute it themselves.
+   */
+  earlyLeave: number | null;
   /** The day's missing time, or null when the day cannot be judged. */
   shortfall: number | null;
   tags: string[];

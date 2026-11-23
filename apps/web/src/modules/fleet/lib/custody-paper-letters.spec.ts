@@ -1,6 +1,6 @@
 // His three Word letters, pinned against his own (the approved scenario): his titles, his dates,
-// his request sentences word for word — spaces included — his tables, his signers, Arabic-Indic
-// digits everywhere but the settle letter's Latin amounts.
+// his request sentences word for word — spaces included — his tables, his signers, and every figure
+// in Latin digits 0-9 (owner, 2026-11-23: «اى ارقام بالانجلش»), a typed reason's digits included.
 import { DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES as DEFAULTS } from '@ecms/contracts';
 import { describe, expect, it } from 'vitest';
 import { TATWEEL } from './custody-paper-format';
@@ -39,14 +39,14 @@ const one = (input: LetterPaperInput): string => {
 describe('«صرف عهدة» — a charge (05/10, 200,000)', () => {
   const html = one(SAMPLE_CHARGE);
 
-  it('is titled and dated his way: «التاريخ» at 10pt, the date in Arabic-Indic', () => {
+  it('is titled and dated his way: «التاريخ» at 10pt, the date in Latin digits', () => {
     expect(html).toContain('<span class="wl-u">صرف عهدة</span>');
-    expect(html).toContain('<span style="font-size:10pt">التاريخ</span> ٥/١٠/٢٠٢٦</p>');
+    expect(html).toContain('<span style="font-size:10pt">التاريخ</span> 5/10/2026</p>');
   });
 
   it('asks in his two paragraphs: the request, then the reason — a leading «نظير» not doubled', () => {
     expect(html).toContain(
-      '>برجاء التكرم من صرف مبلغ ( ٢٠٠,٠٠٠) العهده و ذلك نظير<span class="wl-br"></span> ٢٤ سياره تجديد + ٢٣ سياره مد مده .</div>',
+      '>برجاء التكرم من صرف مبلغ ( 200,000) العهده و ذلك نظير<span class="wl-br"></span> 24 سياره تجديد + 23 سياره مد مده .</div>',
     );
     expect(textOf(html)).not.toContain('نظير نظير');
     // Typed with or without «نظير», the letter is the same.
@@ -55,7 +55,7 @@ describe('«صرف عهدة» — a charge (05/10, 200,000)', () => {
 
   it('with no reason, the sentence ends at «العهده» and the second paragraph is gone', () => {
     const bare = one({ ...SAMPLE_CHARGE, reason: '   ' });
-    expect(bare).toContain('>برجاء التكرم من صرف مبلغ ( ٢٠٠,٠٠٠) العهده</div>');
+    expect(bare).toContain('>برجاء التكرم من صرف مبلغ ( 200,000) العهده</div>');
     expect(bare).not.toContain('و ذلك نظير');
     expect(bare).not.toContain('<span class="wl-br">');
   });
@@ -71,11 +71,24 @@ describe('«صرف عهدة» — a charge (05/10, 200,000)', () => {
   it('gives «نص الخطاب» the letter’s own sentence, word for word', () => {
     expect(chargeLetterSentence(SAMPLE_CHARGE)).toBe(bodyOf(html));
     expect(chargeLetterSentence(SAMPLE_CHARGE)).toBe(
-      'برجاء التكرم من صرف مبلغ ( ٢٠٠,٠٠٠) العهده و ذلك نظير ٢٤ سياره تجديد + ٢٣ سياره مد مده .',
+      'برجاء التكرم من صرف مبلغ ( 200,000) العهده و ذلك نظير 24 سياره تجديد + 23 سياره مد مده .',
     );
     const bare = { ...SAMPLE_CHARGE, reason: '' };
     expect(chargeLetterSentence(bare)).toBe(bodyOf(one(bare)));
-    expect(chargeLetterSentence(bare)).toBe('برجاء التكرم من صرف مبلغ ( ٢٠٠,٠٠٠) العهده');
+    expect(chargeLetterSentence(bare)).toBe('برجاء التكرم من صرف مبلغ ( 200,000) العهده');
+  });
+
+  it('prints the digits of a typed reason in Latin — «٢٤» typed on an Arabic keyboard prints «24»', () => {
+    const typed = { ...SAMPLE_CHARGE, reason: 'نظير ٢٤ سياره تجديد' };
+    expect(chargeLetterSentence(typed)).toBe(
+      'برجاء التكرم من صرف مبلغ ( 200,000) العهده و ذلك نظير 24 سياره تجديد .',
+    );
+    const html = one(typed);
+    expect(html).toContain('<span class="wl-br"></span> 24 سياره تجديد .</div>');
+    expect(textOf(html)).not.toMatch(/[٠-٩۰-۹]/u);
+    // Persian digits fold the same way, and the letter is the one typed in Latin.
+    expect(one({ ...SAMPLE_CHARGE, reason: 'نظير ۲۴ سياره تجديد' })).toBe(html);
+    expect(one({ ...SAMPLE_CHARGE, reason: '24 سياره تجديد' })).toBe(html);
   });
 
   it('escapes the typed reason', () => {
@@ -89,27 +102,27 @@ describe('«استعاضه عهدة» — the 29/09 replenishment (81,908)', () 
   const html = one(SAMPLE_REPLENISH);
 
   it('is dated and titled his way, greeting twice', () => {
-    expect(html).toContain('>التاريخ٢٩/ ٠٩ / ٢٠٢٦</p>');
+    expect(html).toContain('>التاريخ29/ 09 / 2026</p>');
     expect(html).toContain('<span class="wl-u">استعاضه عهدة</span>');
     expect(html.match(/>تحية طيبة وبعد،</gu)).toHaveLength(2);
   });
 
   it('asks in his sentence, word for word — the bracket figure his 100,000', () => {
     expect(html).toContain(
-      `> برجاء التكرم من استعاضه  مبلغ (٨١,٩٠٨) من العهده حيث ان عهده اداره الحركه  ( ١٠٠,٠٠٠) عن الفتره من ٠١${TW}٠٩${TW}٢٠٢٦ الى الفتره ٣٠${TW}٠٩${TW}٢٠٢٦ وذلك نظير وقود و كاوتش و صيانه.</p>`,
+      `> برجاء التكرم من استعاضه  مبلغ (81,908) من العهده حيث ان عهده اداره الحركه  ( 100,000) عن الفتره من 01${TW}09${TW}2026 الى الفتره 30${TW}09${TW}2026 وذلك نظير وقود و كاوتش و صيانه.</p>`,
     );
   });
 
-  it('tables the kinds in his order with Arabic-Indic figures, and his «الاجمالي»', () => {
+  it('tables the kinds in his order with Latin figures, and his «الاجمالي»', () => {
     const rows = [
       ...html.matchAll(/<tr [^>]*><td>([^<]*)<\/td><td>([^<]*)<\/td><td>([^<]*)<\/td><\/tr>/gu),
     ].map((m) => [m[1], m[2], m[3]]);
     expect(rows).toEqual([
       ['م', 'المذكره', 'القيمه'],
-      ['١', 'كاوتش', '٢,٦٥٠'],
-      ['٢', 'وقود', '٤٩,٨٤٤'],
-      ['٣', 'صيانه', '٢٩,٤١٤'],
-      ['الاجمالي', '', '٨١,٩٠٨'],
+      ['1', 'كاوتش', '2,650'],
+      ['2', 'وقود', '49,844'],
+      ['3', 'صيانه', '29,414'],
+      ['الاجمالي', '', '81,908'],
     ]);
   });
 
@@ -121,7 +134,7 @@ describe('«استعاضه عهدة» — the 29/09 replenishment (81,908)', () 
 
   it('prints the letter’s own date where no period was given', () => {
     const bare = one({ ...SAMPLE_REPLENISH, from: null, to: null });
-    expect(bare).toContain(`من ٢٩${TW}٠٩${TW}٢٠٢٦ الى الفتره ٢٩${TW}٠٩${TW}٢٠٢٦`);
+    expect(bare).toContain(`من 29${TW}09${TW}2026 الى الفتره 29${TW}09${TW}2026`);
   });
 });
 
@@ -129,26 +142,26 @@ describe('«تسويه عهدة» — the 05/10 settlement (124,139.46)', () => 
   const html = one(SAMPLE_SETTLE);
 
   it('is dated and titled his way, a Word size smaller than the replenishment', () => {
-    expect(html).toContain('>التاريخ ٥ / ١٠ / ٢٠٢٦</p>');
+    expect(html).toContain('>التاريخ 5 / 10 / 2026</p>');
     expect(html).toContain('<span class="wl-u">تسويه عهدة</span>');
     expect(html).toMatch(/<p class="body wl-c" style="font-size:12pt/u);
   });
 
-  it('asks in his sentence — piastres after «٫», the day unpadded, no full stop', () => {
+  it('asks in his sentence — piastres after «.», the day unpadded, no full stop', () => {
     expect(bodyOf(html)).toBe(
-      ` برجاء التكرم من تسويه  مبلغ (١٢٤,١٣٩٫٤٦) من العهده (٢٩٩,٤٠٠) حيث تم صرف مصروفات تراخيص سيارات عن الفتره من ١${TATWEEL}٠٩${TATWEEL}٢٠٢٦ الى الفتره ٣٠${TATWEEL}٠٩${TATWEEL}٢٠٢٦`,
+      ` برجاء التكرم من تسويه  مبلغ (124,139.46) من العهده (299,400) حيث تم صرف مصروفات تراخيص سيارات عن الفتره من 1${TATWEEL}09${TATWEEL}2026 الى الفتره 30${TATWEEL}09${TATWEEL}2026`,
     );
   });
 
-  it('tables his licensing memos with LATIN amounts, the labels bold in Arabic-Indic', () => {
-    expect(html).toContain('<td class="n4">١</td><td>تجديد ٥ سياره</td><td>39,732.19</td>');
+  it('tables his licensing memos with amounts to the piastre, the labels bold — all in Latin digits', () => {
+    expect(html).toContain('<td class="n4">1</td><td>تجديد 5 سياره</td><td>39,732.19</td>');
     expect(html).toContain('<td>الاجمالى</td><td></td><td>124,139.46</td>');
     const extension = one({
       ...SAMPLE_SETTLE,
       rows: [{ part: 'extension', cars: 23, amount: 5000 }],
       amount: 5000,
     });
-    expect(extension).toContain('<td>مد مده ٢٣ سياره</td><td>5,000.00</td>');
+    expect(extension).toContain('<td>مد مده 23 سياره</td><td>5,000.00</td>');
   });
 
   it('leaves the general manager off, as his settle letter does', () => {
@@ -179,7 +192,7 @@ describe('a letter past one sheet', () => {
         (m) => m[1],
       ),
     );
-    expect(numbers).toEqual(rows.map((_, i) => (i + 1).toLocaleString('ar-EG')));
+    expect(numbers).toEqual(rows.map((_, i) => String(i + 1)));
     const [first, last] = textOfAll(sheets);
     expect(first).toContain('برجاء التكرم');
     expect(first).not.toContain('التوقيع');
@@ -231,10 +244,11 @@ describe('every letter', () => {
     }
   });
 
-  it('prints Arabic-Indic digits only — but for the settle letter’s Latin amounts', () => {
+  it('prints Latin digits only — no Arabic-Indic digit, «٫» or «٬» anywhere', () => {
     for (const [kind, input] of Object.entries(all)) {
-      const text = textOf(one(input)).replace(/\d{1,3}(?:,\d{3})*\.\d{2}/gu, '');
-      expect(text, kind).not.toMatch(/[0-9]/u);
+      const text = textOf(one(input));
+      expect(text, kind).toMatch(/[0-9]/u);
+      expect(text, kind).not.toMatch(/[٠-٩۰-۹٫٬]/u);
     }
   });
 

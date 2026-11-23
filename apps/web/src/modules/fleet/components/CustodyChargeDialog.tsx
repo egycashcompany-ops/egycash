@@ -148,7 +148,7 @@ export const CustodyChargeDialog = ({
 
       <section className="space-y-3">
         <SectionHead title={t('fleet.custody.fundForm.charge.letterText')} icon={MEMO_ICON} />
-        {/* His letter's request, word for word and in his digits — text, never markup. */}
+        {/* His letter's request, word for word and in Latin digits — text, never markup. */}
         <blockquote
           data-memo-charge-sentence="true"
           className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] font-semibold leading-8 text-slate-800 dark:border-[#2b3b6b] dark:bg-[#0a1233]/80 dark:text-slate-200"

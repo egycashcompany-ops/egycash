@@ -26,7 +26,6 @@ import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { detailKey, listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
-import { formatNumber } from '../../../shared/lib/format';
 import { ReceiptFigures, ReceiptsPage } from './ReceiptsPage';
 import { CustodyPage } from './CustodyPage';
 import { CustodyFigures } from '../components/CustodyFigures';
@@ -287,6 +286,13 @@ const renderCustody = (
   return mount(qc, permissions, '/fleet/custody-expenses', <CustodyPage />, search);
 };
 
+/** What the toolbar count SAYS — the text inside the element that carries `data-filtered-count`. */
+const countText = (html: string): string => {
+  const at = html.indexOf('data-filtered-count');
+  expect(at, 'the toolbar count is drawn').toBeGreaterThan(-1);
+  return html.slice(html.indexOf('>', at) + 1, html.indexOf('</span>', at));
+};
+
 /** A class string as the markup writes it — `&` and `>` escaped. */
 const escapedClass = (cls: string): string => cls.replace(/&/g, '&amp;').replace(/>/g, '&gt;');
 
@@ -308,6 +314,13 @@ describe('the receipts table', () => {
     expect(row).toContain(ar('fleet.receipts.fuelType.petrol92'));
     expect(row).toContain('37.10');
     expect(row).toContain('أيمن حسن مصطفى');
+  });
+
+  it('counts the matched receipts over the table in Latin digits', () => {
+    // The owner, 2026-11-23: «اى ارقام خليها بالانجلش حتى لو عربى» — the count beside the toolbar
+    // too, which the shared `formatNumber` wrote in Arabic-Indic.
+    expect(countText(renderReceipts())).toBe(ar('common.list.count', { count: '1' }));
+    expect(PAGE).toContain("t('common.list.count', { count: latinNumber(data.meta.totalItems) })");
   });
 
   it('says «العهدة» on a receipt the fund paid, and shows no litres on tyres', () => {
@@ -923,10 +936,10 @@ describe('the custody ledger', () => {
       expect(CUSTODY, gone).not.toContain(gone);
     }
     expect(html).toContain('data-custody-toolbar="true"');
-    const count = html.indexOf('data-filtered-count');
-    expect(count).toBeGreaterThan(-1);
-    expect(html.slice(count, html.indexOf('</span>', count))).toContain(
-      ar('common.list.count', { count: formatNumber(1, 'ar') }),
+    // The count's own text, exactly — in Latin digits, as every figure in «الحركة» (owner,
+    // 2026-11-23: «اى ارقام خليها بالانجلش حتى لو عربى»).
+    expect(countText(html), 'the count, in Latin digits').toBe(
+      ar('common.list.count', { count: '1' }),
     );
     expect(html.indexOf('data-export="custody"'), 'above the filters').toBeLessThan(
       html.indexOf('data-date-caption="from"'),

@@ -175,7 +175,11 @@ export const LicenseImagePreviewDialog = ({
           </p>
         )}
         {url !== null && (
-          <ZoomableImage src={url} alt={t('fleet.vehicles.licenseImage.previewTitle')} />
+          <ZoomableImage
+            src={url}
+            alt={t('fleet.vehicles.licenseImage.previewTitle')}
+            latinFigures
+          />
         )}
       </Dialog>
 

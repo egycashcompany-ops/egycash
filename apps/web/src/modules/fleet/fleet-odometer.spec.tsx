@@ -34,7 +34,8 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { listKey } from '../../shared/lib/query-keys';
-import { formatNumber } from '../../shared/lib/format';
+import { pluralKey } from '../../shared/lib/plural';
+import { latinNumber } from './lib/fleet-figures';
 import { OdometerPage } from './pages/OdometerPage';
 import { currentMonthRange, WHOLE_HISTORY } from './lib/odometer-range';
 import { rememberedOnly } from '../../shared/lib/useRememberedFilters';
@@ -1185,9 +1186,14 @@ describe('the filter bar', () => {
     // `meta.totalItems` is the count the server matched; `rows.length` is how many of them fit on
     // this page, and using it would make the figure jump on the last page of every filter.
     const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
-    expect(source).toContain('formatNumber(data.meta.totalItems, locale)');
+    // Latin digits, in Arabic as in English — every figure in Fleet (owner, 2026-11-23: «اى ارقام
+    // خليها بالانجلش حتى لو عربى») — and in the vehicle profile's five Arabic forms.
+    expect(source).toContain('latinNumber(data.meta.totalItems)');
+    expect(source).toContain(
+      "pluralKey('fleet.vehicle.count.odometer', locale, data.meta.totalItems)",
+    );
     expect(source, 'a page is not an answer about the set').not.toMatch(
-      /count: formatNumber\(rows\.length/u,
+      /count: (?:latinNumber|formatNumber)\(rows\.length/u,
     );
     // Page 3 of 73 holds one row here: the count says 73, which nothing on the page could count.
     const qc = client();
@@ -1199,9 +1205,60 @@ describe('the filter bar', () => {
     const at = html.lastIndexOf('<span', html.indexOf('data-filtered-count'));
     const count = html.slice(at, html.indexOf('</span>', at));
     expect(count, 'announced as it changes').toContain('role="status"');
-    expect(count).toContain(
-      translate('ar', 'fleet.vehicle.count.odometer', { count: formatNumber(73, 'ar') }),
-    );
+    const said = translate('ar', pluralKey('fleet.vehicle.count.odometer', 'ar', 73), {
+      count: '73',
+    });
+    expect(said, 'eleven to ninety-nine: the singular after the figure').toBe('73 قراءة');
+    expect(count.slice(count.lastIndexOf('>') + 1)).toBe(said);
+    expect(count, 'no Arabic-Indic digit').not.toMatch(/[٠-٩]/u);
+  });
+
+  it('says the count in the vehicle profile’s five Arabic forms, in Latin digits', () => {
+    // The owner's «اه» to the number agreement of the car record's counts: this toolbar says the
+    // profile's «العدادات» figure under the profile's own key, so it takes the very same forms —
+    // and the digits are Latin in Arabic too («اى ارقام خليها بالانجلش حتى لو عربى»).
+    const toolbarCount = (totalItems: number): string => {
+      const qc = client();
+      qc.setQueryData(ODOMETER_KEY(), {
+        items: [log()],
+        meta: {
+          page: 1,
+          pageSize: 25,
+          totalItems,
+          totalPages: Math.max(1, Math.ceil(totalItems / 25)),
+        },
+      });
+      const html = render({ qc });
+      const at = html.lastIndexOf('<span', html.indexOf('data-filtered-count'));
+      const span = html.slice(at, html.indexOf('</span>', at));
+      return span.slice(span.lastIndexOf('>') + 1);
+    };
+    const forms: [number, string][] = [
+      [0, '0 قراءات'],
+      [1, 'قراءة واحدة'],
+      [2, 'قراءتان'],
+      [3, '3 قراءات'],
+      [11, '11 قراءة'],
+      [100, '100 قراءة'],
+      [103, '103 قراءات'],
+      [1234, '1,234 قراءة'],
+    ];
+    for (const [n, text] of forms) {
+      expect(toolbarCount(n), `${n} readings`).toBe(text);
+      expect(text, `${n}: the catalogue's own form`).toBe(
+        translate('ar', pluralKey('fleet.vehicle.count.odometer', 'ar', n), {
+          count: latinNumber(n),
+        }),
+      );
+    }
+    // English is today's sentence, byte for byte — «1 readings» included.
+    for (const n of [1, 2, 3, 1234]) {
+      expect(
+        translate('en', pluralKey('fleet.vehicle.count.odometer', 'en', n), {
+          count: latinNumber(n),
+        }),
+      ).toBe(`${latinNumber(n)} readings`);
+    }
   });
 
   it('the backend accepts every one of them', () => {
@@ -1339,9 +1396,14 @@ describe('`period=all` — the whole history the vehicle profile opens', () => {
       meta: { page: 1, pageSize: 25, totalItems: 412, totalPages: 17 },
     });
     const html = render({ route: FROM_PROFILE, qc });
-    expect(html).toContain(
-      translate('ar', 'fleet.vehicle.count.odometer', { count: formatNumber(412, 'ar') }),
-    );
+    // The profile's «العدادات» row says it in the same key and the same five forms.
+    const said = translate('ar', pluralKey('fleet.vehicle.count.odometer', 'ar', 412), {
+      count: '412',
+    });
+    expect(said).toBe('412 قراءة');
+    const at = html.lastIndexOf('<span', html.indexOf('data-filtered-count'));
+    const count = html.slice(at, html.indexOf('</span>', at));
+    expect(count.slice(count.lastIndexOf('>') + 1)).toBe(said);
   });
 
   it('never offers to «widen» it — twelve months would NARROW the whole history', () => {

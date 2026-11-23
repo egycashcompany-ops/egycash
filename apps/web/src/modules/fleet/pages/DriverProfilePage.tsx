@@ -33,7 +33,8 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { EditIcon } from '../../../shared/ui/icons';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
 import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
-import { formatAmount, formatDate, formatNumber, localized } from '../../../shared/lib/format';
+import { formatAmount, localized } from '../../../shared/lib/format';
+import { latinDate, latinNumber } from '../lib/fleet-figures';
 import { listKey } from '../../../shared/lib/query-keys';
 import { cn } from '../../../shared/lib/cn';
 import { useBranchNames } from '../../organization/shared/references';
@@ -283,9 +284,7 @@ export const DriverProfilePage = (): JSX.Element => {
           {
             label: t('fleet.drivers.columns.licenseExpiresAt'),
             value:
-              profile.licenseExpiresAt === null
-                ? '—'
-                : formatDate(profile.licenseExpiresAt, locale),
+              profile.licenseExpiresAt === null ? '—' : latinDate(profile.licenseExpiresAt, locale),
           },
           { label: t('fleet.drivers.profile.phone'), value: person?.phone ?? '—' },
           { label: t('fleet.drivers.columns.address'), value: person?.address ?? '—' },
@@ -813,7 +812,7 @@ export const DriverProfilePage = (): JSX.Element => {
                             {record.reason}
                           </span>
                           <span className="ms-3 tabular-nums text-slate-500 dark:text-slate-400">
-                            {formatDate(record.from, locale)} ← {formatDate(record.to, locale)}
+                            {latinDate(record.from, locale)} ← {latinDate(record.to, locale)}
                           </span>
                           {record.notes !== null && (
                             <span className="ms-3 text-slate-400 dark:text-slate-500">
@@ -873,7 +872,7 @@ export const DriverProfilePage = (): JSX.Element => {
                         <span className="font-figures text-slate-500 dark:text-slate-400">
                           {reading.km === null
                             ? '—'
-                            : `${formatNumber(reading.km, locale)} ${t('fleet.vehicle.km')}`}
+                            : `${latinNumber(reading.km)} ${t('fleet.vehicle.km')}`}
                         </span>
                       </li>
                     ))}

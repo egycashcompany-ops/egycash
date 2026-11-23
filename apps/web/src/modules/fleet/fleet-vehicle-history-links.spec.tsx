@@ -11,6 +11,11 @@
 // WHOLE history — the span its count («N قراءة») covers — instead of the current month it opens on
 // by itself. No date is sent, and the other four rows send nothing beyond the car.
 //
+// Each row's count is the number its link opens (owner, 2026-11-22: the code, not the id — and for
+// «المخالفات» the rollup both violation halves draw, «أيوه صلحها»), written in Latin digits and in
+// the form Arabic gives the noun for that count («حادث واحد · حادثان · 3 حوادث · 11 حادثًا»,
+// «اه»). Owner, 2026-11-23: «اى ارقام خليها بالانجلش حتى لو عربى» — Latin in both languages.
+//
 // Two halves here. The page is rendered to static markup (the suite has no DOM) and each row's
 // href is pinned. Then each link is checked against its TARGET's source, found through the route
 // table: every param it sends must be one that page reads from the URL. A renamed param on either
@@ -27,6 +32,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   splitVehicleCodeList,
   type FleetVehicleDto,
+  type FleetViolationRollupDto,
   type Locale,
   type MeDto,
 } from '@ecms/contracts';
@@ -34,6 +40,7 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { detailKey, listKey } from '../../shared/lib/query-keys';
+import { pluralKey } from '../../shared/lib/plural';
 import { VehicleDetailPage } from './pages/VehicleDetailPage';
 import { odometerRange, WHOLE_HISTORY } from './lib/odometer-range';
 
@@ -135,6 +142,66 @@ const historyHrefs = (markup: string): Map<string, string> => {
 
 const queryOf = (href: string): URLSearchParams =>
   new URL(href, 'http://profile.test').searchParams;
+
+/** A history row's count phrase, as the page asks the catalogue for it: the form for `n`, Latin. */
+const countOf = (
+  key: 'odometer' | 'maintenance' | 'accidents' | 'violations',
+  n: number,
+  locale: Locale = 'ar',
+): string =>
+  translate(locale, pluralKey(`fleet.vehicle.count.${key}`, locale, n), {
+    count: new Intl.NumberFormat('en-US').format(n),
+  });
+
+/** Every history row's count tag, keyed by the screen its link opens — exactly the tag's text. */
+const rowTags = (markup: string): Map<string, string> => {
+  const tags = new Map<string, string>();
+  for (const match of markup.matchAll(/<a [^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)) {
+    const href = unescapeHtml(match[1] ?? '');
+    if (!href.includes('?')) continue;
+    const screen = new URL(href, 'http://profile.test').pathname.replace(/^\/fleet\//, '');
+    const tag = /<span class="rounded-full[^"]*">([^<]*)<\/span>/.exec(match[2] ?? '')?.[1];
+    if (tag !== undefined) tags.set(screen, unescapeHtml(tag));
+  }
+  return tags;
+};
+
+/** One-row page totals, as the three lists answer the count's question. */
+const total = (totalItems: number) => ({
+  items: [],
+  meta: { page: 1, pageSize: 1, totalItems, totalPages: totalItems },
+});
+
+/** A (car, year) line of the violations rollup — what both halves of the violations screen draw. */
+const rollupRow = (over: Partial<FleetViolationRollupDto> = {}): FleetViolationRollupDto => ({
+  vehicleId: VEHICLE_ID,
+  code: '200',
+  year: 2026,
+  vehicleCount: 0,
+  vehicleAmount: 0,
+  driverCount: 0,
+  driverAmount: 0,
+  totalCount: 0,
+  totalAmount: 0,
+  outstandingVehicleAmount: 0,
+  outstandingDriverAmount: 0,
+  outstandingTotalAmount: 0,
+  outstandingVehicleCount: 0,
+  outstandingDriverCount: 0,
+  outstandingTotalCount: 0,
+  rowCount: 0,
+  collectedCount: 0,
+  totalBeforeGrievance: 0,
+  ...over,
+});
+
+/** The rollup's cache key for one car's code with no year — what the profile and its link ask. */
+const rollupKey = (code: string) => [
+  'fleet',
+  'violations',
+  'rollup',
+  { year: '', vehicleCodes: code },
+];
 
 /** The params that carry the CAR on each row — every other param is named on its own below. */
 const CAR_PARAMS: Record<string, readonly string[]> = {
@@ -247,10 +314,6 @@ describe('«العدادات» opens the car’s WHOLE history — the span its 
   it('counts with the same car filter the link sends — the code, not the id', () => {
     // Two different totals in the cache: the one asked by CODE (what the screen lists) and the
     // one asked by id (which misses the old book's rows stored under the code with no car).
-    const total = (totalItems: number) => ({
-      items: [],
-      meta: { page: 1, pageSize: 1, totalItems, totalPages: totalItems },
-    });
     const markup = drawProfile(vehicleWith('200'), (qc) => {
       qc.setQueryData(
         listKey('fleet', 'odometer', { vehicleCodes: ['200'], page: 1, pageSize: 1 }),
@@ -261,8 +324,9 @@ describe('«العدادات» opens the car’s WHOLE history — the span its 
         total(4),
       );
     });
-    expect(markup).toContain(translate('ar', 'fleet.vehicle.count.odometer', { count: '9' }));
-    expect(markup).not.toContain(translate('ar', 'fleet.vehicle.count.odometer', { count: '4' }));
+    expect(rowTags(markup).get('odometer')).toBe(countOf('odometer', 9));
+    expect(countOf('odometer', 9)).toBe('9 قراءات');
+    expect(markup).not.toContain(countOf('odometer', 4));
     // …and the filter the count asked with is the one the link carries.
     expect(queryOf(odometerHref()).getAll('vehicleCodes')).toEqual(['200']);
   });
@@ -270,20 +334,15 @@ describe('«العدادات» opens the car’s WHOLE history — the span its 
   it('writes a record count grouped like the page’s other figures — «1,234 قراءة», Latin', () => {
     // Owner's (b), the car page consistently: «120,000» and «111,750 كم» are grouped, so a
     // history row's count is too — never «1234 قراءة», never Arabic-Indic.
-    const total = (totalItems: number) => ({
-      items: [],
-      meta: { page: 1, pageSize: 1, totalItems, totalPages: totalItems },
-    });
     const markup = drawProfile(vehicleWith('150'), (qc) => {
       qc.setQueryData(
         listKey('fleet', 'odometer', { vehicleCodes: ['150'], page: 1, pageSize: 1 }),
         total(1234),
       );
     });
-    expect(markup).toContain(translate('ar', 'fleet.vehicle.count.odometer', { count: '1,234' }));
-    expect(markup).not.toContain(
-      translate('ar', 'fleet.vehicle.count.odometer', { count: '1234' }),
-    );
+    expect(rowTags(markup).get('odometer')).toBe(countOf('odometer', 1234));
+    expect(countOf('odometer', 1234)).toBe('1,234 قراءة');
+    expect(markup).not.toContain('1234 قراءة');
     expect(markup).not.toContain('١٬٢٣٤');
   });
 
@@ -291,10 +350,6 @@ describe('«العدادات» opens the car’s WHOLE history — the span its 
     // The audit's car 194: two visits on the registry car and one from the old book under its
     // code with no car attached. The maintenance screen opened by `vehicleCodes=194` lists 3; the
     // row counted by id promised 2.
-    const total = (totalItems: number) => ({
-      items: [],
-      meta: { page: 1, pageSize: 1, totalItems, totalPages: totalItems },
-    });
     const markup = drawProfile(vehicleWith('194'), (qc) => {
       qc.setQueryData(
         listKey('fleet', 'maintenance', { vehicleCodes: ['194'], page: 1, pageSize: 1 }),
@@ -305,10 +360,9 @@ describe('«العدادات» opens the car’s WHOLE history — the span its 
         total(2),
       );
     });
-    expect(markup).toContain(translate('ar', 'fleet.vehicle.count.maintenance', { count: '3' }));
-    expect(markup).not.toContain(
-      translate('ar', 'fleet.vehicle.count.maintenance', { count: '2' }),
-    );
+    expect(rowTags(markup).get('maintenance')).toBe(countOf('maintenance', 3));
+    expect(countOf('maintenance', 3)).toBe('3 عمليات');
+    expect(markup).not.toContain(countOf('maintenance', 2));
     expect(
       queryOf(historyHrefs(drawProfile(vehicleWith('194'))).get('maintenance') ?? '').getAll(
         'vehicleCodes',
@@ -320,10 +374,6 @@ describe('«العدادات» opens the car’s WHOLE history — the span its 
     // Owner, 2026-11-22 («صلحهم»): the row counted the car's accidents by id while its link opens
     // `/fleet/accidents?vehicleCodes=<code>`, which also lists the old book's files under that code
     // (`vehicleClause`). Car 194: two files on the registry car, one from the old book.
-    const total = (totalItems: number) => ({
-      items: [],
-      meta: { page: 1, pageSize: 1, totalItems, totalPages: totalItems },
-    });
     const byCode = (n: number) =>
       [
         listKey('fleet', 'accidents', { vehicleCodes: ['194'], page: 1, pageSize: 1 }),
@@ -334,17 +384,17 @@ describe('«العدادات» opens the car’s WHOLE history — the span its 
         listKey('fleet', 'accidents', { vehicleId: VEHICLE_ID, page: 1, pageSize: 1 }),
         total(n),
       ] as const;
-    const accidents = (n: number): string =>
-      translate('ar', 'fleet.vehicle.count.accidents', { count: String(n) });
+    const accidents = (n: number): string => countOf('accidents', n);
     const clean = translate('ar', 'fleet.vehicle.count.accidentsClean');
 
     const three = drawProfile(vehicleWith('194'), (qc) => {
       qc.setQueryData(...byCode(3));
       qc.setQueryData(...byId(2));
     });
-    expect(three).toContain(accidents(3));
+    expect(rowTags(three).get('accidents')).toBe(accidents(3));
     expect(three).not.toContain(accidents(2));
-    expect(accidents(3)).toBe('3 حادث');
+    // «اه» (owner, 2026-11-22): three accidents are «3 حوادث», not «3 حادث».
+    expect(accidents(3)).toBe('3 حوادث');
 
     // The old book's file is the car's only accident: the row says so, never «سجل نظيف» above a
     // list that holds one.
@@ -352,7 +402,8 @@ describe('«العدادات» opens the car’s WHOLE history — the span its 
       qc.setQueryData(...byCode(1));
       qc.setQueryData(...byId(0));
     });
-    expect(one).toContain(accidents(1));
+    expect(rowTags(one).get('accidents')).toBe(accidents(1));
+    expect(accidents(1)).toBe('حادث واحد');
     expect(one).not.toContain(clean);
 
     // …and a car with none under its code is still «سجل نظيف», whatever the id count says.
@@ -360,7 +411,7 @@ describe('«العدادات» opens the car’s WHOLE history — the span its 
       qc.setQueryData(...byCode(0));
       qc.setQueryData(...byId(4));
     });
-    expect(none).toContain(clean);
+    expect(rowTags(none).get('accidents')).toBe(clean);
     expect(none).not.toContain(accidents(4));
 
     // The filter the count asked with is the one the link carries.
@@ -389,6 +440,162 @@ describe('«العدادات» opens the car’s WHOLE history — the span its 
         expect(query.has(param), `${screen} sends no «${param}»`).toBe(false);
       }
     }
+  });
+});
+
+describe('«المخالفات» counts exactly what its link opens — both halves, by code', () => {
+  // Owner, 2026-11-22 («أيوه صلحها»). The link opens `/fleet/violations?codes=<code>&dcodes=<code>`:
+  // the company half draws the rollup for the code (`GET /fleet/violations/rollup?vehicleCodes=`),
+  // the drivers half lists the code's fines, and both match the old book's rows kept under the
+  // code with no car attached. The rollup's `totalCount` is the company lines' «الإجمالي» — the
+  // statement rows by their «×N» plus the drivers' fines — so its sum over the car's (car, year)
+  // lines is what the two halves show. The row used to count the LIST by id: documents, not fines,
+  // and none of the old book's.
+  it('sums the rollup the link’s halves draw — the old book’s line included', () => {
+    const markup = drawProfile(vehicleWith('200'), (qc) => {
+      qc.setQueryData(rollupKey('200'), [
+        // The registry car's 2026: one statement «×3» (and nothing else).
+        rollupRow({ year: 2026, vehicleCount: 3, totalCount: 3 }),
+        // The old book's 2025 under the same code with no car: a statement «×1» and a driver fine.
+        rollupRow({ vehicleId: null, year: 2025, vehicleCount: 1, driverCount: 1, totalCount: 2 }),
+      ]);
+      // What the row used to read: the list's documents on the car's id.
+      qc.setQueryData(
+        listKey('fleet', 'violations', { vehicleId: VEHICLE_ID, page: 1, pageSize: 1 }),
+        total(1),
+      );
+    });
+    expect(rowTags(markup).get('violations')).toBe(countOf('violations', 5));
+    expect(countOf('violations', 5)).toBe('5 مخالفات');
+    expect(markup).not.toContain(countOf('violations', 1));
+    expect(markup).not.toContain('مخالفة واحدة');
+    // …and the filter the count asked with is the one the link carries, on both halves.
+    const query = queryOf(historyHrefs(markup).get('violations') ?? '');
+    expect(query.get('codes')).toBe('200');
+    expect(query.get('dcodes')).toBe('200');
+  });
+
+  it('a car with no violation line reads «0 مخالفات» — an empty rollup is a count, not a gap', () => {
+    const markup = drawProfile(vehicleWith('200'), (qc) => {
+      qc.setQueryData(rollupKey('200'), []);
+    });
+    expect(rowTags(markup).get('violations')).toBe(countOf('violations', 0));
+    expect(countOf('violations', 0)).toBe('0 مخالفات');
+  });
+
+  it('the profile asks the rollup by code in its source — never the list by id', () => {
+    const source = read('pages/VehicleDetailPage.tsx');
+    const hook = /const useHistoryCounts[\s\S]*?\n\};\n/u.exec(source)?.[0] ?? '';
+    expect(hook).not.toBe('');
+    expect(hook).toMatch(
+      /useViolationRollup\(\s*undefined,\s*\[vehicleCode\],\s*can\('fleetViolation\.view'\) && vehicleCode !== '',?\s*\)/u,
+    );
+    expect(hook).toMatch(/\.reduce\(\(sum, row\) => sum \+ row\.totalCount, 0\)/u);
+    expect(hook).not.toMatch(/useViolations\(/u);
+    expect(source).not.toMatch(/\buseViolations\b/u);
+    // The hook takes no car id at all now: every count it asks is by the code its link sends.
+    expect(hook).not.toMatch(/\bvehicleId\b/u);
+  });
+});
+
+describe('each row’s count takes the form Arabic gives the noun — Latin digits', () => {
+  // Owner, 2026-11-22 («اه»): «3 حادث», «14 عمليات» were wrong Arabic. The five forms come from
+  // the catalogue through `pluralKey`, the custody boards' house style; zero reads as `few`.
+  const EXPECTED: Record<
+    number,
+    Record<'odometer' | 'maintenance' | 'accidents' | 'violations', string>
+  > = {
+    0: {
+      odometer: '0 قراءات',
+      maintenance: '0 عمليات',
+      accidents: 'سجل نظيف',
+      violations: '0 مخالفات',
+    },
+    1: {
+      odometer: 'قراءة واحدة',
+      maintenance: 'عملية واحدة',
+      accidents: 'حادث واحد',
+      violations: 'مخالفة واحدة',
+    },
+    2: { odometer: 'قراءتان', maintenance: 'عمليتان', accidents: 'حادثان', violations: 'مخالفتان' },
+    3: {
+      odometer: '3 قراءات',
+      maintenance: '3 عمليات',
+      accidents: '3 حوادث',
+      violations: '3 مخالفات',
+    },
+    11: {
+      odometer: '11 قراءة',
+      maintenance: '11 عملية',
+      accidents: '11 حادثًا',
+      violations: '11 مخالفة',
+    },
+    14: {
+      odometer: '14 قراءة',
+      maintenance: '14 عملية',
+      accidents: '14 حادثًا',
+      violations: '14 مخالفة',
+    },
+    100: {
+      odometer: '100 قراءة',
+      maintenance: '100 عملية',
+      accidents: '100 حادث',
+      violations: '100 مخالفة',
+    },
+    103: {
+      odometer: '103 قراءات',
+      maintenance: '103 عمليات',
+      accidents: '103 حوادث',
+      violations: '103 مخالفات',
+    },
+    1234: {
+      odometer: '1,234 قراءة',
+      maintenance: '1,234 عملية',
+      accidents: '1,234 حادثًا',
+      violations: '1,234 مخالفة',
+    },
+  };
+
+  for (const [count, forms] of Object.entries(EXPECTED)) {
+    const n = Number(count);
+    it(`${n}: ${Object.values(forms).join(' · ')}`, () => {
+      const markup = drawProfile(vehicleWith('200'), (qc) => {
+        for (const screen of ['odometer', 'maintenance', 'accidents'] as const) {
+          qc.setQueryData(
+            listKey('fleet', screen, { vehicleCodes: ['200'], page: 1, pageSize: 1 }),
+            total(n),
+          );
+        }
+        qc.setQueryData(
+          rollupKey('200'),
+          n === 0 ? [] : [rollupRow({ vehicleCount: n, totalCount: n })],
+        );
+      });
+      const tags = rowTags(markup);
+      expect(Object.fromEntries(tags)).toEqual({ ...forms });
+      // Latin digits only, and the masculine «many» carries its tanween on the alif (U+064B U+0627).
+      for (const tag of tags.values()) expect(tag, tag).not.toMatch(/[٠-٩٫٬]/u);
+      if (forms.accidents.includes('حادثًا')) expect(forms.accidents).toContain('ًا');
+    });
+  }
+
+  it('English keeps its one form for every count — «1 readings» included', () => {
+    for (const key of ['odometer', 'maintenance', 'accidents', 'violations'] as const) {
+      const flat = {
+        odometer: 'readings',
+        maintenance: 'operations',
+        accidents: 'accidents',
+        violations: 'violations',
+      }[key];
+      for (const n of [0, 1, 2, 3, 11, 100, 1234]) {
+        expect(countOf(key, n, 'en'), `${key} ${n}`).toBe(
+          `${new Intl.NumberFormat('en-US').format(n)} ${flat}`,
+        );
+      }
+    }
+    expect(
+      translate('en', pluralKey('fleet.vehicle.count.odometer', 'en', 1), { count: '1' }),
+    ).toBe('1 readings');
   });
 });
 

@@ -33,7 +33,7 @@ import {
 import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
-import { formatMoney, formatNumber } from '../../shared/lib/format';
+import { formatMoney } from '../../shared/lib/format';
 import { listKey } from '../../shared/lib/query-keys';
 import { ViolationsPage } from './pages/ViolationsPage';
 import { CompanyViolationsDetailLayer } from './components/CompanyViolationsDetailLayer';
@@ -927,7 +927,7 @@ describe('the next round of reports, as rules the markup carries', () => {
 
   it('the drivers board can reach every matched row, with no pager — the 100-row cap stays shut', () => {
     // REGRESSION. Removing «السابق / التالي» first left a board that fetched ONE page and stopped:
-    // the count beside the filters said «٤٤٠» over a hundred visible rows, with no control
+    // the count beside the filters said «440» over a hundred visible rows, with no control
     // anywhere to reach the other three hundred and forty. The paging rules themselves live in
     // `lib/violations-paging.spec.ts` and the presses are done in Chromium against a real >100
     // dataset; what is pinned HERE is the WIRING, because a component that quietly went back to a
@@ -952,8 +952,11 @@ describe('the next round of reports, as rules the markup carries', () => {
     const at = markup.indexOf('data-driver-loaded');
     expect(at, 'the board says how much it is showing').toBeGreaterThan(-1);
     const said = markup.slice(markup.indexOf('>', at) + 1, markup.indexOf('<', at));
-    expect(said, 'both numbers, not just the total').toContain(formatNumber(100, 'ar'));
-    expect(said, 'and the size of the whole answer').toContain(formatNumber(440, 'ar'));
+    // Both numbers, not just the total — the rows in hand and the size of the whole answer — in
+    // Latin digits, as every figure in «الحركة» (owner, 2026-11-23: «اى ارقام خليها بالانجلش»).
+    expect(said, 'both numbers, in Latin digits').toBe(
+      translate('ar', 'fleet.violations.loadedOf', { shown: '100', total: '440' }),
+    );
     expect(markup, 'with a way to the other 340').toContain('data-driver-load-more');
   });
 
@@ -991,6 +994,7 @@ describe('the next round of reports, as rules the markup carries', () => {
       ['company', strip(company)],
     ] as const) {
       expect(code, `${name}: no serial cell`).not.toContain('formatNumber(index + 1, locale)');
+      expect(code, `${name}: nor a Latin one`).not.toContain('latinNumber(index + 1)');
       expect(code, `${name}: no serial header`).not.toContain('fleet.violations.columns.seq');
     }
     // The company rollup renders its own `<table>`, so the head is the other half of the proof.
@@ -1125,7 +1129,7 @@ describe('the next round of reports, as rules the markup carries', () => {
 
   it('the company board asks about EVERY car the picker holds, not one of them', () => {
     // The rollup took a single `vehicleId`, so the board resolved a lone code and sent NOTHING the
-    // moment a second was picked: the chips read «١٥٠، ١٥١ +٢» while the table answered for the
+    // moment a second was picked: the chips read «150، 151 +2» while the table answered for the
     // whole fleet. A filter that silently stops filtering cannot be told from one that is absent.
     const panel = readFileSync(join(HERE, 'components/CompanyViolationsPanel.tsx'), 'utf8');
     expect(panel, 'no "only when exactly one" left anywhere').not.toContain('soleVehicleId');
@@ -1395,7 +1399,7 @@ describe('the company board groups by (vehicle, year)', () => {
     // count is what this asserts, and a window is hostage to how many attributes the element
     // happens to carry — adding a `title` to the badge broke this while the count it checks was
     // still exactly where it belongs.
-    expect(countBadgeText(markup, 'data-company-count')).toBe('٢');
+    expect(countBadgeText(markup, 'data-company-count')).toBe('2');
   });
 
   it('adds up the visible groups into the panel’s own footer', () => {
@@ -1897,6 +1901,7 @@ describe('opening a car’s year shows BOTH halves of what its totals are made o
     // the same «م» the two boards behind them have just lost.
     expect(CODE, 'no serial header in either table').not.toContain('fleet.violations.columns.seq');
     expect(CODE, 'and no serial cell').not.toContain('formatNumber(index + 1, locale)');
+    expect(CODE, 'nor a Latin one').not.toContain('latinNumber(index + 1)');
     // Which column each table opens on now — read from the source in order, so a serial put back
     // under a different name still moves these and still fails.
     const firstKeyAfter = (decl: string): string => {
@@ -2174,5 +2179,48 @@ describe('Save presses, and a missing value is named rather than swallowed', () 
     expect(amountComplete('400.50')).toBe(true);
     // The panel marks a card's money by that same rule, on the card's own amount.
     expect(DRIVER).toContain('ok: amountComplete(card.amount)');
+  });
+});
+
+// ── every figure in Latin digits ────────────────────────────────────────────
+
+describe('every figure on «المخالفات» is in Latin digits — the owner, 2026-11-23', () => {
+  // «اى ارقام خليها بالانجلش حتى لو عربى» / «انا عاوزك تعدل حاجات الحركة فقط». The counts on both
+  // halves went through the shared Arabic-Indic `formatNumber`; they go through `lib/fleet-figures`
+  // now, whose English is the shared helper's English byte for byte.
+  const ARABIC_INDIC = /[٠-٬۰-۹]/u;
+  const BIG_YEAR = rollupRow({
+    vehicleCount: 1200,
+    driverCount: 34,
+    totalCount: 1234,
+    rowCount: 1234,
+    collectedCount: 7,
+  });
+
+  it('writes the company lines’ counts and the tick’s tooltip in Latin, grouped with a comma', () => {
+    const markup = page({ rollup: [BIG_YEAR] });
+    expect(countBadgeText(markup, 'data-line-count="company"')).toBe('1,200');
+    expect(countBadgeText(markup, 'data-line-count="drivers"')).toBe('34');
+    expect(countBadgeText(markup, 'data-line-count="total"')).toBe('1,234');
+    expect(markup, 'the tick says how much of the year is collected').toContain(
+      `title="${translate('ar', 'fleet.violations.collectedOf', { collected: '7', total: '1,234' })}"`,
+    );
+  });
+
+  it('writes the drivers’ badge and the line under their table in Latin', () => {
+    const partial = page({ drivers: [driverRow()], driverTotal: 1500 });
+    expect(countBadgeText(partial, 'data-driver-count-badge')).toBe('1,500');
+    expect(countBadgeText(partial, 'data-driver-loaded')).toBe(
+      translate('ar', 'fleet.violations.loadedOf', { shown: '1', total: '1,500' }),
+    );
+    const complete = page({ drivers: [driverRow()] });
+    expect(countBadgeText(complete, 'data-driver-loaded')).toBe(
+      translate('ar', 'fleet.violations.allLoaded', { total: '1' }),
+    );
+  });
+
+  it('leaves no Arabic-Indic digit anywhere on the screen', () => {
+    const markup = page({ rollup: [BIG_YEAR], drivers: [driverRow()], driverTotal: 1500 });
+    expect(markup).not.toMatch(ARABIC_INDIC);
   });
 });

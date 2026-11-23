@@ -16,7 +16,7 @@ import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
-import { formatDate, formatNumber } from '../../../shared/lib/format';
+import { latinDate, latinNumber } from '../lib/fleet-figures';
 import { errorMessage } from '../../../shared/lib/errors';
 import {
   useCreateCatalogItem,
@@ -287,7 +287,7 @@ const counterWarning = (
   const km = breach === 'belowChain' ? bracket.lowerBound : bracket.upperBound;
   const at = breach === 'belowChain' ? bracket.lowerBoundAt : bracket.upperBoundAt;
   if (km === null || at === null) return undefined;
-  return t(key, { km: formatNumber(km, locale), date: formatDate(at, locale) });
+  return t(key, { km: latinNumber(km), date: latinDate(at, locale) });
 };
 
 export const CheckInDialog = ({
@@ -478,14 +478,14 @@ export const CheckInDialog = ({
                 expected.data?.expectedReading == null
                   ? t('fleet.maintenance.odometerOptional')
                   : t('fleet.odometer.expectedHint', {
-                      km: formatNumber(expected.data.expectedReading, locale),
+                      km: latinNumber(expected.data.expectedReading),
                     })
               }
               {...(belowLast && lastReading !== null
                 ? {
                     error: t('fleet.maintenance.odometerBelowLast', {
-                      km: formatNumber(lastReading, locale),
-                      date: formatDate(bracket.data?.lowerBoundAt ?? null, locale),
+                      km: latinNumber(lastReading),
+                      date: latinDate(bracket.data?.lowerBoundAt ?? null, locale),
                     }),
                   }
                 : {})}
@@ -708,7 +708,7 @@ export const CheckOutDialog = ({
               visit === null || visit.odometerAtService === null
                 ? t('fleet.maintenance.odometerOptional')
                 : t('fleet.maintenance.exitOdometerHint', {
-                    km: formatNumber(visit.odometerAtService, locale),
+                    km: latinNumber(visit.odometerAtService),
                   })
             }
             error={
@@ -716,8 +716,8 @@ export const CheckOutDialog = ({
                 ? t('fleet.maintenance.exitBelowEntry')
                 : exitBelowLast && exitLast !== null
                   ? t('fleet.maintenance.odometerBelowLast', {
-                      km: formatNumber(exitLast, locale),
-                      date: formatDate(bracket.data?.lowerBoundAt ?? null, locale),
+                      km: latinNumber(exitLast),
+                      date: latinDate(bracket.data?.lowerBoundAt ?? null, locale),
                     })
                   : undefined
             }
@@ -941,8 +941,8 @@ export const MaintenanceEditDialog = ({
               {...(editBelowLast && editLast !== null
                 ? {
                     error: t('fleet.maintenance.odometerBelowLast', {
-                      km: formatNumber(editLast, locale),
-                      date: formatDate(bracket.data?.lowerBoundAt ?? null, locale),
+                      km: latinNumber(editLast),
+                      date: latinDate(bracket.data?.lowerBoundAt ?? null, locale),
                     }),
                   }
                 : {})}
@@ -966,8 +966,8 @@ export const MaintenanceEditDialog = ({
                     ? t('fleet.maintenance.exitBelowEntry')
                     : exitBelowLast && exitLast !== null
                       ? t('fleet.maintenance.odometerBelowLast', {
-                          km: formatNumber(exitLast, locale),
-                          date: formatDate(exitBracket.data?.lowerBoundAt ?? null, locale),
+                          km: latinNumber(exitLast),
+                          date: latinDate(exitBracket.data?.lowerBoundAt ?? null, locale),
                         })
                       : undefined
                 }

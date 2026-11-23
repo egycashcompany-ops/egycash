@@ -13,7 +13,6 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EyeIcon, PrinterIcon } from '../../../shared/ui/icons';
-import { formatDate } from '../../../shared/lib/format';
 import { ZoomableImage } from './ZoomableImage';
 import { IMAGE_EMPTY_BOX, IMAGE_GROUP, actionTone } from './row-actions-look';
 import { ArrowUpFromLineIcon, CloudUploadIcon, Trash2Icon } from './row-action-icons';
@@ -21,6 +20,7 @@ import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { printLicenceRecord } from './vehicle-print';
 import { fetchDealershipImage } from '../api/fleet-api';
 import { useDeleteDealershipImage, useUploadDealershipImage } from '../api/fleet-queries';
+import { latinDate } from '../lib/fleet-figures';
 
 /** The row's scan as an object URL, revoked on every change — keyed on the file, not the row. */
 const useInvoiceImageUrl = (
@@ -57,13 +57,17 @@ const useInvoiceImageUrl = (
   return state;
 };
 
-/** What the preview and the printed sheet call the row: car, exit date, work. */
+/**
+ * What the preview and the printed sheet call the row: car, exit date, work. The date is Latin in
+ * both languages, like every Fleet figure (owner, 2026-11-23) — the dialog's subtitle, the printed
+ * subtitle, its «التاريخ» row and the image caption all read it from here.
+ */
 const identity = (
   row: FleetDealershipInvoiceDto,
   locale: Locale,
 ): { code: string; date: string; work: string } => ({
   code: row.vehicleCode ?? '—',
-  date: formatDate(row.outDate, locale),
+  date: latinDate(row.outDate, locale),
   work: row.workTypeLabel,
 });
 
@@ -153,7 +157,9 @@ export const DealershipImagePreviewDialog = ({
             {t('fleet.vehicles.licenseImage.loadFailed')}
           </p>
         )}
-        {url !== null && <ZoomableImage src={url} alt={t('fleet.dealership.image.title')} />}
+        {url !== null && (
+          <ZoomableImage src={url} alt={t('fleet.dealership.image.title')} latinFigures />
+        )}
       </Dialog>
       <DealershipImageDeleteDialog
         open={confirming}

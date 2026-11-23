@@ -704,6 +704,12 @@ describe('the registry table renders the frozen column order', () => {
   it('says how many cars the filter matched, on the line above the filters', () => {
     const html = withRows([vehicle({ id: 'v1' }), vehicle({ id: 'v2', code: '151' })]);
     expect(html, 'the count is rendered').toContain('data-vehicle-count');
+    // In Latin digits, as every figure in Fleet (owner, 2026-11-23: «اى ارقام خليها بالانجلش حتى
+    // لو عربى») — «2 سيارة», never «٢ سيارة».
+    const shown = html.indexOf('data-vehicle-count');
+    const tally = html.slice(html.indexOf('>', shown) + 1, html.indexOf('</span>', shown));
+    expect(tally).toBe(translate('ar', 'fleet.vehicles.count', { count: '2' }));
+    expect(tally).not.toMatch(/[\u0660-\u0669]/u);
     // The count rides with «الإحصائيات», the export and «إضافة سيارة» on the toolbar line ABOVE
     // the bar, so the eleven filters keep the whole width and stay on one row on a computer.
     const source = readFileSync(join(HERE, 'pages/VehiclesListPage.tsx'), 'utf8');

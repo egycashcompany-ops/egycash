@@ -127,7 +127,7 @@ export const LICENCE_WORD: Readonly<Record<FleetLicenseExpenseKind, string>> = {
   extension: 'مد مده',
 };
 
-/** A settle table row's label — «تجديد 5 سياره» (digits made Arabic-Indic by the caller). */
+/** A settle table row's label — «تجديد 5 سياره», the count in Latin digits. */
 export const settleRowLabel = (part: FleetLicenseExpenseKind, cars: string): string =>
   `${LICENCE_WORD[part]} ${cars} سياره`;
 
@@ -135,8 +135,8 @@ export const settleRowLabel = (part: FleetLicenseExpenseKind, cars: string): str
 export const REASON_LEAD = 'نظير';
 
 /**
- * «استعاضه عهدة»'s request sentence. The parts come in formatted: the amounts Arabic-Indic, the
- * dates his tatweel dates (HTML), the kinds his words in `BODY_ORDER`.
+ * «استعاضه عهدة»'s request sentence. The parts come in formatted: the amounts grouped in Latin
+ * digits, the dates his tatweel dates (HTML), the kinds his words in `BODY_ORDER`.
  */
 export const replenishBody = (
   amount: string,

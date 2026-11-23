@@ -8,8 +8,8 @@
 // exist, that they say what they do in both catalogues, and that all THREE previews — the car's,
 // the driver's, and the file a driver is being enrolled with — got the same surface in the same
 // widened frame. A zoom on one of the three is the defect wearing a smaller hat.
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -41,12 +41,18 @@ const store = (locale: Locale) =>
     },
   });
 
-const render = (locale: Locale = 'ar'): string =>
+const render = (locale: Locale = 'ar', latinFigures = false): string =>
   renderToStaticMarkup(
     <Provider store={store(locale)}>
-      <ZoomableImage src="blob:scan" alt="رخصة" />
+      <ZoomableImage src="blob:scan" alt="رخصة" latinFigures={latinFigures} />
     </Provider>,
   );
+
+/** The readout's own text — the `data-zoom-level` span — so a digit elsewhere cannot answer. */
+const readout = (markup: string): string => {
+  const at = markup.indexOf('data-zoom-level');
+  return markup.slice(markup.indexOf('>', at) + 1, markup.indexOf('</span>', at));
+};
 
 const t = (key: string): string => translate('ar', key);
 
@@ -71,11 +77,35 @@ describe('the zoom surface', () => {
 
   it('opens at 100٪, with the picture whole', () => {
     const markup = render();
-    // «١٠٠٪» — the readout in the reader's own digits, and the percent glyph from the catalogue
-    // rather than a literal in the component, because it is not the same glyph in English.
+    // «١٠٠٪» — the DEFAULT path, which is Operations' (`ShipmentReceiptImageCell`): the readout in
+    // the reader's own digits, and the percent glyph from the catalogue rather than a literal in
+    // the component, because it is not the same glyph in English. Fleet's Latin rule is opt-in
+    // (`latinFigures`, below) precisely so that this stays as it was.
     expect(markup).toContain('١٠٠٪');
     expect(render('en'), 'and the English one says 100%').toContain('100%');
     expect(markup, 'the transform is the identity at fit').toContain('translate(0px, 0px) scale(1)');
+  });
+
+  it('reads «100%» in Fleet — Latin in Arabic too, with the Latin percent sign', () => {
+    // Owner, 2026-11-23: «اى ارقام خليها بالانجلش حتى لو عربى» / «انا عاوزك تعدل حاجات الحركة
+    // فقط». Every Fleet host passes `latinFigures`; the readout then comes from the Fleet key.
+    const arabic = render('ar', true);
+    expect(readout(arabic)).toBe(
+      translate('ar', 'fleet.licenseImage.zoomPercent', { value: '100' }),
+    );
+    expect(readout(arabic)).toBe('100%');
+    expect(arabic, 'no Arabic-Indic digit or «٪» anywhere in the viewer').not.toMatch(/[٠-٩٪]/);
+    expect(readout(render('en', true)), 'English: 100%').toBe('100%');
+    expect(render('en', true), 'and English is byte-identical to the default path').toBe(
+      render('en'),
+    );
+  });
+
+  it('keeps the default readout in the reader’s own digits — the Operations path', () => {
+    expect(readout(render())).toBe(
+      translate('ar', 'fleet.licenseImage.zoomLevel', { value: '١٠٠' }),
+    );
+    expect(readout(render('en'))).toBe('100%');
   });
 
   it('greys out «تصغير» and the reset while there is nothing to undo', () => {
@@ -156,5 +186,56 @@ describe('all three previews were fixed, not one', () => {
     // The 64px chips in the drivers list open the dialog; turning them into zoom surfaces would
     // put a scroll trap in a table row.
     expect(DRIVER).toContain('h-16 w-auto');
+  });
+});
+
+describe('every Fleet viewer opts in to Latin figures, and Operations does not', () => {
+  /** Every non-spec .ts/.tsx under `modules/fleet`, relative to it. */
+  const fleetSources = (dir: string = HERE): string[] =>
+    readdirSync(dir).flatMap((name) => {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) return fleetSources(path);
+      return /\.tsx?$/.test(name) && !/\.spec\.tsx?$/.test(name) ? [relative(HERE, path)] : [];
+    });
+  /** Each `<ZoomableImage … />` tag in a source, whole — props may wrap onto several lines. */
+  const tags = (source: string): string[] =>
+    source
+      .split('<ZoomableImage')
+      .slice(1)
+      .map((rest) => rest.slice(0, rest.indexOf('/>')));
+  const LATIN = /(^|\s)latinFigures(\s|$|=\{true\})/;
+
+  const sites = fleetSources().flatMap((file) => tags(code(file)).map((tag) => ({ file, tag })));
+
+  it('finds the nine Fleet hosts', () => {
+    // Not a ceiling — a new host is welcome — but the ones the owner sees today must all be here,
+    // or the scan below would pass by finding nothing.
+    const files = sites.map((site) => site.file.replace(/\\/g, '/'));
+    for (const file of [
+      'components/NoticeImageCell.tsx',
+      'components/ReceiptImageCell.tsx',
+      'components/DriverLicenseImage.tsx',
+      'components/VehicleLicenseImage.tsx',
+      'components/VehicleContractViewer.tsx',
+      'components/DealershipImageCell.tsx',
+      'components/FuelCardImage.tsx',
+      'components/number-repair/RepairThumb.tsx',
+    ]) {
+      expect(files, file).toContain(file);
+    }
+    expect(files.filter((file) => file === 'components/DriverLicenseImage.tsx')).toHaveLength(2);
+    expect(sites.length).toBeGreaterThanOrEqual(9);
+  });
+
+  it('every <ZoomableImage in Fleet passes latinFigures', () => {
+    for (const { file, tag } of sites) {
+      expect(tag, `${file}: <ZoomableImage${tag}/>`).toMatch(LATIN);
+    }
+  });
+
+  it('Operations keeps the default — its shipment receipt still reads «١٠٠٪»', () => {
+    const operations = tags(code('../operations/components/ShipmentReceiptImageCell.tsx'));
+    expect(operations).toHaveLength(1);
+    expect(operations[0]).not.toContain('latinFigures');
   });
 });

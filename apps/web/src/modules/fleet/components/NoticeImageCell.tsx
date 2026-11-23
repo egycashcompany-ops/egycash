@@ -186,7 +186,9 @@ export const NoticeImagePreviewDialog = ({
             {t('fleet.vehicles.licenseImage.loadFailed')}
           </p>
         )}
-        {url !== null && <ZoomableImage src={url} alt={t(`fleet.notices.image.${kind}.title`)} />}
+        {url !== null && (
+          <ZoomableImage src={url} alt={t(`fleet.notices.image.${kind}.title`)} latinFigures />
+        )}
       </Dialog>
       <NoticeImageDeleteDialog
         target={confirming}

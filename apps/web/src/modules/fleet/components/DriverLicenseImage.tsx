@@ -17,7 +17,7 @@ import { EyeIcon, UploadIcon } from '../../../shared/ui/icons';
 import { IMAGE_EMPTY_BOX, IMAGE_GROUP, actionTone } from './row-actions-look';
 import { ArrowUpFromLineIcon, CloudUploadIcon, Trash2Icon } from './row-action-icons';
 import { useAppSelector } from '../../../store';
-import { formatDate, localized } from '../../../shared/lib/format';
+import { localized } from '../../../shared/lib/format';
 import { fetchDriverLicenseImage } from '../api/fleet-api';
 import { printLicenceRecord } from './vehicle-print';
 import {
@@ -29,6 +29,7 @@ import {
 import { useEmployeeName } from './EmployeeName';
 import { ZoomableImage } from './ZoomableImage';
 import { vehicleTodayFrom, type VehicleToday } from './vehicle-today';
+import { latinDate } from '../lib/fleet-figures';
 
 /** What the file picker offers and what the server's category accepts — kept in step deliberately. */
 export const DRIVER_LICENSE_IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp';
@@ -231,7 +232,11 @@ export const DriverLicenseImagePreviewDialog = ({
           </p>
         )}
         {url !== null && (
-          <ZoomableImage src={url} alt={t('fleet.drivers.licenseImage.previewTitle')} />
+          <ZoomableImage
+            src={url}
+            alt={t('fleet.drivers.licenseImage.previewTitle')}
+            latinFigures
+          />
         )}
       </Dialog>
 
@@ -266,10 +271,10 @@ export const usePrintDriverLicence = (driver: FleetDriverProfileDto): (() => Pro
         rows: [
           { label: t('fleet.drivers.columns.driver'), value: name ?? '—' },
           { label: t('fleet.drivers.columns.employeeCode'), value: code ?? '—' },
+          // Latin in both languages, like every Fleet figure (owner, 2026-11-23); «—» when unset.
           {
             label: t('fleet.drivers.columns.licenseExpiresAt'),
-            value:
-              driver.licenseExpiresAt === null ? '—' : formatDate(driver.licenseExpiresAt, locale),
+            value: latinDate(driver.licenseExpiresAt, locale),
           },
         ],
         licenseImage: {
@@ -592,7 +597,11 @@ export const StagedDriverLicenseImage = ({
         }
       >
         {url !== null && (
-          <ZoomableImage src={url} alt={t('fleet.drivers.licenseImage.previewTitle')} />
+          <ZoomableImage
+            src={url}
+            alt={t('fleet.drivers.licenseImage.previewTitle')}
+            latinFigures
+          />
         )}
       </Dialog>
     </span>

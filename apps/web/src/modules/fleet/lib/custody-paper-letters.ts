@@ -1,18 +1,21 @@
 // The three Word letters — «صرف عهدة» (a charge), «استعاضه عهدة» (a replenishment) and «تسويه
 // عهدة» (a settlement) — paragraph by paragraph, as his .docx files lay them out.
 //
-// Digits: Arabic-Indic everywhere (Word's «Context» numerals), except the settle letter's table
-// amounts and total, typed in a Latin run on his letter (`latin2`). The bracket figure — the
-// replenish letter's «عهده اداره الحركه ( X )», the settle letter's «من العهده ( X )» — is the
-// operation's `letterFigure`, frozen when it was recorded, so a reprint never changes.
-import type {
-  FleetCustodyPaperSignatures,
-  FleetCustodySignBlock,
-  FleetCustodySignRole,
-  FleetCustodySource,
-  FleetLicenseExpenseKind,
+// Digits: Latin 0-9 everywhere (owner, 2026-11-23: «اى ارقام بالانجلش») — the amounts grouped
+// («81,908», «124,139.46»), the settle letter's table amounts and total always to two decimals
+// (`latin2`), the serials, the dates and the typed reason's digits folded to Latin. The letters
+// never read the UI language, so an English-UI print is the same Arabic paper. The bracket figure —
+// the replenish letter's «عهده اداره الحركه ( X )», the settle letter's «من العهده ( X )» — is the
+// operation's `letterFigure`, frozen when it was recorded, so a reprint never changes its value.
+import {
+  asciiDigits,
+  type FleetCustodyPaperSignatures,
+  type FleetCustodySignBlock,
+  type FleetCustodySignRole,
+  type FleetCustodySource,
+  type FleetLicenseExpenseKind,
 } from '@ecms/contracts';
-import { ai, aiAmount, esc, latin2, tatweelDate } from './custody-paper-format';
+import { esc, grouped, latin2, tatweelDate } from './custody-paper-format';
 import { CENTER, blank, letterPage, para, signer1, signer2, signer3 } from './custody-paper-word';
 import {
   BODY_ORDER,
@@ -173,8 +176,11 @@ const tableSheets = (
 
 const LEADING_REASON = new RegExp(`^${REASON_LEAD}\\s*`, 'u');
 
-/** The typed reason as the letter prints it: trimmed, a leading «نظير» dropped, digits his. */
-const reasonOf = (reason: string): string => ai(reason.trim().replace(LEADING_REASON, ''));
+/**
+ * The typed reason as the letter prints it: trimmed, a leading «نظير» dropped, any Arabic-Indic or
+ * Persian digit he typed folded to Latin («٢٤» prints «24»).
+ */
+const reasonOf = (reason: string): string => asciiDigits(reason.trim().replace(LEADING_REASON, ''));
 
 /**
  * «صرف عهدة»'s request as plain text — what the charge dialog shows under «نص الخطاب», and the
@@ -182,7 +188,7 @@ const reasonOf = (reason: string): string => ai(reason.trim().replace(LEADING_RE
  */
 export const chargeLetterSentence = (input: { amount: number; reason: string }): string => {
   const reason = reasonOf(input.reason);
-  const request = chargeRequest(aiAmount(input.amount));
+  const request = chargeRequest(grouped(input.amount));
   return reason === '' ? request : `${request}${CHARGE_FOR}${chargeReason(reason)}`;
 };
 
@@ -192,7 +198,7 @@ const chargeLetter = (input: ChargeLetterInput): string[] => {
   const [y = '', m = '', d = ''] = input.date.split('-');
   const { s1, s2, s3 } = signsOf(input.signatures);
   const reason = reasonOf(input.reason);
-  const request = chargeRequest(aiAmount(input.amount));
+  const request = chargeRequest(grouped(input.amount));
   // His two body paragraphs, as one block: the request, then the reason after a Word line break.
   const body =
     reason === ''
@@ -204,7 +210,7 @@ const chargeLetter = (input: ChargeLetterInput): string[] => {
   const head: Block[] = [
     {
       html: para(
-        `<span style="font-size:10pt">${esc(LETTER_WORDS.date)}</span> ${ai(`${Number(d)}/${Number(m)}/${y}`)}`,
+        `<span style="font-size:10pt">${esc(LETTER_WORDS.date)}</span> ${Number(d)}/${Number(m)}/${y}`,
         14,
         17.4,
       ),
@@ -276,8 +282,8 @@ const fundLetter = (input: ReplenishLetterInput | SettleLetterInput): string[] =
   const [sPt = 14, sLh = 16.1] = z.sign;
   const dateWord = esc(LETTER_WORDS.date);
   const dateLine = replenish
-    ? `${dateWord}${ai(d.padStart(2, '0'))}/ ${ai(m)} / ${ai(y)}`
-    : `${dateWord} ${ai(String(Number(d)))} / ${ai(m)} / ${ai(y)}`;
+    ? `${dateWord}${d.padStart(2, '0')}/ ${m} / ${y}`
+    : `${dateWord} ${String(Number(d))} / ${m} / ${y}`;
   const from = input.from ?? input.date;
   const to = input.to ?? input.date;
   let body: string;
@@ -286,8 +292,8 @@ const fundLetter = (input: ReplenishLetterInput | SettleLetterInput): string[] =
     const present = new Set(input.rows.map((row) => row.kind));
     const kinds = BODY_ORDER.filter((kind) => present.has(kind)).map((kind) => KIND_WORD[kind]);
     body = replenishBody(
-      aiAmount(input.amount),
-      aiAmount(input.custody),
+      grouped(input.amount),
+      grouped(input.custody),
       tatweelDate(from, true),
       tatweelDate(to, true),
       kinds.map(esc),
@@ -298,17 +304,17 @@ const fundLetter = (input: ReplenishLetterInput | SettleLetterInput): string[] =
       heads: `<tr style="height:19.6pt"><td>${esc(hNo)}</td><td>${esc(hMemo)}</td><td>${esc(hValue)}</td></tr>`,
       rows: input.rows.map(
         (row, i) =>
-          `<tr style="height:18.7pt"><td>${ai(String(i + 1))}</td><td>${esc(KIND_WORD[row.kind])}</td><td>${aiAmount(row.amount)}</td></tr>`,
+          `<tr style="height:18.7pt"><td>${String(i + 1)}</td><td>${esc(KIND_WORD[row.kind])}</td><td>${grouped(row.amount)}</td></tr>`,
       ),
-      total: `<tr style="height:18.7pt"><td>${esc(LETTER_WORDS.replenishTotal)}</td><td></td><td>${aiAmount(input.amount)}</td></tr>`,
+      total: `<tr style="height:18.7pt"><td>${esc(LETTER_WORDS.replenishTotal)}</td><td></td><td>${grouped(input.amount)}</td></tr>`,
       close: '</tbody></table>',
       headH: HEAD_ROW,
       rowH: REPLENISH_ROW,
     };
   } else {
     body = settleBody(
-      aiAmount(input.amount),
-      aiAmount(input.custody),
+      grouped(input.amount),
+      grouped(input.custody),
       tatweelDate(from, false),
       tatweelDate(to, false),
     );
@@ -318,7 +324,7 @@ const fundLetter = (input: ReplenishLetterInput | SettleLetterInput): string[] =
       heads: `<tr style="height:19.6pt"><td class="n4">${esc(hNo)}</td><td class="n4">${esc(hMemo)}</td><td class="n4">${esc(hValue)}</td></tr>`,
       rows: input.rows.map(
         (row, i) =>
-          `<tr style="height:16.1pt"><td class="n4">${ai(String(i + 1))}</td><td>${esc(ai(settleRowLabel(row.part, String(row.cars))))}</td><td>${latin2(row.amount)}</td></tr>`,
+          `<tr style="height:16.1pt"><td class="n4">${String(i + 1)}</td><td>${esc(settleRowLabel(row.part, String(row.cars)))}</td><td>${latin2(row.amount)}</td></tr>`,
       ),
       total: `<tr style="height:16.1pt"><td>${esc(LETTER_WORDS.settleTotal)}</td><td></td><td>${latin2(input.amount)}</td></tr>`,
       close: '</tbody></table>',

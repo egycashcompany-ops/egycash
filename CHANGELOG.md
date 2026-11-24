@@ -28,6 +28,19 @@ its entry here in the same PR.
 
 ### Changed
 
+- **A hand-over of several devices prints on ONE sheet.** «عند تسليم أكثر من أصل يتم عمل إيصال
+  لكل أصل على حدي أنا عايز يتطبعوا فى ورقه واحده». A hand-over was already one «إقرار استلام»
+  under one number, but it printed a page per device, each with its own statement and signature,
+  which read as a receipt per device. A paper of several devices is now one statement — «بأنني قد
+  استلمت الأجهزة الآتية وعددها (n) وبياناتها كالتالي:» — a table with a row per device (its kind,
+  make and model, serial, its specifications in short, its accessories), one undertaking and one
+  signature; a department's paper says «لتكون في عهدة إدارة … بموقع …». The owner approved it from
+  a sample. A paper of one device is the form's page, unchanged. A list too long for the sheet runs
+  on to further pages, each headed by the table's header row and the paper's number, the
+  undertaking and the signature kept whole and with the list's last row (short of fifteen or more
+  devices with six computers' full specifications). Nothing is stored differently, and reprinting
+  an older receipt of several devices prints the sheet.
+
 - **Fleet: every figure in Latin digits, in Arabic as in English — and the car record's
   «المخالفات» count and count wording.** The owner, 23 November: «اى ارقام خليها بالانجلش حتى لو
   عربى», for his own papers «اى ارقام بالانجلش», and «انا عاوزك تعدل حاجات الحركة فقط»; on the car

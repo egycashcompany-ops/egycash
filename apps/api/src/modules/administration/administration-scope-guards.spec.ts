@@ -29,6 +29,12 @@ const REPOSITORIES = [
     model: 'AdministrationItemCategoryModel',
     options: '{}',
   },
+  {
+    file: 'catalog/items/item.repository.ts',
+    collection: 'administration_items',
+    model: 'AdministrationItemModel',
+    options: '{}',
+  },
 ] as const;
 
 const walk = (dir: string, out: string[] = []): string[] => {

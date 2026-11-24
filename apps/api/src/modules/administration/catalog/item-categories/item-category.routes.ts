@@ -1,7 +1,7 @@
-// Item categories (design §19.3): the units' gate — `administrationCatalog.manage` reads and
-// writes; the read takes `administrationItem.view` too once that key ships (P1a.2), so the item
-// form's category list populates for an item editor. Writes are also held to organization scope
-// in the service (OD-04 A): one taxonomy for the whole company.
+// Item categories (design §19.3): the units' gate — `administrationCatalog.manage` writes, and the
+// read takes it OR `administrationItem.view`, so the item form's category and subcategory lists and
+// the register's category filter populate for an item reader. Writes are also held to
+// organization scope in the service (OD-04 A): one taxonomy for the whole company.
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -11,7 +11,7 @@ import {
   objectId,
 } from '@ecms/contracts';
 import { authenticate } from '../../../../platform/auth';
-import { authorize } from '../../../../platform/rbac';
+import { authorize, authorizeAny } from '../../../../platform/rbac';
 import { asyncHandler, validate } from '../../../../platform/web';
 import {
   createAdministrationItemCategory,
@@ -26,7 +26,7 @@ export const buildAdministrationItemCategoriesRouter = (): Router => {
   router.get(
     '/',
     authenticate,
-    authorize('administrationCatalog.manage'),
+    authorizeAny('administrationItem.view', 'administrationCatalog.manage'),
     validate({ query: ListAdministrationItemCategoriesQuerySchema }),
     asyncHandler(listAdministrationItemCategories),
   );

@@ -260,6 +260,43 @@ its entry here in the same PR.
 
 ### Added
 
+- **Administrative Affairs («الشئون الإدارية»), second slice: items, and the «ITM-» code.** The
+  item master every store, request and order will name, with the «Category / Subcategory» the
+  owner's request lists among an item's fields, typed on the screens as he asked («لأ خلينا من غير
+  شيتات او بيانات دلوقتى»), so nothing is loaded at deploy. This is P1a.2 of the design
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §19.1): the API only; the
+  Items screen arrives with P1a.W.
+  - **Three keys and a page:** `administrationItem.view`, `.create` and `.edit` («عرض الأصناف»,
+    «إنشاء الأصناف», «تعديل الأصناف») on «الأصناف», over `/api/v1/administration/items` and
+    `/items/:id`. Any holder of `.view` reads the whole register; the writes need the key at
+    ORGANIZATION scope (OD-04 A), as the catalog's do. A retired item still resolves by its id.
+  - **A generated code, «ITM-00001»** (OD-05 A), taken inside the create's transaction from the
+    module's counter (`administration_counters`, the shared `defineCounter`): two creates at once
+    get consecutive codes, and a create refused inside the transaction gives its number back, so the
+    series has no gap. The seed raises the counter to the highest code already given, at any width,
+    and every create does again first, so a lost counter never comes back below a used code.
+  - **One item per name and per barcode.** The Arabic name is compared folded («قطعه» = «قطعة») under
+    a unique index, so two spellings typed at the same moment make one item; a barcode, optional,
+    belongs to one live item (OD-05 (i)) and its unique index is its only check. Either clash
+    answers 409 `ADMINISTRATION_DUPLICATE` naming the field (`name` or `barcode`). `search` reads
+    the code, both names and the barcode, so a scan finds its item.
+  - **Its rules, each refused with its own code:** the levels keep minimum ≤ reorder point ≤
+    maximum where set, whole numbers from 0 (OD-08, OD-09; 422 `ADMINISTRATION_STOCK_LEVELS_ORDER`,
+    naming the fields); a retired unit or category is not given to an item, though an item keeps
+    one that retired later (422 `ADMINISTRATION_REFERENCE_INACTIVE`); and a category with active
+    subcategories is not named directly — the item names one of them (OD-06 (i); 422
+    `ADMINISTRATION_SUBCATEGORY_REQUIRED`). The list labels each item with its category, that
+    category's parent and its unit, and `?categoryId=` of a category reads its subcategories' items
+    too.
+  - **An item reader reads the units and categories.** Both lists now take `administrationItem.view`
+    as well as `administrationCatalog.manage`, so the item form's lists populate; their realtime
+    topics move to the item key, beside the new `administration.item`.
+  - **Five more ready-made roles** (OD-78 A), seeded as managed roles with the item view key and
+    assigned to nobody: «أمين المخزن», «موظف المشتريات», «مدير المشتريات», «مدير الشئون الإدارية» and
+    «المراجع الداخلي»; «مسؤول البيانات الأساسية» gains the three item keys.
+  - Audited as `create`, `update`, `activate` and `deactivate`, with an explicit signal after a
+    (de)activation.
+
 - **Administrative Affairs («الشئون الإدارية»), first slice: units of measure and item categories.**
   The owner's request of 2026-10-29 for warehouses and procurement starts with its master data; the
   owner, 2026-11-24, on the open decisions: «اعمل انت الـ Recommendations من عندك دلوقتى وبعدين نبقى

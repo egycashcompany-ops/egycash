@@ -3076,6 +3076,43 @@ Repository-wide findings outside this module are listed for the owner in
     same terms; moving either category to the top level, which no rule refuses, repairs it.
   - *Deferred to P1a.2,* with the item keys: the read gate `authorizeAny('administrationItem.view', …)`, the topics'
     move to that key, and the §19.7 case "an item viewer reads units and categories".
+- **P1a.2 built** (2026-11-24). Phase 1's second pull request ships as §19.1 says, under the owner's answers
+  (§16.12): items, the `ITM-` code on `administration_counters`, the widened catalog read gate and the topics' move,
+  and the five bundles §6.5 opens with `administrationItem.view`, titled with §6.5's candidates (OD-67's fallback, as
+  in P1a.1). OD-68 B: no go-live step, no run model, no entrypoint change. Where the code had to choose what the design
+  leaves open:
+  - *The item's level (OD-06 (i)) has a code of its own.* §5.15 lists none for it, so a category with active
+    subcategories, named by a create or by an edit that changes the category, answers 422
+    `ADMINISTRATION_SUBCATEGORY_REQUIRED` (`[{ field: 'categoryId', code: 'subcategoryRequired' }]`). "Has any" reads
+    "has an active one": a category whose subcategories all retired takes items again, or nothing under it could be
+    filed. "Until it is next edited" reads "until its category is next changed", as a retired unit or category is kept
+    (§5.15): a rename or a retirement is never refused for a classification it did not touch. A subcategory is judged
+    on its own `isActive`, not its parent's.
+  - *References.* An item asks the unit's and the category's own `activeFor` (§5.3), exported from their feature
+    indexes; one it already names is not read. A `unitId` or `categoryId` that names nothing is 404 `NOT_FOUND`, as a
+    category's missing parent is (P1a.1).
+  - *Levels.* "One detail per field out of order" names both ends of every comparison that fails, each field once,
+    detail code `outOfOrder`; they are judged on the row every write leaves. Whole numbers from 0 are the contract's
+    (400), bounded at a line quantity's 1,000,000 (§2.1; `ADMINISTRATION_STOCK_LEVEL_MAX`).
+  - *Barcode.* Trimmed, 1–64 characters, no space inside (what a keyboard wedge types), case kept, `null` clears it.
+    `ADMINISTRATION_DUPLICATE_FIELDS` gains `barcode`; after an index refusal the name is asked first, then the
+    barcode.
+  - *The code's contract.* `formatAdministrationMasterCode(kind, seq)` and `parseAdministrationMasterCode(code)` in
+    `administration.ts`, over a prefix table (`ITM` now, `SUP` in P1b.1); the formatter throws on a number no counter
+    hands out, and the parser reads only the formatter's own spelling, so «ITM-000001» is not «ITM-00001».
+  - *The floor* is read through `ux_code` by an anchored prefix, grouped by length, greatest of the longest: the plain
+    newest-first read breaks past five digits («ITM-99999» sorts after «ITM-100000»). `shared/` imports no feature,
+    so `document-number.ts` holds the key, the pipeline and the parse, and the items repository runs it. The floor
+    and the ensure run at every boot and before every create, outside its transaction (Fleet's posture); the seed
+    logs a failed ensure rather than failing the boot. The shared factory hands out one number per call (`next`),
+    so `counter.model.ts` exports `ensureCounter` and `nextNumber`; `peekNumber` waits for a caller.
+  - *Indexes.* `ux_code` and `ux_counter_key` are the module's only unique indexes not partial on live rows (the
+    indexes spec names them); `ix_unit_active` sits beside `ix_category_active` for the register's unit filter.
+  - *The register.* `search` adds the barcode, as typed, to P1a.1's code, names and `nameKey`; `?categoryId=` of a
+    top-level category reads its subcategories' items too. The DTO's labels are `categoryName`,
+    `categoryParentId`, `categoryParentName` and `unitName`.
+  - *The unit stays editable.* §2.3.4's immutability needs a line or a movement that names the item, which nothing
+    can before P2 and P5, so the checker registry of §3.6 ships with its first registrant.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

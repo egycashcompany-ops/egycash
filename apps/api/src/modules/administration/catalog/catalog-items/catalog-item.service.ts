@@ -6,6 +6,7 @@ import {
   type AdministrationDuplicateField,
   type CreateAdministrationCatalogItem,
   type ListAdministrationCatalogItemsQuery,
+  type LocalizedString,
   type Paginated,
   type UpdateAdministrationCatalogItem,
 } from '@ecms/contracts';
@@ -39,6 +40,24 @@ class AdministrationCatalogItemService {
       sortDir: query.sortDir,
       sortableFields: ['sortOrder', 'name.ar', 'createdAt'],
     });
+  }
+
+  /**
+   * The unit `id` names, retired or not, or null when no unit does: what an item's write reads to
+   * judge the unit it names (the item asks `activeFor` of it).
+   */
+  async findUnit(id: string): Promise<AdministrationCatalogItemDoc | null> {
+    const doc = await repository.findById(id);
+    return doc?.kind === 'unit' ? doc : null;
+  }
+
+  /**
+   * The units' names, by id, read unfiltered — a retired unit still names itself on the items
+   * that keep it (§19.4's label).
+   */
+  async unitNames(ids: readonly string[]): Promise<ReadonlyMap<string, LocalizedString>> {
+    const units = await repository.findByIdsSystem(ids);
+    return new Map(units.map((unit) => [String(unit._id), unit.name]));
   }
 
   async create(

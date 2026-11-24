@@ -1,4 +1,4 @@
-// What every master register of the module does the same way — units and categories now; items,
+// What every master register of the module does the same way — units, categories and items now;
 // warehouses and suppliers as they ship — written once so the five cannot drift apart: the answer
 // to a duplicate (design §5.15), the audit verb of each act (§10.2) and the text search (§19.4).
 // Each feature keeps what is its own: its checks, its literal entity ref, its snapshot, its signal.
@@ -109,10 +109,14 @@ export const searchPatterns = (
 };
 
 /**
- * The `$or` a register's list filters on — its code, both names and the folded key — or null when
- * nothing is searched. Items add their barcode beside it (P1a.2).
+ * The `$or` a register's list filters on — its code, both names and the folded key, and any field
+ * of its own the text is matched against as typed (an item's barcode) — or null when nothing is
+ * searched.
  */
-export const masterSearchClause = (search: string | undefined): Record<string, RegExp>[] | null => {
+export const masterSearchClause = (
+  search: string | undefined,
+  alsoTyped: readonly string[] = [],
+): Record<string, RegExp>[] | null => {
   const patterns = searchPatterns(search);
   if (patterns === null) return null;
   return [
@@ -120,5 +124,6 @@ export const masterSearchClause = (search: string | undefined): Record<string, R
     { 'name.ar': patterns.typed },
     { 'name.en': patterns.typed },
     ...(patterns.folded === null ? [] : [{ nameKey: patterns.folded }]),
+    ...alsoTyped.map((field) => ({ [field]: patterns.typed })),
   ];
 };

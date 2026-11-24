@@ -71,6 +71,18 @@ describe('masterSearchClause', () => {
     expect(clause?.[3]?.nameKey?.test('قطعهغيار')).toBe(true);
   });
 
+  it('matches a register’s own fields as typed too — an item’s barcode', () => {
+    const clause = masterSearchClause('6221', ['barcode']);
+    expect(clause?.map((part) => Object.keys(part)[0])).toEqual([
+      'code',
+      'name.ar',
+      'name.en',
+      'nameKey',
+      'barcode',
+    ]);
+    expect(clause?.[4]?.barcode?.test('6221234567890')).toBe(true);
+  });
+
   it('leaves the folded key out when the text folds to nothing', () => {
     expect(masterSearchClause('ـ')?.map((part) => Object.keys(part)[0])).toEqual([
       'code',

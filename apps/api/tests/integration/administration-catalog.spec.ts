@@ -1,17 +1,22 @@
-// Administrative Affairs' catalog over real HTTP, real RBAC and a real database (design §19.7) —
-// P1a.1's part: units of measure and item categories. Items join this file in P1a.2.
+// Administrative Affairs' catalog over real HTTP, real RBAC and a real database (design §19.7):
+// units of measure and item categories (P1a.1), and the items that name them (P1a.2).
 //
 // What a mocked spec cannot see: the folded name stored and indexed, so «قطعه» typed after «قطعة»
-// is the same unit — even when the two are typed at the same moment, where only the unique index
-// can refuse the second; the two-level rule judged against real parents and children; every
-// refusal answered with its own code (§5.15); the writes held to organization scope (OD-04 A)
-// while the reads are not; the trail's verbs; and the seed's indexes and its ready-made role.
+// is the same unit or item — even when the two are typed at the same moment, where only the
+// unique index can refuse the second; the two-level rule judged against real parents and
+// children; the item code taken inside a real transaction, so concurrent creates get consecutive
+// numbers and a create a unique index refuses gives its number back; every refusal answered with
+// its own code (§5.15); the writes held to organization scope (OD-04 A) while the reads are not;
+// the trail's verbs; and the seed's indexes, its counter and its ready-made roles.
 import type request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { Types } from 'mongoose';
 import {
   foldName,
+  parseAdministrationMasterCode,
   type AdministrationCatalogItemDto,
   type AdministrationItemCategoryDto,
+  type AdministrationItemDto,
 } from '@ecms/contracts';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
 import { RoleModel } from '../../src/platform/rbac/role.model';
@@ -19,6 +24,9 @@ import { AdministrationCatalogItemModel } from '../../src/modules/administration
 import { administrationCatalogItemRepository } from '../../src/modules/administration/catalog/catalog-items/catalog-item.repository';
 import { AdministrationItemCategoryModel } from '../../src/modules/administration/catalog/item-categories/item-category.model';
 import { administrationItemCategoryRepository } from '../../src/modules/administration/catalog/item-categories/item-category.repository';
+import { AdministrationItemModel } from '../../src/modules/administration/catalog/items/item.model';
+import { administrationItemRepository } from '../../src/modules/administration/catalog/items/item.repository';
+import { AdministrationCounterModel } from '../../src/modules/administration/shared/counter.model';
 import { seedAdministration } from '../../src/modules/administration/administration.seed';
 import {
   administrationApi,
@@ -66,6 +74,13 @@ const category = async (
   return data<AdministrationItemCategoryDto>(res);
 };
 
+/** The number an «ITM-…» code carries. */
+const seqOf = (code: string): number => {
+  const parsed = parseAdministrationMasterCode(code);
+  expect(parsed, code).not.toBeNull();
+  return parsed?.seq ?? Number.NaN;
+};
+
 const trail = (entityType: string, entityId: string) =>
   AuditLogModel.find({
     'entityRef.moduleId': 'administration',
@@ -80,32 +95,88 @@ describe('the seed', () => {
   it('builds the unique indexes the folded names stand on', async () => {
     // Tests boot with `autoIndex` on, so the indexes are there whatever the seed does (§15.3.2).
     // Once Mongoose's own build is done they are dropped, and nothing has written here yet, so no
-    // repository's `collectionReady` has run: only the seed's `syncDeclaredIndexes` brings them back.
-    for (const model of [AdministrationCatalogItemModel, AdministrationItemCategoryModel]) {
+    // repository's `collectionReady` has run: only the seed's `syncDeclaredIndexes` brings them
+    // back. (The counter's guard ran at boot and is remembered, so it builds nothing either.)
+    const names = async (model: { collection: { indexes(): Promise<{ name?: string }[]> } }) =>
+      (await model.collection.indexes()).map((index) => index.name);
+    for (const model of [
+      AdministrationCatalogItemModel,
+      AdministrationItemCategoryModel,
+      AdministrationItemModel,
+      AdministrationCounterModel,
+    ] as const) {
       await model.init();
       await model.collection.dropIndexes();
-      const left = await model.collection.indexes();
-      expect(left.map((index) => index.name)).toEqual(['_id_']);
+      expect(await names(model)).toEqual(['_id_']);
     }
     await seedAdministration();
 
-    const units = await AdministrationCatalogItemModel.collection.indexes();
-    expect(units.map((index) => index.name)).toEqual(
+    expect(await names(AdministrationCatalogItemModel)).toEqual(
       expect.arrayContaining(['ux_kind_name_key', 'ux_kind_code', 'ix_kind_active_sort']),
     );
-    const categories = await AdministrationItemCategoryModel.collection.indexes();
-    expect(categories.map((index) => index.name)).toEqual(
+    expect(await names(AdministrationItemCategoryModel)).toEqual(
       expect.arrayContaining(['ux_parent_name_key', 'ux_code', 'ix_parent_active_sort']),
+    );
+    expect(await names(AdministrationItemModel)).toEqual(
+      expect.arrayContaining([
+        'ux_code',
+        'ux_name_key',
+        'ux_barcode',
+        'ix_category_active',
+        'ix_unit_active',
+      ]),
+    );
+    expect(await names(AdministrationCounterModel)).toEqual(
+      expect.arrayContaining(['ux_counter_key']),
     );
   });
 
-  it('seeds the master-data administrator as a managed role with the catalog key (OD-78 A)', async () => {
-    const role = await RoleModel.findOne({ key: 'administration-master-data' }).lean().exec();
-    expect(role).toMatchObject({
-      name: { en: 'Master-data administrator', ar: 'مسؤول البيانات الأساسية' },
-      isSystem: false,
-      permissionKeys: ['administrationCatalog.manage'],
+  it('raises a lost item counter above every code already given, at any width (§2.8)', async () => {
+    // Two codes either side of five digits: read newest-first as strings, «ITM-99999» would win.
+    const planted = (code: string, ar: string) => ({
+      code,
+      name: { ar, en: code },
+      nameKey: foldName(ar),
+      categoryId: new Types.ObjectId(),
+      unitId: new Types.ObjectId(),
     });
+    await AdministrationItemModel.create([
+      planted('ITM-99999', 'صنف مزروع أول'),
+      planted('ITM-100000', 'صنف مزروع ثان'),
+    ]);
+    await AdministrationCounterModel.deleteMany({ key: 'item:global' }).exec();
+    await seedAdministration();
+    const counter = await AdministrationCounterModel.findOne({ key: 'item:global' }).lean().exec();
+    expect(counter?.seq).toBe(100_000);
+  });
+
+  it('seeds the ready-made roles as managed roles, each with the keys it holds so far (OD-78 A)', async () => {
+    const roles = await RoleModel.find({ key: /^administration-/ })
+      .lean()
+      .exec();
+    expect(roles.every((role) => !role.isSystem)).toBe(true);
+    expect(
+      Object.fromEntries(roles.map((role) => [role.key, [...role.permissionKeys].sort()])),
+    ).toEqual({
+      'administration-storekeeper': ['administrationItem.view'],
+      'administration-procurement-officer': ['administrationItem.view'],
+      'administration-procurement-manager': ['administrationItem.view'],
+      'administration-affairs-manager': ['administrationItem.view'],
+      'administration-master-data': [
+        'administrationCatalog.manage',
+        'administrationItem.create',
+        'administrationItem.edit',
+        'administrationItem.view',
+      ],
+      'administration-auditor': ['administrationItem.view'],
+    });
+    const master = roles.find((role) => role.key === 'administration-master-data');
+    expect(master?.name).toEqual({
+      en: 'Master-data administrator',
+      ar: 'مسؤول البيانات الأساسية',
+    });
+    const storekeeper = roles.find((role) => role.key === 'administration-storekeeper');
+    expect(storekeeper?.name).toEqual({ en: 'Storekeeper', ar: 'أمين المخزن' });
   });
 });
 
@@ -607,6 +678,417 @@ describe('item categories (two levels, OD-06 A)', () => {
   });
 });
 
+describe('items (§2.3.4; OD-05 A codes)', () => {
+  // Each item its own name; these two references hold every item that does not test them.
+  let leaf: AdministrationItemCategoryDto;
+  let piece: AdministrationCatalogItemDto;
+
+  beforeAll(async () => {
+    leaf = await category({ name: { ar: 'أدوات مكتبية', en: 'Office supplies' } });
+    piece = await unit({ name: { ar: 'عدد', en: 'Count' } });
+  });
+
+  const body = (extra: Record<string, unknown> = {}) => ({
+    name: fresh('صنف', 'Item'),
+    categoryId: leaf.id,
+    unitId: piece.id,
+    ...extra,
+  });
+
+  const item = async (extra: Record<string, unknown> = {}): Promise<AdministrationItemDto> => {
+    const res = await api.post('/items', body(extra));
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return data<AdministrationItemDto>(res);
+  };
+
+  const refused = (res: request.Response, status: number, code: string, fields: string[]) => {
+    expect(res.status, JSON.stringify(res.body)).toBe(status);
+    expect(refusal(res).code).toBe(code);
+    expect(refusal(res).details?.map((detail) => detail.field)).toEqual(fields);
+  };
+
+  it('creates an item with a generated code and its labels; the folded name stays on the server', async () => {
+    const office = await category({ name: { ar: 'قرطاسية مكتب', en: 'Office stationery' } });
+    const paper = await category({ name: { ar: 'ورق', en: 'Paper' }, parentId: office.id });
+    const ream = await unit({ name: { ar: 'رزمة', en: 'Ream' } });
+    const res = await api.post('/items', {
+      name: { ar: 'ورق تصوير A4', en: 'Copy paper A4' },
+      categoryId: paper.id,
+      unitId: ream.id,
+      barcode: '6221000000017',
+      minQty: 5,
+      reorderPointQty: 10,
+      maxQty: 40,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const created = data<AdministrationItemDto>(res);
+    expect(created.code).toMatch(/^ITM-\d{5,}$/);
+    expect(created).toMatchObject({
+      barcode: '6221000000017',
+      categoryId: paper.id,
+      categoryName: { ar: 'ورق', en: 'Paper' },
+      categoryParentId: office.id,
+      categoryParentName: { ar: 'قرطاسية مكتب', en: 'Office stationery' },
+      unitId: ream.id,
+      unitName: { ar: 'رزمة', en: 'Ream' },
+      minQty: 5,
+      reorderPointQty: 10,
+      maxQty: 40,
+      description: null,
+      notes: null,
+      isActive: true,
+      version: 0,
+    });
+    expect(created, 'the folded key never leaves the server').not.toHaveProperty('nameKey');
+    const stored = await AdministrationItemModel.findById(created.id).lean().exec();
+    expect(stored?.nameKey).toBe(foldName('ورق تصوير A4'));
+
+    const byId = data<AdministrationItemDto>(await api.get(`/items/${created.id}`));
+    expect(byId).toEqual(created);
+
+    const [row] = await trail('item', created.id);
+    expect(row?.action).toBe('create');
+    expect(row?.changes).toContainEqual({ field: 'code', old: null, new: created.code });
+  });
+
+  it('an item under a top-level category carries no parent label', async () => {
+    const created = await item();
+    expect(created).toMatchObject({
+      categoryName: leaf.name,
+      categoryParentId: null,
+      categoryParentName: null,
+      unitName: piece.name,
+    });
+  });
+
+  it('finds an item by its code, by another spelling of its name, and by its barcode', async () => {
+    const tape = await item({
+      name: { ar: 'شريط لاصق شفاف', en: 'Clear tape' },
+      barcode: 'TP-77031',
+    });
+    for (const search of [tape.code.toLowerCase(), 'شريط لاصق شفاف', 'شَريط لاصِق', 'TP-77031']) {
+      const found = data<AdministrationItemDto[]>(
+        await api.get(`/items?search=${encodeURIComponent(search)}`),
+      );
+      expect(
+        found.map((row) => row.id),
+        search,
+      ).toContain(tape.id);
+    }
+    const scan = data<AdministrationItemDto[]>(await api.get('/items?search=TP-77031'));
+    expect(
+      scan.map((row) => row.id),
+      'a scan resolves to one row',
+    ).toEqual([tape.id]);
+  });
+
+  it('filters by category — a top-level category holds its subcategories’ items — by unit and by status', async () => {
+    const top = await category();
+    const sub = await category({ parentId: top.id });
+    const other = await unit();
+    const underSub = await item({ categoryId: sub.id });
+    const underTopUnit = await item({ unitId: other.id });
+
+    const byTop = data<AdministrationItemDto[]>(await api.get(`/items?categoryId=${top.id}`));
+    expect(byTop.map((row) => row.id)).toEqual([underSub.id]);
+    const bySub = data<AdministrationItemDto[]>(await api.get(`/items?categoryId=${sub.id}`));
+    expect(bySub.map((row) => row.id)).toEqual([underSub.id]);
+    const byUnit = data<AdministrationItemDto[]>(await api.get(`/items?unitId=${other.id}`));
+    expect(byUnit.map((row) => row.id)).toEqual([underTopUnit.id]);
+
+    await api.patch(`/items/${underTopUnit.id}`, { isActive: false, version: 0 });
+    const retired = data<AdministrationItemDto[]>(
+      await api.get(`/items?unitId=${other.id}&isActive=false`),
+    );
+    expect(retired.map((row) => row.id)).toEqual([underTopUnit.id]);
+    const active = data<AdministrationItemDto[]>(
+      await api.get(`/items?unitId=${other.id}&isActive=true`),
+    );
+    expect(active).toEqual([]);
+  });
+
+  it('sorts by code, and pages at most 100 rows', async () => {
+    const res = await api.get('/items?sortBy=code&sortDir=asc&pageSize=100');
+    expect(res.status).toBe(200);
+    const codes = data<AdministrationItemDto[]>(res).map((row) => row.code);
+    expect(codes).toEqual([...codes].sort());
+    expect((await api.get('/items?pageSize=101')).status).toBe(400);
+  });
+
+  it('edits with its version; a stale version is 409 STALE_DOCUMENT; the code never moves', async () => {
+    const created = await item();
+    const edited = await api.patch(`/items/${created.id}`, {
+      name: { ar: 'قلم جاف أزرق', en: 'Blue ballpoint' },
+      notes: 'box of 50',
+      version: 0,
+    });
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+    expect(data<AdministrationItemDto>(edited)).toMatchObject({
+      code: created.code,
+      notes: 'box of 50',
+      version: 1,
+    });
+    const stored = await AdministrationItemModel.findById(created.id).lean().exec();
+    expect(stored?.nameKey, 'a rename folds the new name').toBe(foldName('قلم جاف أزرق'));
+
+    const stale = await api.patch(`/items/${created.id}`, { notes: 'x', version: 0 });
+    expect(stale.status).toBe(409);
+    expect(refusal(stale).code).toBe('STALE_DOCUMENT');
+
+    const moved = await api.patch(`/items/${created.id}`, { code: 'ITM-00001', version: 1 });
+    expect(moved.status, 'no client code').toBe(400);
+  });
+
+  it('deactivates freely (OD-70 A) and comes back; a retired item still resolves by id', async () => {
+    const created = await item();
+    const off = await api.patch(`/items/${created.id}`, { isActive: false, version: 0 });
+    expect(off.status).toBe(200);
+    const byId = data<AdministrationItemDto>(await api.get(`/items/${created.id}`));
+    expect(byId.isActive).toBe(false);
+    const on = await api.patch(`/items/${created.id}`, { isActive: true, version: 1 });
+    expect(on.status).toBe(200);
+
+    const rows = await trail('item', created.id);
+    expect(rows.map((row) => row.action)).toEqual(['create', 'deactivate', 'activate']);
+  });
+
+  it('a GET of an id no item has is 404', async () => {
+    const res = await api.get(`/items/${String(new Types.ObjectId())}`);
+    expect(res.status).toBe(404);
+    expect(refusal(res).code).toBe('NOT_FOUND');
+  });
+
+  describe('the stock levels: 422 ADMINISTRATION_STOCK_LEVELS_ORDER (OD-09)', () => {
+    it('refuses a create whose levels are out of order, naming both ends', async () => {
+      refused(
+        await api.post('/items', body({ minQty: 10, reorderPointQty: 5 })),
+        422,
+        'ADMINISTRATION_STOCK_LEVELS_ORDER',
+        ['minQty', 'reorderPointQty'],
+      );
+      refused(
+        await api.post('/items', body({ minQty: 2, reorderPointQty: 9, maxQty: 4 })),
+        422,
+        'ADMINISTRATION_STOCK_LEVELS_ORDER',
+        ['reorderPointQty', 'maxQty'],
+      );
+    });
+
+    it('judges an edit on the row it leaves — a new max below the stored minimum', async () => {
+      const created = await item({ minQty: 8, reorderPointQty: 12 });
+      refused(
+        await api.patch(`/items/${created.id}`, { maxQty: 6, version: 0 }),
+        422,
+        'ADMINISTRATION_STOCK_LEVELS_ORDER',
+        ['minQty', 'reorderPointQty', 'maxQty'],
+      );
+      const cleared = await api.patch(`/items/${created.id}`, {
+        minQty: null,
+        reorderPointQty: null,
+        maxQty: 6,
+        version: 0,
+      });
+      expect(cleared.status, 'a cleared level compares with nothing').toBe(200);
+    });
+
+    it.each([
+      ['a fractional level (OD-08)', { minQty: 1.5 }],
+      ['a negative level', { maxQty: -1 }],
+      ['a client-sent code', { code: 'ITM-00001' }],
+      ['an on-hand figure', { onHandQty: 4 }],
+      ['a barcode with a space', { barcode: '622 100' }],
+      ['an Arabic name of tatweel alone', { name: { ar: 'ـ', en: 'Item' } }],
+    ])('400 VALIDATION_FAILED for %s', async (_label, extra) => {
+      const res = await api.post('/items', body(extra));
+      expect(res.status).toBe(400);
+      expect(refusal(res).code).toBe('VALIDATION_FAILED');
+    });
+  });
+
+  describe('what an item names: 422 ADMINISTRATION_REFERENCE_INACTIVE', () => {
+    it('refuses a retired unit, a retired category, or both, each with its field', async () => {
+      const oldUnit = await unit();
+      await api.patch(`/catalog-items/${oldUnit.id}`, { isActive: false, version: 0 });
+      const oldCategory = await category();
+      await api.patch(`/item-categories/${oldCategory.id}`, { isActive: false, version: 0 });
+
+      refused(
+        await api.post('/items', body({ unitId: oldUnit.id })),
+        422,
+        'ADMINISTRATION_REFERENCE_INACTIVE',
+        ['unitId'],
+      );
+      refused(
+        await api.post('/items', body({ categoryId: oldCategory.id })),
+        422,
+        'ADMINISTRATION_REFERENCE_INACTIVE',
+        ['categoryId'],
+      );
+      refused(
+        await api.post('/items', body({ unitId: oldUnit.id, categoryId: oldCategory.id })),
+        422,
+        'ADMINISTRATION_REFERENCE_INACTIVE',
+        ['unitId', 'categoryId'],
+      );
+    });
+
+    it('an item keeps a unit that retired after it was filed, and cannot be moved onto one', async () => {
+      const box = await unit();
+      const created = await item({ unitId: box.id });
+      await api.patch(`/catalog-items/${box.id}`, { isActive: false, version: 0 });
+
+      const kept = await api.patch(`/items/${created.id}`, {
+        unitId: box.id.toUpperCase(),
+        notes: 'still in boxes',
+        version: 0,
+      });
+      expect(kept.status, JSON.stringify(kept.body)).toBe(200);
+      expect(data<AdministrationItemDto>(kept)).toMatchObject({
+        unitId: box.id,
+        unitName: box.name,
+      });
+
+      const other = await item();
+      refused(
+        await api.patch(`/items/${other.id}`, { unitId: box.id, version: 0 }),
+        422,
+        'ADMINISTRATION_REFERENCE_INACTIVE',
+        ['unitId'],
+      );
+    });
+
+    it('a unit or a category that does not exist is 404', async () => {
+      for (const extra of [
+        { unitId: String(new Types.ObjectId()) },
+        { categoryId: String(new Types.ObjectId()) },
+        { unitId: leaf.id },
+      ]) {
+        const res = await api.post('/items', body(extra));
+        expect(res.status, JSON.stringify(extra)).toBe(404);
+        expect(refusal(res).code).toBe('NOT_FOUND');
+      }
+    });
+  });
+
+  describe('the category’s level: 422 ADMINISTRATION_SUBCATEGORY_REQUIRED (OD-06 (i))', () => {
+    it('refuses a category that has active subcategories, on a create and on a move', async () => {
+      const top = await category();
+      await category({ parentId: top.id });
+      refused(
+        await api.post('/items', body({ categoryId: top.id })),
+        422,
+        'ADMINISTRATION_SUBCATEGORY_REQUIRED',
+        ['categoryId'],
+      );
+      const created = await item();
+      refused(
+        await api.patch(`/items/${created.id}`, { categoryId: top.id, version: 0 }),
+        422,
+        'ADMINISTRATION_SUBCATEGORY_REQUIRED',
+        ['categoryId'],
+      );
+    });
+
+    it('an item filed before its category gained a subcategory keeps it when edited', async () => {
+      const top = await category();
+      const created = await item({ categoryId: top.id });
+      await category({ parentId: top.id });
+      const edited = await api.patch(`/items/${created.id}`, {
+        categoryId: top.id,
+        notes: 'reclassify later',
+        version: 0,
+      });
+      expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+    });
+
+    it('a category whose subcategories all retired takes items again', async () => {
+      const top = await category();
+      const sub = await category({ parentId: top.id });
+      await api.patch(`/item-categories/${sub.id}`, { isActive: false, version: 0 });
+      const created = await item({ categoryId: top.id });
+      expect(created.categoryId).toBe(top.id);
+    });
+  });
+
+  describe('duplicates: 409 ADMINISTRATION_DUPLICATE', () => {
+    it('refuses a second spelling of a live item’s name, and a retired item keeps its name', async () => {
+      const ink = await item({ name: { ar: 'حبر طابعة أسود', en: 'Black ink' } });
+      refused(
+        await api.post('/items', body({ name: { ar: 'حِبر طابعه اسود', en: 'Ink' } })),
+        409,
+        'ADMINISTRATION_DUPLICATE',
+        ['name'],
+      );
+      await api.patch(`/items/${ink.id}`, { isActive: false, version: 0 });
+      refused(
+        await api.post('/items', body({ name: { ar: 'حبر طابعة أسود', en: 'Ink' } })),
+        409,
+        'ADMINISTRATION_DUPLICATE',
+        ['name'],
+      );
+    });
+
+    it('a live barcode fails on ux_barcode inside the create, and the next create takes the same number', async () => {
+      const first = await item({ barcode: 'BC-200100' });
+      const clash = await api.post('/items', body({ barcode: 'BC-200100' }));
+      refused(clash, 409, 'ADMINISTRATION_DUPLICATE', ['barcode']);
+      const next = await item();
+      expect(seqOf(next.code), 'the refused create gave its number back').toBe(
+        seqOf(first.code) + 1,
+      );
+    });
+
+    it('an edit onto a live barcode meets the index too, raw from the update', async () => {
+      await item({ barcode: 'BC-200200' });
+      const other = await item({ barcode: 'BC-200201' });
+      refused(
+        await api.patch(`/items/${other.id}`, { barcode: 'BC-200200', version: 0 }),
+        409,
+        'ADMINISTRATION_DUPLICATE',
+        ['barcode'],
+      );
+      const cleared = await api.patch(`/items/${other.id}`, { barcode: null, version: 0 });
+      expect(cleared.status, 'no barcode is no clash').toBe(200);
+      expect(await item({ barcode: 'BC-200201' })).toMatchObject({ barcode: 'BC-200201' });
+    });
+
+    it('when a racing create passes the early check, ux_name_key refuses it inside the transaction', async () => {
+      await item({ name: { ar: 'دبوس ورق', en: 'Paper clip' } });
+      const spy = vi
+        .spyOn(administrationItemRepository, 'findLiveByNameKey')
+        .mockResolvedValueOnce(null);
+      const before = await AdministrationCounterModel.findOne({ key: 'item:global' }).lean().exec();
+      const raced = await api.post('/items', body({ name: { ar: 'دَبوس ورق', en: 'Clip' } }));
+      spy.mockRestore();
+      refused(raced, 409, 'ADMINISTRATION_DUPLICATE', ['name']);
+      const after = await AdministrationCounterModel.findOne({ key: 'item:global' }).lean().exec();
+      expect(after?.seq, 'the number went back with the transaction').toBe(before?.seq);
+    });
+  });
+});
+
+describe('item codes under concurrency (OD-05 A, §19.10.5)', () => {
+  it('simultaneous creates all answer 201, with consecutive, distinct codes', async () => {
+    const leafCategory = await category();
+    const each = await unit();
+    const responses = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        api.post('/items', {
+          name: fresh('صنف متزامن', 'Concurrent item'),
+          categoryId: leafCategory.id,
+          unitId: each.id,
+        }),
+      ),
+    );
+    expect(responses.map((res) => res.status)).toEqual(Array.from({ length: 6 }, () => 201));
+    const seqs = responses
+      .map((res) => seqOf(data<AdministrationItemDto>(res).code))
+      .sort((a, b) => a - b);
+    const first = seqs[0] ?? Number.NaN;
+    expect(seqs).toEqual(seqs.map((_, i) => first + i));
+  });
+});
+
 describe('two spellings typed at the same moment', () => {
   // The design's own pair (§19.7): «قطعه» and «قطعة», one word in two spellings.
   it.each([
@@ -624,13 +1106,43 @@ describe('two spellings typed at the same moment', () => {
       details: [{ field: 'name' }],
     });
   });
+
+  it('items: one 201, one 409 ADMINISTRATION_DUPLICATE on name — ux_name_key, inside the transaction', async () => {
+    const references = { categoryId: (await category()).id, unitId: (await unit()).id };
+    const [first, second] = await Promise.all([
+      api.post('/items', { ...references, name: { ar: 'قطعه كبيرة', en: 'Piece A' } }),
+      api.post('/items', { ...references, name: { ar: 'قطعة كبيره', en: 'Piece B' } }),
+    ]);
+    expect([first.status, second.status].sort()).toEqual([201, 409]);
+    const refused = first.status === 409 ? first : second;
+    expect(refusal(refused)).toMatchObject({
+      code: 'ADMINISTRATION_DUPLICATE',
+      details: [{ field: 'name' }],
+    });
+    const stored = await AdministrationItemModel.countDocuments({
+      nameKey: foldName('قطعة كبيرة'),
+    }).exec();
+    expect(stored).toBe(1);
+  });
 });
 
 describe('who may read and write', () => {
+  /** One item, filed by the master-data desk, for the cases that only need one to exist. */
+  const anItem = async (): Promise<AdministrationItemDto> => {
+    const res = await api.post('/items', {
+      name: fresh('صنف', 'Item'),
+      categoryId: (await category()).id,
+      unitId: (await unit()).id,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return data<AdministrationItemDto>(res);
+  };
+
   it('403 without the key, on every route', async () => {
     const outsider = administrationApi(world.app, world.outsiderToken);
     const meter = await unit();
     const top = await category();
+    const filed = await anItem();
     for (const res of [
       await outsider.get('/catalog-items?kind=unit'),
       await outsider.post('/catalog-items', { kind: 'unit', name: fresh('ج', 'C') }),
@@ -638,6 +1150,46 @@ describe('who may read and write', () => {
       await outsider.get('/item-categories'),
       await outsider.post('/item-categories', { name: fresh('ج', 'C') }),
       await outsider.patch(`/item-categories/${top.id}`, { sortOrder: 1, version: 0 }),
+      await outsider.get('/items'),
+      await outsider.get(`/items/${filed.id}`),
+      await outsider.post('/items', {
+        name: fresh('ج', 'C'),
+        categoryId: top.id,
+        unitId: meter.id,
+      }),
+      await outsider.patch(`/items/${filed.id}`, { notes: 'x', version: 0 }),
+    ]) {
+      expect(res.status).toBe(403);
+      expect(refusal(res).code).toBe('FORBIDDEN');
+    }
+  });
+
+  it('an item viewer reads units and categories — the item form’s lists — and the items, and writes none of them', async () => {
+    const viewer = administrationApi(world.app, world.itemViewerToken);
+    const meter = await unit();
+    const top = await category();
+    const filed = await anItem();
+
+    const units = await viewer.get('/catalog-items?kind=unit&pageSize=100');
+    expect(units.status).toBe(200);
+    expect(data<AdministrationCatalogItemDto[]>(units).length).toBeGreaterThan(0);
+    const categories = await viewer.get('/item-categories?topLevel=true&pageSize=100');
+    expect(categories.status).toBe(200);
+    expect(data<AdministrationItemCategoryDto[]>(categories).length).toBeGreaterThan(0);
+    expect((await viewer.get('/items')).status).toBe(200);
+    expect(data<AdministrationItemDto>(await viewer.get(`/items/${filed.id}`)).id).toBe(filed.id);
+
+    for (const res of [
+      await viewer.post('/catalog-items', { kind: 'unit', name: fresh('ج', 'C') }),
+      await viewer.patch(`/catalog-items/${meter.id}`, { sortOrder: 1, version: 0 }),
+      await viewer.post('/item-categories', { name: fresh('ج', 'C') }),
+      await viewer.patch(`/item-categories/${top.id}`, { sortOrder: 1, version: 0 }),
+      await viewer.post('/items', {
+        name: fresh('ج', 'C'),
+        categoryId: top.id,
+        unitId: meter.id,
+      }),
+      await viewer.patch(`/items/${filed.id}`, { notes: 'x', version: 0 }),
     ]) {
       expect(res.status).toBe(403);
       expect(refusal(res).code).toBe('FORBIDDEN');
@@ -655,17 +1207,29 @@ describe('who may read and write', () => {
     );
     expect(read.length, 'master data is read whole').toBeGreaterThan(0);
 
+    const filed = await anItem();
+    expect((await branch.get('/items')).status).toBe(200);
+    expect((await branch.get(`/items/${filed.id}`)).status).toBe(200);
+
     for (const res of [
       await branch.post('/catalog-items', { kind: 'unit', name: fresh('ج', 'C') }),
       await branch.patch(`/catalog-items/${meter.id}`, { isActive: false, version: 0 }),
       await branch.post('/item-categories', { name: fresh('ج', 'C') }),
       await branch.patch(`/item-categories/${top.id}`, { sortOrder: 1, version: 0 }),
+      await branch.post('/items', {
+        name: fresh('ج', 'C'),
+        categoryId: top.id,
+        unitId: meter.id,
+      }),
+      await branch.patch(`/items/${filed.id}`, { isActive: false, version: 0 }),
     ]) {
       expect(res.status).toBe(403);
       expect(refusal(res).code).toBe('FORBIDDEN');
     }
     const untouched = await AdministrationCatalogItemModel.findById(meter.id).lean().exec();
     expect(untouched?.isActive).toBe(true);
+    const item = await AdministrationItemModel.findById(filed.id).lean().exec();
+    expect(item?.isActive).toBe(true);
   });
 
   it('the super-admin writes, as an organization holder of every key', async () => {

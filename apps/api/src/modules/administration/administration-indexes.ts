@@ -8,15 +8,20 @@
 // already drifted from the shared plan). The sync never throws; each repository's
 // `ensureCollection` is what refuses a write while its index is missing.
 //
-// Every collection a `*.model.ts` in this module declares is on this list; the indexes spec reads
-// the model files to prove it, so a model added without its line fails CI.
+// Every collection a `*.model.ts` in this module declares is on this list — the counter's too, which
+// the shared factory defines — and the indexes spec reads the model files to prove it, so a model
+// added without its line fails CI.
 import { type Model } from 'mongoose';
 import { AdministrationCatalogItemModel } from './catalog/catalog-items/catalog-item.model';
 import { AdministrationItemCategoryModel } from './catalog/item-categories/item-category.model';
+import { AdministrationItemModel } from './catalog/items/item.model';
+import { AdministrationCounterModel } from './shared/counter.model';
 
 export const administrationModels: Model<never>[] = [
   AdministrationCatalogItemModel,
   AdministrationItemCategoryModel,
+  AdministrationItemModel,
+  AdministrationCounterModel,
   // A list of differently typed models is what the shared sync takes: it reads only their schemas
   // and collections, so the documents' types do not matter to it.
 ] as unknown as Model<never>[];

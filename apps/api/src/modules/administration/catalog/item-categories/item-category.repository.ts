@@ -41,6 +41,21 @@ class AdministrationItemCategoryRepository extends BaseRepository<Administration
   async hasChildren(id: string): Promise<boolean> {
     return this.exists({ parentId: new Types.ObjectId(id) });
   }
+
+  /** Does an active subcategory sit under this one — one a new item could name instead? */
+  async hasActiveChildren(id: string): Promise<boolean> {
+    return this.exists({ parentId: new Types.ObjectId(id), isActive: true });
+  }
+
+  /** The ids of every live subcategory under this one, retired ones included. */
+  async childIds(id: string): Promise<string[]> {
+    const children = await this.model
+      .find(this.baseFilter(undefined, { parentId: new Types.ObjectId(id) }))
+      .select({ _id: 1 })
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    return children.map((child) => String(child._id));
+  }
 }
 
 export const administrationItemCategoryRepository = new AdministrationItemCategoryRepository();

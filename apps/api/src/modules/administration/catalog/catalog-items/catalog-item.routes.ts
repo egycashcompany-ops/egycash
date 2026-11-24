@@ -1,9 +1,9 @@
-// Units (design §19.3): one key, `administrationCatalog.manage`, reads and writes alike. Reading
-// will also take `administrationItem.view` once that key ships (P1a.2) — the item form's unit list
-// must populate for an item editor — as IT's catalog takes its asset key: managing a catalog you
-// cannot read is not a permission boundary, it is a broken one. Until then the manage key is the
-// only key that exists to read with. Writes are also held to organization scope in the service
-// (OD-04 A): a unit is one fact for the whole company.
+// Units (design §19.3): `administrationCatalog.manage` writes; reading takes it OR
+// `administrationItem.view` — the item form's unit list and the register's unit label must
+// populate for an item reader, as IT's catalog takes its asset key, and the catalogs screen must
+// read what its key manages: managing a catalog you cannot read is not a permission boundary, it is
+// a broken one. It widens nothing: the rows are names every item already shows. Writes are also
+// held to organization scope in the service (OD-04 A): a unit is one fact for the whole company.
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -13,7 +13,7 @@ import {
   objectId,
 } from '@ecms/contracts';
 import { authenticate } from '../../../../platform/auth';
-import { authorize } from '../../../../platform/rbac';
+import { authorize, authorizeAny } from '../../../../platform/rbac';
 import { asyncHandler, validate } from '../../../../platform/web';
 import {
   createAdministrationCatalogItem,
@@ -28,7 +28,7 @@ export const buildAdministrationCatalogItemsRouter = (): Router => {
   router.get(
     '/',
     authenticate,
-    authorize('administrationCatalog.manage'),
+    authorizeAny('administrationItem.view', 'administrationCatalog.manage'),
     validate({ query: ListAdministrationCatalogItemsQuerySchema }),
     asyncHandler(listAdministrationCatalogItems),
   );

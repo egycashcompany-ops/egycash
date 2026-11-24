@@ -1,0 +1,104 @@
+// An item's pure rules (design §2.3.4, §5.3, §5.15): the order its stock levels keep, what it may
+// name, what a retired item still allows, and what keeps one from retiring. No database and no
+// clock: the service reads the facts — the row a write would leave, the unit and category it
+// names — and these decide.
+//
+// The integers themselves (OD-08: whole numbers from 0) are the contract's
+// (`AdministrationStockLevelSchema`): a fraction never reaches a rule. The ORDER is judged here,
+// on the row the write leaves, because an update that moves one level is checked against the
+// levels it keeps, which its body alone does not carry.
+import {
+  ADMINISTRATION_STOCK_LEVEL_FIELDS,
+  ErrorCodes,
+  type AdministrationItemReferenceField,
+  type AdministrationStockLevelField,
+} from '@ecms/contracts';
+import { AppError } from '../../../../shared/errors';
+
+export type StockLevels = Record<AdministrationStockLevelField, number | null>;
+
+/**
+ * The levels out of order: where set, min ≤ reorder point ≤ max (OD-09). Each comparison that
+ * fails names both its ends, so a screen marks every field the reader must look at; a level left
+ * unset compares with nothing. Answered in the fields' own order, each once.
+ */
+export const stockLevelsOutOfOrder = (levels: StockLevels): AdministrationStockLevelField[] => {
+  const wrong = new Set<AdministrationStockLevelField>();
+  ADMINISTRATION_STOCK_LEVEL_FIELDS.forEach((lower, i) => {
+    for (const upper of ADMINISTRATION_STOCK_LEVEL_FIELDS.slice(i + 1)) {
+      const low = levels[lower];
+      const high = levels[upper];
+      if (low !== null && high !== null && low > high) {
+        wrong.add(lower);
+        wrong.add(upper);
+      }
+    }
+  });
+  return ADMINISTRATION_STOCK_LEVEL_FIELDS.filter((field) => wrong.has(field));
+};
+
+/** The 422 for levels out of order, one detail per field, or null when they keep their order. */
+export const stockLevelsRefusal = (levels: StockLevels): AppError | null => {
+  const fields = stockLevelsOutOfOrder(levels);
+  if (fields.length === 0) return null;
+  const message = 'the stock levels must keep min ≤ reorder point ≤ max';
+  return new AppError(ErrorCodes.ADMINISTRATION_STOCK_LEVELS_ORDER, 422, message, {
+    details: fields.map((field) => ({ field, code: 'outOfOrder', message })),
+  });
+};
+
+/**
+ * The 422 for references this write may not name, one detail each, or null. Which those are is
+ * the unit's and the category's own `activeFor` — a retired one is refused to a new reference and
+ * kept by an item that already names it (§2.3.2, §2.3.3) — so the service asks them and hands the
+ * refused fields here.
+ */
+export const referenceRefusal = (
+  fields: readonly AdministrationItemReferenceField[],
+): AppError | null => {
+  if (fields.length === 0) return null;
+  const message = 'a retired unit or category cannot be given to an item';
+  return new AppError(ErrorCodes.ADMINISTRATION_REFERENCE_INACTIVE, 422, message, {
+    details: fields.map((field) => ({ field, code: 'inactive', message })),
+  });
+};
+
+/** What the level rule reads of the category a write names. */
+export interface ItemCategoryLevelFacts {
+  /** Does this write name the category — a create, or a change of category? */
+  named: boolean;
+  /** Does the category hold subcategories still offered to new items? */
+  hasActiveSubcategories: boolean;
+}
+
+/**
+ * Must the item name a subcategory instead (OD-06 (i))? Only when the write names the category:
+ * an item whose category gained its first subcategory after it was filed keeps its category, so
+ * adding a level invalidates no item. A category whose subcategories are all retired is a leaf
+ * again for new items, or nothing under it could be filed.
+ */
+export const subcategoryRequired = (facts: ItemCategoryLevelFacts): boolean =>
+  facts.named && facts.hasActiveSubcategories;
+
+export const subcategoryRefusal = (): AppError => {
+  const message = 'this category has subcategories: the item names one of them';
+  return new AppError(ErrorCodes.ADMINISTRATION_SUBCATEGORY_REQUIRED, 422, message, {
+    details: [{ field: 'categoryId', code: 'subcategoryRequired', message }],
+  });
+};
+
+/**
+ * The acts that name an item. A retired item is hidden from NEW references — new purchase and
+ * receipt lines from P2 and P5 (OD-70 A) — while every act on stock it already holds passes; those
+ * acts arrive with their phases, and `REFUSED_WHEN_INACTIVE` with P5's ledger (§5.3).
+ */
+export type ItemAct = 'newReference' | 'existingReference';
+
+export const activeFor = (item: { isActive: boolean }, act: ItemAct): boolean =>
+  act === 'existingReference' || item.isActive;
+
+/**
+ * Why this item may not retire: never (OD-70 A, allowed). Its stock leaves until zero through the
+ * acts a retired item still allows; in Phase 1 nothing holds stock at all.
+ */
+export const deactivationProblem = (_item: { isActive: boolean }): null => null;

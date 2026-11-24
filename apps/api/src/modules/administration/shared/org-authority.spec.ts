@@ -34,8 +34,12 @@ const refusal = (run: () => void): ForbiddenError => {
 };
 
 describe('assertAdministrationOrgAuthority', () => {
-  it('names the catalog key — the only master-data key Phase 1a.1 ships', () => {
-    expect(ADMINISTRATION_ORG_KEYS).toEqual(['administrationCatalog.manage']);
+  it('names the master-data write keys shipped so far: the catalog, and the items’ (P1a.2)', () => {
+    expect(ADMINISTRATION_ORG_KEYS).toEqual([
+      'administrationCatalog.manage',
+      'administrationItem.create',
+      'administrationItem.edit',
+    ]);
   });
 
   it('passes an organization-scope holder', () => {
@@ -60,6 +64,17 @@ describe('assertAdministrationOrgAuthority', () => {
       expect(error.httpStatus).toBe(403);
     },
   );
+
+  it('judges each key on its own scope: an item creator company-wide is not an item editor', () => {
+    const ctx = context({
+      'administrationItem.create': 'organization',
+      'administrationItem.edit': 'branch',
+    });
+    expect(() => assertAdministrationOrgAuthority(ctx, 'administrationItem.create')).not.toThrow();
+    expect(
+      refusal(() => assertAdministrationOrgAuthority(ctx, 'administrationItem.edit')),
+    ).toBeInstanceOf(ForbiddenError);
+  });
 
   it('refuses a key not held, through the shared check and its message', () => {
     const error = refusal(() =>

@@ -23,6 +23,13 @@ import { administrationItemCategoryRepository as repository } from './item-categ
 /** The parent's names, by id — the list's one label (§19.4). */
 export type ItemCategoryParentNames = ReadonlyMap<string, LocalizedString>;
 
+/** A category as an item's labels name it (§19.4): its own name, and its parent's. */
+export interface ItemCategoryLabel {
+  name: LocalizedString;
+  parentId: string | null;
+  parentName: LocalizedString | null;
+}
+
 /** Where a write would leave the row, and under which name and code — what the checks compare. */
 interface Claim {
   parentId: string | null;
@@ -72,6 +79,44 @@ class AdministrationItemCategoryService {
     const ids = docs.map((doc) => idOf(doc.parentId)).filter((id): id is string => id !== null);
     const parents = await repository.findByIdsSystem(ids);
     return new Map(parents.map((parent) => [String(parent._id), parent.name]));
+  }
+
+  /**
+   * The category `id` names, retired or not, or null: what an item's write reads to judge the
+   * category it names (the item asks `activeFor` of it).
+   */
+  async findCategory(id: string): Promise<AdministrationItemCategoryDoc | null> {
+    return repository.findById(id);
+  }
+
+  /**
+   * Does the category hold subcategories still offered to new items? Then a new item names one of
+   * them (OD-06 (i)); a category whose subcategories all retired is a leaf again.
+   */
+  async hasActiveSubcategories(id: string): Promise<boolean> {
+    return repository.hasActiveChildren(id);
+  }
+
+  /**
+   * The category and every subcategory under it: what an item register filtered by a category
+   * reads, so a top-level category holds its subcategories' items. A subcategory has none.
+   */
+  async idsWithSubcategories(id: string): Promise<string[]> {
+    const canonical = String(new Types.ObjectId(id));
+    return [canonical, ...(await repository.childIds(canonical))];
+  }
+
+  /** The categories' labels, by id, read unfiltered as the parents' names are (§19.4). */
+  async labels(ids: readonly string[]): Promise<ReadonlyMap<string, ItemCategoryLabel>> {
+    const categories = await repository.findByIdsSystem(ids);
+    const parents = await this.parentNames(categories);
+    return new Map(
+      categories.map((category) => {
+        const parentId = idOf(category.parentId);
+        const parentName = parentId === null ? null : (parents.get(parentId) ?? null);
+        return [String(category._id), { name: category.name, parentId, parentName }];
+      }),
+    );
   }
 
   async create(

@@ -28,6 +28,15 @@ its entry here in the same PR.
 
 ### Changed
 
+- **ATM's branch-scope rule and organization-scope check are shared code.** The fail-closed rule for branch
+  records (`branchScopeMatch`, `branchScopeBranches`, `narrowToBranch`, `writableBranches`, `resolveWorkBranch`) and
+  the organization-scope check behind ATM's settings and banks now live in `apps/api/src/shared/base/branch-scope.ts`
+  and `org-authority.ts` (`assertOrganizationScope`). ATM re-exports them under the same names and keeps its
+  active-branch loader, so its behavior and messages are unchanged; a spec pins that ATM's register rule and the
+  shared `selectorBranches` agree on every selector shape. This is PC-12, the first prerequisite of the
+  Administrative Affairs module (`docs/12-planning/administration-module-decisions-and-phases.md` §18.1), which
+  reads the same rule instead of copying it.
+
 - **The zod advisory waiver runs to 2026-12-26.** «موافق على Zod». The waiver for
   GHSA-mrhx-c7xc-m3w5 (zod 3, no patched release) ended on 2026-11-26, after which the dependency
   audit would have failed every pull request. The owner renewed it for 30 days

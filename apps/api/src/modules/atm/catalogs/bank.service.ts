@@ -27,13 +27,9 @@ import {
 } from '@ecms/contracts';
 import { auditService } from '../../../platform/audit';
 import { BaseRepository } from '../../../shared/base/base.repository';
-import {
-  ConflictError,
-  ForbiddenError,
-  NotFoundError,
-  StaleDocumentError,
-} from '../../../shared/errors';
-import { scopeOf, type AuthContext } from '../../../shared/types';
+import { assertOrganizationScope } from '../../../shared/base/org-authority';
+import { ConflictError, NotFoundError, StaleDocumentError } from '../../../shared/errors';
+import { type AuthContext } from '../../../shared/types';
 import { diffChanges } from '../../../shared/utils/diff';
 import { AtmBankModel, type AtmBankDoc } from './bank.model';
 import { AtmRefLabelModel } from './ref-label.model';
@@ -130,11 +126,7 @@ class AtmBankService {
 
   /** A bank is one fact about the company: the key must be held company-wide. */
   private assertOrganizationScope(ctx: AuthContext, key: 'atmBank.create' | 'atmBank.edit'): void {
-    if (scopeOf(ctx, key) !== 'organization') {
-      throw new ForbiddenError(
-        `${key} must be held at organization scope — a bank is company-wide`,
-      );
-    }
+    assertOrganizationScope(ctx, key, 'a bank is company-wide');
   }
 
   /** 409 unless no OTHER bank, and no live spelling mapped to another bank, holds one of `keys`. */

@@ -16,11 +16,13 @@
 // (OD-04) is not asked: warehouses are branch records (§6.7).
 //
 // THE CHECKS. An edit is first held to its version, so a body written against an older row is a
-// 409 before any rule judges it. A keeper named anew must still work here; a branch or department
-// named anew must be an active one, the department a copy in the warehouse's own branch; a
-// retirement asks what holds the warehouse (OD-70 B). Names and codes are checked before the write
-// for the early answer, and a unique index refusing a write that raced past is answered with the
-// field it guards (§5.15).
+// 409 before any rule judges it. A keeper named anew must be somebody the picker would offer this
+// writer — inside the reach of the people keys they hold, else a 404 as the picker's by-id read
+// answers, before anything is said of their status — and must still work here; a branch or
+// department named anew must be an active one, the department a copy in the warehouse's own
+// branch; a retirement asks what holds the warehouse (OD-70 B). Names and codes are checked before
+// the write for the early answer, and a unique index refusing a write that raced past is answered
+// with the field it guards (§5.15).
 import {
   foldName,
   type AdministrationDuplicateField,
@@ -37,7 +39,7 @@ import { branchRepository, departmentRepository } from '../../../../platform/org
 import { branchScopeBranches, narrowToBranch } from '../../../../shared/base/branch-scope';
 import { ForbiddenError, NotFoundError, type AppError } from '../../../../shared/errors';
 import { keyReachesBranch, scopeSelector, type AuthContext } from '../../../../shared/types';
-import { administrationPeopleService } from '../../people/index';
+import { administrationPeopleService, peopleScopesOf } from '../../people/index';
 import { activeBranchIds } from '../../shared/branch-scope';
 import {
   assertCurrentVersion,
@@ -115,9 +117,18 @@ class AdministrationWarehouseService {
     return doc;
   }
 
-  /** Whether this reader's `.edit` reaches the warehouse's branch — the DTO's `canEdit`. */
+  /**
+   * The DTO's `canEdit`: whether `update` would take this reader's edit, so the screen can trust
+   * it (§19.3) — `.edit` reaches the warehouse's branch, AND its selector, which the top bar
+   * narrows, loads the row. An organization editor narrowed to A who just created a store in B
+   * is told false: their PATCH would find nothing until the top bar lets B back in.
+   */
   canEdit(ctx: AuthContext, doc: AdministrationWarehouseDoc): boolean {
-    return keyReachesBranch(ctx, EDIT, String(doc.branchId));
+    const branchId = String(doc.branchId);
+    const loadable = branchScopeBranches(scopeSelector(ctx, EDIT));
+    return (
+      keyReachesBranch(ctx, EDIT, branchId) && (loadable === 'all' || loadable.includes(branchId))
+    );
   }
 
   /** The labels of the rows at hand, read by id and unfiltered: a closed branch still names itself. */
@@ -171,7 +182,7 @@ class AdministrationWarehouseService {
     const departmentId = canonicalRef(input.departmentId) ?? null;
     const keeperId = canonicalRef(input.responsibleEmployeeId) ?? null;
     await this.assertDepartment(departmentId, branchId);
-    await this.assertKeeper(keeperId);
+    await this.assertKeeper(keeperId, ctx);
     const claim: Claim = { branchId, nameKey: foldName(input.name.ar), code: input.code };
     await assertNotTaken(() => this.takenField(claim, undefined));
 
@@ -224,7 +235,7 @@ class AdministrationWarehouseService {
       departmentId !== undefined && departmentId !== idOf(before.departmentId);
     const isKeeperNamed = keeperId !== undefined && keeperId !== idOf(before.responsibleEmployeeId);
     if (isDepartmentNamed) await this.assertDepartment(departmentId, branchId);
-    if (isKeeperNamed) await this.assertKeeper(keeperId);
+    if (isKeeperNamed) await this.assertKeeper(keeperId, ctx);
     if (isRetirement(before, input.isActive)) {
       refuseIf(deactivationProblem(await warehouseHolds(warehouseId)));
     }
@@ -294,10 +305,21 @@ class AdministrationWarehouseService {
     }
   }
 
-  /** A keeper named anew must still work here, if HR can say (`keeperRefusal`). */
-  private async assertKeeper(employeeId: string | null): Promise<void> {
+  /**
+   * A keeper named anew is somebody the picker would offer this writer, and still works here.
+   *
+   * The reach first: a person the directory knows is read again through the picker's own scoped
+   * by-id read (`peopleScopesOf`), which answers 404 outside it — so a body cannot name, and the
+   * DTO then print, somebody `GET /people/:employeeId` hides from this writer (§7.8: the picker
+   * keeps the scoped read). It runs before the leaver rule, so nobody's status is told outside
+   * the reach. Then `keeperRefusal`. An id the directory cannot read passes both, as OD-44's rule
+   * does: no HR source, or a person it does not know.
+   */
+  private async assertKeeper(employeeId: string | null, ctx: AuthContext): Promise<void> {
     if (employeeId === null) return;
-    refuseIf(keeperRefusal(await administrationPeopleService.find(employeeId)));
+    const keeper = await administrationPeopleService.find(employeeId);
+    if (keeper !== null) await administrationPeopleService.get(employeeId, peopleScopesOf(ctx));
+    refuseIf(keeperRefusal(keeper));
   }
 
   /**

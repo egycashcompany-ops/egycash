@@ -8,11 +8,8 @@ import {
 import { authenticate } from '../../../platform/auth';
 import { authorizeAny } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
-import {
-  ADMINISTRATION_PEOPLE_GRANTS,
-  getAdministrationPerson,
-  listAdministrationPeople,
-} from './people.controller';
+import { getAdministrationPerson, listAdministrationPeople } from './people.controller';
+import { ADMINISTRATION_PEOPLE_GRANTS } from './people.service';
 
 /**
  * `/administration/people` — the keeper picker (§7.8, §19.3), opened by whoever may name a keeper:

@@ -6,8 +6,9 @@
 // role reach and by delegation, `own` — each reading exactly its branches and only the first two
 // ever writing; a browser branch that only narrows; the branch options worked out per key and
 // per branch; one name per branch and one code per company, held by the unique indexes even when
-// two spellings are typed at the same moment; the keeper read from HR, a leaver refused, and no
-// name of anybody stored on the row; every refusal answered with its own code (§5.15).
+// two spellings are typed at the same moment; the keeper read from HR, held to the picker's reach,
+// a leaver refused, and no name of anybody stored on the row; every refusal answered with its own
+// code (§5.15).
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { Types } from 'mongoose';
@@ -23,6 +24,7 @@ import { EmployeeModel } from '../../src/modules/hr/employee-management/employee
 import { seedAdministration } from '../../src/modules/administration/administration.seed';
 import { AdministrationWarehouseModel } from '../../src/modules/administration/warehouses/warehouses/warehouse.model';
 import { administrationWarehouseRepository } from '../../src/modules/administration/warehouses/warehouses/warehouse.repository';
+import { registerWarehouseHoldChecker } from '../../src/modules/administration/warehouses/warehouses/index';
 import {
   administrationApi,
   bootAdministration,
@@ -37,7 +39,10 @@ import {
 
 let world: AdministrationWorld;
 let wh: WarehouseWorld;
-/** Branch A's warehouse and branch B's, written by the organization holder before every case. */
+/**
+ * Branch A's warehouse and branch B's, written once by the organization holder before the first
+ * case. No case edits them, so their `version` stays 0.
+ */
 let inA: AdministrationWarehouseDto;
 let inB: AdministrationWarehouseDto;
 
@@ -145,9 +150,16 @@ describe('reads fail closed (§7.2)', () => {
   });
 
   it('`own` reads nothing — a store is not its author’s', async () => {
+    // A store the `own` holder authored: the base repository's "own = createdBy" would read it.
+    const mine = await warehouse();
+    await AdministrationWarehouseModel.updateOne(
+      { _id: new Types.ObjectId(mine.id) },
+      { $set: { createdBy: new Types.ObjectId(wh.ownId) } },
+    ).exec();
     const res = await as(wh.ownToken).get('/warehouses');
     expect(res.status).toBe(200);
     expect(data<AdministrationWarehouseDto[]>(res)).toEqual([]);
+    expect((await as(wh.ownToken).get(`/warehouses/${mine.id}`)).status).toBe(404);
     expect((await as(wh.ownToken).get(`/warehouses/${inA.id}`)).status).toBe(404);
   });
 
@@ -433,7 +445,13 @@ describe('one code in the company, one name in a branch (§2.1, §2.3.5)', () =>
 
   it('a retired warehouse keeps its code and name — reactivate it, never type it again', async () => {
     const retired = await warehouse({ name: { ar: 'مخزن الأرشيف', en: 'Archive store' } });
-    await as(wh.orgToken).patch(`/warehouses/${retired.id}`, { isActive: false, version: 0 });
+    const off = await as(wh.orgToken).patch(`/warehouses/${retired.id}`, {
+      isActive: false,
+      version: 0,
+    });
+    expect(off.status, JSON.stringify(off.body)).toBe(200);
+    expect(data<AdministrationWarehouseDto>(off).isActive).toBe(false);
+
     const again = await as(wh.orgToken).post('/warehouses', {
       ...fresh(),
       name: { ar: 'مخزن الارشيف', en: 'Archive' },
@@ -442,6 +460,16 @@ describe('one code in the company, one name in a branch (§2.1, §2.3.5)', () =>
     });
     expect(again.status).toBe(409);
     expect(refusal(again).details).toEqual([expect.objectContaining({ field: 'name' })]);
+
+    // Codes are company-wide: another branch may not take it either.
+    const sameCode = await as(wh.orgToken).post('/warehouses', {
+      code: retired.code,
+      name: { ar: 'مخزن آخر', en: 'Other' },
+      branchId: world.branchBId,
+      type: 'main',
+    });
+    expect(sameCode.status).toBe(409);
+    expect(refusal(sameCode).details).toEqual([expect.objectContaining({ field: 'code' })]);
   });
 });
 
@@ -468,6 +496,33 @@ describe('retiring a warehouse (OD-70 B)', () => {
     const rows = await trail(store.id);
     expect(rows.map((row) => row.action)).toEqual(['create', 'deactivate', 'activate']);
     expect(rows[1]?.changes).toEqual([{ field: 'isActive', old: true, new: false }]);
+  });
+
+  it('asks what holds it on a retirement — a hold refuses it, 422 ADMINISTRATION_DEACTIVATION_BLOCKED', async () => {
+    // Phase 1 registers no checker; this one answers for its own store alone, so no other case
+    // meets it.
+    const held = await warehouse();
+    registerWarehouseHoldChecker((id) => Promise.resolve(id === held.id ? 'holdsStock' : null));
+
+    const off = await as(wh.orgToken).patch(`/warehouses/${held.id}`, {
+      isActive: false,
+      version: 0,
+    });
+    expect(off.status).toBe(422);
+    expect(refusal(off)).toMatchObject({
+      code: 'ADMINISTRATION_DEACTIVATION_BLOCKED',
+      details: [{ field: 'isActive', code: 'holdsStock' }],
+    });
+    const stored = await AdministrationWarehouseModel.findById(held.id).lean().exec();
+    expect(stored?.isActive).toBe(true);
+    expect((await trail(held.id)).map((row) => row.action)).toEqual(['create']);
+
+    // An edit that does not retire it is never asked.
+    const edit = await as(wh.orgToken).patch(`/warehouses/${held.id}`, {
+      notes: 'ما زال يحوي أصنافًا',
+      version: 0,
+    });
+    expect(edit.status, JSON.stringify(edit.body)).toBe(200);
   });
 });
 
@@ -581,6 +636,52 @@ describe('the keeper (§7.8; OD-10 keeper (i))', () => {
     expect(listedRow[0]?.keeper?.fullNameAr).toBe('أمين مخزن الفرع');
   });
 
+  it('a keeper is somebody the writer’s keys reach — anybody else is a 404, on a create and an edit', async () => {
+    // Branch A's writer: the picker hides B's people from them, so the body cannot name one.
+    const code = fresh().code;
+    const create = await as(wh.branchAToken).post('/warehouses', {
+      code,
+      name: { ar: 'مخزن بأمين من ب', en: 'Store with a B keeper' },
+      branchId: world.branchAId,
+      type: 'main',
+      responsibleEmployeeId: wh.keeperBId,
+    });
+    expect(create.status).toBe(404);
+    expect(refusal(create).code).toBe('NOT_FOUND');
+    expect(await AdministrationWarehouseModel.countDocuments({ code }).exec()).toBe(0);
+
+    const store = await warehouse({}, wh.branchAToken);
+    const edit = await as(wh.branchAToken).patch(`/warehouses/${store.id}`, {
+      responsibleEmployeeId: wh.keeperBId,
+      version: store.version,
+    });
+    expect(edit.status).toBe(404);
+    const stored = await AdministrationWarehouseModel.findById(store.id).lean().exec();
+    expect(stored?.responsibleEmployeeId).toBeNull();
+
+    // A leaver outside the reach is a 404 too, never a 422: their status is not told.
+    const leaverBId = await plantEmployee(
+      'ADM-K-08',
+      'أمين مخزن ب سابق',
+      world.branchBId,
+      wh.departmentBId,
+      'exited',
+    );
+    const leaver = await as(wh.branchAToken).patch(`/warehouses/${store.id}`, {
+      responsibleEmployeeId: leaverBId,
+      version: store.version,
+    });
+    expect(leaver.status).toBe(404);
+
+    // Their own branch's keeper they name.
+    const named = await as(wh.branchAToken).patch(`/warehouses/${store.id}`, {
+      responsibleEmployeeId: wh.keeperAId,
+      version: store.version,
+    });
+    expect(named.status, JSON.stringify(named.body)).toBe(200);
+    expect(data<AdministrationWarehouseDto>(named).keeper?.employeeId).toBe(wh.keeperAId);
+  });
+
   it('passes an id the directory cannot read, and shows no keeper for it', async () => {
     const nobody = String(new Types.ObjectId());
     const store = await warehouse({ responsibleEmployeeId: nobody });
@@ -665,6 +766,30 @@ describe('the branch options (§19.3)', () => {
     const narrowed = await options(wh.orgToken, world.branchAId);
     expect(narrowed.get(world.branchAId)).toMatchObject({ canView: true, canCreate: true });
     expect(narrowed.get(world.branchBId)).toMatchObject({ canView: false, canCreate: true });
+  });
+
+  it('a store created past the top bar’s branch says it cannot be edited from there', async () => {
+    const res = await as(wh.orgToken, world.branchAId).post('/warehouses', {
+      ...fresh(),
+      branchId: world.branchBId,
+      type: 'branch',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const store = data<AdministrationWarehouseDto>(res);
+    expect(store.canEdit, 'the narrowed edit would not find it').toBe(false);
+    const narrowed = await as(wh.orgToken, world.branchAId).patch(`/warehouses/${store.id}`, {
+      notes: 'من فرع أ',
+      version: store.version,
+    });
+    expect(narrowed.status).toBe(404);
+
+    const unnarrowed = await as(wh.orgToken).get(`/warehouses/${store.id}`);
+    expect(data<AdministrationWarehouseDto>(unnarrowed).canEdit).toBe(true);
+    const edit = await as(wh.orgToken).patch(`/warehouses/${store.id}`, {
+      notes: 'بلا تضييق',
+      version: store.version,
+    });
+    expect(edit.status, JSON.stringify(edit.body)).toBe(200);
   });
 
   it('takes no query', async () => {

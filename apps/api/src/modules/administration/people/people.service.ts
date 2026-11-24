@@ -14,8 +14,9 @@
 //     a leaver;
 //   • ONE PERSON by id, whatever their status — a form holding a stored keeper still shows who it
 //     is, a leaver marked as one.
-// Beside them, two system reads for the warehouse feature: the keeper a write names, judged
-// unscoped by the rule that refuses a leaver, and the keepers a page of warehouses names.
+// Beside them, the warehouse feature's two system reads: the keeper a write names, whom the write
+// then holds to the picker's own reach (`peopleScopesOf`, then `get`) before the rule that refuses
+// a leaver judges them, and the keepers a page of warehouses names.
 import {
   type AdministrationPersonDto,
   type AdministrationWarehouseKeeperDto,
@@ -29,8 +30,34 @@ import {
   type DirectoryEmployee,
 } from '../../../platform/directory';
 import { NotFoundError } from '../../../shared/errors';
-import { type ScopeSelector } from '../../../shared/types';
+import {
+  hasPermission,
+  scopeSelector,
+  type AuthContext,
+  type ScopeSelector,
+} from '../../../shared/types';
 import { toAdministrationKeeperDto, toAdministrationPersonDto } from '../administration.mappers';
+
+/**
+ * The keys that open the people reads in Phase 1: whoever names a warehouse's keeper — on a create
+ * or an edit (§7.8). The list grows with each document that names a person, by its create key.
+ */
+export const ADMINISTRATION_PEOPLE_GRANTS: readonly [string, ...string[]] = [
+  'administrationWarehouse.create',
+  'administrationWarehouse.edit',
+];
+
+/**
+ * Where the picker reaches for this caller: one selector per gate key they hold, each exactly as
+ * its register applies it, OR-ed by the directory (`anyOfScopes`). Never the widest key standing
+ * for the others: a create key over A and an edit key over B reach both. Here, not in the
+ * controller, because a write that names a person is held to this same reach — what the picker
+ * would not offer, the body cannot name either.
+ */
+export const peopleScopesOf = (ctx: AuthContext): ScopeSelector[] =>
+  ADMINISTRATION_PEOPLE_GRANTS.filter((key) => hasPermission(ctx, key)).map((key) =>
+    scopeSelector(ctx, key),
+  );
 
 class AdministrationPeopleService {
   /**
@@ -78,7 +105,8 @@ class AdministrationPeopleService {
 
   /**
    * The person a write names, unscoped, or null when the directory cannot say — no HR source, or
-   * an id it does not know. The write's own rule decides what that means (`keeperRefusal`).
+   * an id it does not know. A person it can name is then held to the writer's reach (`get` over
+   * `peopleScopesOf`), and the write's own rule decides the rest (`keeperRefusal`).
    */
   async find(employeeId: string): Promise<DirectoryEmployee | null> {
     return getDirectoryEmployee(employeeId);

@@ -8,6 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { type DirectoryEmployee, type DirectoryEmployeeListing } from '../../../platform/directory';
 import { NotFoundError } from '../../../shared/errors';
+import { type AuthContext } from '../../../shared/types';
 
 const mocks = vi.hoisted(() => ({
   search: vi.fn(),
@@ -21,7 +22,7 @@ vi.mock('../../../platform/directory', () => ({
   getDirectoryEmployees: mocks.many,
 }));
 
-const { administrationPeopleService } = await import('./people.service');
+const { administrationPeopleService, peopleScopesOf } = await import('./people.service');
 
 const listing = (
   code: string,
@@ -123,6 +124,48 @@ describe('the picker', () => {
       [],
     );
     expect(mocks.search).toHaveBeenCalledWith(expect.objectContaining({ anyOfScopes: [] }));
+  });
+});
+
+describe('the reach', () => {
+  /** A caller placed in A, holding `permissions`; nothing else of the context is read here. */
+  const ctx = (permissions: AuthContext['permissions'], activeBranchId?: string): AuthContext => ({
+    userId: 'u1',
+    sessionId: 's1',
+    branchId: 'bA',
+    departmentId: null,
+    sectionId: null,
+    locale: 'ar',
+    permissions,
+    permissionVersion: 1,
+    isPrivileged: false,
+    ...(activeBranchId === undefined ? {} : { activeBranchId }),
+  });
+
+  it('is one selector per held gate key, each as its register applies it — none for none held', () => {
+    expect(
+      peopleScopesOf(
+        ctx({
+          'administrationWarehouse.create': 'branch',
+          'administrationWarehouse.view': 'organization',
+        }),
+      ),
+    ).toEqual([expect.objectContaining({ scope: 'branch', branchId: 'bA' })]);
+    expect(
+      peopleScopesOf(
+        ctx({
+          'administrationWarehouse.create': 'branch',
+          'administrationWarehouse.edit': 'organization',
+        }),
+      ).map((selector) => selector.scope),
+    ).toEqual(['branch', 'organization']);
+    expect(peopleScopesOf(ctx({ 'administrationWarehouse.view': 'organization' }))).toEqual([]);
+  });
+
+  it('is narrowed by the top bar as each register is', () => {
+    expect(peopleScopesOf(ctx({ 'administrationWarehouse.edit': 'organization' }, 'bB'))).toEqual([
+      expect.objectContaining({ scope: 'branch', branchId: 'bB' }),
+    ]);
   });
 });
 

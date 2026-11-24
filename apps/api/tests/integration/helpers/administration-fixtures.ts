@@ -261,6 +261,8 @@ export interface WarehouseWorld {
   /** B's department copy, delegated (ADR-032) to somebody placed in A: reads B, writes nothing. */
   delegateToken: string;
   ownToken: string;
+  /** The `own` holder's user id, so a case can make them a store's author. */
+  ownId: string;
   /** `administrationWarehouse.view` alone, organization-wide: reads, and names no keeper. */
   viewerToken: string;
   /** View organization-wide, create in branch A only: the branch options tell the two apart. */
@@ -394,6 +396,7 @@ export const bootWarehouseWorld = async (world: AdministrationWorld): Promise<Wa
     world.adminId,
   );
   await rbacService.ensureAssignment(creatorA.id, String(createRole._id), 'branch');
+  const own = await world.person('wh-own', WAREHOUSE_KEYS, 'own', { branchId: world.branchAId });
 
   return {
     closedBranchId,
@@ -415,7 +418,8 @@ export const bootWarehouseWorld = async (world: AdministrationWorld): Promise<Wa
       { departmentCatalogId: catalogId, branchIds: [world.branchBId] },
     ),
     delegateToken: await world.login(delegate.email),
-    ownToken: await signIn('wh-own', 'own', { branchId: world.branchAId }),
+    ownToken: own.token,
+    ownId: own.id,
     viewerToken: (await world.person('wh-viewer', ['administrationWarehouse.view'], 'organization'))
       .token,
     creatorAToken: await world.login(creatorA.email),

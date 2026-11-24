@@ -283,7 +283,7 @@ describe('the warehouse routes (§19.3)', () => {
   });
 
   it('opens the keeper picker to the warehouse writers only (§7.8)', () => {
-    const people = read('people/people.controller.ts');
+    const people = read('people/people.service.ts');
     expect(people).toMatch(
       /ADMINISTRATION_PEOPLE_GRANTS[^=]*=\s*\[\s*'administrationWarehouse\.create',\s*'administrationWarehouse\.edit',\s*\]/,
     );

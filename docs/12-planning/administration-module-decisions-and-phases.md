@@ -3141,7 +3141,10 @@ Repository-wide findings outside this module are listed for the owner in
 - **P1a.3 built** (2026-11-24). Phase 1's third pull request ships as §19.1 says, under the owner's answers
   (§16.12): warehouses on the shared fail-closed branch rule, the branch-options read, the `people/` keeper picker,
   the `administration.warehouse` topic with its branch signal, `keep` for `administration_warehouses` (OD-64 A), and
-  the warehouse keys in the six bundles §6.5 gives them. OD-68 B: nothing loaded, no entrypoint change. Where the code
+  the warehouse keys in the six bundles §6.5 gives them. OD-68 B: nothing loaded, no entrypoint change. Four fresh
+  reviewers (design conformance, correctness and tests, ECMS conventions, scope and data) raised 13 findings, 10
+  distinct, all fixed or recorded before the pull request; the largest, a keeper any writer could name from outside
+  their reach, which the DTO then printed, is closed by holding the write to the picker's own reach. Where the code
   had to choose what the design leaves open:
   - *The branch list.* `shared/branch-scope.ts`'s `activeBranchIds` reads `platform/organization`'s
     `branchService.options()`, the top bar's own `/platform/branches/options` read, paged to exhaustion, in place of
@@ -3152,15 +3155,36 @@ Repository-wide findings outside this module are listed for the owner in
     active copy in the warehouse's own branch, which §7.6's Unit pairs with it; anything else is 404 `NOT_FOUND`, the
     P1a.1 precedent, since §5.15 names no answer. A department or keeper the row already names is kept by an edit
     that leaves it, retired or gone. The answers come in the order 404 (the scoped load), 403 (the key's reach),
-    409 `STALE_DOCUMENT`, then the rules. Adopted as the recommended reading under the owner's 2026-11-24
-    instruction, and listed for the owner at Phase 1's close, with one question the design leaves open: no rule
-    refuses a keeper placed in another branch (the picker is scoped by the keys, so only an organization-wide
-    editor can name one).
+    409 `STALE_DOCUMENT`, then the rules. A keeper named anew must be somebody the picker would offer the writer:
+    the people reads' own reach (`peopleScopesOf`, `people.service.ts`: one `scopeSelector` per held
+    `administrationWarehouse.create` or `.edit`, OR-ed, so the top bar narrows it as it narrows each register), checked
+    through the picker's by-id read, so a person outside it is 404 `NOT_FOUND` as `GET /people/:employeeId` answers.
+    It is asked before the leaver rule, so nobody's status is told outside the reach; an id the directory cannot read
+    still passes (OD-44). §7.8 keeps the picker scoped ("a warehouse's keeper works in its branch"), and a write that
+    could name anybody would print, on the DTO, a person that read hides. Adopted as the recommended reading under
+    the owner's 2026-11-24 instruction, and listed for the owner at Phase 1's close, with one question the design
+    leaves open: no rule refuses a keeper placed in another branch than the warehouse's, so a writer whose keys reach
+    both branches (organization-wide, or over several branches) may name one.
   - *The keeper on the DTO.* `keeper` is `{ employeeId, code, fullNameAr, status }`, read through
     `getDirectoryEmployees` at every read; it is null both with no keeper and with an id that resolves to nobody,
     which the screen tells apart by `responsibleEmployeeId` (OD-64 keeper (i)). No name is stored, so HR's
     `employee-name-copies.ts` gains no path. The DTO carries no department name: §19.4 lists none, and the web's
     department options name it (§19.8).
+  - *Refusal details.* `ADMINISTRATION_EMPLOYEE_EXITED`'s detail carries `code: 'exited'` beside its `field`
+    `responsibleEmployeeId`, since a detail must have a code (the P1a.1 precedent for `duplicate`);
+    `ADMINISTRATION_DEACTIVATION_BLOCKED`'s details use the contract's `ADMINISTRATION_DEACTIVATION_PROBLEMS`. Both
+    codes get their en and ar FRIENDLY text in P1a.W.
+  - *`canEdit` is what the edit would do:* `.edit` reaches the warehouse's branch (`keyReachesBranch`) and its
+    selector, which the top bar narrows, loads the row (`branchScopeBranches`), so the screen never offers an edit
+    the server answers 404.
+  - *The top bar and the writes, a question for P1a.W.* §19.3 gives `canCreate` as `keyReachesBranch`, which the top
+    bar does not narrow, while §7.8 builds the picker's reach, and so the keeper check, from `scopeSelector(ctx, key)`,
+    which it does; `canEdit` follows the edit's narrowed load. So an organization-wide editor narrowed to A is offered
+    B in the create dialog and may create there, but the picker finds none of B's people, a B keeper is 404, and the
+    new store answers `canEdit: false` until the top bar lets B back in. The two readings: (a) the people reads, and
+    with them the keeper check and `canEdit`, build the write keys' selectors from the raw grant, ignoring the top
+    bar; or (b) `canCreate` follows the top bar's narrowing as `canView` does. Until the owner answers, neither
+    changes: both halves follow the frozen design.
   - *The picker.* `GET /people` searches the employed only and takes no status, with `branchId` narrowing inside the
     keys' reach and `sortBy` name or code; `GET /people/:employeeId` reads every status through the same scoped
     search, so a stored keeper who left still shows, as one.

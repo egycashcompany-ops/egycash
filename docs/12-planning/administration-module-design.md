@@ -23,7 +23,7 @@ the same module later.
 slices that each extend one module manifest.
 
 > **How to read this document.** The executive summary (in English, then in Arabic for the owner) and §0 say what the
-> owner asked for, what is proposed and what is asked of him. §1 is what ECMS already has, what the module reuses and
+> owner asked for, what is proposed and what is asked of the owner. §1 is what ECMS already has, what the module reuses and
 > what is missing. §2–§15 are the design. §16 lists the business decisions this design leaves to the owner: every policy
 > that the code and the docs do not settle is an `OD-xx` with options, a recommendation and the impact of each option. A
 > recommendation is a proposal, not a rule. §17 is the risks register, §18–§19 the phases and the recommended Phase 1,
@@ -211,7 +211,7 @@ OD-68 مصادر البيانات الحالية · OD-78 الأدوار الج�
 
 ### The owner's request (2026-10-29)
 
-The owner asked for this module in writing. The parts that bind the design, in his words:
+The owner asked for this module in writing. The parts that bind the design, in the owner's words:
 
 - **Scope and ambition.** «أريد منك البدء في تصميم وتنفيذ موديول جديد داخل ECMS تحت: Administrative Affairs / الشئون
   الإدارية والنطاق الأول للموديول هو: Warehouses / المخازن، Procurement / المشتريات»; «لا تفترض أن "المخزن" مجرد جدول
@@ -232,7 +232,7 @@ The owner asked for this module in writing. The parts that bind the design, in h
   أثناء الجرد بطريقة تكسر الـledger» (§2.4.6, §4.3.6).
 - **Finance.** «لا تنقل Finance إلى Administrative Affairs. حدد فقط الـhandoff المطلوب ... إذا لم تكن موجودة، سجّل
   integration requirement بدل اختراع API جديد دون قرار» (§12, OD-54).
-- **The report.** He asked for eighteen sections (what exists and can be reused, the domain model, sub-modules,
+- **The report.** The owner asked for eighteen sections (what exists and can be reused, the domain model, sub-modules,
   workflows, state machines, permissions, organization scope, events, realtime, audit, documents, Finance integration,
   navigation, reports, dependencies, open business decisions, risks, phases), a dashboard and twelve reports by name
   (§14), and «Recommended Phase 1 مع قائمة الملفات التي ستنشأ/تتعدل، لكن بدون كتابة الكود الآن» (§19).

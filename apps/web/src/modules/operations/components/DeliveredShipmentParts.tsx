@@ -3,9 +3,11 @@
 // مرفوعه و يحدد البنك من او الى اللى هيتحسب عليه تكلفة نقل الشحنة»; on the photo, «اختيارية مع تنبيه».
 //
 // THE ROW. Awaiting its ✓ it is the day board's «تم التسليم» on a yellow row (the captain's van on
-// the badge), with the time he delivered it; confirmed it is green, «مؤكَّدة», with the receipt's
-// number and the bank billed under it — and «بدون صورة» while it has no receipt photo, until one is
-// uploaded from the row's own «صورة الإيصال» cell (the day board's).
+// the badge), with the time he delivered it; confirmed it is green, «مؤكَّدة», with the bank billed
+// under it — and «بدون صورة» while it has no receipt photo, until one is uploaded from the row's own
+// «صورة الإيصال» cell (the day board's). Round 33 C — «عاوز رثم الايصال فى عمود لوحده»: the receipt's
+// number is no longer said here; it has its own column, «رقم الإيصال», beside the photo's
+// (`ShipmentsBoard`, `deliveredReceiptNumber`).
 //
 // THE ✓. A dialog in the board's design (`DesignDialog`): «رقم الإيصال» required (the contract's
 // rule, `deliveryReceiptNumberProblem`, checked here and on the server), «صورة الإيصال» optional —
@@ -77,8 +79,8 @@ const sideKey = (side: 'origin' | 'destination'): string =>
 
 /**
  * The row's «الحالة»: «تم التسليم» awaiting its ✓ (the day board's captain badge, and when he
- * delivered it), or «مؤكَّدة» with the receipt number, the bank billed and «بدون صورة» when it has
- * no photo.
+ * delivered it), or «مؤكَّدة» with the bank billed and «بدون صورة» when it has no photo. The
+ * receipt's number is its own column since Round 33 C («رقم الإيصال»), not a line here.
  */
 export const DeliveredStatusCell = ({
   row,
@@ -107,12 +109,6 @@ export const DeliveredStatusCell = ({
         <CheckIcon className="h-3.5 w-3.5" aria-hidden />
         {t('operations.delivered.confirmed')}
       </Badge>
-      <p className="whitespace-nowrap text-[11px] text-emerald-800 dark:text-emerald-200">
-        {t('operations.delivered.receiptNo')}{' '}
-        <bdi dir="ltr" className={NUM} data-delivered-receipt={row.id}>
-          {confirmation.receiptNumber}
-        </bdi>
-      </p>
       <p
         className="max-w-[10rem] truncate text-[11px] text-emerald-800 dark:text-emerald-200"
         title={confirmation.billedBankName}

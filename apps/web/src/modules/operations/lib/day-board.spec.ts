@@ -919,9 +919,11 @@ describe('the van filter — «ضيف كود العربيه ف الفلاتر»'
 });
 
 describe('the filters in the URL — «ارتب الفلاتر على حسب عواميد الجدول»', () => {
-  it('names them in the table’s column order', () => {
+  // Round 33 C — REWRITTEN from «names them in the table’s column order»: «الشحنات المسلَّمة»'s
+  // «رقم الإيصال» (`receipt`) joined after the notes, as its column stands after «ملاحظات».
+  it('names them in the table’s column order — «رقم الإيصال» last', () => {
     // السيارة | اسم البنك | من فرع | إلى فرع | المنطقة | قائد الطاقم | (التاريخ) | النوع | الحالة |
-    // ملاحظات — the day is the page's, not a filter. «الحالة» is a param per board: the delivery
+    // ملاحظات | (رقم الإيصال) — the day is the page's, not a filter. «الحالة» is a param per board: the delivery
     // (the day board and the history), the محصنة's stage (the secured screen) — and, on the vault's
     // board since Round 13, one per status column: «حالة الاستلام» (`pickup`) and «حالة الخزينة»
     // (`vault`), in that order as the columns are.
@@ -940,12 +942,15 @@ describe('the filters in the URL — «ارتب الفلاتر على حسب ع�
       // Round 33 B — «الشحنات المسلَّمة»'s «حالة التأكيد», at the status column's place.
       'confirmed',
       'notes',
+      // Round 33 C — «الشحنات المسلَّمة»'s «رقم الإيصال», its column after «ملاحظات».
+      'receipt',
     ]);
   });
 
-  it('reads every filter from its param', () => {
+  // Round 33 C — REWRITTEN from «reads every filter from its param»: `receipt` among them.
+  it('reads every filter from its param — «رقم الإيصال» too', () => {
     const params = new URLSearchParams(
-      'vehicle=150&bank=أهل&origin=a&destination=b&area=c&captain=d&type=secured&received=no&stage=inVault&pickup=captain&vault=waiting&confirmed=yes&notes=e&date=2026-11-01',
+      'vehicle=150&bank=أهل&origin=a&destination=b&area=c&captain=d&type=secured&received=no&stage=inVault&pickup=captain&vault=waiting&confirmed=yes&notes=e&receipt=RC-1&date=2026-11-01',
     );
     expect(readDayBoardFilters(params)).toEqual({
       vehicle: '150',
@@ -961,6 +966,7 @@ describe('the filters in the URL — «ارتب الفلاتر على حسب ع�
       vault: 'waiting',
       confirmed: 'yes',
       notes: 'e',
+      receipt: 'RC-1',
     });
     expect(readDayBoardFilters(new URLSearchParams())).toEqual(EMPTY_DAY_BOARD_FILTERS);
   });

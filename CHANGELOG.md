@@ -2919,6 +2919,138 @@ its entry here in the same PR.
           re-read, the undo's name, the one Tab stop, `defaultDayLeft`, `deliveredDialogRow`,
           `billedSideTabStop`, `billedSideAfterKey`; `shared/lib/errors.spec.ts` the branch lock's words;
           the i18n keys.
+    - C — the owner's review of the screenshots: «عاوز رثم الايصال فى عمود لوحده
+      عاوز كلمة طباعة دى تكون العلامة بس وممكن تحطها فى مكان فى الكارد عشان متخدش مساحة كبيره».
+      - «رقم الإيصال» in a column of its own on «الشحنات المسلَّمة», just before «صورة الإيصال» so a
+        receipt's number and its photo sit together: the number the ✓ recorded, in the board's figures
+        (digits typed on an Arabic keyboard read Latin) and in its own direction — «RC-20418» and
+        «77310» left to right, a number typed with Arabic words («إيصال ١٢٣٤٥») in their order — or «—»
+        on a row still awaiting its ✓. A number of up to 12 characters is one line, never broken; a longer one (up to the 40
+        the ✓ takes) wraps inside 7rem, every character on screen. «الحالة» no longer says «إيصال رقم
+        …» — «مؤكَّدة», «تُحتسب على …» and «بدون صورة» stay. The day board, the history, the secured
+        and the vault screens keep their columns exactly.
+      - Its box, «رقم الإيصال» («Receipt no.»), after «ملاحظات» as the column stands — `receipt` in
+        the address (a reload and a shared link keep it), cleared by the reset, and NOT remembered
+        across visits as the screen's other boxes are: it looks one receipt up, and a number brought
+        back from last week would open today's screen with every row awaiting its ✓ hidden (none has
+        a number yet) — `BOARD_LOOKUP_PARAMS`, `rememberedFilterParams`. A fragment of the
+        number finds it, folded (Arabic-Indic digits, Latin case) with its separators ignored: «rc
+        20418» and «٢٠٤١٨» find «RC-20418»; a row awaiting its ✓ has no number to find. No other board
+        offers or reads it. The screen has no Excel or print of its rows, so none was added.
+      - The room for a fourteenth column, measured on the built screen (stubbed API, dark and light):
+        the delivered board takes the vault board's (Round 17) — names wrap from 4rem, a note is cut at
+        4rem, the cells' sides 7px below 1750px — and the number's cell gives up its sides as the icon
+        boxes do. At 1366, 1440 and 1920: no sideways scroll on the page, the table inside its frame,
+        the ✓ column whole, with a note on a row too (at 1366 the table scrolled 2px sideways before,
+        32px with a note). A day with a 40-character number and a note still scrolls the table 44px
+        at 1366 (234px before, the number then a line of «الحالة»), and fits from 1440. The filter row
+        stays one row; there the van's box takes a fifth more than an even share — the room its
+        suggestions' arrow took from «كود السيارة» once the row was cut in eleven — and the other
+        boxes share the row by the longer of their two names (`data-bar-box`, this screen's alone):
+        «من فرع» 1.16, the captain 1.19, the receipt's number 1.07, «إلى فرع» 1, the bank 0.9, the
+        notes 0.87, the area 0.8 — seven together as seven even shares, so «النوع» and «حالة التأكيد»
+        keep theirs. Every box's name is whole in Arabic at 1280, 1366, 1440 and 1920, and in English
+        but for one (before: «From branch» and «Crew captain» cut at 1280–1440, «Receipt no.» at 1280,
+        «رقم الإيصال» by 1px at 1280): the English «Vehicle code» still loses its last letter or two
+        under the browser's suggestions arrow at 1280 and 1440 (whole at 1366 and 1920), as it did
+        before this round. With a filter chosen the reset takes its room at the row's end: from
+        1366 every name stays whole; at 1280 three Arabic names are cut by 3px («اسم البنك»,
+        «المنطقة», «ملاحظات» — before, «قائد الطاقم» and «رقم الإيصال» by 3–5px) and five English ones
+        by 1–4px (as before). A type and a confirmation both chosen were already cut short in their
+        boxes at 1440 and are cut a little more. At 390 the screen behaves as before: the page still, the table scrolling inside its
+        frame, the filters two to a row (six rows now, five before).
+      - Specs rewritten (the rule changed): (web) `lib/day-board.spec.ts` «names them in the table’s
+        column order» → «… — «رقم الإيصال» last» and «reads every filter from its param» → «… —
+        «رقم الإيصال» too»; `lib/delivered-board.spec.ts` «is read from the URL, and only that board
+        offers it» → «… — ten boxes, «رقم الإيصال» last»; `pages/day-board-filters.spec.ts` «sizes each
+        text filter with a wrapper, since the control base class is w-full» → «sizes each text filter
+        with a wrapper — «رقم الإيصال» too — since the control base class is w-full» (eight typed
+        boxes) and «is the order of the columns themselves» → «… — «رقم الإيصال» before «صورة
+        الإيصال»»; `pages/shipment-screens.spec.ts` «makes the room for one-line badges on the vault’s
+        board alone» → «makes the room for one-line badges on the vault’s board, and for «رقم الإيصال»
+        on the delivered one». New: (web) `pages/delivered-shipments.spec.tsx` «Round 33 C …» (the
+        column's name in both languages and its place, the number and the dash, a long number,
+        «الحالة» without it, absent from the other four screens, the box and what it finds);
+        `lib/delivered-board.spec.ts` the number, `matchesReceiptNumber`, the board narrowed by it,
+        and «is read and offered, never remembered across visits — a lookup, not a standing slice»;
+        `pages/day-board-filters.spec.ts` the box last on that screen alone, the van box's share,
+        «shares «الشحنات المسلَّمة»’s one row by the boxes’ words — the total as the even share’s», and
+        «remembers «الشحنات المسلَّمة»’s boxes — never «رقم الإيصال», a one-off lookup, nor its day»;
+        `pages/delivered-shipments.spec.tsx` «lets a number typed in Arabic words keep their order —
+        the cell takes its first letter’s direction». The i18n key `operations.delivered.receiptNo` now names
+        the column and the box («رقم الإيصال»; it was the status line's «إيصال رقم»).
+      - «طباعة» on «تسليم المحصنات» is its icon alone (the same document drawing), at the END of each
+        van's head line, after the direction — a 24px square in the brand tint its word wore, named
+        «طباعة» («Print») to a screen reader, saying on hover what it prints («طباعة كشف تحميل السيارة
+        112»), the board's focus ring; `data-handover-print` kept. It prints exactly what it printed
+        (`print`, `lib/van-load-sheet.ts` unchanged), a record's sheet on a record. A press on it —
+        click, tap, Enter or Space — only prints: the van's card neither opens nor closes (the van's
+        group asks `vanTapAllowed` with `onAct`), and resting on it is not resting on the head (the
+        van's card waits no beat there, as on the captain's own name — `vanRestArms`); both rules
+        pure, in `lib/van-card.ts`. `VanCard` takes it as a new `headAction`; «توزيع المحصنات» gives
+        none and is unchanged.
+      - The row over the van is «تسليم»'s alone: on a record, and for a reader without
+        `operationsVault.dispatch`, there is no row at all (no empty strip) — each card 51px shorter
+        (47.5px at 390), the vans' column 153px shorter at 1366 and 1440 on the stubbed record day
+        (102px at 1920, 380px at 390). Today the row and the cards keep their height; «تسليم» on and
+        off are one height now (the filled one keeps a clear 1px edge), so every head lines up. The
+        head stays one line at 1366, 1440, 1920 and 390, dark and light; the code and the time are
+        never cut; the page never scrolls sideways at 390. The icon's 30px no longer come out of the
+        direction alone: a head that carries the icon measures its line (a size container,
+        `HEAD_SQUEEZE`), and at 18rem of line or less — on a 1024, 1366, 1440 or 1920 screen and a
+        phone; not at 1280, whose cards are wider — the time drops its clock (its «11:00» says what it is) and a crew
+        without a van drops its crossed-van drawing (its words say it), 16px and 22px back; the
+        direction is cut no shorter than its arrow and 28px of words (a shorter direction keeps its
+        own width, never padded). At 1366 a crew without a van now shows «حلوان» whole in Arabic and
+        in English (9px of it and 3px before this fix, 30px before the icon); «المعادي - حلوان» shows
+        73 of its 78px (57 before this fix); the long «السادس من أكتوبر…» 73px (57). At 1024 the same
+        (30/30, 71/78). Measured at every width from 360 to 1920 (8px apart, English, the widest
+        pill): «حلوان» whole, the line one line, no pill out of its line, the page still. With a
+        two-digit «No vehicle (12)» and a long direction at 1024 and 1366, 31–32px of the direction
+        show. «توزيع المحصنات»'s head carries no icon and none of this. The day bar's hint says where «طباعة» is («فوق كل سيارة «تسليم»، وفي نهاية رأسها أيقونة الطباعة
+        …»); to a reader without `operationsVault.dispatch`, whose vans have no «تسليم» and no row
+        over them, it says only «في نهاية رأس كل سيارة أيقونة الطباعة …» (the verifier's fix: it told
+        him «تسليم» was over each van).
+      - Specs rewritten (the rule changed): (web) `pages/secured-distribution.spec.tsx` «is the same
+        card on «تسليم المحصنات», under «تسليم» and «طباعة»» → «… under «تسليم», with «طباعة» at its
+        head line’s end», and «puts «تسليم» and «طباعة» over each van; «تسليم» counts only what the
+        vault holds» → «puts «تسليم» over each van and «طباعة» in its head; …». New: (web)
+        `pages/secured-distribution.spec.tsx` «Round 33 C» (the icon's name, tooltip, hook and no word
+        on the card, today, on a record and for a reader; its place at the head line's end; the line
+        squeezed on a narrow card; the one `print` of the van and its load; a press on it toggling
+        no van card and resting on it not the head's — `vanTapAllowed`'s `onAct`, `vanRestArms`; the
+        row over the van for «تسليم» alone, none on a record or for a reader without the grant, kept
+        on a day to come; the day's hint, «تسليم» over each van only to who has the grant; «توزيع
+        المحصنات»'s card unchanged); `components/distribution-van-card.spec.tsx` «Round 33 C»
+        (`headAction` at the line's end in both languages; «with an act, the line squeezes on a
+        narrow card — the clock and the no-van drawing go, the direction keeps a floor»; no row for
+        an absent, null or false `actions`; the card without them as it was); `lib/van-card.spec.ts`
+        «Round 33 C — the head’s own act is its own». Rewritten (the rule changed):
+        `components/distribution-round26.spec.tsx` «never opens while a drag is on, over an open
+        «نقل إلى…» menu, or on the captain’s own name» → «… — nor on the head’s own act» (the tap
+        path asks `onAct` too). New i18n keys `operations.handover.printTitle` and `operations.handover.hintViewer`;
+        `operations.handover.hint` rewritten.
+      - Verified on the live API (mongodb-memory-server) serving the built web: a ✓ through the
+        dialog puts its number in «رقم الإيصال» and nowhere else on the page, digits typed in
+        Arabic read Latin, undo brings the «—» back; the box finds «rc 204» and «٧٧٣», survives a
+        reload, and the reset clears it (it also came back on a fresh visit then — no longer, see
+        the critic's review below). The icon prints today's sheet and the
+        record's (the record's sheet byte-identical to HEAD's word button's), by click, Enter,
+        Space and a phone's tap, and opens no van card; «تسليم» still hands over today. The day
+        board, the history, the secured and the vault boards draw the same columns and boxes as
+        HEAD's build, and «توزيع المحصنات» the same van heads.
+      - The critic's review, seven findings, each fixed with a spec that fails on the code before
+        it (each fix reverted once and its spec seen red): (1) the direction starved by the icon on
+        a narrow card — the head's squeeze above; (2) the English bar names cut — the shares by
+        their words above; (3) the day's hint naming «تسليم» to a reader without the grant — the
+        verifier's fix, its spec re-run red without it; (4) a number typed with Arabic words drawn
+        backwards — the cell's direction is its own (`dir="auto"`); (5) «رقم الإيصال» remembered —
+        read, never remembered; (6) the print's «only prints» pinned by source regexes and class
+        strings — the rules are pure (`vanTapAllowed`'s `onAct`, `vanRestArms`) and tested in
+        `lib/van-card.spec.ts`, the card asks them instead of stopping the click, and the round's
+        markup specs read hooks and order (`data-van-head-action` after `data-van-direction`), not
+        whole class strings; (7) the print change labelled «Round 33b» in code, specs and i18n while
+        this entry is «C» — every label is «Round 33 C» now.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

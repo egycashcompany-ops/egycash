@@ -12079,6 +12079,7 @@ const en: Record<string, string> = {
   'operations.delivered.filter.all': 'All',
   'operations.delivered.awaiting': 'Awaiting confirmation',
   'operations.delivered.confirmed': 'Confirmed',
+  // Round 33 C — the «Receipt no.» column's name and its box's.
   'operations.delivered.receiptNo': 'Receipt no.',
   'operations.delivered.billedTo': 'Billed to {{bank}} ({{side}})',
   'operations.delivered.side.origin': 'From',
@@ -12516,13 +12517,18 @@ const en: Record<string, string> = {
     'The vault has not received it yet, so it does not leave with the van now',
   'operations.handover.ready': 'Ready to hand over',
   'operations.handover.hint':
-    'Each van has Hand over and Print. Only shipments in the vault are handed over, and they leave the vault on handover.',
+    'Hand over is above each van, and the print icon is at the end of its head. Only shipments in the vault are handed over, and they leave the vault on handover.',
+  // Round 33 C (verify) — the same hint to a reader without the dispatch grant: no «Hand over» on his vans.
+  'operations.handover.hintViewer':
+    'The print icon is at the end of each van’s head. Only shipments in the vault are handed over, and they leave the vault on handover.',
   'operations.handover.nothing': 'Nothing on this van is in the vault to hand over',
   'operations.handover.notToday': 'Handover happens only on the day the van goes out',
   'operations.handover.planDay':
     'The plan for {{day}} — to view and print. Handover happens only on the day the van goes out.',
   'operations.handover.handover': 'Hand over ({{count}})',
   'operations.handover.print': 'Print',
+  // Round 33 C — «طباعة» is an icon on the van's head: what it prints, on hover.
+  'operations.handover.printTitle': 'Print the load sheet of {{van}}',
   'operations.handover.heldNote.one':
     '1 on this van not received by the vault yet — it is not handed over now.',
   'operations.handover.heldNote.two':
@@ -27956,7 +27962,8 @@ const ar: Record<string, string> = {
   'operations.delivered.filter.all': 'الكل',
   'operations.delivered.awaiting': 'بانتظار التأكيد',
   'operations.delivered.confirmed': 'مؤكَّدة',
-  'operations.delivered.receiptNo': 'إيصال رقم',
+  // Round 33 C — the «رقم الإيصال» column's name and its box's (it was the status line's «إيصال رقم …»).
+  'operations.delivered.receiptNo': 'رقم الإيصال',
   'operations.delivered.billedTo': 'تُحتسب على {{bank}} ({{side}})',
   'operations.delivered.side.origin': 'من',
   'operations.delivered.side.destination': 'إلى',
@@ -28358,13 +28365,18 @@ const ar: Record<string, string> = {
   'operations.handover.notInVaultHint': 'لم تستلمها الخزينة بعد، فلا تُسلَّم مع السيارة الآن',
   'operations.handover.ready': 'جاهزة للتسليم',
   'operations.handover.hint':
-    'فوق كل سيارة «تسليم» و«طباعة». لا تُسلَّم إلا المحصنات الموجودة بالخزينة، وتغادر الخزينة عند التسليم.',
+    'فوق كل سيارة «تسليم»، وفي نهاية رأسها أيقونة الطباعة. لا تُسلَّم إلا المحصنات الموجودة بالخزينة، وتغادر الخزينة عند التسليم.',
+  // Round 33 C (verify) — لمن لا يملك صلاحية التسليم: لا «تسليم» فوق سياراته.
+  'operations.handover.hintViewer':
+    'في نهاية رأس كل سيارة أيقونة الطباعة. لا تُسلَّم إلا المحصنات الموجودة بالخزينة، وتغادر الخزينة عند التسليم.',
   'operations.handover.nothing': 'لا توجد على هذه السيارة محصنة بالخزينة لتسليمها',
   'operations.handover.notToday': 'التسليم يتم يوم خروج السيارة فقط',
   'operations.handover.planDay':
     'خطة يوم {{day}} — للاطلاع والطباعة. التسليم يتم يوم خروج السيارة فقط.',
   'operations.handover.handover': 'تسليم ({{count}})',
   'operations.handover.print': 'طباعة',
+  // Round 33 C — «طباعة» أيقونة في رأس السيارة: ما تطبعه، عند الوقوف عليها.
+  'operations.handover.printTitle': 'طباعة كشف تحميل {{van}}',
   'operations.handover.heldNote.one':
     'محصنة واحدة على هذه السيارة لم تستلمها الخزينة بعد، فلا تُسلَّم الآن.',
   'operations.handover.heldNote.two':

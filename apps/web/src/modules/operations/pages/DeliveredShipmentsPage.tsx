@@ -38,8 +38,12 @@ import {
 import { useCairoToday } from '../lib/use-cairo-today';
 
 /**
- * Remembered across visits: the filters this board reads (`boardFilterParams('delivered')`) — not
- * the day, which opens on today: a day looked at last week is not today's question.
+ * Remembered across visits: the filters this board reads, less its one-off lookups
+ * (`rememberedFilterParams('delivered')`) — not the day, which opens on today: a day looked at last
+ * week is not today's question. Round 33 C critic — nor «رقم الإيصال» (`receipt`): it finds one
+ * receipt, and a number remembered from last week would hide every row still awaiting its ✓ (none
+ * has a number yet). The address keeps it for the visit (a reload, a shared link); the next visit
+ * from the menu opens without it.
  */
 const REMEMBERED_FILTERS = [
   'vehicle',

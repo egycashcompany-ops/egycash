@@ -320,9 +320,15 @@ describe('«شاشة الشحنات المحصنة … زى شاشة اليوم 
 
   // Round 17 — the two badges read on one line, and the vault's board alone makes the room for
   // them: its names wrap from a lower floor (the bank too), its notes are cut sooner, and its
-  // cells' sides come in below 1750px. Every other board keeps its widths.
-  it('makes the room for one-line badges on the vault’s board alone', () => {
-    expect(BOARD).toContain('<div className={cn(SHIPMENTS_TABLE, splitStatus && VAULT_TABLE)}>');
+  // cells' sides come in below 1750px. Round 33 C — REWRITTEN from «makes the room for one-line
+  // badges on the vault’s board alone»: «الشحنات المسلَّمة» takes the same room for its fourteenth
+  // column, «رقم الإيصال» (its bank keeps its one line). Every other board keeps its widths.
+  it('makes the room for one-line badges on the vault’s board, and for «رقم الإيصال» on the delivered one', () => {
+    expect(BOARD).toContain(
+      '<div className={cn(SHIPMENTS_TABLE, (splitStatus || delivered) && VAULT_TABLE)}>',
+    );
+    // The number's cell gives up its sides as the icon boxes' do (the photo's box beside it).
+    expect(BOARD).toContain("'[&_td:has([data-delivered-receipt])]:!px-1',");
     expect(BOARD).toContain("'[--board-name-floor:4rem] [--board-notes-cut:4rem]',");
     expect(BOARD).toContain(
       "'max-[1749px]:[&_tbody_td]:!px-[7px] max-[1749px]:[&_thead_th]:!px-[7px]',",

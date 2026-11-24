@@ -185,6 +185,8 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   // Round 33 B — «الشحنات المسلَّمة» on the day board's board: its filters remembered alike,
   // «حالة التأكيد» (`confirmed`) in «التسليم»'s place; `date` is not — the screen opens on today
   // («الافتراضى يكون اليوم»), and a past day looked at once is not where the next visit starts.
+  // Round 33 C — nor «رقم الإيصال» (`receipt`, read by the board, not by the page): a one-off
+  // lookup that would hide every row awaiting its ✓ if it came back (`BOARD_LOOKUP_PARAMS`).
   ['modules/operations/pages/DeliveredShipmentsPage.tsx', ['date']],
   ['modules/operations/pages/StandingCrewPage.tsx', []],
   // Round 19 — «كشف طاقم العمليات» in the boards' look: its four filters remembered as the boards'

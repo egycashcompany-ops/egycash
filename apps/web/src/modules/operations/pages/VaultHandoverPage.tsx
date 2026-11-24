@@ -50,6 +50,15 @@
 // «العودة إلى اليوم» where the acts would stand. The filters of the day, the hover cards and «طباعة»
 // still work: reading and printing are not changing — the printed sheet says it is a record.
 //
+// ROUND 33 C — «عاوز كلمة طباعة دى تكون العلامة بس وممكن تحطها فى مكان فى الكارد عشان متخدش مساحة
+// كبيره»: «طباعة» is its icon alone, at the END of the van's head line (`VanCard`'s `headAction`),
+// after the direction; on a narrow card the line makes the icon's room without starving the
+// direction (`HEAD_SQUEEZE` — the time's clock and the no-van drawing go). It is named «طباعة» to a
+// screen reader and says what it prints on hover; a press on it only prints — the van's card
+// neither opens nor closes. The row over the van is «تسليم»'s alone: a record, or a reader without
+// the dispatch grant, has no row at all, and its cards are that much shorter. What it prints is
+// unchanged.
+//
 // WHO. The screen is `operationsVault.view`'s; «تسليم» is `operationsVault.dispatch`'s. A treasurer
 // holding only the vault's grants does not hear a placement Operations saves (the assignment
 // topics are the shipment grant's), so the screen re-reads itself once a minute and whenever the
@@ -138,6 +147,15 @@ import { vanLoadSheet } from '../lib/van-load-sheet';
 import { hasNoVan, looseCrewNumbers, vanPhrase } from '../lib/van-name';
 import { PACKAGE_KINDS } from '../lib/van-card';
 import { PLAN_ICON } from '../components/crew-plan-icons';
+
+/**
+ * Round 33 C — «طباعة» as its icon alone, at the end of the van's head line: a 24px square (a
+ * finger's least target; the head's time and direction pills are 22px, its code pill 32px, so the
+ * line keeps its height), in the brand tint and edge its word wore (`BRAND_BUTTON`), the board's
+ * focus ring.
+ */
+const PRINT_ICON =
+  'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-brand-500/50 bg-brand-500/15 text-brand-700 transition hover:bg-brand-500/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 active:scale-95 dark:text-brand-200';
 
 export const VaultHandoverPage = (): JSX.Element => {
   const t = useT();
@@ -514,44 +532,53 @@ export const VaultHandoverPage = (): JSX.Element => {
                 packages={vanPackages(packagesRead, load, packagingOf)}
                 // Round 33 — a record is read back: no placing alarm on a van.
                 calm={isRecord}
+                // Round 33 C — the row over the van is «تسليم»'s alone: none on a record or for a
+                // reader without the dispatch grant (`VanCard` then draws no row at all).
                 actions={
-                  <>
-                    {canHandOver && (
-                      <button
-                        type="button"
-                        data-handover-open={van.crewAssignmentId}
-                        data-handover-block={block ?? undefined}
-                        aria-haspopup="dialog"
-                        disabled={block !== null}
-                        title={
-                          block === 'notToday'
-                            ? t('operations.handover.notToday')
-                            : block === 'nothing'
-                              ? t('operations.handover.nothing')
-                              : undefined
-                        }
-                        onClick={() => setConfirming(van.crewAssignmentId)}
-                        className={cn(
-                          block === null ? ADD_BUTTON : BRAND_BUTTON,
-                          'disabled:cursor-not-allowed disabled:opacity-50',
-                        )}
-                      >
-                        <BoardIcon d={[...PATH.truck]} className="h-3.5 w-3.5" />
-                        {t('operations.handover.handover', {
-                          count: countText(ready.length, locale),
-                        })}
-                      </button>
-                    )}
+                  canHandOver ? (
                     <button
                       type="button"
-                      data-handover-print={van.crewAssignmentId}
-                      onClick={() => print(van, load)}
-                      className={BRAND_BUTTON}
+                      data-handover-open={van.crewAssignmentId}
+                      data-handover-block={block ?? undefined}
+                      aria-haspopup="dialog"
+                      disabled={block !== null}
+                      title={
+                        block === 'notToday'
+                          ? t('operations.handover.notToday')
+                          : block === 'nothing'
+                            ? t('operations.handover.nothing')
+                            : undefined
+                      }
+                      onClick={() => setConfirming(van.crewAssignmentId)}
+                      className={cn(
+                        // Round 33 C — on as off, one height: the brand button's 1px edge, kept
+                        // clear on the filled one, so every van's row (and head) lines up.
+                        block === null ? cn(ADD_BUTTON, 'border border-transparent') : BRAND_BUTTON,
+                        'disabled:cursor-not-allowed disabled:opacity-50',
+                      )}
                     >
-                      <BoardIcon d={[...PATH.pdf]} className="h-3.5 w-3.5" />
-                      {t('operations.handover.print')}
+                      <BoardIcon d={[...PATH.truck]} className="h-3.5 w-3.5" />
+                      {t('operations.handover.handover', {
+                        count: countText(ready.length, locale),
+                      })}
                     </button>
-                  </>
+                  ) : undefined
+                }
+                // Round 33 C — «عاوز كلمة طباعة دى تكون العلامة بس وممكن تحطها فى مكان فى الكارد
+                // عشان متخدش مساحة كبيره»: «طباعة» is its icon alone, at the end of the van's head
+                // line — named «طباعة» to a screen reader, what it prints on hover. It prints what
+                // it printed (`print`, `lib/van-load-sheet.ts`), on every day, a record's too.
+                headAction={
+                  <button
+                    type="button"
+                    data-handover-print={van.crewAssignmentId}
+                    aria-label={t('operations.handover.print')}
+                    title={t('operations.handover.printTitle', { van: vanName(van) })}
+                    onClick={() => print(van, load)}
+                    className={PRINT_ICON}
+                  >
+                    <BoardIcon d={[...PATH.pdf]} className="h-4 w-4" />
+                  </button>
                 }
                 footer={
                   handed !== null ? (
@@ -796,7 +823,9 @@ export const VaultHandoverPage = (): JSX.Element => {
               className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500"
             />
             <p className="min-w-0 text-xs font-bold leading-5 text-slate-500 dark:text-slate-400">
-              {t('operations.handover.hint')}
+              {/* Round 33 C (verify) — «تسليم» over each van only for who may press it; to a reader
+                  without the dispatch grant, only where the print icon is. */}
+              {t(canHandOver ? 'operations.handover.hint' : 'operations.handover.hintViewer')}
             </p>
           </DayNote>
         ) : (

@@ -1,6 +1,7 @@
 // Round 33 B — «الشحنات المسلَّمة» as the screen reads it: a row's state and colour, «بدون صورة», the
 // two sides of «البنك الذي تُحتسب عليه تكلفة النقل», the dialog's checks and body, what a refusal
-// means for it, the day it opens on, and the board's own «حالة التأكيد» filter.
+// means for it, the day it opens on, and the board's own «حالة التأكيد» filter. Round 33 C — the
+// receipt's number as its own column prints it, and its «رقم الإيصال» box.
 import { describe, expect, it } from 'vitest';
 import {
   OPERATIONS_DELIVERY_RECEIPT_NUMBER_MAX,
@@ -10,12 +11,17 @@ import {
 } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 import {
+  BOARD_LOOKUP_PARAMS,
   EMPTY_DAY_BOARD_FILTERS,
   boardFilterParams,
+  deliveredReceiptNumber,
   filterDayBoard,
+  hasActiveFilter,
   isDeliveryConfirmed,
+  matchesReceiptNumber,
   offeredFilters,
   readDayBoardFilters,
+  rememberedFilterParams,
   rowTint,
 } from './day-board';
 import {
@@ -337,7 +343,9 @@ describe('«بانتظار التأكيد» / «مؤكَّدة» / «الكل» 
     expect(run({ confirmed: 'no', type: 'secured' })).toEqual(['s']);
   });
 
-  it('is read from the URL, and only that board offers it', () => {
+  // Round 33 C — REWRITTEN from «is read from the URL, and only that board offers it» (nine boxes,
+  // the day board's count): «رقم الإيصال» joined after «ملاحظات», as its column did.
+  it('is read from the URL, and only that board offers it — ten boxes, «رقم الإيصال» last', () => {
     expect(readDayBoardFilters(new URLSearchParams('confirmed=yes')).confirmed).toBe('yes');
     expect(readDayBoardFilters(new URLSearchParams('confirmed=all')).confirmed).toBe('');
     const all = { ...EMPTY_DAY_BOARD_FILTERS, confirmed: 'yes' as const, received: 'no' as const };
@@ -345,7 +353,8 @@ describe('«بانتظار التأكيد» / «مؤكَّدة» / «الكل» 
     for (const kind of ['shipments', 'secured', 'vault'] as const) {
       expect(offeredFilters(all, kind).confirmed).toBe('');
     }
-    // The day board's boxes, «حالة التأكيد» in «التسليم»'s place: nine, one row as the day board.
+    // The day board's boxes, «حالة التأكيد» in «التسليم»'s place, and «رقم الإيصال» after the
+    // notes: one more than the day board's nine.
     expect(boardFilterParams('delivered')).toEqual([
       'vehicle',
       'bank',
@@ -356,7 +365,93 @@ describe('«بانتظار التأكيد» / «مؤكَّدة» / «الكل» 
       'type',
       'confirmed',
       'notes',
+      'receipt',
     ]);
-    expect(boardFilterParams('delivered')).toHaveLength(boardFilterParams('shipments').length);
+    expect(boardFilterParams('delivered')).toHaveLength(boardFilterParams('shipments').length + 1);
+  });
+});
+
+describe('Round 33 C — «عاوز رثم الايصال فى عمود لوحده»: the number, and its box', () => {
+  const confirmedWith = (receiptNumber: string, id = 'c') =>
+    row({ id, deliveryConfirmation: { ...CONFIRMATION, receiptNumber } });
+
+  it('prints the number the ✓ recorded, its digits Latin; nothing on a row awaiting its ✓', () => {
+    expect(deliveredReceiptNumber(confirmedWith('RC-20418'))).toBe('RC-20418');
+    // Typed on an Arabic keyboard: read as the board's every figure is.
+    expect(deliveredReceiptNumber(confirmedWith('رقم ٢٠٤١٨'))).toBe('رقم 20418');
+    expect(deliveredReceiptNumber(row())).toBeNull();
+    // Any other board's row carries no confirmation at all.
+    expect(deliveredReceiptNumber({})).toBeNull();
+    // The longest the ✓ takes is printed whole.
+    const longest = 'R'.repeat(OPERATIONS_DELIVERY_RECEIPT_NUMBER_MAX);
+    expect(deliveredReceiptNumber(confirmedWith(longest))).toBe(longest);
+  });
+
+  it('finds a fragment, folded, its separators ignored — and narrows nothing when empty', () => {
+    expect(matchesReceiptNumber('RC-20418', '')).toBe(true);
+    expect(matchesReceiptNumber('RC-20418', '   ')).toBe(true);
+    expect(matchesReceiptNumber(null, '')).toBe(true);
+    expect(matchesReceiptNumber('RC-20418', '2041')).toBe(true);
+    expect(matchesReceiptNumber('RC-20418', 'rc-204')).toBe(true);
+    expect(matchesReceiptNumber('RC-20418', 'RC 20418')).toBe(true);
+    expect(matchesReceiptNumber('RC-20418', 'rc20418')).toBe(true);
+    expect(matchesReceiptNumber('RC-20418', '٢٠٤١٨')).toBe(true);
+    expect(matchesReceiptNumber('2026/11/77', '202611')).toBe(true);
+    expect(matchesReceiptNumber('RC-20418', '20419')).toBe(false);
+    // A row with no number yet is not found by one.
+    expect(matchesReceiptNumber(null, '20418')).toBe(false);
+  });
+
+  it('narrows the board by it — beside the other boxes — and only that board reads it', () => {
+    const rows = [
+      row({ id: 'a' }),
+      confirmedWith('RC-20418', 'c1'),
+      confirmedWith('77310', 'c2'),
+      { ...confirmedWith('RC-20502', 's'), shipmentType: 'secured' as const },
+    ];
+    const run = (over: Partial<typeof EMPTY_DAY_BOARD_FILTERS>) =>
+      filterDayBoard(
+        rows,
+        { ...EMPTY_DAY_BOARD_FILTERS, ...over },
+        () => '',
+        () => '',
+      ).map((r) => r.id);
+    expect(run({})).toEqual(['a', 'c1', 'c2', 's']);
+    expect(run({ receipt: 'rc' })).toEqual(['c1', 's']);
+    expect(run({ receipt: '٧٧٣' })).toEqual(['c2']);
+    expect(run({ receipt: 'RC', type: 'secured' })).toEqual(['s']);
+    expect(run({ receipt: 'RC', confirmed: 'no' })).toEqual([]);
+    expect(run({ receipt: 'X-1' })).toEqual([]);
+    // In the URL as `receipt`; a box like any other for the reset.
+    const filters = readDayBoardFilters(new URLSearchParams('receipt=RC-20'));
+    expect(filters.receipt).toBe('RC-20');
+    expect(hasActiveFilter(filters)).toBe(true);
+    expect(offeredFilters(filters, 'delivered').receipt).toBe('RC-20');
+    // Every other board offers no such box: an old link's `?receipt=` narrows none of them.
+    for (const kind of ['shipments', 'secured', 'vault'] as const) {
+      expect(offeredFilters(filters, kind).receipt).toBe('');
+      expect(boardFilterParams(kind)).not.toContain('receipt');
+    }
+  });
+
+  // Round 33 C critic — a number looked up is a one-off: remembered and restored on the next
+  // visit, it would hide every row still awaiting its ✓ (none has a number yet) — the desk's work.
+  it('is read and offered, never remembered across visits — a lookup, not a standing slice', () => {
+    expect(BOARD_LOOKUP_PARAMS).toEqual(['receipt']);
+    expect(boardFilterParams('delivered')).toContain('receipt');
+    expect(rememberedFilterParams('delivered')).not.toContain('receipt');
+    expect(rememberedFilterParams('delivered')).toEqual(
+      boardFilterParams('delivered').filter((name) => name !== 'receipt'),
+    );
+    // What it would do if it came back: today's rows awaiting the ✓ all gone.
+    const awaiting = [row({ id: 'a1' }), row({ id: 'a2' }), confirmedWith('RC-20418', 'c1')];
+    expect(
+      filterDayBoard(
+        awaiting,
+        { ...EMPTY_DAY_BOARD_FILTERS, receipt: 'RC-20418' },
+        () => '',
+        () => '',
+      ).map((r) => r.id),
+    ).toEqual(['c1']);
   });
 });

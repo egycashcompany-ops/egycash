@@ -9,7 +9,10 @@
 //   · «الاجراءات هيكون فيه علامة صح»: the ✓ on a row awaiting it, «إلغاء التأكيد» on a confirmed one,
 //     for the day board's ✓ grant only — and nothing else of the day board's acts;
 //   · the ✓'s dialog: «رقم الإيصال» required, «صورة الإيصال» optional with its warning, «من» / «إلى» by
-//     bank and branch, «تأكيد» / «إلغاء». Its checks are pure (lib/delivered-board.spec.ts).
+//     bank and branch, «تأكيد» / «إلغاء». Its checks are pure (lib/delivered-board.spec.ts);
+//   · Round 33 C — «عاوز رثم الايصال فى عمود لوحده»: the number in a column of its own, «رقم الإيصال»,
+//     just before «صورة الإيصال» — this screen's alone — with its box after «ملاحظات», and no longer
+//     a line of «الحالة».
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -37,7 +40,8 @@ import { listKey } from '../../../shared/lib/query-keys';
 import { ApiError } from '../../../shared/lib/api-client';
 import { __deliveredBoardKey, isDeliveryConflict } from '../api/operations-queries';
 import { DeliveryConfirmDialog } from '../components/DeliveredShipmentParts';
-import { rowTint } from '../lib/day-board';
+import { RECEIPT_ONE_LINE, ShipmentsBoard } from '../components/ShipmentsBoard';
+import { rowTint, type BoardKind } from '../lib/day-board';
 import { cairoToday } from '../lib/shipment-history';
 import { DeliveredShipmentsPage } from './DeliveredShipmentsPage';
 
@@ -261,6 +265,12 @@ const clientWith = (
   return qc;
 };
 
+/** The page's address: its `?date=` (none for the default) and any filters after it. */
+const addressOf = (path: string, date: string | null, query: string): string => {
+  const search = [date === null ? '' : `date=${date}`, query].filter((p) => p !== '').join('&');
+  return search === '' ? path : `${path}?${search}`;
+};
+
 const render = ({
   permissions = DESK,
   shipments = [AWAITING, CONFIRMED, SECURED, SECURED_AWAITING],
@@ -268,6 +278,7 @@ const render = ({
   locale = 'ar',
   serverToday = cairoToday(),
   url = date,
+  query = '',
 }: {
   permissions?: string[];
   shipments?: OperationsDeliveredShipmentDto[];
@@ -278,12 +289,14 @@ const render = ({
   serverToday?: string;
   /** The URL's `?date=` when it is not the day asked (a day the screen bounds away); null none. */
   url?: string | null;
+  /** More of the address — the board's filters (`receipt=…`), without `?` or `&`. */
+  query?: string;
 } = {}): string => {
   const path = '/operations/shipments/delivered';
   return renderToStaticMarkup(
     <Provider store={storeFor(permissions, locale)}>
       <QueryClientProvider client={clientWith(date, shipments, serverToday)}>
-        <MemoryRouter initialEntries={[url === null ? path : `${path}?date=${url}`]}>
+        <MemoryRouter initialEntries={[addressOf(path, url, query)]}>
           <Routes>
             <Route path={path} element={<DeliveredShipmentsPage />} />
           </Routes>
@@ -654,5 +667,198 @@ describe('Round 33 critic — the server’s day, the dialog past midnight, a de
       /const next = billedSideAfterKey\(\s*options,\s*draft\.billedSide,\s*event\.key,\s*locale === 'ar',\s*\);/,
     );
     expect(PARTS).toContain('sideButtons.current[next]?.focus();');
+  });
+});
+
+/** The table's column names, in the order drawn. */
+const headersOf = (html: string): string[] => {
+  const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
+  return [...head.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)].map((m) => text(m[1] ?? ''));
+};
+/** One row's cells, in the columns' order. */
+const cellsOf = (rowHtml: string): string[] =>
+  [...rowHtml.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map((m) => m[1] ?? '');
+
+/** The board itself, of a kind, over a confirmed row and one awaiting — `?receipt=RC` in its URL. */
+const renderBoard = (kind: BoardKind, rows = [CONFIRMED, AWAITING]): string =>
+  renderToStaticMarkup(
+    <Provider store={storeFor(DESK)}>
+      <QueryClientProvider client={clientWith(null, [])}>
+        <MemoryRouter>
+          <ShipmentsBoard
+            search={[new URLSearchParams('receipt=RC'), () => undefined]}
+            kind={kind}
+            shipments={rows}
+            crews={[]}
+            loaded
+            loading={false}
+            error={null}
+            onRetry={() => undefined}
+            canCreate={false}
+            canToggleReceived={false}
+            empty="—"
+          />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </Provider>,
+  );
+
+describe('Round 33 C — «عاوز رثم الايصال فى عمود لوحده»: «رقم الإيصال» in a column of its own', () => {
+  const NUMBER = ar('operations.delivered.receiptNo');
+
+  it('names the column «رقم الإيصال» («Receipt no.»), just before «صورة الإيصال»', () => {
+    expect(NUMBER).toBe('رقم الإيصال');
+    expect(en('operations.delivered.receiptNo')).toBe('Receipt no.');
+    const heads = headersOf(render());
+    const at = heads.indexOf(NUMBER);
+    expect(at, heads.join(' | ')).toBeGreaterThan(-1);
+    expect(heads[at + 1]).toBe(ar('operations.board.receiptImage'));
+    // …after «ملاحظات», as the day board's columns end.
+    expect(heads[at - 1]).toBe(ar('operations.shipment.notes'));
+    expect(heads.filter((h) => h === NUMBER)).toHaveLength(1);
+    const english = headersOf(render({ locale: 'en' }));
+    expect(english[english.indexOf('Receipt no.') + 1]).toBe(en('operations.board.receiptImage'));
+  });
+
+  it('prints the number in the board’s figures, in its own direction, and a quiet «—» awaiting the ✓', () => {
+    const html = render();
+    const col = headersOf(html).indexOf(NUMBER);
+    const confirmed = cellsOf(rowOf(html, 's-confirmed'))[col] ?? '';
+    // Round 33 C critic — its own direction (`auto`): a Latin or digit number reads left to right.
+    expect(confirmed).toMatch(/^<bdi dir="auto" class="[^"]*tabular-nums[^"]*"/);
+    expect(confirmed).toContain('data-delivered-receipt="s-confirmed"');
+    expect(confirmed).toContain('whitespace-nowrap');
+    expect(text(confirmed)).toBe('RC-1001');
+    expect(text(cellsOf(rowOf(html, 's-secured'))[col] ?? '')).toBe('RC-3003');
+    // A row still awaiting its ✓: the board's empty cell — the notes' dash — and no number hook.
+    for (const id of ['s-awaiting', 's-secured-awaiting']) {
+      const cell = cellsOf(rowOf(html, id))[col] ?? '';
+      expect(cell).toBe('<span class="text-slate-400">—</span>');
+    }
+    // Typed on an Arabic keyboard, read in the board's digits.
+    const arabic = render({
+      shipments: [
+        shipment('s-arabic', { deliveryConfirmation: confirmation({ receiptNumber: '٧٧٣١٠' }) }),
+      ],
+    });
+    expect(text(cellsOf(rowOf(arabic, 's-arabic'))[col] ?? '')).toBe('77310');
+  });
+
+  // Round 33 C critic — the ✓ takes any text up to 40 characters: a number written with Arabic
+  // words was forced left to right («إيصال ١٢٣٤٥» drawn as «12345 إيصال» to an Arabic reader).
+  it('lets a number typed in Arabic words keep their order — the cell takes its first letter’s direction', () => {
+    const html = render({
+      shipments: [
+        shipment('s-words', {
+          deliveryConfirmation: confirmation({ receiptNumber: 'إيصال ١٢٣٤٥' }),
+        }),
+      ],
+    });
+    const col = headersOf(html).indexOf(NUMBER);
+    const cell = cellsOf(rowOf(html, 's-words'))[col] ?? '';
+    expect(cell).toMatch(/^<bdi dir="auto"/);
+    expect(cell).not.toContain('dir="ltr"');
+    expect(cell).not.toContain('dir="rtl"');
+    // Its digits in the board's figures, its words as typed.
+    expect(text(cell)).toBe('إيصال 12345');
+  });
+
+  it('keeps a long number inside the column — wrapped in 7rem, every character on screen', () => {
+    // The longest the ✓ takes (`OPERATIONS_DELIVERY_RECEIPT_NUMBER_MAX`, 40).
+    const longest = 'RC-2026-11-24-'.padEnd(40, '0');
+    expect(longest).toHaveLength(40);
+    const html = render({
+      shipments: [
+        shipment('s-long', { deliveryConfirmation: confirmation({ receiptNumber: longest }) }),
+        shipment('s-twelve', {
+          deliveryConfirmation: confirmation({ receiptNumber: 'R'.repeat(RECEIPT_ONE_LINE) }),
+        }),
+      ],
+    });
+    const col = headersOf(html).indexOf(NUMBER);
+    const long = cellsOf(rowOf(html, 's-long'))[col] ?? '';
+    expect(text(long)).toBe(longest);
+    expect(long).toContain('max-w-[7rem]');
+    expect(long).toContain('break-words');
+    expect(long).not.toContain('truncate');
+    // Up to `RECEIPT_ONE_LINE` characters: one line, never broken.
+    const twelve = cellsOf(rowOf(html, 's-twelve'))[col] ?? '';
+    expect(twelve).toContain('whitespace-nowrap');
+    expect(twelve).not.toContain('max-w-[7rem]');
+  });
+
+  it('no longer says the number in «الحالة» — «مؤكَّدة», the bank billed and «بدون صورة» stay', () => {
+    const html = render();
+    const status = headersOf(html).indexOf(ar('operations.common.status'));
+    const confirmed = cellsOf(rowOf(html, 's-confirmed'))[status] ?? '';
+    expect(confirmed).toContain('data-delivered-state="confirmed"');
+    expect(text(confirmed)).toContain(ar('operations.delivered.confirmed'));
+    expect(text(confirmed)).toContain(
+      ar('operations.delivered.billedTo', {
+        bank: 'الأهلي',
+        side: ar('operations.delivered.side.origin'),
+      }),
+    );
+    expect(confirmed).not.toContain('RC-1001');
+    expect(confirmed).not.toContain('data-delivered-receipt');
+    expect(text(confirmed)).not.toContain(NUMBER);
+    // The status line «إيصال رقم …» is gone with it.
+    expect(html).not.toContain('إيصال رقم');
+    const secured = cellsOf(rowOf(html, 's-secured'))[status] ?? '';
+    expect(secured).toContain('data-delivered-no-photo="s-secured"');
+    expect(secured).not.toContain('RC-3003');
+    expect(PARTS).not.toContain('data-delivered-receipt=');
+  });
+
+  it('is this screen’s alone — the day board, the history, the secured and the vault boards keep theirs', () => {
+    for (const kind of ['shipments', 'secured', 'vault'] as const) {
+      const html = renderBoard(kind);
+      expect(headersOf(html), kind).not.toContain(NUMBER);
+      expect(html, kind).not.toContain('data-delivered-receipt=');
+      // Nor its box — and an old link's `?receipt=` narrows none of them: both rows are there.
+      expect(html, kind).not.toContain(`aria-label="${NUMBER}"`);
+      expect(html, kind).toContain('data-shipment-log="s-confirmed"');
+      expect(html, kind).toContain('data-shipment-log="s-awaiting"');
+    }
+    // The board of this screen: the column, and the box narrowing by it.
+    const delivered = renderBoard('delivered');
+    expect(headersOf(delivered)).toContain(NUMBER);
+    expect(delivered).toContain('data-shipment-log="s-confirmed"');
+    expect(delivered).not.toContain('data-shipment-log="s-awaiting"');
+    expect(BOARD).toContain("(column.key !== 'receiptNumber' || delivered) &&");
+  });
+
+  it('filters by «رقم الإيصال» — its box after «ملاحظات», a fragment of the number, folded', () => {
+    const html = render({ query: 'receipt=1001' });
+    const bar = html.slice(html.indexOf('data-shipment-filters'), html.indexOf('<table'));
+    expect(bar).toContain(`aria-label="${NUMBER}"`);
+    expect(bar).toContain(`placeholder="${NUMBER}"`);
+    expect(bar).toContain('value="1001"');
+    // The last box, after the notes', as its column is the last with words in it.
+    expect(bar.indexOf(`aria-label="${ar('operations.shipment.notes')}"`)).toBeLessThan(
+      bar.indexOf(`aria-label="${NUMBER}"`),
+    );
+    expect(bar.slice(bar.indexOf(`aria-label="${NUMBER}"`))).not.toContain('<input');
+    expect(html).toContain('data-shipment-log="s-confirmed"');
+    for (const id of ['s-awaiting', 's-secured', 's-secured-awaiting'])
+      expect(html).not.toContain(`data-shipment-log="${id}"`);
+    // Typed on an Arabic keyboard, its hyphen left out.
+    const arabic = render({ query: `receipt=${encodeURIComponent('rc ٣٠٠٣')}` });
+    expect(arabic).toContain('data-shipment-log="s-secured"');
+    expect(arabic).not.toContain('data-shipment-log="s-confirmed"');
+    // In English too.
+    expect(render({ locale: 'en' })).toContain('placeholder="Receipt no."');
+    // Round 33 C critic — its boxes name themselves for the bar's shares by their words; no other
+    // board's boxes do.
+    for (const name of ['bank', 'origin', 'destination', 'area', 'captain', 'notes', 'receipt'])
+      expect(bar).toContain(`data-bar-box="${name}"`);
+    for (const kind of ['shipments', 'secured', 'vault'] as const)
+      expect(renderBoard(kind), kind).not.toContain('data-bar-box');
+    // Round 33 C critic — read from the address (a reload keeps it), never remembered across
+    // visits: a number looked up last week would hide every row awaiting its ✓ today.
+    expect(PAGE).toMatch(/'confirmed',\s*'notes',\s*\] as const;/);
+    expect(PAGE.slice(PAGE.indexOf('const REMEMBERED_FILTERS'))).not.toMatch(
+      /^const REMEMBERED_FILTERS = \[[^\]]*'receipt'/,
+    );
   });
 });

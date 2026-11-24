@@ -10,7 +10,8 @@
 //     screen writes them; each kind's colour and icon is `COUNT_LOOK` (the look file);
 //   · THE VAN'S CARD on hover: everyone on the van, slot by slot, in the order the board added them
 //     (`vanCrewGroups`), each slot saying when it is empty, or that the reader may not see it; and
-//     when resting on (or tapping) the van opens it (`vanHoverAllowed`, `vanTapAllowed`).
+//     when resting on (or tapping) the van opens it (`vanHoverAllowed`, `vanTapAllowed`, and Round
+//     33 C's `vanRestArms` — not on the head's own act).
 import {
   type OperationsDayBoardDriverDto,
   type OperationsDayBoardPersonDto,
@@ -128,6 +129,22 @@ export const vanHoverAllowed = (state: {
  * Does a tap on the van open (or close) its card? A phone has no hover: a TOUCH on the head or the
  * captain's line does — but not on the captain's own name, which is his (R26 critic: the pointer
  * path skipped the name, the tap path did not). A mouse click is the hover's business.
+ *
+ * Round 33 C — nor on the head's own act (`onAct`: «تسليم المحصنات»'s «طباعة» icon, `VanCard`'s
+ * `headAction`): a press there — a tap, a click, Enter or Space, which all reach the van as a click
+ * — only prints; the van's card neither opens nor closes.
  */
-export const vanTapAllowed = (state: { touch: boolean; onPerson: boolean }): boolean =>
-  state.touch && !state.onPerson;
+export const vanTapAllowed = (state: {
+  touch: boolean;
+  onPerson: boolean;
+  onAct?: boolean;
+}): boolean => state.touch && !state.onPerson && state.onAct !== true;
+
+/**
+ * Round 33 C — the pointer moved inside the head or the captain's frame: does resting HERE arm the
+ * van's card (its usual beat)? Not on the captain's own name — his person card takes over — and not
+ * on the head's own act (`onAct`, the vault's «طباعة» icon): that is a button, no question about the
+ * van. On either, the van's card waits no beat and closes if it was open.
+ */
+export const vanRestArms = (spot: { onPerson: boolean; onAct: boolean }): boolean =>
+  !spot.onPerson && !spot.onAct;

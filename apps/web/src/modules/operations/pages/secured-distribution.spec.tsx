@@ -49,7 +49,8 @@ import {
   VAN_LOOK,
   VAN_STATE_STRIPE,
 } from '../components/distribution-look';
-import { RecordNotice, dayText } from '../components/SecuredDistributionParts';
+import { HEAD_SQUEEZE, RecordNotice, dayText } from '../components/SecuredDistributionParts';
+import { vanRestArms, vanTapAllowed } from '../lib/van-card';
 import { handoverWhen } from '../lib/secured-distribution';
 import { SecuredDistributionPage } from './SecuredDistributionPage';
 import { VaultHandoverPage } from './VaultHandoverPage';
@@ -923,10 +924,18 @@ describe('«تسليم المحصنات» — the vault', () => {
     expect(html).not.toContain('data-shipment-tone="proposed"');
   });
 
-  it('puts «تسليم» and «طباعة» over each van; «تسليم» counts only what the vault holds', () => {
+  // REWRITTEN in Round 33 C — it was «puts «تسليم» and «طباعة» over each van; …»: «طباعة» is the
+  // icon at the end of the van's head now, «تسليم» alone in the row over it.
+  it('puts «تسليم» over each van and «طباعة» in its head; «تسليم» counts only what the vault holds', () => {
     const v101 = vanOf(html, 'cr-101');
-    expect(v101).toContain('data-handover-open="cr-101"');
-    expect(v101).toContain('data-handover-print="cr-101"');
+    const row = v101.slice(
+      v101.indexOf('data-van-actions="true"'),
+      v101.indexOf('data-van-hover='),
+    );
+    expect(row).toContain('data-handover-open="cr-101"');
+    expect(row).not.toContain('data-handover-print');
+    const head = v101.slice(v101.indexOf('<header data-van-band'), v101.indexOf('</header>'));
+    expect(head).toContain('data-handover-print="cr-101"');
     // R26 critic — «تسليم (1)» over the van's «1 محصنة»: one numeral system on the card.
     expect(v101).toContain(ar('operations.handover.handover', { count: '1' }));
     // The one still with its captain is listed, marked, and said not to go.
@@ -1369,6 +1378,286 @@ describe('«تسليم المحصنات» — a PAST day is its record, view onl
   });
 });
 
+// ── Round 33 C — «عاوز كلمة طباعة دى تكون العلامة بس وممكن تحطها فى مكان فى الكارد عشان متخدش مساحة
+// كبيره» ──────────────────────────────────────────────────────────────────────────────────────────
+describe('«تسليم المحصنات» — «طباعة» is its icon, at the end of the van’s head (Round 33 C)', () => {
+  const HANDOVER_PATH = '/operations/vault/handover' as const;
+  const YESTERDAY = new Date(Date.parse(`${TODAY}T00:00:00Z`) - 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const today = render({ path: HANDOVER_PATH, permissions: VAULT, data: answer() });
+  const record = render({
+    path: HANDOVER_PATH,
+    permissions: VAULT,
+    data: answer({
+      date: `${YESTERDAY}T00:00:00.000Z`,
+      past: true,
+      recordPackages: [],
+      recordHandovers: [],
+    }),
+    date: YESTERDAY,
+  });
+  const viewer = render({
+    path: HANDOVER_PATH,
+    permissions: ['operationsVault.view'],
+    data: answer(),
+  });
+  const desk = render({
+    path: '/operations/secured/distribution',
+    permissions: DESK,
+    data: answer(),
+  });
+  /** The van's head — its `<header>`, whole. */
+  const headOf = (card: string): string =>
+    card.slice(card.indexOf('<header data-van-band'), card.indexOf('</header>') + 9);
+  /** The print button, whole. */
+  const printOf = (card: string): string => {
+    const at = card.indexOf('data-handover-print=');
+    expect(at).toBeGreaterThan(-1);
+    return card.slice(card.lastIndexOf('<button', at), card.indexOf('</button>', at) + 9);
+  };
+  /** What a reader sees of a piece of markup: its words, no tags (no attributes). */
+  const words = (markup: string): string => markup.replace(/<[^>]*>/g, '');
+
+  it('is an icon button — named «طباعة», saying on hover what it prints, the word nowhere on the card', () => {
+    for (const html of [today, record, viewer]) {
+      for (const v of VANS) {
+        const card = vanOf(html, v.crewAssignmentId);
+        const button = printOf(card);
+        expect(button).toMatch(/^<button type="button" data-handover-print="cr-\d+"/);
+        expect(button).toContain(`aria-label="${ar('operations.handover.print')}"`);
+        expect(button).toContain(
+          `title="${ar('operations.handover.printTitle', {
+            van: ar('operations.distribution.vanLabel', { code: v.vehicleCode ?? '' }),
+          })}"`,
+        );
+        // The icon only: the same document drawing «طباعة» wore, no word beside it.
+        expect(words(button)).toBe('');
+        expect(button).toContain('<svg');
+        expect(button).toContain('d="M9 13h6m-6 4h4"');
+        expect(words(card)).not.toContain(ar('operations.handover.print'));
+      }
+    }
+    // A 24px square with the board's focus ring; a keyboard reaches it (a button).
+    const tag = printOf(vanOf(today, 'cr-101')).slice(
+      0,
+      printOf(vanOf(today, 'cr-101')).indexOf('>'),
+    );
+    for (const c of [
+      'h-6',
+      'w-6',
+      'shrink-0',
+      'focus-visible:ring-2',
+      'focus-visible:ring-brand-500',
+    ]) {
+      expect(tag.split(/[\s"]/)).toContain(c);
+    }
+    expect(tag).not.toContain('tabindex="-1"');
+    // Both languages.
+    expect(ar('operations.handover.print')).toBe('طباعة');
+    expect(translate('en', 'operations.handover.print')).toBe('Print');
+    expect(ar('operations.handover.printTitle', { van: 'السيارة 112' })).toBe(
+      'طباعة كشف تحميل السيارة 112',
+    );
+    expect(translate('en', 'operations.handover.printTitle', { van: 'Van 112' })).toBe(
+      'Print the load sheet of Van 112',
+    );
+  });
+
+  // Round 33 C critic — on behaviour-level hooks, not class strings: the act's slot is the head's
+  // LAST child, after the line (code · time · direction), and holds the print button alone.
+  it('sits in the head’s one line, at its end after the direction — never in the row over the van', () => {
+    for (const html of [today, record, viewer]) {
+      for (const v of VANS) {
+        const head = headOf(vanOf(html, v.crewAssignmentId));
+        const slot = head.slice(head.indexOf('<span data-van-head-action="true"'));
+        expect(slot).toMatch(
+          new RegExp(
+            `^<span data-van-head-action="true"[^>]*><button type="button" data-handover-print="${v.crewAssignmentId}"[^>]*>.*</button></span></header>$`,
+          ),
+        );
+        // After the line, which keeps its three parts in their order.
+        expect(head.indexOf('data-van-head-action')).toBeGreaterThan(
+          head.indexOf('data-van-direction='),
+        );
+        expect(head.indexOf('data-van-code=')).toBeLessThan(head.indexOf('data-van-direction='));
+        expect(head.indexOf('data-van-head-action')).toBeGreaterThan(
+          head.lastIndexOf('</div>', head.indexOf('data-van-head-action')),
+        );
+        // Never shrinks: the slot's own class says so (the line before it is what gives).
+        expect(slot.slice(0, slot.indexOf('>')).split(/[\s"]/)).toContain('shrink-0');
+      }
+    }
+  });
+
+  // Round 33 C critic — «طباعة» at the line's end took 30px from the direction alone: at 1366 and
+  // 1024 a crew without a van showed «ح…» of «حلوان», in English only the arrow. A head with an act
+  // now measures its line (a size container) and, when narrow, drops the time's clock and the
+  // no-van drawing; the direction keeps a floor (its arrow and 28px of words).
+  it('on a narrow card the line makes the icon’s room — the clock and the no-van drawing go, the direction keeps a floor', () => {
+    const tokens = (tag: string): string[] => (/class="([^"]*)"/.exec(tag)?.[1] ?? '').split(/\s+/);
+    const tagOf = (markup: string, hook: string): string => {
+      const at = markup.indexOf(hook);
+      expect(at, hook).toBeGreaterThan(-1);
+      return markup.slice(markup.lastIndexOf('<', at), markup.indexOf('>', at) + 1);
+    };
+    /** The first `<svg` tag after a hook — the pill's own drawing. */
+    const glyphOf = (markup: string, hook: string): string => {
+      const at = markup.indexOf('<svg', markup.indexOf(hook));
+      return markup.slice(at, markup.indexOf('>', at) + 1);
+    };
+    for (const html of [today, record, viewer]) {
+      for (const v of VANS) {
+        const head = headOf(vanOf(html, v.crewAssignmentId));
+        const line = tagOf(head, 'data-van-head="true"');
+        expect(line).toContain('data-van-head-squeeze="true"');
+        expect(tokens(line)).toContain(HEAD_SQUEEZE.container);
+        if (v.plannedTime !== null)
+          expect(tokens(glyphOf(head, 'data-van-time='))).toContain(HEAD_SQUEEZE.glyph);
+        // The van's drawing stays on a van; a crew without one drops its crossed van.
+        const code = tokens(glyphOf(head, 'data-van-code='));
+        if (v.vehicleCode === null) expect(code).toContain(HEAD_SQUEEZE.glyph);
+        else expect(code).not.toContain(HEAD_SQUEEZE.glyph);
+        const direction = tokens(tagOf(head, 'data-van-direction='));
+        for (const c of HEAD_SQUEEZE.floor.split(' ')) expect(direction).toContain(c);
+        // Its minimum is the flex item's own (the smaller of its words and the floor): no min-w-0.
+        expect(direction).not.toContain('min-w-0');
+      }
+    }
+    // The rule, once: the line is the container, 18rem the width it squeezes at.
+    expect(HEAD_SQUEEZE).toEqual({
+      container: '[container-type:inline-size]',
+      glyph: '[@container(max-width:18rem)]:hidden',
+      floor: 'w-14 basis-[max-content]',
+    });
+    // «توزيع المحصنات»: none of it.
+    for (const v of VANS) {
+      const head = headOf(vanOf(desk, v.crewAssignmentId));
+      expect(head).not.toContain('data-van-head-squeeze');
+      expect(head).not.toContain('[container-type:inline-size]');
+      expect(head).not.toContain('[@container(max-width:18rem)]:hidden');
+      expect(tokens(tagOf(head, 'data-van-direction='))).toContain('min-w-0');
+    }
+  });
+
+  it('prints what it printed: the van and its load, through the one `print` — today, a day to come, a record', () => {
+    expect(HANDOVER).toMatch(
+      /headAction=\{\s*<button\s+type="button"\s+data-handover-print=\{van\.crewAssignmentId\}\s+aria-label=\{t\('operations\.handover\.print'\)\}\s+title=\{t\('operations\.handover\.printTitle', \{ van: vanName\(van\) \}\)\}\s+onClick=\{\(\) => print\(van, load\)\}/,
+    );
+    expect(HANDOVER.match(/print\(van, load\)/g)).toHaveLength(1);
+    // `print` is unchanged: the van's sheet over its load, a record's words on a record.
+    expect(HANDOVER).toMatch(
+      /printFleetReport\(\s*vanLoadSheet\(\{[\s\S]*?record: isRecord[\s\S]*?van,\s*looseNumber: looseNumberOf\(van\.crewAssignmentId\),[\s\S]*?rows: load,/,
+    );
+    expect(HANDOVER).toContain("toast.error(t('operations.handover.popupBlocked'));");
+  });
+
+  // Round 33 C critic — the rule is the pure `vanTapAllowed` (`onAct`) and `vanRestArms`, tested in
+  // `lib/van-card.spec.ts`; here, only that the card asks them with the act's hook.
+  it('only prints — a click, a tap, Enter or Space neither opens nor closes the van’s card, and resting on it is not resting on the head', () => {
+    // The rule itself.
+    expect(vanTapAllowed({ touch: true, onPerson: false, onAct: true })).toBe(false);
+    expect(vanTapAllowed({ touch: true, onPerson: false, onAct: false })).toBe(true);
+    expect(vanRestArms({ onPerson: false, onAct: true })).toBe(false);
+    expect(vanRestArms({ onPerson: false, onAct: false })).toBe(true);
+    // The card asks it, with what is under the pointer — the act's hook — for a click (a tap,
+    // Enter and Space reach the van's group as one) and for resting.
+    expect(PARTS).toContain("target.closest('[data-van-head-action]') !== null");
+    expect(PARTS).toContain('const onAct = onHeadAction(event.target);');
+    expect(PARTS).toMatch(
+      /if \(!vanTapAllowed\(\{ touch: pointer\.current === 'touch', onPerson, onAct \}\)\) return;\s*setTapped\(\(open\) => !open\);/,
+    );
+    expect(PARTS).toMatch(
+      /if \(vanRestArms\(\{ onPerson: onPersonName\(target\), onAct: onHeadAction\(target\) \}\)\) hover\.arm\(\);\s*else hover\.dismiss\(\);/,
+    );
+    // Nothing in the van's card stops the click on its way: the group decides, by the pure rule.
+    const vanCard = PARTS.slice(
+      PARTS.indexOf('export const VanCard = ('),
+      PARTS.indexOf('/** A crossed circle'),
+    );
+    expect(vanCard).toContain('data-van-head-action="true"');
+    expect(vanCard).not.toContain('stopPropagation');
+    // A Tab onto it: the group opens its card on ITS OWN keyboard focus only, not a child's.
+    expect(read('../../fleet/components/HoverCardLayer.tsx')).toContain(
+      'if (!keyboardFocus(e.currentTarget)) return;',
+    );
+    // The icon is inside the van's group — the head the group draws — and the card is not open.
+    const card = vanOf(today, 'cr-101');
+    const group = card.slice(card.indexOf('data-van-hover="cr-101"'));
+    expect(group.indexOf('data-handover-print="cr-101"')).toBeGreaterThan(-1);
+    expect(group.indexOf('data-handover-print="cr-101"')).toBeLessThan(group.indexOf('</header>'));
+    expect(card).not.toContain('data-van-card=');
+  });
+
+  it('draws the row over the van for «تسليم» alone — none on a record or for a reader without the dispatch grant, no empty strip', () => {
+    for (const v of VANS) {
+      const card = vanOf(today, v.crewAssignmentId);
+      const row = card.slice(
+        card.indexOf('data-van-actions="true"'),
+        card.indexOf('data-van-hover='),
+      );
+      expect(card.match(/data-van-actions="true"/g)).toHaveLength(1);
+      expect(row).toContain(`data-handover-open="${v.crewAssignmentId}"`);
+      expect(row).not.toContain('data-handover-print');
+      for (const html of [record, viewer]) {
+        const other = vanOf(html, v.crewAssignmentId);
+        expect(other).not.toContain('data-van-actions');
+        expect(other).not.toContain('border-b border-slate-100 py-2');
+        expect(other).not.toContain('data-handover-open');
+        expect(other).toContain(`data-handover-print="${v.crewAssignmentId}"`);
+      }
+    }
+    // A day to come keeps its row: «تسليم» is there, off, with why.
+    const ahead = render({
+      path: HANDOVER_PATH,
+      permissions: VAULT,
+      data: answer({ date: `${TOMORROW}T00:00:00.000Z` }),
+      date: TOMORROW,
+    });
+    expect(vanOf(ahead, 'cr-101')).toContain('data-van-actions="true"');
+    expect(vanOf(ahead, 'cr-101')).toContain('data-handover-block="notToday"');
+    // The rule, in the card and on the page.
+    expect(PARTS).toContain(
+      'const hasActions = actions !== undefined && actions !== null && actions !== false;',
+    );
+    expect(HANDOVER).toMatch(/actions=\{\s*canHandOver \? \(/);
+  });
+
+  // Round 33 C (verify) — the day's hint said «فوق كل سيارة «تسليم»» to a reader without the dispatch
+  // grant too, whose vans now have no row over them at all: it says only where the icon is to him.
+  it('says where «طباعة» is in the day’s hint — and «تسليم» over each van only to who has it', () => {
+    /** The day's hint under the toolbar (`data-handover-bar`), in words. */
+    const hintOf = (html: string): string => {
+      const at = html.indexOf('data-handover-bar="true"');
+      expect(at).toBeGreaterThan(-1);
+      return words(html.slice(at, html.indexOf('</div>', at)));
+    };
+    expect(hintOf(today)).toContain(ar('operations.handover.hint'));
+    expect(ar('operations.handover.hint')).toContain('فوق كل سيارة «تسليم»');
+    expect(hintOf(viewer)).toContain(ar('operations.handover.hintViewer'));
+    expect(hintOf(viewer)).not.toContain('فوق كل سيارة');
+    expect(hintOf(viewer)).toContain('أيقونة الطباعة');
+    expect(viewer).not.toContain('data-handover-open');
+    expect(translate('en', 'operations.handover.hintViewer')).toBe(
+      'The print icon is at the end of each van’s head. Only shipments in the vault are handed over, and they leave the vault on handover.',
+    );
+    expect(translate('en', 'operations.handover.hintViewer')).not.toContain('Hand over is');
+  });
+
+  it('leaves «توزيع المحصنات»’s van card as it was — no act in its head, no row over it', () => {
+    for (const v of VANS) {
+      const card = vanOf(desk, v.crewAssignmentId);
+      expect(card).not.toContain('data-van-head-action');
+      expect(card).not.toContain('data-van-actions');
+      expect(card).not.toContain('data-handover-');
+      // The head ends with its one line.
+      expect(headOf(card)).toMatch(/<\/span><\/div><\/header>$/);
+    }
+    expect(DIST).not.toContain('headAction');
+    expect(DIST).not.toMatch(/\sactions=\{/);
+  });
+});
+
 // ── Source pins — what each screen is built from ───────────────────────────────────────────────
 
 const read = (rel: string): string =>
@@ -1546,10 +1835,21 @@ describe('Round 24c — the widths, and the van card', () => {
     );
   });
 
-  it('is the same card on «تسليم المحصنات», under «تسليم» and «طباعة»', () => {
+  // REWRITTEN in Round 33 C — it was «is the same card on «تسليم المحصنات», under «تسليم» and
+  // «طباعة»», and put «طباعة» in the row over the head. The owner: «عاوز كلمة طباعة دى تكون العلامة
+  // بس وممكن تحطها فى مكان فى الكارد عشان متخدش مساحة كبيره» — «طباعة» is its icon now, at the END
+  // of the head's one line; only «تسليم» stays over the head.
+  it('is the same card on «تسليم المحصنات», under «تسليم», with «طباعة» at its head line’s end', () => {
     const card = vanOf(vault, 'cr-loose-1');
     expect(card).toContain('data-handover-print="cr-loose-1"');
-    expect(card.indexOf('data-handover-print')).toBeLessThan(card.indexOf('data-van-head="true"'));
+    const head = card.slice(card.indexOf('<header data-van-band'), card.indexOf('</header>'));
+    expect(head).toContain('data-handover-print="cr-loose-1"');
+    expect(head.indexOf('data-handover-print')).toBeGreaterThan(
+      head.indexOf('data-van-direction='),
+    );
+    expect(card.indexOf('data-handover-open="cr-loose-1"')).toBeLessThan(
+      card.indexOf('data-van-head="true"'),
+    );
     expect(card).toContain('data-van-captain="c9"');
     expect(card).toMatch(/data-van-crew="cr-loose-1"[^>]*><span data-van-count="0"/);
     expect(card).toContain('data-van-packages="0/0/0"');

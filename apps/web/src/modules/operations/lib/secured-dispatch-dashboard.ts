@@ -464,8 +464,9 @@ export const dashboardExportSections = (
  */
 export type DashboardFilterParam = Exclude<
   keyof DayBoardFilters,
-  // Round 33 B — `confirmed` is «الشحنات المسلَّمة»'s box, never «محصنات الخزينة»'s.
-  'type' | 'received' | 'pickup' | 'vault' | 'confirmed'
+  // Round 33 B — `confirmed` is «الشحنات المسلَّمة»'s box, never «محصنات الخزينة»'s; Round 33 C —
+  // and so is `receipt`, its «رقم الإيصال».
+  'type' | 'received' | 'pickup' | 'vault' | 'confirmed' | 'receipt'
 >;
 export const DASHBOARD_FILTER_ORDER: readonly (DashboardFilterParam | 'date')[] = [
   'vehicle',

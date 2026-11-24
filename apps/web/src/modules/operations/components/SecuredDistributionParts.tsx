@@ -87,6 +87,7 @@ import {
   PACKAGE_KINDS,
   vanCrewGroups,
   vanHoverAllowed,
+  vanRestArms,
   vanTapAllowed,
   type CountKind,
 } from '../lib/van-card';
@@ -1411,18 +1412,41 @@ export const VanCounts = ({
 );
 
 /**
+ * Round 33 C critic — «تسليم المحصنات»'s head ends with the «طباعة» icon (`VanCard`'s `headAction`):
+ * 24px and its 6px gap. On a narrow card — the grid's 17.5–19rem, a 1366 or 1440 laptop, 1024 —
+ * that room came out of the direction alone, and a crew without a van (the widest pill, «بدون سيارة
+ * (١)», «No vehicle (1)») kept «ح…» of «حلوان», or only its arrow. So a head that carries an act
+ * measures its line's room (`container` — code · time · direction, the act's slot left out) and
+ * makes the icon's room:
+ *   · `glyph` — at 18rem of line or less, the time drops its clock (its «11:00» says what it is) and
+ *     a crew without a van drops its crossed-van drawing (its words say it): 16px and 22px back;
+ *   · `floor` — the direction shrinks no further than its arrow and 28px of words (or its whole
+ *     words, if fewer): its FLEX minimum is the smaller of its content and its `width` (3.5rem),
+ *     while its basis stays its whole words — a short direction keeps its own width, never padded.
+ * «توزيع المحصنات»'s head carries no act and is none of this: its pills are as they were.
+ */
+export const HEAD_SQUEEZE = {
+  container: '[container-type:inline-size]',
+  glyph: '[@container(max-width:18rem)]:hidden',
+  floor: 'w-14 basis-[max-content]',
+} as const;
+
+/**
  * The van's code as the card draws it (Round 26b — «لون واحد لكل العربيات»): ONE pill for every van,
  * (Round 27 — the owner's blue: a soft blue tint, a blue edge, `VAN_LOOK`), the van's drawing before
- * its code; «بدون سيارة (n)» for a crew without one, in the same pill.
+ * its code; «بدون سيارة (n)» for a crew without one, in the same pill. Round 33 C — `squeeze` (a head
+ * with an act at its end): a crew without a van drops its drawing on a narrow head (`HEAD_SQUEEZE`).
  */
 export const VanCodePill = ({
   van,
   looseNumber,
   size = 'md',
+  squeeze = false,
 }: {
   van: OperationsDayBoardVehicleCrewDto;
   looseNumber: string | null;
   size?: 'sm' | 'md';
+  squeeze?: boolean;
 }): JSX.Element => {
   const t = useT();
   const noVan = hasNoVan(van);
@@ -1439,7 +1463,12 @@ export const VanCodePill = ({
     >
       <BoardIcon
         d={noVan ? [...PLAN_ICON.noVan] : [...PATH.truck]}
-        className={cn('shrink-0', size === 'md' ? 'h-4 w-4' : 'h-3.5 w-3.5', VAN_LOOK.icon)}
+        className={cn(
+          'shrink-0',
+          size === 'md' ? 'h-4 w-4' : 'h-3.5 w-3.5',
+          VAN_LOOK.icon,
+          squeeze && noVan && HEAD_SQUEEZE.glyph,
+        )}
       />
       <span
         className={cn(
@@ -1456,8 +1485,17 @@ export const VanCodePill = ({
   );
 };
 
-/** The van's planned time — calm and neutral (Round 26b, `HEAD_PILL`); nothing when it has none. */
-const TimePill = ({ van }: { van: OperationsDayBoardVehicleCrewDto }): JSX.Element | null => {
+/**
+ * The van's planned time — calm and neutral (Round 26b, `HEAD_PILL`); nothing when it has none.
+ * Round 33 C — `squeeze`: its clock goes on a narrow head that carries an act (`HEAD_SQUEEZE`).
+ */
+const TimePill = ({
+  van,
+  squeeze = false,
+}: {
+  van: OperationsDayBoardVehicleCrewDto;
+  squeeze?: boolean;
+}): JSX.Element | null => {
   const t = useT();
   const time = van.plannedTime === null || van.plannedTime === '' ? null : van.plannedTime;
   if (time === null) return null;
@@ -1470,7 +1508,10 @@ const TimePill = ({ van }: { van: OperationsDayBoardVehicleCrewDto }): JSX.Eleme
         HEAD_PILL.time,
       )}
     >
-      <BoardIcon d={[...PLAN_ICON.clock]} className={cn('h-3 w-3', HEAD_PILL.timeIcon)} />
+      <BoardIcon
+        d={[...PLAN_ICON.clock]}
+        className={cn('h-3 w-3', HEAD_PILL.timeIcon, squeeze && HEAD_SQUEEZE.glyph)}
+      />
       <span dir="ltr" className={NUM}>
         {time}
       </span>
@@ -1481,14 +1522,17 @@ const TimePill = ({ van }: { van: OperationsDayBoardVehicleCrewDto }): JSX.Eleme
 /**
  * The van's direction — a neutral pill with its arrow in blue (Round 27d, `HEAD_PILL`); «بلا اتجاه»,
  * quieter. On the card's one line it is cut, whole on hover and to a screen reader; on the van's
- * card (`wrap`) it is written whole.
+ * card (`wrap`) it is written whole. Round 33 C — `squeeze` (a head with an act at its end): it is
+ * cut no shorter than its arrow and 28px of words (`HEAD_SQUEEZE.floor`).
  */
 const DirectionPill = ({
   van,
   wrap = false,
+  squeeze = false,
 }: {
   van: OperationsDayBoardVehicleCrewDto;
   wrap?: boolean;
+  squeeze?: boolean;
 }): JSX.Element => {
   const t = useT();
   // Round 28 critic — a direction that names nothing («-», a zero-width space) is «بلا اتجاه», as
@@ -1503,7 +1547,14 @@ const DirectionPill = ({
       data-van-direction={van.direction ?? ''}
       title={chipTitle(t('operations.crew.direction'), directionText)}
       className={cn(
-        'inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] ring-1 ring-inset',
+        // `cn` does not merge: with the floor, the minimum is the flex item's automatic one — no
+        // `min-w-0`; without it, the pill as it was.
+        squeeze
+          ? cn(
+              'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] ring-1 ring-inset',
+              HEAD_SQUEEZE.floor,
+            )
+          : 'inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] ring-1 ring-inset',
         direction === null
           ? cn('font-bold', HEAD_PILL.none)
           : cn('font-black', HEAD_PILL.direction),
@@ -1658,6 +1709,14 @@ const onPersonName = (target: EventTarget | null): boolean =>
   target instanceof Element && target.closest('[data-van-person]') !== null;
 
 /**
+ * Round 33 C — is the pointer (or a click) on the head's own act (`headAction`: the vault's «طباعة»
+ * icon)? It is that act's alone: resting on it is not resting on the head (`vanRestArms`), and a
+ * press on it toggles no van card (`vanTapAllowed`'s `onAct`).
+ */
+const onHeadAction = (target: EventTarget | null): boolean =>
+  target instanceof Element && target.closest('[data-van-head-action]') !== null;
+
+/**
  * THE VAN — the crew board's row for the day.
  *
  * Round 25 — «شكل العربية بالمحصنات يتغير … العربيه لو عليها اتنين قادة انا عاوز اللى يظهر اللى انا
@@ -1707,6 +1766,7 @@ export const VanCard = ({
   takesNone = false,
   calm = false,
   actions,
+  headAction,
   drop,
   children,
   footer,
@@ -1736,8 +1796,20 @@ export const VanCard = ({
    * on an empty load. Its words stay (they say what the row was), in the card's neutral slate.
    */
   calm?: boolean;
-  /** Above the van — the vault's «تسليم» and «طباعة». */
+  /**
+   * Above the van — the vault's «تسليم» (Round 33 C: «طباعة» is in the head now, `headAction`).
+   * Nothing to put there (left out, null or false): no row at all — never an empty bordered strip.
+   */
   actions?: ReactNode;
+  /**
+   * Round 33 C — «عاوز كلمة طباعة دى تكون العلامة بس وممكن تحطها فى مكان فى الكارد عشان متخدش مساحة
+   * كبيره»: one small act at the END of the head's one line, after the direction. The vault's
+   * «طباعة», an icon only. A press on it, by mouse, touch or keyboard, is its own: the van's card
+   * neither opens nor closes, and resting on it is not resting on the head (`vanTapAllowed`,
+   * `vanRestArms`). On a narrow card the line makes the icon's room without starving the direction
+   * (`HEAD_SQUEEZE`). «توزيع المحصنات» gives none, and its head is as it was.
+   */
+  headAction?: ReactNode;
   drop?: {
     /** A shipment is being dragged and this van would take it. */
     armed: boolean;
@@ -1768,11 +1840,17 @@ export const VanCard = ({
   });
   const { tapped, setTapped, pointer } = useTapCard(hover.anchor);
   // The pointer moved inside the head or the captain's frame: onto the captain's own name, his card
-  // takes over; anywhere else, the van's card waits its beat (again, if the name had it).
+  // takes over; onto the head's own act (Round 33 C — «طباعة»), nobody's — that is no question about
+  // the van; anywhere else, the van's card waits its beat (again, if the name or the act had it).
   const rest = (target: EventTarget | null): void => {
-    if (onPersonName(target)) hover.dismiss();
-    else hover.arm();
+    if (vanRestArms({ onPerson: onPersonName(target), onAct: onHeadAction(target) })) hover.arm();
+    else hover.dismiss();
   };
+  // Round 33 C — the row over the van holds only what the page gives it («تسليم» today): with
+  // nothing (a record, a reader without the dispatch grant), no row and no empty strip.
+  const hasActions = actions !== undefined && actions !== null && actions !== false;
+  // Round 33 C — a head that carries an act: its line measures its own room (`HEAD_SQUEEZE`).
+  const squeeze = headAction !== undefined;
 
   return (
     <article
@@ -1824,8 +1902,11 @@ export const VanCard = ({
                 : VAN_LOOK.stripe,
         )}
       />
-      {actions !== undefined && (
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 py-2 pe-2.5 ps-3.5 dark:border-slate-800">
+      {hasActions && (
+        <div
+          data-van-actions="true"
+          className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 py-2 pe-2.5 ps-3.5 dark:border-slate-800"
+        >
           {actions}
         </div>
       )}
@@ -1844,7 +1925,9 @@ export const VanCard = ({
           // R26 critic — a tap on the captain's name is his card's: the van's closes, if open.
           const onPerson = onPersonName(event.target);
           if (onPerson) setTapped(false);
-          if (!vanTapAllowed({ touch: pointer.current === 'touch', onPerson })) return;
+          // Round 33 C — a press on the head's own act («طباعة») is its own: no toggle.
+          const onAct = onHeadAction(event.target);
+          if (!vanTapAllowed({ touch: pointer.current === 'touch', onPerson, onAct })) return;
           setTapped((open) => !open);
         }}
         className="flex min-w-0 flex-col focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/60"
@@ -1856,12 +1939,29 @@ export const VanCard = ({
             VAN_LOOK.band,
           )}
         >
-          {/* ONE line: code · time · direction — nothing else, so the direction has the room. */}
-          <div data-van-head="true" className="flex min-w-0 flex-1 items-center gap-1.5">
-            <VanCodePill van={van} looseNumber={looseNumber} />
-            <TimePill van={van} />
-            <DirectionPill van={van} />
+          {/* ONE line: code · time · direction — nothing else, so the direction has the room.
+              Round 33 C — with an act after it, the line measures its own room (`HEAD_SQUEEZE`). */}
+          <div
+            data-van-head="true"
+            data-van-head-squeeze={squeeze ? 'true' : undefined}
+            className={cn(
+              'flex min-w-0 flex-1 items-center gap-1.5',
+              squeeze && HEAD_SQUEEZE.container,
+            )}
+          >
+            <VanCodePill van={van} looseNumber={looseNumber} squeeze={squeeze} />
+            <TimePill van={van} squeeze={squeeze} />
+            <DirectionPill van={van} squeeze={squeeze} />
           </div>
+          {/* Round 33 C — the head's own act at the line's end (`headAction`): never cut, never
+              wrapped. A press on it is its own — the group's click asks `vanTapAllowed` with
+              `onAct`, so the van's card neither opens nor closes. Not an act of its own (no role,
+              no tab stop): the button inside is what the hand and the keyboard reach. */}
+          {headAction !== undefined && (
+            <span data-van-head-action="true" className="ms-1.5 flex shrink-0 items-center">
+              {headAction}
+            </span>
+          )}
         </header>
         <div className="flex min-w-0 flex-col gap-2 pe-2.5 ps-3.5 pt-2.5">
           {kept && (

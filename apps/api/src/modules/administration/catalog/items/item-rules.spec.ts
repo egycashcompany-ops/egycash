@@ -2,12 +2,14 @@
 // max where set (OD-09), and each comparison that fails names both its ends; the levels are whole
 // numbers from 0 (OD-08), as the contract takes them; a retired unit or category is refused with
 // its field; a category with active subcategories is refused to the item a write leaves in it
-// (OD-06 (i)); and a retired item is hidden only from new references (OD-70 A).
+// (OD-06 (i)), except to an edit that only retires or brings back the item; and a retired item is
+// hidden only from new references (OD-70 A).
 import { AdministrationStockLevelSchema, ErrorCodes } from '@ecms/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   activeFor,
   deactivationProblem,
+  isStatusChangeOnly,
   referenceRefusal,
   stockLevelsOutOfOrder,
   stockLevelsRefusal,
@@ -102,6 +104,15 @@ describe('the category’s level (OD-06 (i))', () => {
 
   it('takes a category without active subcategories — a leaf, or one whose children all retired', () => {
     expect(subcategoryRefusal({ hasActiveSubcategories: false })).toBeNull();
+  });
+
+  it('a status change alone is not the edit that re-files an item; any other field is', () => {
+    expect(isStatusChangeOnly({ isActive: false, version: 3 })).toBe(true);
+    expect(isStatusChangeOnly({ isActive: true, version: 3 })).toBe(true);
+    expect(isStatusChangeOnly({ isActive: false, notes: undefined, version: 3 })).toBe(true);
+    expect(isStatusChangeOnly({ isActive: false, notes: 'retired', version: 3 })).toBe(false);
+    expect(isStatusChangeOnly({ isActive: false, notes: null, version: 3 })).toBe(false);
+    expect(isStatusChangeOnly({ categoryId: '64a000000000000000000001', version: 3 })).toBe(false);
   });
 });
 

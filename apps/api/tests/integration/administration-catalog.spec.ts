@@ -1020,14 +1020,29 @@ describe('items (§2.3.4; OD-05 A codes)', () => {
       const kept = data<AdministrationItemDto>(await api.get(`/items/${created.id}`));
       expect(kept.categoryId, 'adding a level invalidates no item').toBe(top.id);
 
-      // That edit re-files it, whatever else it changes — retiring is an edit too (§2.3.4).
+      // Retiring it, or bringing it back, and nothing else, is not that edit: a new level never
+      // stops an item from being retired.
+      const retired = await api.patch(`/items/${created.id}`, { isActive: false, version: 0 });
+      expect(retired.status, JSON.stringify(retired.body)).toBe(200);
+      expect(data<AdministrationItemDto>(retired)).toMatchObject({
+        categoryId: top.id,
+        isActive: false,
+      });
+      const back = await api.patch(`/items/${created.id}`, { isActive: true, version: 1 });
+      expect(back.status, JSON.stringify(back.body)).toBe(200);
+      expect(data<AdministrationItemDto>(back)).toMatchObject({
+        categoryId: top.id,
+        isActive: true,
+      });
+
+      // Any other edit re-files it, whatever else it changes, a status change alongside included.
       for (const edit of [
         { notes: 'reclassify later' },
         { categoryId: top.id, notes: 'reclassify later' },
-        { isActive: false },
+        { isActive: false, notes: 'retired' },
       ]) {
         refused(
-          await api.patch(`/items/${created.id}`, { ...edit, version: 0 }),
+          await api.patch(`/items/${created.id}`, { ...edit, version: 2 }),
           422,
           'ADMINISTRATION_SUBCATEGORY_REQUIRED',
           ['categoryId'],
@@ -1036,7 +1051,7 @@ describe('items (§2.3.4; OD-05 A codes)', () => {
       const refiled = await api.patch(`/items/${created.id}`, {
         categoryId: sub.id,
         notes: 'reclassified',
-        version: 0,
+        version: 2,
       });
       expect(refiled.status, JSON.stringify(refiled.body)).toBe(200);
       expect(data<AdministrationItemDto>(refiled)).toMatchObject({

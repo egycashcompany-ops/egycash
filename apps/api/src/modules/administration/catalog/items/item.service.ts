@@ -45,6 +45,7 @@ import {
 } from '../item-categories/index';
 import { auditItemCreated, auditItemEdited } from './item-audit';
 import {
+  isStatusChangeOnly,
   referenceRefusal,
   stockLevelsRefusal,
   subcategoryRefusal,
@@ -213,8 +214,9 @@ class AdministrationItemService {
     };
     await this.assertReferences(references);
     // Every edit, the category kept as much as one named anew: an item its category's first
-    // subcategory left above the level is re-filed by its next edit (OD-06 (i)).
-    await this.assertCategoryLevel(categoryId);
+    // subcategory left above the level is re-filed by its next edit (OD-06 (i)) — except one that
+    // only retires or brings it back, which a new level must never block (§22, P1a.2 built).
+    if (!isStatusChangeOnly(input)) await this.assertCategoryLevel(categoryId);
     await assertNotTaken(() => this.nameTaken(claim, itemId));
 
     const set: Partial<AdministrationItemDoc> = {};

@@ -287,7 +287,7 @@ its entry here in the same PR.
     `ADMINISTRATION_REFERENCE_INACTIVE`); and an item is not filed in a category with active
     subcategories — it names one of them (OD-06 (i); 422 `ADMINISTRATION_SUBCATEGORY_REQUIRED`). An
     item filed before its category gained its first subcategory keeps it until its next edit, which
-    re-files it. An edit sent with an old `version` answers 409 `STALE_DOCUMENT` before any rule
+    re-files it; retiring it or bringing it back, and nothing else, is not that edit. An edit sent with an old `version` answers 409 `STALE_DOCUMENT` before any rule
     judges it, for units and categories too. The list labels each item with its category, that
     category's parent and its unit, and `?categoryId=` of a category reads its subcategories' items
     too.

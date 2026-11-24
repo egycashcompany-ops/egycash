@@ -86,6 +86,17 @@ export const subcategoryRefusal = (facts: ItemCategoryLevelFacts): AppError | nu
 };
 
 /**
+ * Is this edit a status change alone — retiring or bringing back an item, nothing else set? That
+ * is not the edit that re-files an item (OD-06 (i)): a new level must never be what stops an item
+ * from being retired, since adding one invalidates no item. Any other field set, even to the value
+ * the row holds, makes it that edit. A key present as `undefined` sets nothing.
+ */
+export const isStatusChangeOnly = (input: Readonly<Record<string, unknown>>): boolean =>
+  Object.entries(input).every(
+    ([field, value]) => field === 'version' || field === 'isActive' || value === undefined,
+  );
+
+/**
  * The acts that name an item. A retired item is hidden from NEW references — new purchase and
  * receipt lines from P2 and P5 (OD-70 A) — while every act on stock it already holds passes; those
  * acts arrive with their phases, and `REFUSED_WHEN_INACTIVE` with P5's ledger (§5.3).

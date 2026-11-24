@@ -3088,9 +3088,12 @@ Repository-wide findings outside this module are listed for the owner in
     (`[{ field: 'categoryId', code: 'subcategoryRequired' }]`), on a create and on every edit. "Has any" reads "has an
     active one": a category whose subcategories all retired takes items again, or nothing under it could be filed. An
     item filed before its category gained its first subcategory keeps it until it is next edited (§2.3.3), and that
-    edit, whatever it changes, must move it to a subcategory; a retirement is held to it too, since "retiring is an
-    edit" (§2.3.4). *For the owner:* whether a PATCH that only flips `isActive` should be exempt, so an item is retired
-    without being re-filed. A subcategory is judged on its own `isActive`, not its parent's.
+    edit, whatever it changes, must move it to a subcategory. A PATCH that only retires the item or brings it back
+    (`isActive` and `version`, nothing else) is not that edit (`isStatusChangeOnly`, `item-rules.ts`): §2.3.4's
+    "retiring is an edit" says a retirement is a versioned PATCH and not a delete, and holding it to the level would
+    make a new level the thing that stops an item from being retired, against "adding a level invalidates no item".
+    Adopted as the recommended reading under the owner's 2026-11-24 instruction, and listed for the owner at Phase 1's
+    close. A subcategory is judged on its own `isActive`, not its parent's.
   - *A stale edit is answered first.* Every register's edit compares its `version` with the row it read before any
     rule judges the body merged with that row (`assertCurrentVersion`, `shared/master-data.ts`), so a body written
     against an older row is 409 `STALE_DOCUMENT` (§19.3, §19.10.5), never a 422 over a field its sender did not see;

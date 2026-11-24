@@ -12,6 +12,7 @@
 // code; the name, the national ID and the rest are read from HR when the receipt is written, like
 // every hand-over's. The sheet's own spelling of the holder rides along as `holder` — it is what
 // a device left in stock says it was found with.
+import { foldName } from '@ecms/contracts';
 import { z } from 'zod';
 
 /** The kinds the sheet holds, each filed under one asset category. */
@@ -107,20 +108,8 @@ export type InventoryFile = z.infer<typeof InventoryFileSchema>;
 
 export const parseInventory = (json: unknown): InventoryFile => InventoryFileSchema.parse(json);
 
-/**
- * Arabic folded flat for comparing two spellings of one name: the hamza forms to a bare alef,
- * the diacritics and tatweel dropped, taa marbuta and alef maqsura normalised, case and spacing
- * ignored. «الأسكندرية» and «الاسكندرية», or «لاب توب» and «لابتوب», fold to one key.
- */
-export const foldName = (name: string): string =>
-  name
-    .normalize('NFKC')
-    .replace(/[ً-ٰٟـ]/gu, '')
-    .replace(/[آأإٱ]/gu, 'ا')
-    .replace(/ة/gu, 'ه')
-    .replace(/ى/gu, 'ي')
-    .replace(/\s+/gu, '')
-    .toLocaleLowerCase('en');
+/** The name fold IT's imports compare by; it lives in the contracts, so every module folds alike. */
+export { foldName };
 
 /**
  * Every spelling the organisation's list may give a branch the sheet names. Matched, never

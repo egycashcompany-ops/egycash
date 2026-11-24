@@ -28,6 +28,15 @@ its entry here in the same PR.
 
 ### Changed
 
+- **A shared counter for running numbers, and one Arabic name fold for every module.**
+  `apps/api/src/shared/base/counter.ts` (`defineCounter`) is Fleet's custody counter written as a factory: a module
+  names its own `<module>_counters` collection and gets `ensure` (create-if-missing, raised to a floor and never
+  lowered), `next` (inside the caller's transaction, so concurrent saves get consecutive numbers) and `peek`. IT's
+  `foldName`, which compares two spellings of one Arabic name («الأسكندرية» = «الاسكندرية», «قطعه» = «قطعة»), moved
+  to the contracts (`packages/contracts/src/common/fold-name.ts`); IT imports it, and its behavior is unchanged.
+  Fleet's and ATM's counters keep their copies. This is PC-13, the second prerequisite of the Administrative
+  Affairs module (`docs/12-planning/administration-module-decisions-and-phases.md` §18.1).
+
 - **ATM's branch-scope rule and organization-scope check are shared code.** The fail-closed rule for branch
   records (`branchScopeMatch`, `branchScopeBranches`, `narrowToBranch`, `writableBranches`, `resolveWorkBranch`) and
   the organization-scope check behind ATM's settings and banks now live in `apps/api/src/shared/base/branch-scope.ts`

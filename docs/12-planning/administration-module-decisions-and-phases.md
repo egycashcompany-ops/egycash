@@ -3132,8 +3132,12 @@ Repository-wide findings outside this module are listed for the owner in
   and (i) for Fleet's free-text vehicle-contract suppliers. It is the documentation pull request §20 and §19.8 ask for
   before P1b.1's first code. §20's "the next free number is **ADR-039**" was overtaken meanwhile: ADR-039 was taken by
   the inactivity window (`docs/03-decisions/ADR-039-inactivity-window-is-a-setting.md`), so this ADR is ADR-040, as
-  §19.8 already says. The IT design's §16 P4 and §17 carry the dated note §21 asks for. Nothing else in this design
-  changes.
+  §19.8 already says. The IT design's §16 P4 and §17 carry the dated note §21 asks for. Its review found two facts
+  §15.3.5 a leaves out, and the ADR records them for the next stage's ADR to settle: Fleet's boot seed re-creates any
+  house-vocabulary workshop with no live row, so a retired or merged workshop row comes back with a new id
+  (`apps/api/src/modules/fleet/fleet.seed.ts:127-148`; `apps/api/src/modules/fleet/go-live/vocabulary.ts:52-62`); and
+  137 imported visits name the import's «غير محدد» placeholder row, not a workshop
+  (`apps/api/src/modules/fleet/go-live/maintenance-import.ts:25-27, 228-229`). Nothing else in this design changes.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

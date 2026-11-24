@@ -28,6 +28,12 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The zod advisory waiver runs to 2026-12-26.** «موافق على Zod». The waiver for
+  GHSA-mrhx-c7xc-m3w5 (zod 3, no patched release) ended on 2026-11-26, after which the dependency
+  audit would have failed every pull request. The owner renewed it for 30 days
+  (`scripts/dependency-audit.waivers.json`). The remedy is still the monorepo-wide zod 4
+  migration, as its own change, before the new date.
+
 - **A hand-over of several devices prints on ONE sheet.** «عند تسليم أكثر من أصل يتم عمل إيصال
   لكل أصل على حدي أنا عايز يتطبعوا فى ورقه واحده». A hand-over was already one «إقرار استلام»
   under one number, but it printed a page per device, each with its own statement and signature,

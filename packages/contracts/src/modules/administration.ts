@@ -7,9 +7,15 @@
 // Names are not folded here: the module folds them with the shared `foldName`
 // (`common/fold-name.ts`), so there is one fold for every module (PC-13).
 
-/** Each master that takes a generated code, and its prefix. Grows with its slice (SUP-, P1b.1). */
-export const ADMINISTRATION_MASTER_CODE_PREFIXES = { item: 'ITM' } as const;
-export type AdministrationMasterKind = keyof typeof ADMINISTRATION_MASTER_CODE_PREFIXES;
+/** Each master that takes a generated code. Grows with its slice (the supplier, P1b.1). */
+export const ADMINISTRATION_MASTER_KINDS = ['item'] as const;
+export type AdministrationMasterKind = (typeof ADMINISTRATION_MASTER_KINDS)[number];
+
+/** Each master's prefix: one per kind, and a kind without one does not compile. */
+export const ADMINISTRATION_MASTER_CODE_PREFIXES = { item: 'ITM' } as const satisfies Record<
+  AdministrationMasterKind,
+  string
+>;
 
 /**
  * The width a code pads to. A number past it simply grows wider — «ITM-100000» — rather than
@@ -48,9 +54,9 @@ export const parseAdministrationMasterCode = (
 ): { kind: AdministrationMasterKind; seq: number } | null => {
   const match = MASTER_CODE.exec(code);
   if (match === null) return null;
-  const kind = (
-    Object.keys(ADMINISTRATION_MASTER_CODE_PREFIXES) as AdministrationMasterKind[]
-  ).find((candidate) => ADMINISTRATION_MASTER_CODE_PREFIXES[candidate] === match[1]);
+  const kind = ADMINISTRATION_MASTER_KINDS.find(
+    (candidate) => ADMINISTRATION_MASTER_CODE_PREFIXES[candidate] === match[1],
+  );
   if (kind === undefined) return null;
   const seq = Number(match[2]);
   if (!isCodeNumber(seq)) return null;

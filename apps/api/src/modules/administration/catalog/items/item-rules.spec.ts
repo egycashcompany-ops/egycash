@@ -1,8 +1,8 @@
 // An item's pure rules (design §2.3.4, §5.3, §5.15; §19.7): the levels keep min ≤ reorder point ≤
 // max where set (OD-09), and each comparison that fails names both its ends; the levels are whole
 // numbers from 0 (OD-08), as the contract takes them; a retired unit or category is refused with
-// its field; a category with active subcategories is refused to a write that names it (OD-06
-// (i)); and a retired item is hidden only from new references (OD-70 A).
+// its field; a category with active subcategories is refused to the item a write leaves in it
+// (OD-06 (i)); and a retired item is hidden only from new references (OD-70 A).
 import { AdministrationStockLevelSchema, ErrorCodes } from '@ecms/contracts';
 import { describe, expect, it } from 'vitest';
 import {
@@ -12,7 +12,6 @@ import {
   stockLevelsOutOfOrder,
   stockLevelsRefusal,
   subcategoryRefusal,
-  subcategoryRequired,
   type StockLevels,
 } from './item-rules';
 
@@ -93,24 +92,16 @@ describe('a retired unit or category (§2.3.2, §2.3.3)', () => {
 });
 
 describe('the category’s level (OD-06 (i))', () => {
-  it('asks for a subcategory when the write names a category that has active ones', () => {
-    expect(subcategoryRequired({ named: true, hasActiveSubcategories: true })).toBe(true);
-  });
-
-  it('takes a category without active subcategories — a leaf, or one whose children all retired', () => {
-    expect(subcategoryRequired({ named: true, hasActiveSubcategories: false })).toBe(false);
-  });
-
-  it('lets an item keep a category that gained its first subcategory after it was filed', () => {
-    expect(subcategoryRequired({ named: false, hasActiveSubcategories: true })).toBe(false);
-  });
-
-  it('refuses with 422 ADMINISTRATION_SUBCATEGORY_REQUIRED on categoryId', () => {
-    expect(subcategoryRefusal()).toMatchObject({
+  it('refuses a category that has active subcategories with 422 ADMINISTRATION_SUBCATEGORY_REQUIRED on categoryId', () => {
+    expect(subcategoryRefusal({ hasActiveSubcategories: true })).toMatchObject({
       code: ErrorCodes.ADMINISTRATION_SUBCATEGORY_REQUIRED,
       httpStatus: 422,
       details: [expect.objectContaining({ field: 'categoryId', code: 'subcategoryRequired' })],
     });
+  });
+
+  it('takes a category without active subcategories — a leaf, or one whose children all retired', () => {
+    expect(subcategoryRefusal({ hasActiveSubcategories: false })).toBeNull();
   });
 });
 

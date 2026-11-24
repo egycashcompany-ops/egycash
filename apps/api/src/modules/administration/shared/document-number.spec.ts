@@ -10,15 +10,40 @@ describe('the item code series (OD-05 A)', () => {
     expect(ITEM_CODE_SERIES).toEqual({ kind: 'item', key: 'item:global', prefix: 'ITM' });
   });
 
-  it('reads its floor from the codes that carry its prefix and digits only', () => {
+  it('reads its floor from the codes in the formatter’s own spelling only', () => {
     const [match] = highestCodePipeline(ITEM_CODE_SERIES);
     const pattern = new RegExp(
       (match as { $match: { code: { $regex: string } } }).$match.code.$regex,
     );
     expect(pattern.source.startsWith('^ITM-'), 'anchored, so `ux_code` serves it').toBe(true);
-    for (const code of ['ITM-00001', 'ITM-123456']) expect(pattern.test(code), code).toBe(true);
-    for (const code of ['SUP-00001', 'XITM-00001', 'ITM-', 'ITM-12a', 'itm-00001']) {
+    for (const code of ['ITM-00001', 'ITM-99999', 'ITM-100000', 'ITM-123456']) {
+      expect(pattern.test(code), code).toBe(true);
+    }
+    for (const code of [
+      'SUP-00001',
+      'XITM-00001',
+      'ITM-',
+      'ITM-12a',
+      'itm-00001',
+      'ITM-0042',
+      // Wider than five with a leading zero: the longest group, if matched, would hide every
+      // real code behind a top the parser refuses.
+      'ITM-000042',
+      'ITM-0100000',
+    ]) {
       expect(pattern.test(code), code).toBe(false);
+    }
+  });
+
+  it('every code the pattern takes is one the parser reads, at any width', () => {
+    const [match] = highestCodePipeline(ITEM_CODE_SERIES);
+    const pattern = new RegExp(
+      (match as { $match: { code: { $regex: string } } }).$match.code.$regex,
+    );
+    for (const seq of [1, 42, 99_999, 100_000, 1_234_567]) {
+      const code = formatAdministrationMasterCode('item', seq);
+      expect(pattern.test(code), code).toBe(true);
+      expect(floorFrom(ITEM_CODE_SERIES, [{ top: code }]), code).toBe(seq);
     }
   });
 

@@ -3,8 +3,8 @@
 // series is the item code, `item:global` (OD-05 A); the supplier code (P1b.1) and the yearly
 // document series (P2) join it as keys, never as collections.
 //
-// Bookkeeping, not business data: no repository, no soft delete, no version (§2.1). Read and
-// written only through the three functions below, which keep the factory's two halves apart:
+// Bookkeeping, not business data: no repository, no soft delete, no version (§2.1). Written only
+// through the two functions below, which keep the factory's two halves apart:
 // `ensureCounter` OUTSIDE the transaction (it may create the row, and an insert must not be what
 // creates a collection inside one), `nextNumber` INSIDE it as its first write, so a refused
 // create gives its number back and the series has no gap.

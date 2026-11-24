@@ -133,6 +133,8 @@ describe('the seed', () => {
 
   it('raises a lost item counter above every code already given, at any width (§2.8)', async () => {
     // Two codes either side of five digits: read newest-first as strings, «ITM-99999» would win.
+    // And one typed into the database by hand, wider than both and in no spelling the formatter
+    // writes: grouped with them, it would be the greatest of the longest and floor the counter at 0.
     const planted = (code: string, ar: string) => ({
       code,
       name: { ar, en: code },
@@ -143,6 +145,7 @@ describe('the seed', () => {
     await AdministrationItemModel.create([
       planted('ITM-99999', 'صنف مزروع أول'),
       planted('ITM-100000', 'صنف مزروع ثان'),
+      planted('ITM-0000100', 'صنف مكتوب باليد'),
     ]);
     await AdministrationCounterModel.deleteMany({ key: 'item:global' }).exec();
     await seedAdministration();
@@ -640,6 +643,16 @@ describe('item categories (two levels, OD-06 A)', () => {
     const stale = await api.patch(`/item-categories/${top.id}`, { sortOrder: 8, version: 0 });
     expect(stale.status).toBe(409);
     expect(refusal(stale).code).toBe('STALE_DOCUMENT');
+
+    // A stale move is answered as stale before the parent is judged (§19.3), not 422 `inactive`.
+    const retired = await category();
+    await api.patch(`/item-categories/${retired.id}`, { isActive: false, version: 0 });
+    const staleMove = await api.patch(`/item-categories/${top.id}`, {
+      parentId: retired.id,
+      version: 0,
+    });
+    expect(staleMove.status, JSON.stringify(staleMove.body)).toBe(409);
+    expect(refusal(staleMove).code).toBe('STALE_DOCUMENT');
   });
 
   it.each([
@@ -891,6 +904,17 @@ describe('items (§2.3.4; OD-05 A codes)', () => {
       expect(cleared.status, 'a cleared level compares with nothing').toBe(200);
     });
 
+    it('answers a stale edit 409 STALE_DOCUMENT before judging it on levels its sender never saw', async () => {
+      const created = await item({ minQty: 8 });
+      const first = await api.patch(`/items/${created.id}`, { reorderPointQty: 12, version: 0 });
+      expect(first.status, JSON.stringify(first.body)).toBe(200);
+      // Still on version 0, this sender sees no reorder point: a 422 naming one would be
+      // unanswerable, and a retry with its own version could never pass.
+      const stale = await api.patch(`/items/${created.id}`, { maxQty: 10, version: 0 });
+      expect(stale.status, JSON.stringify(stale.body)).toBe(409);
+      expect(refusal(stale).code).toBe('STALE_DOCUMENT');
+    });
+
     it.each([
       ['a fractional level (OD-08)', { minQty: 1.5 }],
       ['a negative level', { maxQty: -1 }],
@@ -989,16 +1013,36 @@ describe('items (§2.3.4; OD-05 A codes)', () => {
       );
     });
 
-    it('an item filed before its category gained a subcategory keeps it when edited', async () => {
+    it('an item filed before its category gained a subcategory keeps it until it is next edited', async () => {
       const top = await category();
       const created = await item({ categoryId: top.id });
-      await category({ parentId: top.id });
-      const edited = await api.patch(`/items/${created.id}`, {
-        categoryId: top.id,
-        notes: 'reclassify later',
+      const sub = await category({ parentId: top.id });
+      const kept = data<AdministrationItemDto>(await api.get(`/items/${created.id}`));
+      expect(kept.categoryId, 'adding a level invalidates no item').toBe(top.id);
+
+      // That edit re-files it, whatever else it changes — retiring is an edit too (§2.3.4).
+      for (const edit of [
+        { notes: 'reclassify later' },
+        { categoryId: top.id, notes: 'reclassify later' },
+        { isActive: false },
+      ]) {
+        refused(
+          await api.patch(`/items/${created.id}`, { ...edit, version: 0 }),
+          422,
+          'ADMINISTRATION_SUBCATEGORY_REQUIRED',
+          ['categoryId'],
+        );
+      }
+      const refiled = await api.patch(`/items/${created.id}`, {
+        categoryId: sub.id,
+        notes: 'reclassified',
         version: 0,
       });
-      expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+      expect(refiled.status, JSON.stringify(refiled.body)).toBe(200);
+      expect(data<AdministrationItemDto>(refiled)).toMatchObject({
+        categoryId: sub.id,
+        categoryParentId: top.id,
+      });
     });
 
     it('a category whose subcategories all retired takes items again', async () => {
@@ -1159,6 +1203,29 @@ describe('who may read and write', () => {
       }),
       await outsider.patch(`/items/${filed.id}`, { notes: 'x', version: 0 }),
     ]) {
+      expect(res.status).toBe(403);
+      expect(refusal(res).code).toBe('FORBIDDEN');
+    }
+  });
+
+  it('a catalog manager alone reads and writes the catalogs by their own key, and reads no item', async () => {
+    const catalogs = administrationApi(world.app, world.catalogManagerToken);
+    const filed = await anItem();
+
+    // Each half of the widened read gate on its own: this is the catalog key's half.
+    const units = await catalogs.get('/catalog-items?kind=unit&pageSize=100');
+    expect(units.status, JSON.stringify(units.body)).toBe(200);
+    expect(data<AdministrationCatalogItemDto[]>(units).length).toBeGreaterThan(0);
+    const categories = await catalogs.get('/item-categories?pageSize=100');
+    expect(categories.status, JSON.stringify(categories.body)).toBe(200);
+    expect(data<AdministrationItemCategoryDto[]>(categories).length).toBeGreaterThan(0);
+    const created = await catalogs.post('/catalog-items', {
+      kind: 'unit',
+      name: fresh('وحدة', 'Unit'),
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+
+    for (const res of [await catalogs.get('/items'), await catalogs.get(`/items/${filed.id}`)]) {
       expect(res.status).toBe(403);
       expect(refusal(res).code).toBe('FORBIDDEN');
     }

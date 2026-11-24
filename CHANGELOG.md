@@ -280,12 +280,15 @@ its entry here in the same PR.
     belongs to one live item (OD-05 (i)) and its unique index is its only check. Either clash
     answers 409 `ADMINISTRATION_DUPLICATE` naming the field (`name` or `barcode`). `search` reads
     the code, both names and the barcode, so a scan finds its item.
-  - **Its rules, each refused with its own code:** the levels keep minimum ≤ reorder point ≤
-    maximum where set, whole numbers from 0 (OD-08, OD-09; 422 `ADMINISTRATION_STOCK_LEVELS_ORDER`,
-    naming the fields); a retired unit or category is not given to an item, though an item keeps
-    one that retired later (422 `ADMINISTRATION_REFERENCE_INACTIVE`); and a category with active
-    subcategories is not named directly — the item names one of them (OD-06 (i); 422
-    `ADMINISTRATION_SUBCATEGORY_REQUIRED`). The list labels each item with its category, that
+  - **Its rules, each refused with its own code:** the levels are whole numbers from 0 (OD-08; 400
+    `VALIDATION_FAILED`) and keep minimum ≤ reorder point ≤ maximum where set (OD-09; 422
+    `ADMINISTRATION_STOCK_LEVELS_ORDER`, naming the fields); a retired unit or category is not given
+    to an item, though an item keeps one that retired later (422
+    `ADMINISTRATION_REFERENCE_INACTIVE`); and an item is not filed in a category with active
+    subcategories — it names one of them (OD-06 (i); 422 `ADMINISTRATION_SUBCATEGORY_REQUIRED`). An
+    item filed before its category gained its first subcategory keeps it until its next edit, which
+    re-files it. An edit sent with an old `version` answers 409 `STALE_DOCUMENT` before any rule
+    judges it, for units and categories too. The list labels each item with its category, that
     category's parent and its unit, and `?categoryId=` of a category reads its subcategories' items
     too.
   - **An item reader reads the units and categories.** Both lists now take `administrationItem.view`

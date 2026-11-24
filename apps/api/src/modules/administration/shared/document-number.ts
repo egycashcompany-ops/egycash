@@ -10,8 +10,12 @@
 // codes themselves, retired rows included, since a code is never reused. Read the plain way —
 // newest code first — it breaks past five digits: «ITM-99999» sorts after «ITM-100000». So the
 // read groups the codes by length and takes the greatest of the longest, which is the highest
-// number at any width, through the anchored prefix that `ux_code` serves.
+// number at any width, through the anchored prefix that `ux_code` serves. Only the formatter's
+// spelling is grouped — five digits, or more with no leading zero — so the greatest of the longest
+// is always a code the parser reads: a hand-typed «ITM-000042» must not outgrow «ITM-00500» and
+// floor the counter at 0.
 import {
+  ADMINISTRATION_MASTER_CODE_DIGITS,
   ADMINISTRATION_MASTER_CODE_PREFIXES,
   parseAdministrationMasterCode,
   type AdministrationMasterKind,
@@ -32,9 +36,15 @@ export const ITEM_CODE_SERIES: MasterCodeSeries = {
   prefix: ADMINISTRATION_MASTER_CODE_PREFIXES.item,
 };
 
+const DIGITS = ADMINISTRATION_MASTER_CODE_DIGITS;
+
+/** The formatter's spelling of the series' codes: its width exactly, or wider with no leading 0. */
+const codePattern = (series: MasterCodeSeries): string =>
+  `^${series.prefix}-(?:[0-9]{${String(DIGITS)}}|[1-9][0-9]{${String(DIGITS)},})$`;
+
 /** The aggregation that finds the series' highest code in its collection's `code` field. */
 export const highestCodePipeline = (series: MasterCodeSeries): PipelineStage[] => [
-  { $match: { code: { $regex: `^${series.prefix}-[0-9]+$` } } },
+  { $match: { code: { $regex: codePattern(series) } } },
   { $group: { _id: { $strLenCP: '$code' }, top: { $max: '$code' } } },
   { $sort: { _id: -1 } },
   { $limit: 1 },
@@ -42,8 +52,9 @@ export const highestCodePipeline = (series: MasterCodeSeries): PipelineStage[] =
 
 /**
  * The floor that pipeline's answer gives: the number of the highest code, or 0 when there is
- * none. A code the formatter would not have written (typed into the database by hand) counts as
- * none, rather than raising the counter to a number no item was ever given.
+ * none. The match keeps every wider misspelling out, so a code typed into the database by hand
+ * hides no real one; a top that still does not parse — «ITM-00000», a number past the safe
+ * integers — counts as none, rather than raising the counter to a number no item was ever given.
  */
 export const floorFrom = (series: MasterCodeSeries, rows: readonly { top?: unknown }[]): number => {
   const top = rows[0]?.top;

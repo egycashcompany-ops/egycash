@@ -63,24 +63,22 @@ export const referenceRefusal = (
   });
 };
 
-/** What the level rule reads of the category a write names. */
+/** What the level rule reads of the category a write leaves the item in. */
 export interface ItemCategoryLevelFacts {
-  /** Does this write name the category — a create, or a change of category? */
-  named: boolean;
-  /** Does the category hold subcategories still offered to new items? */
+  /** Does that category hold subcategories still offered to new items? */
   hasActiveSubcategories: boolean;
 }
 
 /**
- * Must the item name a subcategory instead (OD-06 (i))? Only when the write names the category:
- * an item whose category gained its first subcategory after it was filed keeps its category, so
- * adding a level invalidates no item. A category whose subcategories are all retired is a leaf
- * again for new items, or nothing under it could be filed.
+ * The 422 for an item left in a category that has active subcategories, or null (OD-06 (i)): it
+ * names one of them instead, on a create and on every edit. An item filed before its category
+ * gained its first subcategory keeps that category until it is next edited — adding a level
+ * invalidates no item — and that edit re-files it, so no item stays above the level for good and
+ * the reports group evenly, which is why (i) was chosen over (ii). A category whose subcategories
+ * are all retired is a leaf again, or nothing under it could be filed.
  */
-export const subcategoryRequired = (facts: ItemCategoryLevelFacts): boolean =>
-  facts.named && facts.hasActiveSubcategories;
-
-export const subcategoryRefusal = (): AppError => {
+export const subcategoryRefusal = (facts: ItemCategoryLevelFacts): AppError | null => {
+  if (!facts.hasActiveSubcategories) return null;
   const message = 'this category has subcategories: the item names one of them';
   return new AppError(ErrorCodes.ADMINISTRATION_SUBCATEGORY_REQUIRED, 422, message, {
     details: [{ field: 'categoryId', code: 'subcategoryRequired', message }],

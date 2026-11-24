@@ -5,12 +5,14 @@ import { describe, expect, it } from 'vitest';
 import {
   ADMINISTRATION_MASTER_CODE_DIGITS,
   ADMINISTRATION_MASTER_CODE_PREFIXES,
+  ADMINISTRATION_MASTER_KINDS,
   formatAdministrationMasterCode,
   parseAdministrationMasterCode,
 } from './administration.js';
 
 describe('the master codes', () => {
   it('codes an item «ITM-00001», five digits, generated (OD-05 A)', () => {
+    expect(ADMINISTRATION_MASTER_KINDS).toEqual(['item']);
     expect(ADMINISTRATION_MASTER_CODE_PREFIXES).toEqual({ item: 'ITM' });
     expect(ADMINISTRATION_MASTER_CODE_DIGITS).toBe(5);
     expect(formatAdministrationMasterCode('item', 1)).toBe('ITM-00001');

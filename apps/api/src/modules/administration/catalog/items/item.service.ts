@@ -8,10 +8,11 @@
 // write conflict on the counter and is run again — and a create that is refused inside it, by a
 // unique index, gives its number back: the series has no gap.
 //
-// THE CHECKS. The levels' order and the references are the rules' (`item-rules.ts`), judged on the
-// row the write leaves. A name is checked before the write for the early answer; a barcode is
-// not — `ux_barcode` is its only check — and either index refusing a write that raced past is
-// answered with the field it guards (§5.15).
+// THE CHECKS. The levels' order, the references and the category's level are the rules'
+// (`item-rules.ts`), judged on the row the write leaves — so an edit is first held to its
+// version, or it would be judged on fields its sender never saw. A name is checked before the
+// write for the early answer; a barcode is not — `ux_barcode` is its only check — and either
+// index refusing a write that raced past is answered with the field it guards (§5.15).
 import {
   foldName,
   formatAdministrationMasterCode,
@@ -29,7 +30,12 @@ import { type AppError, NotFoundError } from '../../../../shared/errors';
 import { type AuthContext } from '../../../../shared/types';
 import { ensureCounter, nextNumber } from '../../shared/counter.model';
 import { ITEM_CODE_SERIES } from '../../shared/document-number';
-import { assertNotTaken, explainDuplicate, masterSearchClause } from '../../shared/master-data';
+import {
+  assertCurrentVersion,
+  assertNotTaken,
+  explainDuplicate,
+  masterSearchClause,
+} from '../../shared/master-data';
 import { assertAdministrationOrgAuthority } from '../../shared/org-authority';
 import { administrationCatalogItemService, unitActiveFor } from '../catalog-items/index';
 import {
@@ -42,7 +48,6 @@ import {
   referenceRefusal,
   stockLevelsRefusal,
   subcategoryRefusal,
-  subcategoryRequired,
   type StockLevels,
 } from './item-rules';
 import { type AdministrationItemDoc } from './item.model';
@@ -60,12 +65,15 @@ interface Claim {
   barcode: string | null;
 }
 
-/** The references a write leaves the row with, and which of them it names anew. */
+/**
+ * The references a write leaves the row with, and which of them it names anew: a create names
+ * both, an edit only what it changes — an item keeps a unit or category it already names.
+ */
 interface References {
   unitId: string;
   categoryId: string;
-  /** A create names both; an edit only what it changes — an item keeps what it already names. */
-  named: { unit: boolean; category: boolean };
+  isUnitNamed: boolean;
+  isCategoryNamed: boolean;
 }
 
 /** An id as the database spells it: the contract takes A-F too, and ids compare as strings. */
@@ -133,9 +141,11 @@ class AdministrationItemService {
     const references: References = {
       unitId: canonicalId(input.unitId),
       categoryId: canonicalId(input.categoryId),
-      named: { unit: true, category: true },
+      isUnitNamed: true,
+      isCategoryNamed: true,
     };
     await this.assertReferences(references);
+    await this.assertCategoryLevel(references.categoryId);
     await assertNotTaken(() => this.nameTaken(claim, undefined));
 
     // Both collections the transaction writes, with their indexes, before it begins — an insert
@@ -179,6 +189,7 @@ class AdministrationItemService {
   ): Promise<AdministrationItemDoc> {
     assertAdministrationOrgAuthority(ctx, 'administrationItem.edit');
     const before = await repository.getById(id);
+    assertCurrentVersion(before, input.version);
     const itemId = String(before._id);
     const claim: Claim = {
       nameKey: input.name === undefined ? before.nameKey : foldName(input.name.ar),
@@ -197,12 +208,13 @@ class AdministrationItemService {
     const references: References = {
       unitId,
       categoryId,
-      named: {
-        unit: unitId !== String(before.unitId),
-        category: categoryId !== String(before.categoryId),
-      },
+      isUnitNamed: unitId !== String(before.unitId),
+      isCategoryNamed: categoryId !== String(before.categoryId),
     };
     await this.assertReferences(references);
+    // Every edit, the category kept as much as one named anew: an item its category's first
+    // subcategory left above the level is re-filed by its next edit (OD-06 (i)).
+    await this.assertCategoryLevel(categoryId);
     await assertNotTaken(() => this.nameTaken(claim, itemId));
 
     const set: Partial<AdministrationItemDoc> = {};
@@ -211,10 +223,10 @@ class AdministrationItemService {
       set.name = input.name;
       set.nameKey = claim.nameKey;
     }
-    if (references.named.category) set.categoryId = new Types.ObjectId(categoryId);
+    if (references.isCategoryNamed) set.categoryId = new Types.ObjectId(categoryId);
     // The base unit may still change: no line or movement can name an item before P2 and P5, and
     // the checkers that will make it immutable then register with their features (§2.3.4, §3.6).
-    if (references.named.unit) set.unitId = new Types.ObjectId(unitId);
+    if (references.isUnitNamed) set.unitId = new Types.ObjectId(unitId);
     if (input.minQty !== undefined) set.minQty = input.minQty;
     if (input.reorderPointQty !== undefined) set.reorderPointQty = input.reorderPointQty;
     if (input.maxQty !== undefined) set.maxQty = input.maxQty;
@@ -235,18 +247,21 @@ class AdministrationItemService {
   }
 
   /**
-   * The unit and category a write names anew, judged by their own `activeFor` (a retired one is
-   * refused to a new reference) and by the level rule (OD-06 (i)). One the item already names is
-   * not read at all: it keeps it. An id that names nothing is 404, as a category's parent is.
+   * The unit and category a write names anew, judged by their own `activeFor`: a retired one is
+   * refused to a new reference. One the item already names is not read here at all: it keeps it.
+   * An id that names nothing is 404, as a category's parent is.
    */
   private async assertReferences(references: References): Promise<void> {
-    const { named } = references;
     const [unit, category] = await Promise.all([
-      named.unit ? administrationCatalogItemService.findUnit(references.unitId) : null,
-      named.category ? administrationItemCategoryService.findCategory(references.categoryId) : null,
+      references.isUnitNamed ? administrationCatalogItemService.findUnit(references.unitId) : null,
+      references.isCategoryNamed
+        ? administrationItemCategoryService.findCategory(references.categoryId)
+        : null,
     ]);
-    if (named.unit && unit === null) throw new NotFoundError('no such unit');
-    if (named.category && category === null) throw new NotFoundError('no such item category');
+    if (references.isUnitNamed && unit === null) throw new NotFoundError('no such unit');
+    if (references.isCategoryNamed && category === null) {
+      throw new NotFoundError('no such item category');
+    }
 
     const retired: AdministrationItemReferenceField[] = [];
     if (unit !== null && !unitActiveFor(unit, 'newReference')) retired.push('unitId');
@@ -254,15 +269,13 @@ class AdministrationItemService {
       retired.push('categoryId');
     }
     refuseIf(referenceRefusal(retired));
+  }
 
-    if (category === null) return;
-    const required = subcategoryRequired({
-      named: named.category,
-      hasActiveSubcategories: await administrationItemCategoryService.hasActiveSubcategories(
-        references.categoryId,
-      ),
-    });
-    if (required) throw subcategoryRefusal();
+  /** The level rule (OD-06 (i)) on the category the write leaves the item in, named or kept. */
+  private async assertCategoryLevel(categoryId: string): Promise<void> {
+    const hasActiveSubcategories =
+      await administrationItemCategoryService.hasActiveSubcategories(categoryId);
+    refuseIf(subcategoryRefusal({ hasActiveSubcategories }));
   }
 
   /** The early answer's question: does a live item, `exceptId` aside, hold this name? */

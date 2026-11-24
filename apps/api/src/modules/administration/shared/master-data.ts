@@ -1,6 +1,7 @@
 // What every master register of the module does the same way — units, categories and items now;
 // warehouses and suppliers as they ship — written once so the five cannot drift apart: the answer
-// to a duplicate (design §5.15), the audit verb of each act (§10.2) and the text search (§19.4).
+// to a duplicate (design §5.15), a stale edit's (§19.3), the audit verb of each act (§10.2) and the
+// text search (§19.4).
 // Each feature keeps what is its own: its checks, its literal entity ref, its snapshot, its signal.
 import {
   ErrorCodes,
@@ -9,7 +10,7 @@ import {
   type AuditAction,
 } from '@ecms/contracts';
 import { isDuplicateKeyError } from '../../../shared/base/index-sync';
-import { AppError, ConflictError } from '../../../shared/errors';
+import { AppError, ConflictError, StaleDocumentError } from '../../../shared/errors';
 
 // ── Duplicates ──────────────────────────────────────────────────────────────
 //
@@ -56,6 +57,18 @@ export const explainDuplicate = async (error: unknown, taken: TakenField): Promi
   if (!isDuplicateWrite(error)) return error;
   const field = await taken();
   return field === null ? error : duplicateRefusal(field);
+};
+
+// ── Stale edits ─────────────────────────────────────────────────────────────
+//
+// An edit is judged on the stored row merged with its body. A body written against an older row
+// would be judged on fields its sender never saw — refused for a level or a parent it did not
+// send — and a retry with its own version could never pass. So the version is answered before
+// any rule; `updateById`'s version filter still catches a write that lands after this read.
+
+/** 409 `STALE_DOCUMENT` unless the body was written against the row as it is now. */
+export const assertCurrentVersion = (row: { __v: number }, version: number): void => {
+  if (row.__v !== version) throw new StaleDocumentError();
 };
 
 // ── Audit verbs ─────────────────────────────────────────────────────────────

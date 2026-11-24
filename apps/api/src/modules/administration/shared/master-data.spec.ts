@@ -1,12 +1,17 @@
-// The duplicate answer and the search every master register shares (design §5.15, §19.4). Both
-// ways a duplicate arrives end in one 409 naming its field: the early check, and a unique index's
-// refusal in either shape — BaseRepository's `ConflictError` on a create, the raw E11000 of
-// `findOneAndUpdate` on an edit. A refusal the register's own question cannot explain goes on as
-// it came, rather than as a guessed field.
+// The duplicate answer, the stale edit's and the search every master register shares (design
+// §5.15, §19.3, §19.4). Both ways a duplicate arrives end in one 409 naming its field: the early
+// check, and a unique index's refusal in either shape — BaseRepository's `ConflictError` on a
+// create, the raw E11000 of `findOneAndUpdate` on an edit. A refusal the register's own question
+// cannot explain goes on as it came, rather than as a guessed field.
 import { ErrorCodes, type AdministrationDuplicateField } from '@ecms/contracts';
 import { describe, expect, it } from 'vitest';
 import { AppError, ConflictError, StaleDocumentError } from '../../../shared/errors';
-import { assertNotTaken, explainDuplicate, masterSearchClause } from './master-data';
+import {
+  assertCurrentVersion,
+  assertNotTaken,
+  explainDuplicate,
+  masterSearchClause,
+} from './master-data';
 
 const taken = (field: AdministrationDuplicateField | null) => () => Promise.resolve(field);
 
@@ -22,6 +27,19 @@ describe('assertNotTaken', () => {
       httpStatus: 409,
       details: [{ field: 'code', code: 'duplicate' }],
     });
+  });
+});
+
+describe('assertCurrentVersion', () => {
+  it('passes a body written against the row as it is', () => {
+    expect(() => assertCurrentVersion({ __v: 3 }, 3)).not.toThrow();
+  });
+
+  it.each([
+    ['older', 2],
+    ['newer', 4],
+  ])('refuses a body written against an %s version with 409 STALE_DOCUMENT', (_label, version) => {
+    expect(() => assertCurrentVersion({ __v: 3 }, version)).toThrow(StaleDocumentError);
   });
 });
 

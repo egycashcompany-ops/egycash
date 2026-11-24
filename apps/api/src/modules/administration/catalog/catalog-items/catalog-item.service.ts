@@ -11,7 +11,12 @@ import {
   type UpdateAdministrationCatalogItem,
 } from '@ecms/contracts';
 import { type AuthContext } from '../../../../shared/types';
-import { assertNotTaken, explainDuplicate, masterSearchClause } from '../../shared/master-data';
+import {
+  assertCurrentVersion,
+  assertNotTaken,
+  explainDuplicate,
+  masterSearchClause,
+} from '../../shared/master-data';
 import { assertAdministrationOrgAuthority } from '../../shared/org-authority';
 import { auditCatalogItemCreated, auditCatalogItemEdited } from './catalog-item-audit';
 import { type AdministrationCatalogItemDoc } from './catalog-item.model';
@@ -101,6 +106,7 @@ class AdministrationCatalogItemService {
   ): Promise<AdministrationCatalogItemDoc> {
     assertAdministrationOrgAuthority(ctx, 'administrationCatalog.manage');
     const before = await repository.getById(id);
+    assertCurrentVersion(before, input.version);
     const claim: Claim = {
       kind: before.kind,
       nameKey: input.name === undefined ? before.nameKey : foldName(input.name.ar),

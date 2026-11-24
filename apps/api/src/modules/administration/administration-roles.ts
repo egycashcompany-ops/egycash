@@ -11,8 +11,8 @@
 // OD-67's fallback, A (B, the owner's words, not yet given). `ensureManagedRole` writes a title
 // only when it creates the role, so a title changed later is renamed by hand.
 //
-// Listed in §6.5's order, so a later bundle (the count team member, the department requester, the
-// finance reader) takes its place between these rather than at the end.
+// Listed in §6.5's order, so a later bundle takes its place in it: the count team member and the
+// department requester after the storekeeper, the finance reader after the auditor.
 import { type LocalizedString } from '@ecms/contracts';
 
 export interface AdministrationRoleBundle {

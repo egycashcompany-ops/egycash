@@ -1,8 +1,8 @@
 // What the Administrative Affairs suites share (design §19.8): a real mongo booted with every
 // module, as production boots; two branches; and signed-in people with exactly the grants a case
 // needs — the master-data desk at organization scope, the same keys held only in branch A (which
-// OD-04 A turns away from every master-data write), an item reader with nothing else, and someone
-// holding no key of this module. Written once, so each suite states its cases and not its
+// OD-04 A turns away from every master-data write), a catalog manager and an item reader each with
+// nothing else, and someone holding no key of this module. Written once, so each suite states its cases and not its
 // plumbing; the warehouse and supplier suites add their people here as they ship.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
@@ -31,6 +31,8 @@ export interface AdministrationWorld {
   managerToken: string;
   /** The same keys at BRANCH scope, placed in branch A. */
   branchManagerToken: string;
+  /** `administrationCatalog.manage` alone, at organization scope: the catalogs screen's own key. */
+  catalogManagerToken: string;
   /** `administrationItem.view` alone, at organization scope. */
   itemViewerToken: string;
   /** Signed in, with a key of another module only. */
@@ -168,6 +170,12 @@ export const bootAdministration = async (label: string): Promise<AdministrationW
     adminToken,
     managerToken: await person('manager', masterDataKeys, 'organization', null),
     branchManagerToken: await person('branch-manager', masterDataKeys, 'branch', branchAId),
+    catalogManagerToken: await person(
+      'catalog-manager',
+      ['administrationCatalog.manage'],
+      'organization',
+      null,
+    ),
     itemViewerToken: await person('item-viewer', ['administrationItem.view'], 'organization', null),
     outsiderToken: await person('outsider', ['itVendor.view'], 'organization', null),
   };

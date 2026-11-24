@@ -13,7 +13,12 @@ import {
 import { Types } from 'mongoose';
 import { NotFoundError } from '../../../../shared/errors';
 import { type AuthContext } from '../../../../shared/types';
-import { assertNotTaken, explainDuplicate, masterSearchClause } from '../../shared/master-data';
+import {
+  assertCurrentVersion,
+  assertNotTaken,
+  explainDuplicate,
+  masterSearchClause,
+} from '../../shared/master-data';
 import { assertAdministrationOrgAuthority } from '../../shared/org-authority';
 import { auditItemCategoryCreated, auditItemCategoryEdited } from './item-category-audit';
 import { parentProblem, parentRefusal } from './item-category-rules';
@@ -90,8 +95,9 @@ class AdministrationItemCategoryService {
   }
 
   /**
-   * Does the category hold subcategories still offered to new items? Then a new item names one of
-   * them (OD-06 (i)); a category whose subcategories all retired is a leaf again.
+   * Does the category hold subcategories still offered to new items? Then an item a write leaves
+   * in it names one of them instead (OD-06 (i)); a category whose subcategories all retired is a
+   * leaf again.
    */
   async hasActiveSubcategories(id: string): Promise<boolean> {
     return repository.hasActiveChildren(id);
@@ -161,6 +167,7 @@ class AdministrationItemCategoryService {
   ): Promise<AdministrationItemCategoryDoc> {
     assertAdministrationOrgAuthority(ctx, 'administrationCatalog.manage');
     const before = await repository.getById(id);
+    assertCurrentVersion(before, input.version);
     const categoryId = String(before._id);
     const claim: Claim = {
       parentId: input.parentId === undefined ? idOf(before.parentId) : canonicalId(input.parentId),

@@ -3058,3 +3058,27 @@ Repository-wide findings outside this module are listed for the owner in
   §19.7; under OD-07 B or C, the item's unit sub-document and its pure spec (§2.3.4, §19.7); under OD-08 B,
   scaled-integer quantity types (§2.3.4), the integer rule of `item-rules.spec.ts` (§19.7) and the quantity inputs'
   `Input rule="integer"` (§13.6). Each of the last three re-opens Phase 1 for the part it names (§19.2).
+- **P1a.1 built** (2026-11-24). The owner took every recommended default («اعمل انت الـ Recommendations من عندك
+  دلوقتى وبعدين نبقى نعدل») except OD-68, which he answered B, hand entry: «لأ خلينا من غير شيتات او بيانات دلوقتى».
+  Under §19.2 that re-opens the go-live parts only: P1a.2 and P1b.1 load no file, so `go-live/`,
+  `shared/go-live-run.model.ts`, `apps/api/assets/administration-go-live/`, the go-live integration specs and the
+  `server.ts` / `worker.ts` start calls are not built, and `administrationModels` carries no run model. P1a.1 itself
+  ships as §19.1 says. The drift check of §19 against the code it starts from re-pinned what had moved, behavior
+  unchanged: the navigation rows are 140 (`seed-navigation.spec.ts:81`; `auth-seed-login.spec.ts:36`), so P1a.W takes
+  them to 144 and P1b.W to 145; the role-matrix module labels sit at `i18n.ts:11257-11266` (en) and `:27148-27157` (ar);
+  `ATM_WORK_BRANCH_REQUIRED` at `errors/index.ts:475`; the contracts' module exports at `index.ts:32-82`; IT's catalog
+  sortable fields at `catalog-item.service.ts:68`; ATM's bank check, thinned by PC-12, at `bank.service.ts:128-130`.
+  Where the code had to choose what the design leaves open:
+  - *One shared file more.* `shared/master-data.ts` holds what all five master registers do alike: the
+    `ADMINISTRATION_DUPLICATE` answer, §10.2's verb table for master data (`create`, `update`, `activate`,
+    `deactivate`) and the server-side search. Each feature's `<entity>-audit.ts` keeps its literal ref, snapshot and
+    signal. The role titles sit in `administration-roles.ts`, the non-seed file §6.1 asks for.
+  - *Refusal details.* `ADMINISTRATION_DUPLICATE`'s detail carries `code: 'duplicate'` beside its `field`, since a
+    detail must have a code; both detail vocabularies are contract constants
+    (`ADMINISTRATION_DUPLICATE_FIELDS`, `ADMINISTRATION_CATEGORY_PARENT_PROBLEMS`) for P1a.W to word. A `parentId` that
+    names no category answers 404 `NOT_FOUND` (the attendance-enrollment precedent): §5.15 names no answer for it.
+  - *Which index refused.* `BaseRepository.create` keeps only the field names of a duplicate key, so after a write a
+    unique index refused, the service re-runs its own check against the row that won and names that field.
+  - *Search.* Besides code and name, `search` matches the folded `nameKey`, so «قطعه» finds «قطعة».
+  - *Deferred to P1a.2,* with the item keys: the read gate `authorizeAny('administrationItem.view', …)`, the topics'
+    move to that key, and the §19.7 case "an item viewer reads units and categories".

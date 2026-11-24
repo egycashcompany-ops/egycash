@@ -260,6 +260,37 @@ its entry here in the same PR.
 
 ### Added
 
+- **Administrative Affairs («الشئون الإدارية»), first slice: units of measure and item categories.**
+  The owner's request of 2026-10-29 for warehouses and procurement starts with its master data; the
+  owner, 2026-11-24, on the open decisions: «اعمل انت الـ Recommendations من عندك دلوقتى وبعدين نبقى
+  نعدل», and on loading lists from files: «لأ خلينا من غير شيتات او بيانات دلوقتى» — so master data is
+  typed on the screens and nothing is loaded at deploy. This is P1a.1 of the design
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §19.1): the API only; the
+  screens, the menu category and its rows arrive with P1a.W.
+  - **A new module, `administration`**, with one key and one page: `administrationCatalog.manage`
+    («إدارة وحدات القياس وتصنيفات الأصناف») on «وحدات القياس والتصنيفات». It reads and writes
+    `/api/v1/administration/catalog-items?kind=unit` and `/api/v1/administration/item-categories`.
+    The writes need the key at ORGANIZATION scope (OD-04 A): one taxonomy serves every branch, so a
+    branch-scoped or delegated holder reads the lists and writes none of them (403).
+  - **Two spellings of one name are one row.** Each name is stored with `nameKey`, its Arabic
+    folded by the shared `foldName` («قطعه» = «قطعة», «الاثاث» = «الأثاث»), under a unique index —
+    per kind for units, per parent for categories — so two people typing both spellings at the same
+    moment get one unit, not two. A clash answers 409 `ADMINISTRATION_DUPLICATE` naming the field
+    (`name` or `code`). Nothing is deleted: `isActive: false` retires a row, which keeps its name.
+  - **Two category levels** (OD-06 A): a category, or a subcategory under a top-level one. A refused
+    parent answers 422 `ADMINISTRATION_CATEGORY_PARENT_INVALID` with its reason — itself, one of its
+    own subcategories, a subcategory, a retired parent, or a move of a category that has
+    subcategories.
+  - **The indexes are the module's own to build.** Its seed builds them first through the shared
+    `syncDeclaredIndexes('apply', …)` and logs the report; each repository waits for its
+    collection's indexes before its first write, so a failed build refuses the write and the next
+    one tries again.
+  - **A ready-made role, «مسؤول البيانات الأساسية»** (`administration-master-data`, OD-78 A), seeded
+    as a managed role holding the catalog key and assigned to nobody.
+  - Audited as `create`, `update`, `activate` and `deactivate`; the realtime topics
+    `administration.catalogItem` and `administration.itemCategory`; the role matrix names the module
+    «الشئون الإدارية» / Administrative Affairs.
+
 - **«ساعات العمل»: the hours each department owes, edited on their own screen.** A new tab on
   «الإعدادات» (`/hr-settings/working-hours`) sets the working hours per department for employees
   with no shift assignment — hours, an optional start time, and the end time computed from them —

@@ -3126,6 +3126,18 @@ Repository-wide findings outside this module are listed for the owner in
     `categoryParentId`, `categoryParentName` and `unitName`.
   - *The unit stays editable.* §2.3.4's immutability needs a line or a movement that names the item, which nothing
     can before P2 and P5, so the checker registry of §3.6 ships with its first registrant.
+- **Supplier-registry ADR accepted** (2026-11-24). §20's "The supplier registry" is written as
+  [ADR-040](../03-decisions/ADR-040-supplier-registry-module-owned-with-a-seam.md), Accepted under the owner's
+  adoption of OD-01's recommended default (§16.12): C, with (i) for insurers, fuel companies and the traffic authority,
+  and (i) for Fleet's free-text vehicle-contract suppliers. It is the documentation pull request §20 and §19.8 ask for
+  before P1b.1's first code. §20's "the next free number is **ADR-039**" was overtaken meanwhile: ADR-039 was taken by
+  the inactivity window (`docs/03-decisions/ADR-039-inactivity-window-is-a-setting.md`), so this ADR is ADR-040, as
+  §19.8 already says. The IT design's §16 P4 and §17 carry the dated note §21 asks for. Its review found two facts
+  §15.3.5 a leaves out, and the ADR records them for the next stage's ADR to settle: Fleet's boot seed re-creates any
+  house-vocabulary workshop with no live row, so a retired or merged workshop row comes back with a new id
+  (`apps/api/src/modules/fleet/fleet.seed.ts:127-148`; `apps/api/src/modules/fleet/go-live/vocabulary.ts:52-62`); and
+  137 imported visits name the import's «غير محدد» placeholder row, not a workshop
+  (`apps/api/src/modules/fleet/go-live/maintenance-import.ts:25-27, 228-229`). Nothing else in this design changes.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

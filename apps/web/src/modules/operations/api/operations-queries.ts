@@ -149,6 +149,37 @@ export const useOperationsCurrencies = (params: OperationsListParams, enabled = 
     enabled,
   });
 
+/**
+ * Round 34 B — «البيانات المرجعية»'s three searchable lists, page by page: the very reads and cache
+ * keys of `useOperationsBanks` / `useOperationsBankBranches` / `useOperationsAreas` (so every write
+ * that refreshes those refreshes these), with one difference — while the next answer is asked (a
+ * pause in typing, another page) the last one stays on screen instead of the table emptying into a
+ * skeleton. Hooks of their own, so every other caller of the plain ones reads exactly as before.
+ */
+export const useCatalogBanksPage = (params: OperationsListParams, enabled: boolean) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'banks', params),
+    queryFn: () => api.listBanks(params),
+    enabled,
+    placeholderData: keepPreviousData,
+  });
+
+export const useCatalogBranchesPage = (params: OperationsListParams, enabled: boolean) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'bankBranches', params),
+    queryFn: () => api.listBankBranches(params),
+    enabled,
+    placeholderData: keepPreviousData,
+  });
+
+export const useCatalogAreasPage = (params: OperationsListParams, enabled: boolean) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'areas', params),
+    queryFn: () => api.listOperationsAreas(params),
+    enabled,
+    placeholderData: keepPreviousData,
+  });
+
 /** Branches of one bank — the cascading picker. Disabled until a bank is chosen. */
 /** One branch — cached under the branches feature, so a branch edit refreshes it too. */
 export const useBankBranch = (id: string) =>

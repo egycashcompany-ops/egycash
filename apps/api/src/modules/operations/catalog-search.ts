@@ -28,6 +28,13 @@
 //     skipped, and the bare letter is in the same group as the composed one.)
 //   · whitespace collapsing. Spaces stay literal, as they were.
 //
+// What it does that normalizeArabic does NOT (Round 34 critic): THE DIGITS. A code or a name is
+// stored as it was typed — the form and the sheet import keep «١٠٤» as «١٠٤» — and the web folds
+// what the operator types to Latin digits before it asks («١٠٤» → «104»). Matched literally, a row
+// saved with Arabic-Indic digits could then be found by no typed form at all. So each digit, in
+// any of the three scripts (Latin, Arabic-Indic U+0660–0669, Persian U+06F0–06F9), becomes the
+// class of its three forms: «104», «١٠٤» and «۱۰۴» find one another, either way round.
+//
 // ReDoS-safe by construction: the pattern is single-character atoms (a literal or a class) joined
 // by ONE `[marks]*`, with no nesting and no alternation. The marks are stripped from the typed
 // text first, so no atom can match a mark and every `[marks]*` stops at the first letter.
@@ -48,9 +55,21 @@ export const escapeRegExp = (text: string): string => text.replace(REGEX_SYNTAX,
  */
 const FOLD_GROUPS: readonly string[] = ['اأإآٱ', 'يىئ', 'هة', 'وؤ'];
 
-/** Each foldable letter → the class of its whole group, so «ي» also finds «ى» and «ئ». */
+/**
+ * Each digit's three forms — Latin, Arabic-Indic (U+0660–0669), Persian (U+06F0–06F9) — one group
+ * per digit, so a code stored on an Arabic keyboard is found by its Latin digits and back.
+ */
+const DIGIT_GROUPS: readonly string[] = Array.from(
+  { length: 10 },
+  (_, d) => `${d}${String.fromCharCode(0x0660 + d)}${String.fromCharCode(0x06f0 + d)}`,
+);
+
+/**
+ * Each foldable letter → the class of its whole group, so «ي» also finds «ى» and «ئ»; each digit
+ * → the class of its three forms, so «4» also finds «٤» and «۴».
+ */
 const FOLD_CLASS = new Map<string, string>(
-  FOLD_GROUPS.flatMap((group) =>
+  [...FOLD_GROUPS, ...DIGIT_GROUPS].flatMap((group) =>
     [...group].map((letter): [string, string] => [letter, `[${group}]`]),
   ),
 );
@@ -74,7 +93,8 @@ const MAX_SEARCH_CHARS = 200;
 
 /**
  * `{ $regex, $options: 'i' }` matching `text` anywhere in the field: literally, except that Arabic
- * letter variants and tashkeel compare the way normalizeArabic compares them. Text made only of
+ * letter variants and tashkeel compare the way normalizeArabic compares them, and a digit matches
+ * its Latin, Arabic-Indic and Persian forms alike. Text made only of
  * marks folds to nothing and so matches everything, as an empty search box does.
  */
 export const containsText = (text: string): { $regex: string; $options: 'i' } => ({

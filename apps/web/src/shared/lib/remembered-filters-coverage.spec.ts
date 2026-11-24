@@ -246,7 +246,7 @@ const EXCLUDED: readonly (readonly [string, string])[] = [
   ],
   [
     'modules/operations/pages/CatalogsPage.tsx',
-    '`kind` selects which catalogue renders \u2014 navigation, not a filter',
+    '`kind` selects which catalogue renders \u2014 navigation, not a filter; its search and filters (`q`, `status`, `bank`, Round 34 B) belong to one kind and are dropped whenever the kind changes (`withCatalogKind`), so they live in the address bar for a reload or a shared link and never cross a visit',
   ],
   ['modules/operations/pages/CrewAttendancePage.tsx', '`date` is the day being recorded'],
   [

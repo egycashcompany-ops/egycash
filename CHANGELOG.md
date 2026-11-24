@@ -3064,6 +3064,219 @@ its entry here in the same PR.
         markup specs read hooks and order (`data-van-head-action` after `data-van-direction`), not
         whole class strings; (7) the print change labelled «Round 33b» in code, specs and i18n while
         this entry is «C» — every label is «Round 33 C» now.
+  - Round 34 — أسهم «تبديل بين سيارتين» على «لوحة التشغيلة»، و«البيانات المرجعية». The owner, by
+    voice: «عاوز في السواب بتاع العربيتين في الشاشة بتاعت لوحة التشغيلة. السواب عايز يكون أسهم اللي
+    أنا ببدل ما بينهم وبين عربيتين، اللي هو السهم الشمال أو السهم اليمين أو السهمين اللي تحت بعض،
+    يكون السهمين اليمين والشمال نفس اللون والسهم اللي في النص لون مختلف. وعاوز أغير اللي اوت بتاع
+    بيانات المراجعة يكون بروفيشنال أكتر من كده، وعاوز الداتا اللي تبقى كبيرة زي الفروع والمناطق
+    والبنوك وهكذا يكون في سيرش اقدر اسيرش بيه.» («بيانات المراجعة» is the dictation of «البيانات
+    المرجعية», `/operations/catalogs`.)
+    - A — «السواب عايز يكون أسهم … السهم الشمال أو السهم اليمين أو السهمين اللي تحت بعض، يكون
+      السهمين اليمين والشمال نفس اللون والسهم اللي في النص لون مختلف». The three ways between the
+      two cards of «تبديل بين سيارتين» (`CrewSwapDialog`, Round 32 C) are ARROW buttons now (new
+      `components/crew-swap-arrows.tsx`), their word labels and short lines gone: a one-way move is
+      ONE arrow from the card that sends to the card that receives; the swap is the TWO arrows one
+      under the other (⇄).
+      - Where they point, in every layout (`swapArrowAim`, `swapArrowTurn`). Side by side (lg —
+        measured at 1024, 1366 and 1440) the first card is on the RIGHT in Arabic, so «من 213 إلى
+        255» points LEFT and «من 255 إلى 213» RIGHT, the swap's top arrow pointing as the one above
+        it and its bottom one as the one below; in English all of it mirrored (the first card on
+        the left). Stacked (390 and 768 — the cards one above the other, the three in a row between
+        them) the single arrows point DOWN and UP, toward the card below or above, and the swap
+        stands ⇅. Each glyph is drawn once and turned by CSS per layout.
+      - The colours: the two single arrows share one hue, sky — off a soft `sky-50` fill, a
+        `sky-300` border and a `sky-700` glyph (dark: `sky-400/10`, `sky-400/45`, `sky-300`), on a
+        solid `sky-600` (#0284c7) with a white glyph (4.1:1), a `sky-500/70` ring and its shadow;
+        the swap, the default way, the brand's indigo — off `brand-50`/`brand-300`/`brand-700`
+        (dark `brand-400/10`, `brand-200`), on `brand-600` #4f46e5 (6.3:1; dark `brand-500`
+        #6366f1, 4.47:1). Both apart from the preview's emerald «من 213» and rose «يبقى». The
+        keyboard's focus is a neutral outline outside the ring (`slate-900`, dark white); without a
+        second van the three are there at 40% and none can be pressed.
+      - The words: each arrow's name and tooltip say what it does with both vans —
+        «نقل المحدد من 213 إلى 255», «تبديل المحدد بين 213 و255 في الاتجاهين», «نقل المحدد من 255
+        إلى 213» («Move selected from 213 to 255», «Swap selected between 213 and 255, both
+        ways»); the group keeps «طريقة نقل المحدد». No caption under the arrows: each card's head
+        names its van right beside them, a single arrow at once marks the receiving card «تستقبل»
+        and dims its boxes, and the preview under them redraws.
+      - Kept as it was: the radio group, one way in the Tab order, the arrow keys in the reading
+        direction (`modeStepOf`), `data-swap-modes`/`data-swap-mode`, the swap as the default, what
+        each way does (`lib/crew-swap.ts` untouched), «تطبيق» and the preview. The buttons are
+        64×48 in the row and 56×48 in the column; the column went from 144px to 56px, the cards
+        took the room.
+      - i18n: `operations.crewPlan.swap.mode.{aToB,bToA,swap}` rewritten to name both vans;
+        `mode.{aToB,bToA,swap}Short` and `mode.{aToB,bToA,swap}Hint` removed (nothing drew them
+        any more).
+      - Specs. Rewritten (the rule changed): `components/crew-swap-dialog.spec.tsx` «the three ways
+        are a radio group: «نقل المحدد ←» «تبديل المحدد ⇄» «نقل المحدد →», the swap on» → «the
+        three ways are a radio group, the swap on — each named by what it does with both vans».
+        New, in the same file: «Round 34 A — the three ways are ARROWS between the two cards» (an
+        svg each and no word; each one's name and tooltip with both vans, Arabic and English; one
+        hue for the two single arrows and another for the swap, off and on; where each points per
+        language and per layout; `swapArrowAim` and `swapArrowTurn`; the roving Tab stop and the
+        arrow keys; no second van yet).
+      - Verified on the built web against the stubbed API at 390, 768, 1024, 1366 and 1440: each
+        glyph's computed transform points from the sending card's centre to the receiving one's,
+        Arabic and English; every arrow at least 44×44, no horizontal scroll; the two single
+        arrows' computed colours identical and the swap's another, the white glyphs' contrast
+        measured; ← (Arabic) and → (English) and ↓/↑ step the ways with the focus; «تطبيق» counts
+        what crosses one way.
+    - B — «وعاوز أغير اللي اوت بتاع بيانات المراجعة يكون بروفيشنال أكتر من كده، وعاوز الداتا اللي
+      تبقى كبيرة زي الفروع والمناطق والبنوك وهكذا يكون في سيرش اقدر اسيرش بيه». «البيانات المرجعية»
+      (`pages/CatalogsPage.tsx`, `/operations/catalogs`) in the boards' look — the day board's dark
+      filter bar and framed table, Fleet's figures — and a search on the three lists that grow.
+      - The kinds are a row of cards (new `components/CatalogKindCards.tsx`): each kind's icon in
+        its own tone, its name, and how many rows it holds in the boards' figures (Latin digits,
+        isolated left to right — «الفروع 1,340»), the chosen one in the site's purple with an edge
+        under it. Still a real tab list on `?kind=`: `role="tablist"`/`tab`/`tabpanel`,
+        `aria-selected`, one tab in the Tab order, the arrows walking it in the reading direction
+        (← is the next card in Arabic) and Home/End (`kindStep`). The counts: the banks from the
+        bank list the screen already reads whole; the branches and the areas from a one-row read
+        (`COUNT_READ`, its `totalItems`); the currencies and «أنواع التشغيل» from the whole lists
+        their tabs show (now read on every kind — they are 8 and 9 rows). «—» while a count is on
+        its way. On a phone the row scrolls inside itself and the chosen card is scrolled into it.
+      - A toolbar on banks, branches and areas (new `components/CatalogToolbar.tsx`, the boards'
+        `DARK_FILTER_BAR` over `FilterBar`): the search, «الحالة» (الكل / مُفعَّل / غير مُفعَّل →
+        `isActive`), on the branches «البنك» (كل البنوك / each bank → `bankId`), then the bar's own
+        reset once anything narrows and «n نتيجة» (Arabic forms: «نتيجة واحدة», «نتيجتان», «3
+        نتائج», «22 نتيجة»). One row from 1366px; on a phone the search takes a line and the two
+        lists share the next. «إضافة …» and «استيراد فروع من شيت» are the boards' buttons, at the
+        title's end on every kind.
+      - The search is the SERVER's (`search` — banks: operations name and both names; branches:
+        name, code, area; areas: both names and the governorate; folded there, `catalog-search.ts`).
+        Its rules are pure (new `lib/catalog-filters.ts`): sent ~300ms after the last key
+        (`createSearchDebounce` — «م», «مع», «معا» typed in a breath ask once); kept in `?q=` (a
+        reload or a shared link opens on it; typing replaces the history entry); the page back to
+        the first on any change, the page size kept; ✕ and Escape empty it at once; another kind
+        starts clean (`withCatalogKind` drops `q`, `status`, `bank` and the page), and a search
+        still waiting when the kind changes is dropped, never sent to the next kind; digits typed on
+        an Arabic keyboard are sent as Latin («١٢٣» → `123` — the server folds the letters, not the
+        digits) and runs of spaces as one, while the box keeps what was typed (`foldCatalogSearch`).
+        What was found is marked in the rows, folded as the server folds (`matchParts` —
+        «الاسكندريه» marks «الإسكندرية», «٢٠٤» marks «204»). While the next answer is asked the last
+        one stays on screen, dimmed, with a spinner in the count — three hooks of their own
+        (`useCatalogBanksPage`, `useCatalogBranchesPage`, `useCatalogAreasPage`, the same reads and
+        cache keys with `keepPreviousData`), so every other caller of `useOperationsBanks` & co.
+        reads exactly as before. The plain list still asks `{ page, pageSize }`, the query it always
+        asked.
+      - The table sits in one frame with its pager in the frame's foot (the numbered pager the
+        boards wear, 25 / 50 / 100 a page): the boards' table (`BOARD_TABLE_LOOK`) with its head held
+        while the rows scroll on a computer, comfortable rows (59px, 63px from 1750px), the names in
+        Cairo (the boards' monospace stack spread Arabic names word by word) and the codes and
+        numbers in the figures' face, the status as the boards' small badge, an inactive row dimmed,
+        the pen in the boards' action box, the maps pin kept. An empty answer says what was asked:
+        «لا توجد نتائج لـ «…»» with «مسح البحث» (and «مسح كل المرشحات» when a filter narrows too), or
+        «لا توجد نتائج تطابق المرشحات المحددة»; a list empty for real keeps its own words («لا توجد
+        فروع بعد»). Errors as before. On a phone the table scrolls sideways inside its frame.
+      - Currencies and «أنواع التشغيل» keep their drag, their arrows, their whole list on one page
+        and archive / restore, and take NO search: a filter over a dragged list would hide the rows
+        a drop lands between. Their note sits on the toolbar's line. The add / edit forms, the
+        branch import (in the list's place, as Round 29 drew it) and the address bar's `size` are as
+        they were.
+      - Without `operationsCatalog.manage` (the route asks for it; the screen no longer leans on
+        that) there is no add, no import, no pen, no grip, no arrows and no archive — the pens on
+        banks, branches, areas, currencies and types and the add button were drawn regardless
+        before. No new permission.
+      - The server: no change in B (the critic's review below folds the digits in
+        `catalog-search.ts`). Typing a bank's name into the branches' search is NOT matched: the
+        bank filter says it exactly, and the shipment form's branch picker reads the same endpoint
+        with `bankId` and `search` — matching the bank's name there would answer every branch of
+        «بنك مصر» to «مصر». The persistence census keeps the screen EXCLUDED, its reason now naming
+        `q`, `status` and `bank` (`shared/lib/remembered-filters-coverage.spec.ts`): they belong to
+        one kind and never cross a visit.
+      - Specs. Rewritten (the pager changed): `pages/catalogs-currency-order.spec.tsx` «shows no
+        pager — the whole list is on screen» and `pages/catalogs-shift-types.spec.tsx` «lists the
+        WHOLE catalog in the order the server answered — archived types too» — their «no pager»
+        looked for the old pager's «لكل صفحة» only (`common.pagination.perPage`), which the
+        new pager does not write; they now also assert no `data-catalog-pager` and no
+        `common.pager.perPage`. New: `lib/catalog-filters.spec.ts` (the kinds that search, the
+        address bar, the query, the digits, the arrows, the clock with fake timers, Escape, the
+        marks) and `pages/catalogs-layout.spec.tsx` (the cards — order, selection, ids, counts,
+        «—»; the search, the status and the bank reaching the query by its exact cache key; the
+        Arabic digits; the count and the reset; the marks; the figures and the badges; the four
+        empty states; each kind's toolbar and none on the dragged lists; the pager in the frame with
+        25 / 50 / 100; a bigger page; who may change what, on every kind; every new word in both
+        languages; no raw key in English).
+      - Verified on the built web (dist-r34b) against a stubbed API in the server's shapes with 10
+        banks, 1,340 branches over 4 banks, 120 areas, 8 currencies and 9 types, searching as the
+        server does: at 1366, 1440, 1920 and 390, dark and light — no sideways scroll of the page
+        or the board's frame, the toolbar on one row and the five cards in view from 1366, nothing
+        cut, the pager in the frame; at 390 the cards and the table scroll inside themselves and the
+        toolbar stacks. In the browser: seven keys typed 60ms apart sent ONE search, `?q=` and page
+        1, a reload kept it, Escape and ✕ cleared it, «٢٠٤» asked `204`, «غير مُفعَّل» and «بنك مصر»
+        reached the query, the reset cleared all, a kind switch dropped a waiting search, ← and Home
+        on the cards, the pager and 100 a page, a row's pen, «إضافة فرع», the import and back, the
+        empty state and «مسح البحث», the drag lists intact, English left to right.
+    - Round 34 verifier (the build's, never the owner's): on the real stack (the owner's four sheets
+      imported, 1,735 branches) at 768 and 820 the five kind cards share the row at 134–145px, and
+      with the icon BESIDE the name «أنواع التشغيل» had 56px and was cut («أنواع التـ…»). From `md`
+      to `lg` the icon now sits ABOVE the name (`CatalogKindCards`), whole at 768, 820, 900 and
+      1000; beside it again from `lg`, as before. New: `pages/catalogs-layout.spec.tsx` «from md to
+      lg the icon sits above the name, so «أنواع التشغيل» is not cut on a tablet».
+    - Round 34 critic (the build's, never the owner's): seven findings, each fixed with a spec that
+      fails on the code before it (each fix reverted once and its spec seen red).
+      - (1) A list read that failed left the toolbar's count at «جارٍ التحميل…» for good, beside
+        the table's «تعذّر التحميل»; and a `?bank=` that is no ObjectId reached the server, which
+        refuses it (400) — the whole list failed and the bank box named the raw id. Now the count
+        says «—» (named «تعذّر التحميل») and the pager hides while the read has failed;
+        `readCatalogFilters` reads a `bank` that is no id as no filter (contracts `objectId()`), and
+        `withKnownBank` one that names no bank on the list, once the list is in. New:
+        `lib/catalog-filters.spec.ts` «a bank that is not on the list is no filter once the list is
+        in …»; `pages/catalogs-layout.spec.tsx` «a link from elsewhere, and a read that failed»
+        (four cases). Rewritten (the rule changed): `lib/catalog-filters.spec.ts` «reads `q`,
+        `status` and `bank` — an unknown status is no filter at all» → «… — an unknown status, or a
+        bank that is no id, is no filter at all»; `pages/catalogs-layout.spec.tsx`'s bank fixtures
+        are ObjectIds now («b-nbe» → 24 hex digits, the server's shape), its assertions unchanged.
+      - (2) The toolbar's reset (or Back over a filter) pressed inside the 300ms wait left the typed
+        term in the box, and it landed in `?q=` after the reset. The box is a pure model now
+        (`createSearchBox` in `lib/catalog-filters.ts`; `CatalogToolbar` only hands it the keys and
+        the address bar): beside `q` it watches the rest of the narrowing (`searchBoxContext` — the
+        status and the bank), and a change made elsewhere puts the address bar's text in the box
+        and drops what was waiting; its own send coming back changes nothing. New:
+        `lib/catalog-filters.spec.ts` «the search box against the address bar» (the screen in
+        miniature — the model, `withCatalogSearch`, the reset, Back — six cases).
+      - (3) In English below `lg` the swap's ⇅ was not mirrored: the row read ↓ (↑↓) ↑, each of its
+        arrows against the one beside it. It is mirrored there now (`-scale-x-100 rotate-90`, reset
+        from `lg`): ↓ ⇅ ↑ in English, ↑ ⇅ ↓ in Arabic as before; the column (⇄) unchanged.
+        `swapArrowAim` lists the swap's two in the order the eye meets them — top first side by
+        side, left first stacked — so its `stacked` reads `up down` in Arabic, `down up` in English.
+      - (4) ✕ / Escape on a text never sent, or a space added, wrote the address bar anyway — the
+        page back to the first, and a `q` of spaces. `withCatalogSearch` writes nothing when the
+        folded question is unchanged, and never a `q` that folds to nothing. New:
+        `lib/catalog-filters.spec.ts` «what the box writes to the address bar» (three cases).
+      - (5) A code or a name saved with Arabic-Indic digits («١٠٤» — the form keeps what is typed)
+        was found by no typed form: the screen sends «104» for «١٠٤», and the server matched digits
+        literally. apps/api `catalog-search.ts` (`containsText`, every catalog's search) now
+        matches each digit in its Latin, Arabic-Indic and Persian forms («104», «١٠٤», «۱۰۴» find
+        one another). New: `catalog-search.spec.ts` «finds a code stored in Arabic-Indic or Persian
+        digits by its Latin digits, and every way round»; `tests/integration/operations.spec.ts`
+        «9b3. finds a code stored in Arabic-Indic digits by its Latin digits, and back» (Mongo's own
+        engine). Rewritten (the rule changed): `catalog-search.spec.ts` «treats two letters as one
+        exactly when normalizeArabic does» → «treats two characters as one exactly when
+        normalizeArabic, the digits read as Latin, does» (the reference fold gains `asciiDigits`,
+        and the Latin digits join the Arabic block).
+      - (6) The swap's spec pinned the dialog's source text and the turn's class strings: an
+        equivalent refactor broke it, while (3) passed. The radio group is its own hookless
+        component (`SwapWays` in `crew-swap-arrows.tsx`) whose key handler the spec calls, and the
+        arrows are read off the glyph's own svg heads, turned by the matrix its classes give in each
+        layout. Rewritten in `components/crew-swap-dialog.spec.tsx`: «the arrows point from the
+        sending card to the receiving one: left/right by the language, down/up stacked» → «the
+        arrows point where they say: the drawing, turned by its classes, against
+        `data-swap-points`», «each one-way arrow points from the sending card to the receiving one,
+        in every layout and language» and «the swap’s two arrows each point as the one-way arrow
+        beside them — ⇄ in the column, ↑ ⇅ ↓ / ↓ ⇅ ↑ in the row»; «the helpers agree:
+        `swapArrowAim` and `swapArrowTurn` for each way, each language» → «the words and the
+        drawing agree for every way, language and layout — and the two hues»; «the keyboard still
+        steps: one way in the Tab order, the arrow keys toward where the arrows go» → «the keyboard:
+        one way in the Tab order, and each arrow key moves to the way that lies that way»; and the
+        Round 32 critic block's «the arrow keys read the language: `modeStepOf` with the window’s
+        locale» → «the arrow keys read the language: the window’s ways step as its locale reads».
+      - (7) Before the second van each arrow was named «نقل المحدد من 150 إلى —» (and each box «…
+        إلى —»). Until it is chosen the second van is «السيارة الثانية» (new key
+        `operations.crewPlan.swap.secondVan`, «the second vehicle»), and each arrow's name and
+        tooltip add «اختر السيارة الثانية أولًا». Rewritten: «no second van yet: the arrows are
+        there, the swap marked, none to press» → «… — each named without a dash, and why»; «the
+        first card is that row, every item with its own box; the second is the board’s other rows»
+        (its box named «… إلى السيارة الثانية», no longer «إلى —»).
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

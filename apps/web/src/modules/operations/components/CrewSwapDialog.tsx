@@ -8,8 +8,9 @@
 //     lists everything its row holds — «قائد الطاقم», «أخصائي 1», «أخصائي 2» person by person, then
 //     «الاتجاه», «التوقيت», «النوع», «لون الصف», «ملاحظات» — each with its own box to tick, and
 //     «الكل» · «الطاقم فقط» · «لا شيء» to tick a card at once;
-//   · BETWEEN THEM, how the ticked items go: «تبديل المحدد ⇄» (both cards' ticks cross at once), or
-//     «نقل المحدد» one way (only the sending card's);
+//   · BETWEEN THEM, how the ticked items go, as three ARROWS (Round 34 A): the swap's two arrows one
+//     under the other (both cards' ticks cross at once), or one arrow from one card to the other
+//     (only the sending card's) — the two one-way arrows in one hue, the swap in another;
 //   · UNDER THEM, the two cards AFTER the change, side by side, before anything is touched: what
 //     arrives («من 213»), the value a moved field replaces (struck), what goes, and what a board rule
 //     keeps where it is — with the rule's reason (away that day, a slot his role does not fit, no room
@@ -18,8 +19,9 @@
 //     nothing is written until «حفظ».
 //
 // THE KEYBOARD: every box is a real checkbox named by what it moves and where («نقل أحمد علي — قائد
-// الطاقم — إلى 213»); the three ways are a radio group (the arrows move in it); Tab stays inside the
-// window and Escape closes it, the focus going back to the row's «⇄».
+// الطاقم — إلى 213»); the three ways are a radio group (the arrow keys move in it, each way named
+// by what it does: «نقل المحدد من 150 إلى 213»); Tab stays inside the window and Escape closes
+// it, the focus going back to the row's «⇄».
 import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   type Locale,
@@ -43,10 +45,8 @@ import {
 import {
   QUICK_PICKS,
   SWAP_FIELDS,
-  SWAP_MODES,
   fieldItem,
   livePicks,
-  modeStepOf,
   otherSide,
   personItem,
   planSwap,
@@ -64,6 +64,7 @@ import {
 } from '../lib/crew-swap';
 import { AWAY_BADGE, ROLE_DOT } from './CrewPlanChip';
 import { PLAN_ICON } from './crew-plan-icons';
+import { SwapWays } from './crew-swap-arrows';
 import { SHIFT_TYPE_TONE, ShiftTypeDot, shiftTypeName } from './shift-type-look';
 import { useFocusTrap } from './use-focus-trap';
 
@@ -151,7 +152,10 @@ export const CrewSwapDialog = ({
   if (a === undefined) return null;
   const live = b === undefined ? { a: picks.a, b: [] } : livePicks(a, b, picks);
   const result: SwapResult | null = b === undefined ? null : planSwap(a, b, live, mode, rules);
-  const name = { a: rowName(a), b: b === undefined ? '—' : rowName(b) };
+  const name = {
+    a: rowName(a),
+    b: b === undefined ? t('operations.crewPlan.swap.secondVan') : rowName(b),
+  };
   const crossing = result?.moved.length ?? 0;
   const keptBack = result?.refused.length ?? 0;
 
@@ -670,62 +674,30 @@ export const CrewSwapDialog = ({
   );
 
   // ── The three ways, between the cards ───────────────────────────────────────────────────────
-  const stepMode = (by: number): void => {
-    const at = SWAP_MODES.indexOf(mode);
-    const next = SWAP_MODES[(at + by + SWAP_MODES.length) % SWAP_MODES.length] as SwapMode;
-    setMode(next);
-    modeButtons.current[next]?.focus();
+  // Each way named by what it does, with both vans — before the second is chosen, «السيارة الثانية»
+  // stands for it, and the tooltip says why the arrows cannot be pressed yet (Round 34 critic: they
+  // read «نقل المحدد من 150 إلى —»).
+  const wayName = (one: SwapMode): string => {
+    const what = t(`operations.crewPlan.swap.mode.${one}`, { a: name.a, b: name.b });
+    return b === undefined ? `${what} — ${t('operations.crewPlan.swap.pickSecondFirst')}` : what;
   };
   const modes = (
-    <div
-      role="radiogroup"
-      aria-label={t('operations.crewPlan.swap.mode.group')}
-      data-swap-modes="true"
-      onKeyDown={(event) => {
-        // The next way lies in the reading direction — left in Arabic, right in English.
-        const by = modeStepOf(event.key, locale === 'ar');
-        if (by === 0) return;
-        event.preventDefault();
-        stepMode(by);
+    // The arrows (`crew-swap-arrows.tsx`): the keys step in the reading direction, and a way
+    // stepped to by a key takes the focus with it.
+    <SwapWays
+      mode={mode}
+      rtl={locale === 'ar'}
+      groupLabel={t('operations.crewPlan.swap.mode.group')}
+      nameOf={wayName}
+      disabled={b === undefined}
+      onPick={(next, by) => {
+        setMode(next);
+        if (by === 'key') modeButtons.current[next]?.focus();
       }}
-      className="flex flex-row flex-wrap items-stretch justify-center gap-2 lg:w-36 lg:flex-col lg:justify-center"
-    >
-      {SWAP_MODES.map((one) => {
-        const on = mode === one;
-        return (
-          <button
-            key={one}
-            ref={(node) => {
-              modeButtons.current[one] = node;
-            }}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            tabIndex={on ? 0 : -1}
-            data-swap-mode={one}
-            disabled={b === undefined}
-            title={t(`operations.crewPlan.swap.mode.${one}Hint`, { a: name.a, b: name.b })}
-            onClick={() => setMode(one)}
-            className={cn(
-              'flex min-w-[7.5rem] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl border px-2 py-2 text-[12.5px] font-black transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 disabled:cursor-not-allowed disabled:opacity-50 lg:flex-none',
-              on
-                ? 'border-brand-500 bg-brand-500 text-white shadow-[0_6px_18px_-6px_rgba(91,76,255,0.7)]'
-                : 'border-slate-200 bg-white text-slate-700 hover:border-brand-400 hover:text-brand-700 dark:border-[#2b3b6b] dark:bg-[#121c3f] dark:text-slate-200 dark:hover:text-brand-200',
-            )}
-          >
-            <span className="whitespace-nowrap">{t(`operations.crewPlan.swap.mode.${one}`)}</span>
-            <span
-              className={cn(
-                'text-[10.5px] font-bold',
-                on ? 'text-white/85' : 'text-slate-500 dark:text-slate-400',
-              )}
-            >
-              {t(`operations.crewPlan.swap.mode.${one}Short`, { a: name.a, b: name.b })}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+      buttonRef={(one, node) => {
+        modeButtons.current[one] = node;
+      }}
+    />
   );
 
   return (

@@ -32,6 +32,13 @@ import {
   type SwapRules,
 } from '../lib/crew-swap';
 import { CrewSwapDialog } from './CrewSwapDialog';
+import {
+  SwapWays,
+  swapArrowAim,
+  swapArrowTone,
+  swapArrowTurn,
+  type ArrowWay,
+} from './crew-swap-arrows';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -194,13 +201,16 @@ describe('the window opens on the row it was pressed on — the second van still
     expect(text(first)).toContain('150');
     expect(text(first)).toContain(t('operations.crewPlan.swap.first'));
     // 3 people + 5 fields = 8 boxes, each named by what it moves and where.
+    // Round 34 critic — REWRITTEN: before the second van is chosen it is «السيارة الثانية», not
+    // «—» (the box read «نقل … إلى —»).
     expect(first.match(/type="checkbox"/g)).toHaveLength(8);
     expect(first).toContain(
       `aria-label="${t('operations.crewPlan.swap.item', {
         item: `${NAMES.c1} — ${t('operations.crewPlan.columns.captain')}`,
-        to: '—',
+        to: t('operations.crewPlan.swap.secondVan'),
       })}"`,
     );
+    expect(first).not.toMatch(/aria-label="[^"]*—"/);
     // The drivers stay with the van: said, never ticked.
     expect(text(first)).toContain(t('operations.crewPlan.swap.drivers', { names: 'سعيد السائق' }));
     const chooser = card(html, 'data-swap-chooser="true"');
@@ -253,16 +263,26 @@ describe('two cards side by side, the ticks, the ways and the preview AFTER', ()
     expect(card(html, 'data-swap-card="b"').match(/type="checkbox"/g)).toHaveLength(5);
   });
 
-  it('the three ways are a radio group: «نقل المحدد ←» «تبديل المحدد ⇄» «نقل المحدد →», the swap on', () => {
+  // Round 34 A — REWRITTEN. It pinned the word labels «نقل المحدد ←» «تبديل المحدد ⇄» «نقل المحدد →»
+  // (and «Move selected →»); the three ways are arrows now, each named by what it does with both
+  // vans — the arrows themselves are the next block's.
+  it('the three ways are a radio group, the swap on — each named by what it does with both vans', () => {
     expect(html).toContain('role="radiogroup"');
     const radios = html.match(/data-swap-mode="(\w+)"/g)?.map((one) => one.split('"')[1]);
     expect(radios).toEqual(['aToB', 'swap', 'bToA']);
     expect(html).toMatch(/aria-checked="true"[^>]*data-swap-mode="swap"/);
-    expect(t('operations.crewPlan.swap.mode.aToB')).toBe('نقل المحدد ←');
-    expect(t('operations.crewPlan.swap.mode.bToA')).toBe('نقل المحدد →');
-    expect(t('operations.crewPlan.swap.mode.swap')).toBe('تبديل المحدد ⇄');
-    // English reads left to right: the first van is on the left, so «to the second» points right.
-    expect(t('operations.crewPlan.swap.mode.aToB', undefined, 'en')).toBe('Move selected →');
+    expect(t('operations.crewPlan.swap.mode.aToB', { a: '150', b: '213' })).toBe(
+      'نقل المحدد من 150 إلى 213',
+    );
+    expect(t('operations.crewPlan.swap.mode.bToA', { a: '150', b: '213' })).toBe(
+      'نقل المحدد من 213 إلى 150',
+    );
+    expect(t('operations.crewPlan.swap.mode.swap', { a: '150', b: '213' })).toBe(
+      'تبديل المحدد بين 150 و213 في الاتجاهين',
+    );
+    expect(t('operations.crewPlan.swap.mode.aToB', { a: '150', b: '213' }, 'en')).toBe(
+      'Move selected from 150 to 213',
+    );
   });
 
   // Round 32 critic — REWRITTEN. In «تبديل المحدد ⇄» it pinned 150's own 07:30 — never ticked —
@@ -427,9 +447,370 @@ describe('Round 32 critic — the window', () => {
     for (const classes of notesLabels) expect(classes).toContain('sm:col-start-1');
   });
 
-  it('the arrow keys read the language: `modeStepOf` with the window’s locale', () => {
-    const dialog = read('./CrewSwapDialog.tsx');
-    expect(dialog).toContain("const by = modeStepOf(event.key, locale === 'ar');");
+  // Round 34 critic — REWRITTEN: it read the dialog's source for the line that calls `modeStepOf`
+  // with the locale. Now the behaviour: the window draws its ways for its language (the arrows'
+  // aim in the markup), and the very handler those ways carry steps by that language.
+  it('the arrow keys read the language: the window’s ways step as its locale reads', () => {
+    for (const [locale, rtl] of [
+      ['ar', true],
+      ['en', false],
+    ] as const) {
+      const html = render({ locale, initial: { bKey: V213.key, picks: { a: [], b: [] } } });
+      expect(html).toContain(`data-swap-points="${swapArrowAim('aToB', rtl).wide.join(' ')}"`);
+      const picked: SwapMode[] = [];
+      const ways = SwapWays({
+        mode: 'swap',
+        rtl,
+        groupLabel: 'g',
+        nameOf: (one) => one,
+        disabled: false,
+        onPick: (one) => picked.push(one),
+      });
+      (ways.props as { onKeyDown: (e: unknown) => void }).onKeyDown({
+        key: 'ArrowLeft',
+        preventDefault: () => undefined,
+      });
+      // ← is the next way in Arabic (the row runs right to left), the one before in English.
+      expect(picked, locale).toEqual([rtl ? 'bToA' : 'aToB']);
+    }
+  });
+});
+
+// Round 34 A — «السواب عايز يكون أسهم اللي أنا ببدل ما بينهم وبين عربيتين، اللي هو السهم الشمال أو
+// السهم اليمين أو السهمين اللي تحت بعض، يكون السهمين اليمين والشمال نفس اللون والسهم اللي في النص
+// لون مختلف».
+describe('Round 34 A — the three ways are ARROWS between the two cards', () => {
+  const picks: SwapPicks = { a: [personItem('c1')], b: [personItem('c2')] };
+  const ar = render({ initial: { bKey: V213.key, picks, mode: 'swap' } });
+  const en = render({ locale: 'en', initial: { bKey: V213.key, picks, mode: 'swap' } });
+  /** One way's button, whole. */
+  const button = (html: string, mode: SwapMode): string => {
+    const at = html.indexOf(`data-swap-mode="${mode}"`);
+    expect(at).toBeGreaterThan(-1);
+    const start = html.lastIndexOf('<button', at);
+    return html.slice(start, html.indexOf('</button>', at) + '</button>'.length);
+  };
+  const attr = (markup: string, name: string): string =>
+    (markup.match(new RegExp(`${name}="([^"]*)"`))?.[1] ?? '')
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&');
+  const MODES: readonly SwapMode[] = ['aToB', 'swap', 'bToA'];
+
+  it('each way is an arrow — an svg, no word on the button', () => {
+    for (const html of [ar, en]) {
+      for (const mode of MODES) {
+        const one = button(html, mode);
+        expect(one.match(/<svg/g), mode).toHaveLength(1);
+        expect(one).toContain(`data-swap-arrow="${mode === 'swap' ? 'swap' : 'oneWay'}"`);
+        // Nothing to read on it: the old word labels and their short lines are gone.
+        expect(text(one), mode).toBe('');
+      }
+    }
+    expect(ar).not.toContain('نقل المحدد ←');
+    expect(ar).not.toContain('تبديل المحدد ⇄');
+    expect(en).not.toContain('Move selected →');
+  });
+
+  it('each arrow’s name and tooltip say what it does, with both vans — in Arabic and in English', () => {
+    const names: Record<Locale, Record<SwapMode, string>> = {
+      ar: {
+        aToB: 'نقل المحدد من 150 إلى 213',
+        swap: 'تبديل المحدد بين 150 و213 في الاتجاهين',
+        bToA: 'نقل المحدد من 213 إلى 150',
+      },
+      en: {
+        aToB: 'Move selected from 150 to 213',
+        swap: 'Swap selected between 150 and 213, both ways',
+        bToA: 'Move selected from 213 to 150',
+      },
+    };
+    for (const [locale, html] of [
+      ['ar', ar],
+      ['en', en],
+    ] as const) {
+      for (const mode of MODES) {
+        const one = button(html, mode);
+        expect(attr(one, 'aria-label'), `${locale} ${mode}`).toBe(names[locale][mode]);
+        expect(attr(one, 'title'), `${locale} ${mode}`).toBe(names[locale][mode]);
+      }
+      // The group keeps its own name.
+      expect(html).toContain(
+        `aria-label="${translate(locale, 'operations.crewPlan.swap.mode.group')}"`,
+      );
+    }
+  });
+
+  it('the two one-way arrows share ONE hue (sky), the swap another (the brand’s) — off and on', () => {
+    const hues = (classes: string): string[] =>
+      [
+        ...new Set(
+          classes.match(/\b(sky|brand|emerald|rose|slate|indigo|violet|cyan)-\d{2,3}/g) ?? [],
+        ),
+      ].map((one) => one.split('-')[0] ?? '');
+    for (const [mode, on] of [
+      ['swap', 'swap'],
+      ['aToB', 'aToB'],
+      ['bToA', 'bToA'],
+    ] as const) {
+      const html = render({ initial: { bKey: V213.key, picks, mode: on } });
+      for (const one of MODES) {
+        const classes = attr(button(html, one), 'class');
+        const own = [...new Set(hues(classes).filter((hue) => hue !== 'slate'))];
+        expect(own, `${mode}: ${one}`).toEqual([one === 'swap' ? 'brand' : 'sky']);
+        // Solid in its hue, the glyph white, when on; a soft fill when off.
+        if (one === on) {
+          expect(classes).toContain(one === 'swap' ? 'bg-brand-600' : 'bg-sky-600');
+          expect(classes).toContain('text-white');
+          expect(classes).toContain('ring-2');
+        } else {
+          expect(classes).toContain(one === 'swap' ? 'bg-brand-50' : 'bg-sky-50');
+          expect(classes).not.toContain('text-white');
+        }
+      }
+      // The two one-way arrows wear the very same classes when both are off.
+      if (on === 'swap') {
+        expect(attr(button(html, 'aToB'), 'class')).toBe(attr(button(html, 'bToA'), 'class'));
+      }
+    }
+  });
+
+  // ── Where the arrows point, read off the drawing itself ─────────────────────────────────────
+  //
+  // Round 34 critic — REWRITTEN, the three cases below. They pinned the turn's Tailwind strings
+  // («rotate-90 lg:rotate-180» …) and the dialog's source, so an equivalent refactor broke them,
+  // while a real wrong direction in a layout they did not model passed: in English, stacked, the
+  // swap read ↓ (↑↓) ↑ — each of its arrows against the one-way arrow beside it. Now: the glyph's
+  // own arrowheads (its svg paths), turned by the matrix its classes give in each layout (Tailwind's
+  // `rotate(θ) scaleX(s)`), laid out as the window lays the ways out.
+
+  /** A unit-ish vector as a way on the screen (y grows downward). */
+  const wayOf = ([x, y]: readonly [number, number]): ArrowWay =>
+    Math.abs(x) > Math.abs(y) ? (x > 0 ? 'right' : 'left') : y > 0 ? 'down' : 'up';
+  type Layout = 'wide' | 'stacked';
+  const LAYOUTS: readonly Layout[] = ['wide', 'stacked'];
+  /** The turn the classes give in a layout: below lg the bare ones, from lg those overridden by `lg:`. */
+  const matrixOf = (classes: string, layout: Layout): { deg: number; sx: number } => {
+    let deg = 0;
+    let sx = 1;
+    const read = (name: string): void => {
+      const rot = /^(-?)rotate-(\d+)$/.exec(name);
+      if (rot) deg = (rot[1] === '-' ? -1 : 1) * Number(rot[2]);
+      const scale = /^(-?)scale-x-(\d+)$/.exec(name);
+      if (scale) sx = ((scale[1] === '-' ? -1 : 1) * Number(scale[2])) / 100;
+    };
+    const all = classes.split(/\s+/);
+    for (const name of all.filter((one) => !one.includes(':'))) read(name);
+    if (layout === 'wide') {
+      for (const name of all.filter((one) => one.startsWith('lg:'))) read(name.slice(3));
+    }
+    return { deg, sx };
+  };
+  /** `rotate(θ) scaleX(s)` on a point: the mirror first, then the turn (clockwise on screen). */
+  const turn = (
+    [x, y]: readonly [number, number],
+    { deg, sx }: { deg: number; sx: number },
+  ): [number, number] => {
+    const r = (deg * Math.PI) / 180;
+    const mx = x * sx;
+    return [mx * Math.cos(r) - y * Math.sin(r), mx * Math.sin(r) + y * Math.cos(r)];
+  };
+  /** The arrowheads a glyph draws — each «M x y l dx1 dy1 dx2 dy2» chevron: its tip, and its way. */
+  const headsOf = (svg: string): { at: [number, number]; way: [number, number] }[] =>
+    [...svg.matchAll(/d="M(-?\d+) (-?\d+)l([^"]+)"/g)].map((m) => {
+      const [x, y] = [Number(m[1]), Number(m[2])];
+      const [dx1, dy1, dx2, dy2] = (m[3]?.match(/-?\d+/g) ?? []).map(Number) as [
+        number,
+        number,
+        number,
+        number,
+      ];
+      const tip: [number, number] = [x + dx1 - 12, y + dy1 - 12];
+      const mid: [number, number] = [x + (dx1 + dx2) / 2 - 12, y + (dy1 + dy2) / 2 - 12];
+      return { at: tip, way: [tip[0] - mid[0], tip[1] - mid[1]] };
+    });
+  /** Where a way's arrows point on screen, in a layout: the swap's two top first (wide), left first (stacked). */
+  const drawn = (html: string, mode: SwapMode, layout: Layout): ArrowWay[] => {
+    const one = button(html, mode);
+    const glyph = one.slice(one.indexOf('data-swap-arrow'));
+    const m = matrixOf(attr(glyph, 'class'), layout);
+    return headsOf(glyph)
+      .map((head) => ({ at: turn(head.at, m), way: wayOf(turn(head.way, m)) }))
+      .sort((p, q) => (layout === 'wide' ? p.at[1] - q.at[1] : p.at[0] - q.at[0]))
+      .map((head) => head.way);
+  };
+  /** The ways as the eye meets them: wide, a column top to bottom; stacked, a row in the reading direction. */
+  const onScreen = (html: string, layout: Layout, rtl: boolean): SwapMode[] => {
+    const group = html.slice(html.lastIndexOf('<div', html.indexOf('data-swap-modes')));
+    const classes = attr(group, 'class').split(/\s+/);
+    expect(classes).toEqual(expect.arrayContaining(['flex-row', 'lg:flex-col']));
+    const order = [...html.matchAll(/data-swap-mode="(\w+)"/g)].map((m) => m[1] as SwapMode);
+    return layout === 'stacked' && rtl ? [...order].reverse() : order;
+  };
+  const LANGS = [
+    ['ar', true, ar],
+    ['en', false, en],
+  ] as const;
+
+  it('the arrows point where they say: the drawing, turned by its classes, against `data-swap-points`', () => {
+    for (const [locale, , html] of LANGS) {
+      for (const mode of MODES) {
+        const one = button(html, mode);
+        const glyph = one.slice(one.indexOf('data-swap-arrow'));
+        expect(drawn(html, mode, 'wide'), `${locale} ${mode} wide`).toEqual(
+          attr(glyph, 'data-swap-points').split(' '),
+        );
+        expect(drawn(html, mode, 'stacked'), `${locale} ${mode} stacked`).toEqual(
+          attr(glyph, 'data-swap-points-stacked').split(' '),
+        );
+      }
+    }
+  });
+
+  it('each one-way arrow points from the sending card to the receiving one, in every layout and language', () => {
+    for (const [locale, rtl, html] of LANGS) {
+      // Side by side the first card is on the start side — the right in Arabic; stacked, on top.
+      const toB: Record<Layout, ArrowWay> = { wide: rtl ? 'left' : 'right', stacked: 'down' };
+      const toA: Record<Layout, ArrowWay> = { wide: rtl ? 'right' : 'left', stacked: 'up' };
+      for (const layout of LAYOUTS) {
+        expect(drawn(html, 'aToB', layout), `${locale} ${layout}`).toEqual([toB[layout]]);
+        expect(drawn(html, 'bToA', layout), `${locale} ${layout}`).toEqual([toA[layout]]);
+      }
+    }
+  });
+
+  it('the swap’s two arrows each point as the one-way arrow beside them — ⇄ in the column, ↑ ⇅ ↓ / ↓ ⇅ ↑ in the row', () => {
+    for (const [locale, rtl, html] of LANGS) {
+      for (const layout of LAYOUTS) {
+        const [first, middle, last] = onScreen(html, layout, rtl) as [SwapMode, SwapMode, SwapMode];
+        expect(middle).toBe('swap');
+        const ways = drawn(html, 'swap', layout);
+        expect(ways, `${locale} ${layout}`).toEqual([
+          ...drawn(html, first, layout),
+          ...drawn(html, last, layout),
+        ]);
+      }
+    }
+    // As the owner reads them on a phone: in Arabic ↑ ⇅ ↓ (the row right to left), in English ↓ ⇅ ↑.
+    const row = (html: string, rtl: boolean): string =>
+      onScreen(html, 'stacked', rtl)
+        .flatMap((mode) => drawn(html, mode, 'stacked'))
+        .join(' ');
+    expect(row(ar, true)).toBe('up up down down');
+    expect(row(en, false)).toBe('down down up up');
+  });
+
+  it('the words and the drawing agree for every way, language and layout — and the two hues', () => {
+    for (const rtl of [true, false]) {
+      for (const mode of MODES) {
+        const aim = swapArrowAim(mode, rtl);
+        for (const layout of LAYOUTS) {
+          const m = matrixOf(swapArrowTurn(mode, rtl), layout);
+          // The drawing: one → , or the swap's → above ← .
+          const heads: { at: [number, number]; way: [number, number] }[] =
+            mode === 'swap'
+              ? [
+                  { at: [7, -4], way: [1, 0] },
+                  { at: [-7, 4], way: [-1, 0] },
+                ]
+              : [{ at: [7, 0], way: [1, 0] }];
+          const ways = heads
+            .map((head) => ({ at: turn(head.at, m), way: wayOf(turn(head.way, m)) }))
+            .sort((p, q) => (layout === 'wide' ? p.at[1] - q.at[1] : p.at[0] - q.at[0]))
+            .map((head) => head.way);
+          expect(ways, `${rtl ? 'ar' : 'en'} ${mode} ${layout}`).toEqual([...aim[layout]]);
+        }
+      }
+    }
+    expect(swapArrowTone('aToB')).toBe(swapArrowTone('bToA'));
+    expect(swapArrowTone('swap')).not.toBe(swapArrowTone('aToB'));
+  });
+
+  // Round 34 critic — REWRITTEN: it also read the dialog's source for `modeStepOf(event.key, …)`
+  // and `<SwapArrowGlyph …/>`. Now the keys go through the ways' own handler, and each moves the
+  // choice to the way that lies that way on screen.
+  it('the keyboard: one way in the Tab order, and each arrow key moves to the way that lies that way', () => {
+    for (const html of [ar, en]) {
+      expect(attr(button(html, 'swap'), 'tabindex')).toBe('0');
+      expect(attr(button(html, 'aToB'), 'tabindex')).toBe('-1');
+      expect(attr(button(html, 'bToA'), 'tabindex')).toBe('-1');
+    }
+    const press = (rtl: boolean, from: SwapMode, key: string): SwapMode | null => {
+      let picked: SwapMode | null = null;
+      let prevented = false;
+      const ways = SwapWays({
+        mode: from,
+        rtl,
+        groupLabel: 'g',
+        nameOf: (one) => one,
+        disabled: false,
+        onPick: (one, by) => {
+          expect(by).toBe('key');
+          picked = one;
+        },
+      });
+      (ways.props as { onKeyDown: (e: unknown) => void }).onKeyDown({
+        key,
+        preventDefault: () => {
+          prevented = true;
+        },
+      });
+      expect(prevented, key).toBe(picked !== null);
+      return picked;
+    };
+    for (const [locale, rtl, html] of LANGS) {
+      // The row (a phone): ← and → reach the way on that side of the swap.
+      const [left, , right] = onScreen(html, 'stacked', rtl);
+      expect(press(rtl, 'swap', 'ArrowLeft'), locale).toBe(left);
+      expect(press(rtl, 'swap', 'ArrowRight'), locale).toBe(right);
+      // The column (a computer): ↓ and ↑ reach the way below and above.
+      const [above, , below] = onScreen(html, 'wide', rtl);
+      expect(press(rtl, 'swap', 'ArrowDown'), locale).toBe(below);
+      expect(press(rtl, 'swap', 'ArrowUp'), locale).toBe(above);
+      // Round at the ends; any other key does nothing.
+      expect(press(rtl, 'bToA', 'ArrowDown'), locale).toBe('aToB');
+      for (const key of ['Enter', ' ', 'Tab', 'a']) expect(press(rtl, 'swap', key)).toBeNull();
+    }
+    // A click picks its own way, and says so.
+    let clicked: [SwapMode, string] | null = null;
+    const ways = SwapWays({
+      mode: 'swap',
+      rtl: true,
+      groupLabel: 'g',
+      nameOf: (one) => one,
+      disabled: false,
+      onPick: (one, by) => {
+        clicked = [one, by];
+      },
+    });
+    const buttons = (ways.props as { children: { props: { onClick: () => void } }[] }).children;
+    buttons[0]?.props.onClick();
+    expect(clicked).toEqual(['aToB', 'click']);
+  });
+
+  // Round 34 critic — REWRITTEN: it pinned the placeholder as the rule — «نقل المحدد من 150 إلى —».
+  it('no second van yet: the arrows are there, the swap marked, none to press — each named without a dash, and why', () => {
+    const html = render();
+    for (const mode of MODES) expect(button(html, mode)).toContain('disabled=""');
+    expect(button(html, 'swap')).toContain('aria-checked="true"');
+    const pending = t('operations.crewPlan.swap.pickSecondFirst');
+    const second = t('operations.crewPlan.swap.secondVan');
+    expect(attr(button(html, 'aToB'), 'aria-label')).toBe(
+      `نقل المحدد من 150 إلى ${second} — ${pending}`,
+    );
+    expect(attr(button(html, 'bToA'), 'aria-label')).toBe(
+      `نقل المحدد من ${second} إلى 150 — ${pending}`,
+    );
+    expect(attr(button(html, 'swap'), 'aria-label')).toBe(
+      `تبديل المحدد بين 150 و${second} في الاتجاهين — ${pending}`,
+    );
+    for (const mode of MODES) {
+      expect(attr(button(html, mode), 'title')).toBe(attr(button(html, mode), 'aria-label'));
+      expect(attr(button(html, mode), 'aria-label')).not.toMatch(/(^| )—$|إلى —/);
+    }
+    const english = render({ locale: 'en' });
+    expect(attr(button(english, 'aToB'), 'aria-label')).toBe(
+      'Move selected from 150 to the second vehicle — Choose the second vehicle first',
+    );
   });
 });
 

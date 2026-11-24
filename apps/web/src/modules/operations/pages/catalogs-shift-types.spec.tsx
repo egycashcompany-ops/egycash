@@ -129,7 +129,10 @@ describe('the «أنواع التشغيل» tab — the crew board’s «الن�
     const at = SERVER_ORDER.map((type) => html.indexOf(`data-shift-type-actions="${type.id}"`));
     expect(at.every((index) => index > -1)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
-    // One page: a list cannot be dragged into order across pages.
+    // One page: a list cannot be dragged into order across pages. (Round 34 B: the screen's pager
+    // is the boards' numbered one in the table's frame — `data-catalog-pager`, `common.pager`.)
+    expect(html).not.toContain('data-catalog-pager');
+    expect(html).not.toContain(ar('common.pager.perPage'));
     expect(html).not.toContain(ar('common.pagination.perPage'));
   });
 

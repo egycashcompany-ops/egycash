@@ -6585,6 +6585,41 @@ describe('«تقرير البنوك» (the vault roll-up) and operational areas 
     expect(await codesFor('دمنهور')).toEqual(['V-11']);
   });
 
+  // Round 34 critic — «البيانات المرجعية» folds the digits typed on an Arabic keyboard to Latin
+  // before it asks («١٠٤» → «104»), while the form stores a code as it was typed. Matched literally,
+  // a branch saved as «١٠٤» was found by no typed form. In Mongo's own regex engine here.
+  it('9b3. finds a code stored in Arabic-Indic digits by its Latin digits, and back', async () => {
+    const make = await request(app)
+      .post('/api/v1/operations/bank-branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ bankId: vaultBank.id, name: 'فرع العاشر ٧٦٤', code: '١٠٤' });
+    expect(make.status).toBe(201);
+    const latin = await request(app)
+      .post('/api/v1/operations/bank-branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ bankId: vaultBank.id, name: 'فرع السادس 764', code: 'V-12' });
+    expect(latin.status).toBe(201);
+
+    const codesFor = async (search: string): Promise<string[]> => {
+      const res = await request(app)
+        .get(
+          `/api/v1/operations/bank-branches?bankId=${vaultBank.id}&search=${encodeURIComponent(search)}`,
+        )
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      return (res.body as { data: OperationsBankBranchDto[] }).data.map((b) => b.code).sort();
+    };
+
+    expect(await codesFor('104')).toEqual(['١٠٤']); // what the screen sends for «١٠٤»
+    expect(await codesFor('١٠٤')).toEqual(['١٠٤']);
+    expect(await codesFor('۱۰۴')).toEqual(['١٠٤']); // the Persian forms
+    // In a name too, both ways round: «764» finds «٧٦٤» and «764».
+    expect(await codesFor('764')).toEqual(['V-12', '١٠٤']);
+    expect(await codesFor('٧٦٤')).toEqual(['V-12', '١٠٤']);
+    // Still the digit itself.
+    expect(await codesFor('105')).toEqual([]);
+  });
+
   // A shipment's edit form names its branches — and the bank the money came from — by reading the
   // branch it holds; listing a whole bank's branches would stop at one page.
   it('9c. reads one branch by id on the shipment grant, and 404s an unknown one', async () => {

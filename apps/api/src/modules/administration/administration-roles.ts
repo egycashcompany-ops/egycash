@@ -7,8 +7,9 @@
 // bundle joins with the first slice that gives it a key, and none is seeded empty: the master-data
 // administrator now, with the catalog; the storekeeper, the procurement officer and manager, the
 // Administrative Affairs manager and the auditor with the item keys (P1a.2). The titles are the
-// design's candidates (OD-67 A, the owner's own words not yet given). `ensureManagedRole` writes a
-// title only when it creates the role, so a title changed later is renamed by hand.
+// design's candidates: OD-67's fallback, A (B, the owner's words, not yet given).
+// `ensureManagedRole` writes a title only when it creates the role, so a title changed later is
+// renamed by hand.
 import { type LocalizedString } from '@ecms/contracts';
 
 export interface AdministrationRoleBundle {

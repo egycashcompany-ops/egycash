@@ -280,7 +280,10 @@ its entry here in the same PR.
   - **Two category levels** (OD-06 A): a category, or a subcategory under a top-level one. A refused
     parent answers 422 `ADMINISTRATION_CATEGORY_PARENT_INVALID` with its reason — itself, one of its
     own subcategories, a subcategory, a retired parent, or a move of a category that has
-    subcategories.
+    subcategories. `?topLevel=true` lists the level a parent is picked from, `?parentId=` one
+    category's subcategories.
+  - **An Arabic name needs a letter or a digit.** A name of tatweel or harakat alone («ـ», «ً»)
+    folds to nothing, so it is refused as 400 `VALIDATION_FAILED`.
   - **The indexes are the module's own to build.** Its seed builds them first through the shared
     `syncDeclaredIndexes('apply', …)` and logs the report; each repository waits for its
     collection's indexes before its first write, so a failed build refuses the write and the next

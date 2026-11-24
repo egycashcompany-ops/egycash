@@ -1,7 +1,8 @@
 // The Administrative Affairs catalog contracts, pinned (design §19.4, §19.7): every write schema is
 // strict, so an unknown key — a client-sent `nameKey`, a stock figure, a moved `kind` — is refused
-// instead of dropped; a name needs both languages; an update carries its version; a unit list
-// names its kind. And the two refusal vocabularies the screens word are exactly §5.15's.
+// instead of dropped; a name needs both languages, and an Arabic one that folds to something; an
+// update carries its version; a unit list names its kind, and a category list asks one question of
+// the tree. And the two refusal vocabularies the screens word are exactly §5.15's.
 import { describe, expect, it } from 'vitest';
 import { ErrorCodes } from '../errors/index.js';
 import {
@@ -59,6 +60,36 @@ describe('units', () => {
       CreateAdministrationCatalogItemSchema.safeParse({ kind: 'unit', name: piece, ...extra })
         .success,
     ).toBe(false);
+  });
+
+  // Tatweel or harakat alone fold to '' (`foldName`): an empty key the database refuses on a
+  // create and would store on an edit, shared by every such name.
+  it.each([
+    ['a tatweel', 'ـ'],
+    ['a fathatan', 'ً'],
+    ['two harakat with spaces', ' ً ٌ '],
+  ])('refuses an Arabic name of %s alone, on a create and on an update', (_label, ar) => {
+    const name = { ar, en: 'x' };
+    expect(CreateAdministrationCatalogItemSchema.safeParse({ kind: 'unit', name }).success).toBe(
+      false,
+    );
+    expect(UpdateAdministrationCatalogItemSchema.safeParse({ name, version: 0 }).success).toBe(
+      false,
+    );
+    expect(CreateAdministrationItemCategorySchema.safeParse({ name }).success).toBe(false);
+    expect(UpdateAdministrationItemCategorySchema.safeParse({ name, version: 0 }).success).toBe(
+      false,
+    );
+  });
+
+  it('keeps an Arabic name whose letters outlive the fold, and a digit-only one', () => {
+    for (const ar of ['قُطْعَة', 'ـمترـ', '5']) {
+      expect(
+        CreateAdministrationCatalogItemSchema.safeParse({ kind: 'unit', name: { ar, en: 'x' } })
+          .success,
+        ar,
+      ).toBe(true);
+    }
   });
 
   it('updates with a version, and only with one', () => {
@@ -146,6 +177,27 @@ describe('item categories', () => {
     expect(ListAdministrationItemCategoriesQuerySchema.safeParse({ parentId: 'x' }).success).toBe(
       false,
     );
+  });
+
+  it('lists the top level, where a parent is picked from, or every subcategory', () => {
+    expect(ListAdministrationItemCategoriesQuerySchema.parse({ topLevel: 'true' })).toMatchObject({
+      topLevel: true,
+    });
+    expect(ListAdministrationItemCategoriesQuerySchema.parse({ topLevel: 'false' })).toMatchObject({
+      topLevel: false,
+    });
+    expect(ListAdministrationItemCategoriesQuerySchema.safeParse({ topLevel: 'yes' }).success).toBe(
+      false,
+    );
+  });
+
+  it('asks one question of the tree: a parent or the level, not both', () => {
+    const both = ListAdministrationItemCategoriesQuerySchema.safeParse({
+      parentId: oid(9),
+      topLevel: 'true',
+    });
+    expect(both.success).toBe(false);
+    expect(both.error?.issues.map((issue) => issue.path)).toEqual([['topLevel']]);
   });
 });
 

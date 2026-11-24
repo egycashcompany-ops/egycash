@@ -10,7 +10,7 @@ import {
   type UpdateAdministrationCatalogItem,
 } from '@ecms/contracts';
 import { type AuthContext } from '../../../../shared/types';
-import { duplicateRefusal, isDuplicateWrite, searchPatterns } from '../../shared/master-data';
+import { assertNotTaken, explainDuplicate, masterSearchClause } from '../../shared/master-data';
 import { assertAdministrationOrgAuthority } from '../../shared/org-authority';
 import { auditCatalogItemCreated, auditCatalogItemEdited } from './catalog-item-audit';
 import { type AdministrationCatalogItemDoc } from './catalog-item.model';
@@ -29,15 +29,8 @@ class AdministrationCatalogItemService {
   ): Promise<Paginated<AdministrationCatalogItemDoc>> {
     const filter: Record<string, unknown> = { kind: query.kind };
     if (query.isActive !== undefined) filter.isActive = query.isActive;
-    const search = searchPatterns(query.search);
-    if (search !== null) {
-      filter.$or = [
-        { code: search.typed },
-        { 'name.ar': search.typed },
-        { 'name.en': search.typed },
-        ...(search.folded === null ? [] : [{ nameKey: search.folded }]),
-      ];
-    }
+    const search = masterSearchClause(query.search);
+    if (search !== null) filter.$or = search;
     return repository.list({
       filter,
       page: query.page,
@@ -58,7 +51,7 @@ class AdministrationCatalogItemService {
       nameKey: foldName(input.name.ar),
       code: input.code ?? null,
     };
-    await this.assertFree(claim, undefined);
+    await assertNotTaken(() => this.takenField(claim, undefined));
 
     await repository.ensureCollection();
     let doc: AdministrationCatalogItemDoc;
@@ -76,7 +69,7 @@ class AdministrationCatalogItemService {
         { by: ctx.userId },
       );
     } catch (error) {
-      throw await this.explainDuplicate(error, claim, undefined);
+      throw await explainDuplicate(error, () => this.takenField(claim, undefined));
     }
     await auditCatalogItemCreated(doc);
     return doc;
@@ -94,7 +87,7 @@ class AdministrationCatalogItemService {
       nameKey: input.name === undefined ? before.nameKey : foldName(input.name.ar),
       code: input.code === undefined ? before.code : input.code,
     };
-    await this.assertFree(claim, id);
+    await assertNotTaken(() => this.takenField(claim, id));
 
     const set: Partial<AdministrationCatalogItemDoc> = {};
     if (input.code !== undefined) set.code = input.code;
@@ -112,18 +105,13 @@ class AdministrationCatalogItemService {
     try {
       updated = await repository.updateById(id, set, { by: ctx.userId, version: input.version });
     } catch (error) {
-      throw await this.explainDuplicate(error, claim, id);
+      throw await explainDuplicate(error, () => this.takenField(claim, id));
     }
     await auditCatalogItemEdited(before, updated);
     return updated;
   }
 
-  /** The early answer: a live unit of the kind already holds the name (folded) or the code. */
-  private async assertFree(claim: Claim, exceptId: string | undefined): Promise<void> {
-    const field = await this.takenField(claim, exceptId);
-    if (field !== null) throw duplicateRefusal(field);
-  }
-
+  /** What a live unit of the kind, `exceptId` aside, already holds: its name, then its code. */
   private async takenField(
     claim: Claim,
     exceptId: string | undefined,
@@ -138,20 +126,6 @@ class AdministrationCatalogItemService {
       return 'code';
     }
     return null;
-  }
-
-  /**
-   * A unique index refused a write that raced past the early check: the row that won is in now, so
-   * the same check names the field. Any other failure goes on as it came.
-   */
-  private async explainDuplicate(
-    error: unknown,
-    claim: Claim,
-    exceptId: string | undefined,
-  ): Promise<unknown> {
-    if (!isDuplicateWrite(error)) return error;
-    const field = await this.takenField(claim, exceptId);
-    return field === null ? error : duplicateRefusal(field);
   }
 }
 

@@ -35,6 +35,29 @@ export const isDuplicateWrite = (error: unknown): boolean =>
   isDuplicateKeyError(error) ||
   (error instanceof ConflictError && error.code === ErrorCodes.DUPLICATE);
 
+/**
+ * A register's own question, "which field would this write take from a live row?" — asked before
+ * the write and again after a unique index refused it. Each feature asks it its own way.
+ */
+export type TakenField = () => Promise<AdministrationDuplicateField | null>;
+
+/** The early answer: refuse before writing when a live row already holds the name or the code. */
+export const assertNotTaken = async (taken: TakenField): Promise<void> => {
+  const field = await taken();
+  if (field !== null) throw duplicateRefusal(field);
+};
+
+/**
+ * What to throw after a failed write. A unique index refused a write that raced past the early
+ * check: the row that won is in now, so the same question names the field. Any other failure goes
+ * on as it came — and so does a refusal the question cannot explain, rather than a guessed field.
+ */
+export const explainDuplicate = async (error: unknown, taken: TakenField): Promise<unknown> => {
+  if (!isDuplicateWrite(error)) return error;
+  const field = await taken();
+  return field === null ? error : duplicateRefusal(field);
+};
+
 // ── Audit verbs ─────────────────────────────────────────────────────────────
 //
 // A PATCH that flips `isActive` is ONE row, `activate` or `deactivate`, carrying every field that
@@ -83,4 +106,19 @@ export const searchPatterns = (
     typed: new RegExp(escapeRegExp(search), 'i'),
     folded: folded === '' ? null : new RegExp(escapeRegExp(folded)),
   };
+};
+
+/**
+ * The `$or` a register's list filters on — its code, both names and the folded key — or null when
+ * nothing is searched. Items add their barcode beside it (P1a.2).
+ */
+export const masterSearchClause = (search: string | undefined): Record<string, RegExp>[] | null => {
+  const patterns = searchPatterns(search);
+  if (patterns === null) return null;
+  return [
+    { code: patterns.typed },
+    { 'name.ar': patterns.typed },
+    { 'name.en': patterns.typed },
+    ...(patterns.folded === null ? [] : [{ nameKey: patterns.folded }]),
+  ];
 };

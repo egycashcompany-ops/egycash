@@ -3,15 +3,20 @@
 // facts, these decide.
 //
 // Two levels (OD-06 A): a parent must itself be top level, so a subcategory never has children and
-// a category that has them never moves under another. That makes every cycle a pair — a category
-// asked to sit under one of its own subcategories — which is named apart from "too deep" because it
-// is a different mistake to correct. A category move racing a child create under it can still
-// leave three levels (two catalog managers on one category at once): accepted for Phase 1, and an
-// edit repairs it (§19.7).
+// a category that has them never moves under another. So the only cycle one write can ask for is
+// a pair — a category asked to sit under one of its own subcategories — named apart from "too
+// deep" because it is a different mistake to correct.
+//
+// Each write is judged on what it reads, outside any transaction, so two writes at once can each
+// pass and together leave what neither was allowed: a move racing a child create under the moved
+// category leaves three levels, and two crossing moves of two childless top-level categories, A
+// under B and B under A, leave each the other's parent and neither a root. Both need two catalog
+// managers on the same two rows at one moment: accepted for Phase 1 (§19.7), and both are repaired
+// by an edit — a move to the top level, which no rule refuses.
 import { ErrorCodes, type AdministrationCategoryParentProblem } from '@ecms/contracts';
 import { AppError } from '../../../../shared/errors';
 
-/** The facts a parent is judged on. */
+/** The facts a parent is judged on. Ids in the database's own spelling: they compare as strings. */
 export interface CategoryParentFacts {
   /** The category being written; null on a create. */
   categoryId: string | null;

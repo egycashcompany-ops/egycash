@@ -3047,28 +3047,12 @@ Repository-wide findings outside this module are listed for the owner in
     working-hours page as a second precedent for a module-owned setting (P4's policy); attendance sizes an export window
     by its shape (P5's reports); organization unit groups for department filters (P2, P6); the shared streaming sheet
     readers for any in-app import (OD-68 C); `MultiSelect` filters (P1a.W's pattern pass).
-- **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
-  holds only items someone decided to defer) are listed for their owners in
-  `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.
-- **Conditional revisions already identified** (recorded here when the owner's answer triggers them): under OD-23 A,
-  `administrationProcurementPolicy.manage`, its page and the band thresholds move from P4 to P3; under §18.1 A11, stock
-  adjustments move from P7 to P5; under OD-01 B, the supplier registry becomes a platform service (a platform ADR and a
-  staged migration replace Phase 1b's module collection); under OD-06 B, a materialized `path` on
-  `administration_item_categories` (§2.3.3), the depth rule of `item-category-rules.spec.ts` and the category cases of
-  §19.7; under OD-07 B or C, the item's unit sub-document and its pure spec (§2.3.4, §19.7); under OD-08 B,
-  scaled-integer quantity types (§2.3.4), the integer rule of `item-rules.spec.ts` (§19.7) and the quantity inputs'
-  `Input rule="integer"` (§13.6). Each of the last three re-opens Phase 1 for the part it names (§19.2).
-- **P1a.1 built** (2026-11-24). The owner took every recommended default («اعمل انت الـ Recommendations من عندك
-  دلوقتى وبعدين نبقى نعدل») except OD-68, which he answered B, hand entry: «لأ خلينا من غير شيتات او بيانات دلوقتى».
-  Under §19.2 that re-opens the go-live parts only: P1a.2 and P1b.1 load no file, so `go-live/`,
-  `shared/go-live-run.model.ts`, `apps/api/assets/administration-go-live/`, the go-live integration specs and the
-  `server.ts` / `worker.ts` start calls are not built, and `administrationModels` carries no run model. P1a.1 itself
-  ships as §19.1 says. The drift check of §19 against the code it starts from re-pinned what had moved, behavior
-  unchanged: the navigation rows are 140 (`seed-navigation.spec.ts:81`; `auth-seed-login.spec.ts:36`), so P1a.W takes
-  them to 144 and P1b.W to 145; the role-matrix module labels sit at `i18n.ts:11257-11266` (en) and `:27148-27157` (ar);
-  `ATM_WORK_BRANCH_REQUIRED` at `errors/index.ts:475`; the contracts' module exports at `index.ts:32-82`; IT's catalog
-  sortable fields at `catalog-item.service.ts:68`; ATM's bank check, thinned by PC-12, at `bank.service.ts:128-130`.
-  Where the code had to choose what the design leaves open:
+- **P1a.1 built** (2026-11-24). Phase 1's first pull request ships as §19.1 says, under the owner's answers (§16.12).
+  OD-67's recommendation, B (the company's own words), had no words to apply, so the master-data administrator is seeded
+  with §6.5's candidate title, A, the fallback; once seeded, a title changes only by hand or by a run-keyed step (§6.5).
+  Three fresh reviewers (design conformance, correctness and tests, ECMS conventions) raised 15 findings, all fixed
+  before the pull request; the largest, a category stored as its own parent through an upper-case id, is closed by
+  canonical ids in the rule. Where the code had to choose what the design leaves open:
   - *One shared file more.* `shared/master-data.ts` holds what all five master registers do alike: the
     `ADMINISTRATION_DUPLICATE` answer, §10.2's verb table for master data (`create`, `update`, `activate`,
     `deactivate`) and the server-side search. Each feature's `<entity>-audit.ts` keeps its literal ref, snapshot and
@@ -3080,5 +3064,27 @@ Repository-wide findings outside this module are listed for the owner in
   - *Which index refused.* `BaseRepository.create` keeps only the field names of a duplicate key, so after a write a
     unique index refused, the service re-runs its own check against the row that won and names that field.
   - *Search.* Besides code and name, `search` matches the folded `nameKey`, so «قطعه» finds «قطعة».
+  - *One more query field.* `GET /item-categories` takes `topLevel` beside §19.4's `parentId`, one of the two:
+    `topLevel=true` is the level a parent is picked from, which the categories tab's parent `Select` (§13.6 C) and
+    P1a.2's item form (category, then subcategory, OD-06) both read; `false` is every subcategory.
+  - *An Arabic name must survive its fold.* A name of tatweel or harakat alone folds to an empty `nameKey`, so the
+    contract refuses it (400 `VALIDATION_FAILED`) rather than letting the database refuse it as a 500 on a create and
+    store it on an edit.
+  - *A second accepted race.* Beside §19.7's move racing a child create (three levels), two crossing moves of two
+    childless top-level categories, A under B and B under A, both pass their checks and leave each the other's parent,
+    with no root. It needs the same two organization-scope managers at one moment, and is accepted for Phase 1 on the
+    same terms; moving either category to the top level, which no rule refuses, repairs it.
   - *Deferred to P1a.2,* with the item keys: the read gate `authorizeAny('administrationItem.view', …)`, the topics'
     move to that key, and the §19.7 case "an item viewer reads units and categories".
+- **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
+  holds only items someone decided to defer) are listed for their owners in
+  `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.
+- **Conditional revisions already identified** (recorded here when the owner's answer triggers them): under OD-23 A,
+  `administrationProcurementPolicy.manage`, its page and the band thresholds move from P4 to P3; under §18.1 A11, stock
+  adjustments move from P7 to P5; under OD-01 B, the supplier registry becomes a platform service (a platform ADR and a
+  staged migration replace Phase 1b's module collection); under OD-06 B, a materialized `path` on
+  `administration_item_categories` (§2.3.3), the depth rule of `item-category-rules.spec.ts` and the category cases of
+  §19.7; under OD-07 B or C, the item's unit sub-document and its pure spec (§2.3.4, §19.7); under OD-08 B,
+  scaled-integer quantity types (§2.3.4), the integer rule of `item-rules.spec.ts` (§19.7) and the quantity inputs'
+  `Input rule="integer"` (§13.6). Each of the last three re-opens Phase 1 for the part it names (§19.2).
+-

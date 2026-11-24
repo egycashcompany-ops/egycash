@@ -6,6 +6,7 @@
 // `nameKey`: the service folds it from `name.ar` (`foldName`, §2.1), so a client cannot store two
 // spellings of one name as two keys. No schema takes a stock figure either (ADR-024).
 import { z } from 'zod';
+import { foldName } from '../common/fold-name.js';
 import { type LocalizedString } from '../common/localized.js';
 import { PaginationQuerySchema, booleanQuery, objectId } from '../common/index.js';
 
@@ -14,10 +15,19 @@ import { PaginationQuerySchema, booleanQuery, objectId } from '../common/index.j
 /**
  * A master row's name. Both languages required, as every master name is (§2.1), trimmed so a
  * trailing space is not a second name, and strict so a stray key is refused rather than dropped.
+ * The Arabic must keep something once folded: a name of tatweel or harakat alone folds to an empty
+ * key, which the database cannot store as a name and every such name would share.
  */
 export const AdministrationNameSchema = z
   .object({
-    ar: z.string().trim().min(1).max(200),
+    ar: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .refine((ar) => foldName(ar) !== '', {
+        message: 'the Arabic name needs a letter or a digit, not marks alone',
+      }),
     en: z.string().trim().min(1).max(200),
   })
   .strict();
@@ -150,12 +160,21 @@ export type UpdateAdministrationItemCategory = z.infer<
   typeof UpdateAdministrationItemCategorySchema
 >;
 
+/**
+ * `parentId` reads one category's subcategories; `topLevel` reads the level a parent is picked
+ * from (true) or every subcategory (false). The two answer one question, so a list takes one.
+ */
 export const ListAdministrationItemCategoriesQuerySchema = PaginationQuerySchema.extend({
-  /** The subcategories of one category. */
   parentId: objectId().optional(),
+  topLevel: booleanQuery().optional(),
   search: z.string().trim().max(200).optional(),
   isActive: booleanQuery().optional(),
-}).strict();
+})
+  .strict()
+  .refine((query) => query.parentId === undefined || query.topLevel === undefined, {
+    path: ['topLevel'],
+    message: 'filter by parentId or by topLevel, not both',
+  });
 export type ListAdministrationItemCategoriesQuery = z.infer<
   typeof ListAdministrationItemCategoriesQuerySchema
 >;

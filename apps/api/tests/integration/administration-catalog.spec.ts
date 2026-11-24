@@ -19,6 +19,7 @@ import { AdministrationCatalogItemModel } from '../../src/modules/administration
 import { administrationCatalogItemRepository } from '../../src/modules/administration/catalog/catalog-items/catalog-item.repository';
 import { AdministrationItemCategoryModel } from '../../src/modules/administration/catalog/item-categories/item-category.model';
 import { administrationItemCategoryRepository } from '../../src/modules/administration/catalog/item-categories/item-category.repository';
+import { seedAdministration } from '../../src/modules/administration/administration.seed';
 import {
   administrationApi,
   bootAdministration,
@@ -77,6 +78,17 @@ const trail = (entityType: string, entityId: string) =>
 
 describe('the seed', () => {
   it('builds the unique indexes the folded names stand on', async () => {
+    // Tests boot with `autoIndex` on, so the indexes are there whatever the seed does (§15.3.2).
+    // Once Mongoose's own build is done they are dropped, and nothing has written here yet, so no
+    // repository's `collectionReady` has run: only the seed's `syncDeclaredIndexes` brings them back.
+    for (const model of [AdministrationCatalogItemModel, AdministrationItemCategoryModel]) {
+      await model.init();
+      await model.collection.dropIndexes();
+      const left = await model.collection.indexes();
+      expect(left.map((index) => index.name)).toEqual(['_id_']);
+    }
+    await seedAdministration();
+
     const units = await AdministrationCatalogItemModel.collection.indexes();
     expect(units.map((index) => index.name)).toEqual(
       expect.arrayContaining(['ux_kind_name_key', 'ux_kind_code', 'ix_kind_active_sort']),
@@ -205,6 +217,7 @@ describe('units of measure', () => {
       name: fresh('كيلو', 'Kilo'),
     });
     expect(create.status).toBe(409);
+    expect(refusal(create).code).toBe('ADMINISTRATION_DUPLICATE');
     expect(refusal(create).details).toEqual([expect.objectContaining({ field: 'code' })]);
 
     const other = await unit();
@@ -224,6 +237,7 @@ describe('units of measure', () => {
       name: { ar: 'لفه', en: 'Roll' },
     });
     expect(again.status).toBe(409);
+    expect(refusal(again).code).toBe('ADMINISTRATION_DUPLICATE');
     expect(refusal(again).details).toEqual([expect.objectContaining({ field: 'name' })]);
   });
 
@@ -246,12 +260,44 @@ describe('units of measure', () => {
     });
   });
 
+  it('a racing rename meets the index too: the raw refusal of an update gets the same answer', async () => {
+    // An update's duplicate arrives raw from `findOneAndUpdate`, not as BaseRepository's
+    // `ConflictError` as a create's does: the other half of `isDuplicateWrite`.
+    await unit({ name: { ar: 'برميل', en: 'Barrel' } });
+    const other = await unit();
+    const spy = vi
+      .spyOn(administrationCatalogItemRepository, 'findLiveByNameKey')
+      .mockResolvedValueOnce(null);
+    const raced = await api.patch(`/catalog-items/${other.id}`, {
+      name: { ar: 'بَرميل', en: 'Drum' },
+      version: 0,
+    });
+    spy.mockRestore();
+    expect(raced.status).toBe(409);
+    expect(refusal(raced)).toMatchObject({
+      code: 'ADMINISTRATION_DUPLICATE',
+      details: [{ field: 'name' }],
+    });
+  });
+
   it.each([
     ['no English name', { kind: 'unit', name: { ar: 'طن' } }],
     ['a client-sent nameKey', { kind: 'unit', name: { ar: 'طن', en: 'Ton' }, nameKey: 'طن' }],
     ['an unknown kind', { kind: 'brand', name: { ar: 'طن', en: 'Ton' } }],
+    ['an Arabic name of tatweel alone', { kind: 'unit', name: { ar: 'ـ', en: 'Ton' } }],
+    ['an Arabic name of harakat alone', { kind: 'unit', name: { ar: 'ًٌ', en: 'Ton' } }],
   ])('400 VALIDATION_FAILED for %s', async (_label, body) => {
     const res = await api.post('/catalog-items', body);
+    expect(res.status).toBe(400);
+    expect(refusal(res).code).toBe('VALIDATION_FAILED');
+  });
+
+  it.each([
+    ['no version', { sortOrder: 2 }],
+    ['an Arabic name of harakat alone', { name: { ar: 'ً', en: 'Ton' }, version: 0 }],
+    ['a moved kind', { kind: 'unit', version: 0 }],
+  ])('400 VALIDATION_FAILED for an edit with %s', async (_label, body) => {
+    const res = await api.patch(`/catalog-items/${(await unit()).id}`, body);
     expect(res.status).toBe(400);
     expect(refusal(res).code).toBe('VALIDATION_FAILED');
   });
@@ -284,6 +330,27 @@ describe('item categories (two levels, OD-06 A)', () => {
     expect(row?.changes).toContainEqual({ field: 'parentId', old: null, new: tools.id });
   });
 
+  it('lists the top level — where a parent is picked from — or every subcategory', async () => {
+    const top = await category();
+    const sub = await category({ parentId: top.id });
+
+    const level = data<AdministrationItemCategoryDto[]>(
+      await api.get('/item-categories?topLevel=true&pageSize=100'),
+    );
+    expect(level.map((row) => row.id)).toContain(top.id);
+    expect(level.every((row) => row.parentId === null)).toBe(true);
+
+    const subs = data<AdministrationItemCategoryDto[]>(
+      await api.get('/item-categories?topLevel=false&pageSize=100'),
+    );
+    expect(subs.map((row) => row.id)).toContain(sub.id);
+    expect(subs.every((row) => row.parentId !== null)).toBe(true);
+
+    const both = await api.get(`/item-categories?topLevel=true&parentId=${top.id}`);
+    expect(both.status).toBe(400);
+    expect(refusal(both).code).toBe('VALIDATION_FAILED');
+  });
+
   it('one name per parent: two parents may each hold it, one parent only once', async () => {
     const paper = await category();
     const ink = await category();
@@ -310,7 +377,50 @@ describe('item categories (two levels, OD-06 A)', () => {
     await category({ name: { ar: 'الأثاث', en: 'Furniture' } });
     const again = await api.post('/item-categories', { name: { ar: 'الاثاث', en: 'Furniture' } });
     expect(again.status).toBe(409);
+    expect(refusal(again).code).toBe('ADMINISTRATION_DUPLICATE');
     expect(refusal(again).details).toEqual([expect.objectContaining({ field: 'name' })]);
+  });
+
+  describe('a move is judged by the name under its new parent', () => {
+    const nameRefused = (res: request.Response) => {
+      expect(res.status, JSON.stringify(res.body)).toBe(409);
+      expect(refusal(res)).toMatchObject({
+        code: 'ADMINISTRATION_DUPLICATE',
+        details: [{ field: 'name' }],
+      });
+    };
+
+    it('under a parent that already holds the name in another spelling', async () => {
+      const paper = await category();
+      const ink = await category();
+      const misc = await category({ name: { ar: 'مُتنوِّعات', en: 'Misc' }, parentId: paper.id });
+      await category({ name: { ar: 'متنوعات', en: 'Misc' }, parentId: ink.id });
+      nameRefused(await api.patch(`/item-categories/${misc.id}`, { parentId: ink.id, version: 0 }));
+    });
+
+    it('to a top level that already holds the name', async () => {
+      await category({ name: { ar: 'قرطاسية', en: 'Stationery' } });
+      const office = await category();
+      const sub = await category({
+        name: { ar: 'قرطاسيه', en: 'Stationery' },
+        parentId: office.id,
+      });
+      nameRefused(await api.patch(`/item-categories/${sub.id}`, { parentId: null, version: 0 }));
+    });
+
+    it('a racing rename meets the index: the raw refusal of an update gets the same answer', async () => {
+      await category({ name: { ar: 'نظافة', en: 'Cleaning' } });
+      const other = await category();
+      const spy = vi
+        .spyOn(administrationItemCategoryRepository, 'findLiveByParentAndNameKey')
+        .mockResolvedValueOnce(null);
+      const raced = await api.patch(`/item-categories/${other.id}`, {
+        name: { ar: 'نظافه', en: 'Hygiene' },
+        version: 0,
+      });
+      spy.mockRestore();
+      nameRefused(raced);
+    });
   });
 
   describe('a refused parent: 422 ADMINISTRATION_CATEGORY_PARENT_INVALID', () => {
@@ -330,11 +440,30 @@ describe('item categories (two levels, OD-06 A)', () => {
       );
     });
 
+    // The contract takes A-F as well as a-f; the database spells an id in lower case only.
+    it.each([
+      ['the route id', (id: string) => [id.toUpperCase(), id]],
+      ['the parent id', (id: string) => [id, id.toUpperCase()]],
+      ['both', (id: string) => [id.toUpperCase(), id.toUpperCase()]],
+    ])('self — whatever the case of %s', async (_label, spell) => {
+      const top = await category();
+      const [route, parentId] = spell(top.id);
+      parentRefused(
+        await api.patch(`/item-categories/${String(route)}`, { parentId, version: 0 }),
+        'self',
+      );
+      const stored = await AdministrationItemCategoryModel.findById(top.id).lean().exec();
+      expect(stored?.parentId, 'never its own parent').toBeNull();
+    });
+
     it('cycle — a category under its own subcategory', async () => {
       const top = await category();
       const sub = await category({ parentId: top.id });
       parentRefused(
-        await api.patch(`/item-categories/${top.id}`, { parentId: sub.id, version: 0 }),
+        await api.patch(`/item-categories/${top.id.toUpperCase()}`, {
+          parentId: sub.id,
+          version: 0,
+        }),
         'cycle',
       );
     });
@@ -379,6 +508,7 @@ describe('item categories (two levels, OD-06 A)', () => {
       parentId: '64a0000000000000000000ff',
     });
     expect(res.status).toBe(404);
+    expect(refusal(res).code).toBe('NOT_FOUND');
   });
 
   it('moves a childless subcategory to another parent, and a subcategory to the top level', async () => {
@@ -412,6 +542,54 @@ describe('item categories (two levels, OD-06 A)', () => {
 
     const rows = await trail('itemCategory', top.id);
     expect(rows.map((row) => row.action)).toEqual(['create', 'deactivate']);
+  });
+
+  it('the parent it already has, typed in upper case, is no move', async () => {
+    const top = await category();
+    const sub = await category({ parentId: top.id });
+    await api.patch(`/item-categories/${top.id}`, { isActive: false, version: 0 });
+    const edited = await api.patch(`/item-categories/${sub.id}`, {
+      parentId: top.id.toUpperCase(),
+      sortOrder: 2,
+      version: 0,
+    });
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+    expect(data<AdministrationItemCategoryDto>(edited)).toMatchObject({
+      parentId: top.id,
+      sortOrder: 2,
+    });
+    const [, row] = await trail('itemCategory', sub.id);
+    expect(row?.changes?.map((change) => change.field)).toEqual(['sortOrder']);
+  });
+
+  it('edits with its version; a stale version is 409 STALE_DOCUMENT', async () => {
+    const top = await category();
+    const first = await api.patch(`/item-categories/${top.id}`, { sortOrder: 7, version: 0 });
+    expect(first.status).toBe(200);
+    const stale = await api.patch(`/item-categories/${top.id}`, { sortOrder: 8, version: 0 });
+    expect(stale.status).toBe(409);
+    expect(refusal(stale).code).toBe('STALE_DOCUMENT');
+  });
+
+  it.each([
+    ['no English name', { name: { ar: 'أدوات' } }],
+    ['a parent that is not an id', { name: { ar: 'أدوات', en: 'Tools' }, parentId: 'tools' }],
+    ['a client-sent nameKey', { name: { ar: 'أدوات', en: 'Tools' }, nameKey: 'x' }],
+    ['an Arabic name of tatweel alone', { name: { ar: 'ـ', en: 'Tools' } }],
+  ])('400 VALIDATION_FAILED for %s', async (_label, body) => {
+    const res = await api.post('/item-categories', body);
+    expect(res.status).toBe(400);
+    expect(refusal(res).code).toBe('VALIDATION_FAILED');
+  });
+
+  it.each([
+    ['no version', { sortOrder: 2 }],
+    ['a parent that is not an id', { parentId: 'tools', version: 0 }],
+    ['an Arabic name of harakat alone', { name: { ar: 'ًٌ', en: 'Tools' }, version: 0 }],
+  ])('400 VALIDATION_FAILED for an edit with %s', async (_label, body) => {
+    const res = await api.patch(`/item-categories/${(await category()).id}`, body);
+    expect(res.status).toBe(400);
+    expect(refusal(res).code).toBe('VALIDATION_FAILED');
   });
 
   it('when a racing write passes the early check, the index refuses it with the same answer', async () => {
@@ -451,11 +629,14 @@ describe('two spellings typed at the same moment', () => {
 describe('who may read and write', () => {
   it('403 without the key, on every route', async () => {
     const outsider = administrationApi(world.app, world.outsiderToken);
+    const meter = await unit();
     const top = await category();
     for (const res of [
       await outsider.get('/catalog-items?kind=unit'),
       await outsider.post('/catalog-items', { kind: 'unit', name: fresh('ج', 'C') }),
+      await outsider.patch(`/catalog-items/${meter.id}`, { sortOrder: 1, version: 0 }),
       await outsider.get('/item-categories'),
+      await outsider.post('/item-categories', { name: fresh('ج', 'C') }),
       await outsider.patch(`/item-categories/${top.id}`, { sortOrder: 1, version: 0 }),
     ]) {
       expect(res.status).toBe(403);

@@ -700,9 +700,10 @@ export const ErrorCodes = {
    */
   ADMINISTRATION_STOCK_LEVELS_ORDER: 'ADMINISTRATION_STOCK_LEVELS_ORDER',
   /**
-   * 422 — an item names a retired unit or category, on a create or by changing it; nothing was
-   * written. An item that already names one keeps it. One detail per retired reference, `field`
-   * 'unitId' or 'categoryId', `code` 'inactive'.
+   * 422 — an item names a retired unit or category, or a supplier a retired item category, on a
+   * create or by changing it; nothing was written. A row that already names one keeps it. One
+   * detail per retired reference, `code` 'inactive': an item's `field` is 'unitId' or
+   * 'categoryId'; a supplier's is 'categoryIds', its `message` the retired category's id.
    */
   ADMINISTRATION_REFERENCE_INACTIVE: 'ADMINISTRATION_REFERENCE_INACTIVE',
   /**
@@ -727,6 +728,12 @@ export const ErrorCodes = {
    * code is first met then.
    */
   ADMINISTRATION_DEACTIVATION_BLOCKED: 'ADMINISTRATION_DEACTIVATION_BLOCKED',
+  /**
+   * 422 — a typed attachment list already holds `ADMINISTRATION_MAX_LIST_ATTACHMENTS` (20) entries
+   * (a supplier's papers, design §11.4); the file was not linked and its upload was withdrawn. One
+   * detail, `field` 'attachments', `code` 'limit'. Remove a paper first.
+   */
+  ADMINISTRATION_ATTACHMENT_LIMIT: 'ADMINISTRATION_ATTACHMENT_LIMIT',
 
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */

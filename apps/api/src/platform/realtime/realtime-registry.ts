@@ -254,6 +254,9 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // branch (`signalWarehouse`), so a branch-scoped reader's room hears it, not only the
   // organization-wide one the audit row reaches.
   'administration.warehouse': { permission: 'administrationWarehouse.view' },
+  // Suppliers (§9.2), organization-wide as the items are; a paper's link is an `update` on its
+  // supplier (§11.4).
+  'administration.supplier': { permission: 'administrationSupplier.view' },
 
   // ── Automation ─────────────────────────────────────────────────────────────
   'automation.workflow': { permission: 'workflow.view' },

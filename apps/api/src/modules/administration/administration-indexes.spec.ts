@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   warehouses: { ready: vi.fn(), create: vi.fn(), byNameKey: vi.fn(), byCode: vi.fn() },
   activeBranchIds: vi.fn(),
   signal: vi.fn(),
+  suppliers: { ready: vi.fn(), create: vi.fn(), byNameKey: vi.fn(), highest: vi.fn() },
   counter: { ensure: vi.fn(), next: vi.fn() },
   references: { unit: vi.fn(), category: vi.fn(), subcategories: vi.fn() },
 }));
@@ -54,6 +55,14 @@ vi.mock('./catalog/items/item.repository', () => ({
     create: mocks.items.create,
     findLiveByNameKey: mocks.items.byNameKey,
     highestCodeNumber: mocks.items.highest,
+  },
+}));
+vi.mock('./procurement/suppliers/supplier.repository', () => ({
+  administrationSupplierRepository: {
+    ensureCollection: mocks.suppliers.ready,
+    create: mocks.suppliers.create,
+    findLiveByNameKey: mocks.suppliers.byNameKey,
+    highestCodeNumber: mocks.suppliers.highest,
   },
 }));
 // Partial mocks: the manifest and the model list still need the real routers and models.
@@ -100,6 +109,7 @@ const { administrationItemCategoryService } =
 const { administrationItemService } = await import('./catalog/items/item.service');
 const { administrationWarehouseService } =
   await import('./warehouses/warehouses/warehouse.service');
+const { administrationSupplierService } = await import('./procurement/suppliers/supplier.service');
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const read = (file: string): string => readFileSync(join(HERE, file), 'utf8');
@@ -138,6 +148,7 @@ const declaredCollections = (): Set<string> => {
  */
 const WHOLE_COLLECTION_UNIQUES = new Set([
   'AdministrationItem.ux_code',
+  'AdministrationSupplier.ux_code',
   'AdministrationCounter.ux_counter_key',
 ]);
 
@@ -211,6 +222,35 @@ describe('the model list the seed syncs covers the whole module', () => {
   });
 });
 
+describe('the supplier’s tax number is indexed, never unique (OD-11 (i))', () => {
+  const index = (name: string) =>
+    administrationModels
+      .find((model) => model.modelName === 'AdministrationSupplier')
+      ?.schema.indexes()
+      .find(([, options]) => options?.name === name);
+
+  it('ix_tax_number serves the warning, among live rows that hold one, and refuses nothing', () => {
+    const taxNumber = index('ix_tax_number');
+    expect(taxNumber?.[0]).toEqual({ taxNumber: 1 });
+    expect(taxNumber?.[1]?.unique).toBeUndefined();
+    expect(taxNumber?.[1]?.partialFilterExpression).toEqual({
+      taxNumber: { $type: 'string' },
+      isDeleted: false,
+    });
+  });
+
+  it('the name is the supplier’s one uniqueness among live rows, beside its permanent code', () => {
+    const uniques = administrationModels
+      .find((model) => model.modelName === 'AdministrationSupplier')
+      ?.schema.indexes()
+      .filter(([, options]) => options?.unique === true)
+      .map(([, options]) => options?.name);
+    expect(uniques?.sort()).toEqual(['ux_code', 'ux_name_key']);
+    expect(index('ix_category')?.[0], 'multikey over the list').toEqual({ categoryIds: 1 });
+    expect(index('ix_active')?.[0]).toEqual({ isActive: 1 });
+  });
+});
+
 describe('the seed builds the indexes first, and holds no state', () => {
   const seed = read('administration.seed.ts');
   const body = seed.slice(seed.indexOf('export const seedAdministration'));
@@ -233,14 +273,25 @@ describe('the seed builds the indexes first, and holds no state', () => {
     expect(body).not.toMatch(/throw |process\.exit/);
   });
 
-  it('raises the item counter after the indexes and before the roles, and logs a failure', () => {
+  it('raises the counters, then ensures the papers’ category, after the indexes and before the roles', () => {
     const sync = body.indexOf('await syncDeclaredIndexes(');
-    const counter = body.indexOf('await ensureItemCodeCounter();');
+    const items = body.indexOf('await ensureItemCodeCounter();');
+    const suppliers = body.indexOf('await ensureSupplierCodeCounter();');
+    const category = body.indexOf('await ensureSupplierDocumentsCategory();');
     const roles = body.indexOf('rbacService.ensureManagedRole(');
     expect(sync).toBeGreaterThanOrEqual(0);
-    expect(counter).toBeGreaterThan(sync);
-    expect(roles).toBeGreaterThan(counter);
-    expect(body.slice(counter, roles)).toMatch(/catch \(err\)[\s\S]*logger\.warn\(/);
+    expect(items).toBeGreaterThan(sync);
+    expect(suppliers).toBeGreaterThan(items);
+    expect(category).toBeGreaterThan(suppliers);
+    expect(roles).toBeGreaterThan(category);
+    // Each step logs its own failure and the boot goes on: the write that needs it repeats it.
+    for (const [from, to] of [
+      [items, suppliers],
+      [suppliers, category],
+      [category, roles],
+    ] as const) {
+      expect(body.slice(from, to)).toMatch(/catch \(err\)[\s\S]*logger\.warn\(/);
+    }
   });
 });
 
@@ -291,7 +342,13 @@ describe('a repository’s first write waits for its collection (RK-03)', () => 
 
   beforeEach(() => {
     vi.resetAllMocks();
-    for (const repository of [mocks.units, mocks.categories, mocks.items, mocks.warehouses]) {
+    for (const repository of [
+      mocks.units,
+      mocks.categories,
+      mocks.items,
+      mocks.warehouses,
+      mocks.suppliers,
+    ]) {
       repository.byNameKey.mockResolvedValue(null);
       repository.create.mockImplementation(async (row: object) => ({
         _id: new Types.ObjectId(),
@@ -303,6 +360,7 @@ describe('a repository’s first write waits for its collection (RK-03)', () => 
     mocks.categories.byCode.mockResolvedValue(null);
     mocks.warehouses.byCode.mockResolvedValue(null);
     mocks.items.highest.mockResolvedValue(0);
+    mocks.suppliers.highest.mockResolvedValue(0);
     mocks.counter.ensure.mockResolvedValue(undefined);
     mocks.counter.next.mockResolvedValue(1);
     mocks.references.unit.mockResolvedValue({ isActive: true, kind: 'unit' });
@@ -406,6 +464,45 @@ describe('a repository’s first write waits for its collection (RK-03)', () => 
       const doc = await administrationItemService.create(input, itemCtx);
       expect(mocks.counter.ensure).toHaveBeenCalledWith('item:global', 41);
       expect(doc).toMatchObject({ code: 'ITM-00042' });
+    });
+  });
+
+  describe('a supplier: its collection AND its own counter, before the transaction', () => {
+    // Only the two fields the service reads; the rest of a request's context plays no part here.
+    const supplierCtx = {
+      userId: String(new Types.ObjectId()),
+      permissions: { 'administrationSupplier.create': 'organization' },
+    } as unknown as AuthContext;
+    const input = {
+      name: { ar: 'مؤسسة النور', en: 'Al Nour' },
+      contacts: [],
+      categoryIds: [],
+    };
+
+    it('a failed supplier build refuses the write before a number is taken; the next goes in', async () => {
+      await expect(administrationSupplierService.create(input, supplierCtx)).rejects.toBe(
+        failedBuild,
+      );
+      expect(mocks.counter.ensure, 'the counter untouched').not.toHaveBeenCalled();
+      expect(mocks.counter.next).not.toHaveBeenCalled();
+      expect(mocks.suppliers.create).not.toHaveBeenCalled();
+
+      const doc = await administrationSupplierService.create(input, supplierCtx);
+      expect(mocks.suppliers.ready).toHaveBeenCalledTimes(2);
+      expect(mocks.suppliers.create).toHaveBeenCalledTimes(1);
+      expect(doc).toMatchObject({ code: 'SUP-00001' });
+    });
+
+    it('raises `supplier:global` to the highest supplier code — never the item’s series', async () => {
+      mocks.suppliers.ready.mockReset().mockResolvedValue(undefined);
+      mocks.suppliers.highest.mockResolvedValue(6);
+      mocks.items.highest.mockResolvedValue(900);
+      mocks.counter.next.mockResolvedValue(7);
+      const doc = await administrationSupplierService.create(input, supplierCtx);
+      expect(mocks.counter.ensure).toHaveBeenCalledWith('supplier:global', 6);
+      expect(mocks.counter.ensure).not.toHaveBeenCalledWith('item:global', expect.anything());
+      expect(mocks.counter.next).toHaveBeenCalledWith('supplier:global', expect.anything());
+      expect(doc).toMatchObject({ code: 'SUP-00007' });
     });
   });
 });

@@ -2,10 +2,11 @@
 // module, as production boots; two branches; and signed-in people with exactly the grants a case
 // needs — the master-data desk at organization scope, the same keys held only in branch A (which
 // OD-04 A turns away from every master-data write), a catalog manager and an item reader each with
-// nothing else, and someone holding no key of this module. Written once, so each suite states its
-// cases and not its plumbing; the warehouse and supplier suites add their people here as they ship
-// — the warehouses' (P1a.3) in `bootWarehouseWorld`: one person per row of §7.2's table, a
-// department and its copies, and employees planted as HR stores them, one at work and one who left.
+// nothing else, the supplier desk and its branch twin, a supplier reader, and someone holding no
+// key of this module. Written once, so each suite states its cases and not its plumbing; the
+// warehouse suite's people (P1a.3) are in `bootWarehouseWorld`: one person per row of §7.2's
+// table, a department and its copies, and employees planted as HR stores them, one at work and one
+// who left.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { type Express } from 'express';
@@ -53,6 +54,12 @@ export interface AdministrationWorld {
   catalogManagerToken: string;
   /** `administrationItem.view` alone, at organization scope. */
   itemViewerToken: string;
+  /** The supplier keys alone — view, create, edit — at organization scope: no item or catalog key. */
+  supplierManagerToken: string;
+  /** The same supplier keys at BRANCH scope, placed in branch A. */
+  branchSupplierManagerToken: string;
+  /** `administrationSupplier.view` alone, at organization scope. */
+  supplierViewerToken: string;
   /** Signed in, with a key of another module only. */
   outsiderToken: string;
   /** One more signed-in person, holding exactly `keys` at `scope` — for a suite's own people. */
@@ -105,6 +112,20 @@ export const administrationApi = (app: Express, token: string, activeBranchId?: 
       as(request(app).post(`/api/v1/administration${path}`)).send(body),
     patch: (path: string, body: Record<string, unknown>) =>
       as(request(app).patch(`/api/v1/administration${path}`)).send(body),
+    delete: (path: string) => as(request(app).delete(`/api/v1/administration${path}`)),
+    /** One file under `file`, with the multipart text fields beside it. */
+    upload: (
+      path: string,
+      fields: Record<string, string>,
+      file: { buffer: Buffer; filename: string; contentType: string },
+    ) => {
+      let req = as(request(app).post(`/api/v1/administration${path}`));
+      for (const [name, value] of Object.entries(fields)) req = req.field(name, value);
+      return req.attach('file', file.buffer, {
+        filename: file.filename,
+        contentType: file.contentType,
+      });
+    },
   };
 };
 
@@ -212,6 +233,11 @@ export const bootAdministration = async (label: string): Promise<AdministrationW
     'administrationItem.create',
     'administrationItem.edit',
   ];
+  const supplierKeys = [
+    'administrationSupplier.view',
+    'administrationSupplier.create',
+    'administrationSupplier.edit',
+  ];
   return {
     app,
     adminId,
@@ -227,6 +253,19 @@ export const bootAdministration = async (label: string): Promise<AdministrationW
       null,
     ),
     itemViewerToken: await person('item-viewer', ['administrationItem.view'], 'organization', null),
+    supplierManagerToken: await person('supplier-manager', supplierKeys, 'organization', null),
+    branchSupplierManagerToken: await person(
+      'branch-supplier-manager',
+      supplierKeys,
+      'branch',
+      branchAId,
+    ),
+    supplierViewerToken: await person(
+      'supplier-viewer',
+      ['administrationSupplier.view'],
+      'organization',
+      null,
+    ),
     outsiderToken: await person('outsider', ['itVendor.view'], 'organization', null),
     person: signIn,
     login,

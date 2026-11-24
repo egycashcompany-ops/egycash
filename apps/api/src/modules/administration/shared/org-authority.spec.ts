@@ -34,11 +34,13 @@ const refusal = (run: () => void): ForbiddenError => {
 };
 
 describe('assertAdministrationOrgAuthority', () => {
-  it('names the master-data write keys shipped so far: the catalog, and the items’ (P1a.2)', () => {
+  it('names the master-data write keys shipped so far: the catalog, the items’ and the suppliers’', () => {
     expect(ADMINISTRATION_ORG_KEYS).toEqual([
       'administrationCatalog.manage',
       'administrationItem.create',
       'administrationItem.edit',
+      'administrationSupplier.create',
+      'administrationSupplier.edit',
     ]);
   });
 
@@ -73,6 +75,17 @@ describe('assertAdministrationOrgAuthority', () => {
     expect(() => assertAdministrationOrgAuthority(ctx, 'administrationItem.create')).not.toThrow();
     expect(
       refusal(() => assertAdministrationOrgAuthority(ctx, 'administrationItem.edit')),
+    ).toBeInstanceOf(ForbiddenError);
+  });
+
+  it('holds a supplier’s writes, its papers included, to the same rule (P1b.1)', () => {
+    const company = context({ 'administrationSupplier.edit': 'organization' });
+    const branch = context({ 'administrationSupplier.edit': 'branch' });
+    expect(() =>
+      assertAdministrationOrgAuthority(company, 'administrationSupplier.edit'),
+    ).not.toThrow();
+    expect(
+      refusal(() => assertAdministrationOrgAuthority(branch, 'administrationSupplier.edit')),
     ).toBeInstanceOf(ForbiddenError);
   });
 

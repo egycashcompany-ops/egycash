@@ -15,6 +15,7 @@ import { type Model } from 'mongoose';
 import { AdministrationCatalogItemModel } from './catalog/catalog-items/catalog-item.model';
 import { AdministrationItemCategoryModel } from './catalog/item-categories/item-category.model';
 import { AdministrationItemModel } from './catalog/items/item.model';
+import { AdministrationSupplierModel } from './procurement/suppliers/supplier.model';
 import { AdministrationCounterModel } from './shared/counter.model';
 import { AdministrationWarehouseModel } from './warehouses/warehouses/warehouse.model';
 
@@ -23,6 +24,7 @@ export const administrationModels: Model<never>[] = [
   AdministrationItemCategoryModel,
   AdministrationItemModel,
   AdministrationWarehouseModel,
+  AdministrationSupplierModel,
   AdministrationCounterModel,
   // A list of differently typed models is what the shared sync takes: it reads only their schemas
   // and collections, so the documents' types do not matter to it.

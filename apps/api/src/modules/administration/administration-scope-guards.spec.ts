@@ -46,6 +46,12 @@ const REPOSITORIES = [
     options: '{}',
   },
   {
+    file: 'procurement/suppliers/supplier.repository.ts',
+    collection: 'administration_suppliers',
+    model: 'AdministrationSupplierModel',
+    options: '{}',
+  },
+  {
     file: 'warehouses/warehouses/warehouse.repository.ts',
     collection: 'administration_warehouses',
     model: 'AdministrationWarehouseModel',

@@ -1,12 +1,14 @@
-// The master codes (design §2.8, §19.7; OD-05 A): «ITM-00001» formats and parses, one spelling per
-// number, and no number a counter never hands out — 0, a negative, a fraction, an overflow — makes
-// or reads a code (the `consumable-number.spec.ts` shape). And the people the module names (§7.8):
-// a search with no status, since only the employed are offered, and an id parameter.
+// The master codes (design §2.8, §19.7; OD-05 A): «ITM-00001» and «SUP-00001» format and parse,
+// one spelling per number, each prefix naming its own master, and no number a counter never hands
+// out — 0, a negative, a fraction, an overflow — makes or reads a code (the
+// `consumable-number.spec.ts` shape). And the people the module names (§7.8): a search with no
+// status, since only the employed are offered, and an id parameter.
 import { describe, expect, it } from 'vitest';
 import {
   ADMINISTRATION_MASTER_CODE_DIGITS,
   ADMINISTRATION_MASTER_CODE_PREFIXES,
   ADMINISTRATION_MASTER_KINDS,
+  ADMINISTRATION_MAX_LIST_ATTACHMENTS,
   ADMINISTRATION_PERSON_STATUSES,
   AdministrationPersonIdParamSchema,
   ListAdministrationPeopleQuerySchema,
@@ -16,11 +18,22 @@ import {
 
 describe('the master codes', () => {
   it('codes an item «ITM-00001», five digits, generated (OD-05 A)', () => {
-    expect(ADMINISTRATION_MASTER_KINDS).toEqual(['item']);
-    expect(ADMINISTRATION_MASTER_CODE_PREFIXES).toEqual({ item: 'ITM' });
+    expect(ADMINISTRATION_MASTER_KINDS).toEqual(['item', 'supplier']);
+    expect(ADMINISTRATION_MASTER_CODE_PREFIXES).toEqual({ item: 'ITM', supplier: 'SUP' });
     expect(ADMINISTRATION_MASTER_CODE_DIGITS).toBe(5);
     expect(formatAdministrationMasterCode('item', 1)).toBe('ITM-00001');
     expect(formatAdministrationMasterCode('item', 4321)).toBe('ITM-04321');
+  });
+
+  it('codes a supplier «SUP-00001», on the same rules (OD-05 A)', () => {
+    expect(formatAdministrationMasterCode('supplier', 1)).toBe('SUP-00001');
+    expect(formatAdministrationMasterCode('supplier', 123_456)).toBe('SUP-123456');
+    expect(parseAdministrationMasterCode('SUP-00042')).toEqual({ kind: 'supplier', seq: 42 });
+  });
+
+  it('reads each prefix as its own master — a supplier code is never an item’s', () => {
+    expect(parseAdministrationMasterCode('ITM-00007')?.kind).toBe('item');
+    expect(parseAdministrationMasterCode('SUP-00007')?.kind).toBe('supplier');
   });
 
   it('grows wider past five digits rather than cutting the number', () => {
@@ -36,13 +49,17 @@ describe('the master codes', () => {
     ['not a number', Number.NaN],
     ['infinity', Number.POSITIVE_INFINITY],
   ])('refuses to format %s', (_label, seq) => {
-    expect(() => formatAdministrationMasterCode('item', seq)).toThrow(RangeError);
+    for (const kind of ADMINISTRATION_MASTER_KINDS) {
+      expect(() => formatAdministrationMasterCode(kind, seq), kind).toThrow(RangeError);
+    }
   });
 
-  it('parses what it formats, back to the same number', () => {
-    for (const seq of [1, 42, 99_999, 100_000, Number.MAX_SAFE_INTEGER]) {
-      const code = formatAdministrationMasterCode('item', seq);
-      expect(parseAdministrationMasterCode(code), code).toEqual({ kind: 'item', seq });
+  it('parses what it formats, back to the same master and number', () => {
+    for (const kind of ADMINISTRATION_MASTER_KINDS) {
+      for (const seq of [1, 42, 99_999, 100_000, Number.MAX_SAFE_INTEGER]) {
+        const code = formatAdministrationMasterCode(kind, seq);
+        expect(parseAdministrationMasterCode(code), code).toEqual({ kind, seq });
+      }
     }
   });
 
@@ -55,6 +72,9 @@ describe('the master codes', () => {
     ['a padding the formatter never writes', 'ITM-000001'],
     ['an unknown prefix', 'ABC-00001'],
     ['lower case', 'itm-00001'],
+    ['a supplier code of zero', 'SUP-00000'],
+    ['a supplier padding the formatter never writes', 'SUP-000001'],
+    ['a lower-case supplier prefix', 'sup-00001'],
     ['a space', 'ITM- 00001'],
     ['nothing after the dash', 'ITM-'],
     ['Arabic-Indic digits', 'ITM-٠٠٠٠١'],
@@ -112,5 +132,11 @@ describe('the people the module names (§7.8)', () => {
     expect(
       AdministrationPersonIdParamSchema.safeParse({ employeeId: oid(7), extra: 1 }).success,
     ).toBe(false);
+  });
+});
+
+describe('the typed attachment list (§11.4)', () => {
+  it('holds at most 20 entries, the one bound every list B keeps', () => {
+    expect(ADMINISTRATION_MAX_LIST_ATTACHMENTS).toBe(20);
   });
 });

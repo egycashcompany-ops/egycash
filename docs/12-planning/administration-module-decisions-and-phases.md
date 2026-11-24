@@ -3196,6 +3196,56 @@ Repository-wide findings outside this module are listed for the owner in
     first document that names a warehouse (P5).
   - *Fields.* `location` is free text up to 200 characters, `notes` up to 2,000 as an item's; the code is required,
     trimmed, in the org units' pattern. `GET /warehouses/branch-options` takes no query: a stray one is a 400.
+- **P1b.1 built** (2026-11-24). The supplier register ships as §19.1 says, under the owner's answers (§16.12) and
+  ADR-040 (OD-01 C: module-owned now, a platform seam later, IT vendors and Fleet workshops untouched): suppliers,
+  the `SUP-` code on `supplier:global`, the categories read widened for supplier editors, and supplier papers (OD-11
+  A) with their category, authorizer and three endpoints; every bundle §6.5 gives a supplier key gains it, titled as
+  before. OD-68 B: no go-live step, no run model, no entrypoint change. Built beside P1a.3 and rebased onto it, so
+  the shared lists (manifest, roles, errors, realtime registries, this section) hold both. Where the code had to
+  choose what the design leaves open:
+  - *The tax-number warning (OD-11 (i))* rides the record, after ATM's seal duplicates (`duplicates` on its DTO):
+    every single-supplier answer (`GET /:id`, the create, the edit and both paper writes) is the detail DTO, whose
+    `taxNumberMatches` names up to five other suppliers holding the same number, newest first, retired ones marked
+    `isActive: false`; the register's rows carry none. The number is compared as typed, trimmed; whether
+    «123-456-789» and «123456789» are one number is for the owner, so no normalisation is applied.
+  - *The VAT status* has no values until OD-29 gives them, so it ships holding null alone
+    (`ADMINISTRATION_SUPPLIER_VAT_STATUSES = []`), any value refused (400): the stored shape is final and the values
+    join without a migration. Listed for the owner with OD-29.
+  - *Categories.* Each must exist (404, as P1a's references) and one named anew must be active, by the category's
+    own `activeFor` ("stays out of every new choice"): 422 `ADMINISTRATION_REFERENCE_INACTIVE`, one detail per
+    retired category, field `categoryIds`, its `message` the id (IT's value-in-message precedent); a supplier keeps a
+    category that retired after it was named. Either level may be named; how an RFQ matches a top-level category to
+    its subcategories' items is P3's. Ids are canonical and named once, in the order first given, at most 100 (a
+    stored list's bound, not a business rule). `?categoryId=` reads a category with its subcategories, as the item
+    register does. Only `.create` and `.edit` join the categories read (§19.3), so `.view` alone fills no category
+    filter; every seeded bundle with the supplier view key also holds `administrationItem.view`.
+  - *A paper's link is versioned.* §11.4's "link writes are version-guarded" is read literally: the link takes the
+    multipart fields `label` (1–200, a file's display name) and `version` (the HR hiring-documents shape), the
+    removal `?version=` (ATM's `AtmVersionQuerySchema`), and both move the supplier's `__v`, so an edit decided before
+    a paper was linked is stale. The bound of 20 rides in the link write's filter and, since §5.15 names no code for
+    it, answers a new module-wide one, 422 `ADMINISTRATION_ATTACHMENT_LIMIT` (`ADMINISTRATION_MAX_LIST_ATTACHMENTS`);
+    a link that misses withdraws its upload. The endpoint takes an upload only, never a JSON link of an existing
+    file, so §19.7's "a link to a file of another category or entity" cannot be made: the strict schema refuses a
+    `fileId`, and a paper is never reached through another supplier (404).
+  - *OD-76 on a record with no draft.* No supplier paper is required (OD-76 A names none), so no gate reads the scan
+    states, which the detail shows per paper (`scanStatus`, null for a file gone or archived, «الملف غير متاح»; the
+    file id stays on the server). "After submission (i)" has nothing to apply to, so the list is open at every
+    status, retired included; whether a retired supplier's papers freeze is for the owner.
+  - *The authorizer's write branch* takes `.edit` at organization scope, the paper endpoints' own OD-04 A rule, so a
+    branch holder of `.edit` with a `file.*` key cannot write the papers through `/platform/files` (§11.3's table
+    names only the key). The category resolver ensures the category once more when the cached one is no longer found.
+  - *The intake* is the module's `shared/file-upload.ts`: one helper, its cap `min(category + 5, MAX_UPLOAD_MB)`, with
+    the latin1 file-name decode Fleet's and ATM's uploads apply, written here because the module imports no other
+    (§3.7). A paper's display name in Files is its label.
+  - *Words and logs.* The keys' Arabic resource name is the genitive «الموردين», so the labels read «عرض الموردين»
+    as Fleet's read «عرض السائقين»; the page keeps «الموردون». §6.8's nested contact phones join the logger's
+    redaction list at three depths (`CONTACT_PHONE_PATHS`), the slice's one change outside the module's registries;
+    masking phones in the register is P1b.W's (§13.6 B). Registration numbers are trimmed, 1–50 characters, the
+    Organization's own bounds, with no format imposed.
+  - *Roles.* §6.5's "+ create/edit if OD-04 gives suppliers to procurement" is not met under OD-04 A, so only the
+    master-data administrator writes suppliers.
+  - *For P1b.W:* the supplier rows show category names, so the category topics' web rows gain `suppliers` with the
+    screen that shows them; the new refusal code needs its en and ar `FRIENDLY` text then.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

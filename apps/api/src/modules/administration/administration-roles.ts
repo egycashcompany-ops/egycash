@@ -7,9 +7,10 @@
 // bundle joins with the first slice that gives it a key, and none is seeded empty: the master-data
 // administrator with the catalog (P1a.1); the storekeeper, the procurement officer and manager, the
 // Administrative Affairs manager and the auditor with the item keys (P1a.2), each with the keys
-// §6.5 gives it so far — the warehouse keys joined them in P1a.3. The titles are the design's
-// candidates: OD-67's fallback, A (B, the owner's words, not yet given). `ensureManagedRole` writes a title
-// only when it creates the role, so a title changed later is renamed by hand.
+// §6.5 gives it so far — the warehouse keys joined them in P1a.3, the supplier keys in P1b.1. The
+// titles are the design's candidates: OD-67's fallback, A (B, the owner's words, not yet given).
+// `ensureManagedRole` writes a title only when it creates the role, so a title changed later is
+// renamed by hand.
 //
 // Listed in §6.5's order, so a later bundle takes its place in it: the count team member and the
 // department requester after the storekeeper, the finance reader after the auditor.
@@ -22,10 +23,15 @@ export interface AdministrationRoleBundle {
   permissionKeys: readonly string[];
 }
 
-/** What the procurement officer reads in P1a; the procurement manager holds it all, and more later. */
+/**
+ * What the procurement officer reads so far; the procurement manager holds it all, and more later.
+ * The supplier register's writes are the master-data desk's, not the officer's: OD-04 A keeps
+ * master data central, so §6.5's "+ create/edit if OD-04 gives suppliers to procurement" is not met.
+ */
 const PROCUREMENT_OFFICER_KEYS = [
   'administrationItem.view',
   'administrationWarehouse.view',
+  'administrationSupplier.view',
 ] as const;
 
 export const ADMINISTRATION_ROLE_BUNDLES: readonly AdministrationRoleBundle[] = [
@@ -33,8 +39,12 @@ export const ADMINISTRATION_ROLE_BUNDLES: readonly AdministrationRoleBundle[] = 
     key: 'administration-storekeeper',
     name: { en: 'Storekeeper', ar: 'أمين المخزن' },
     // Assigned in the branch of the keeper's warehouses, which its scope reads fail-closed; items
-    // are read whole whatever the scope.
-    permissionKeys: ['administrationWarehouse.view', 'administrationItem.view'],
+    // and suppliers are read whole whatever the scope.
+    permissionKeys: [
+      'administrationWarehouse.view',
+      'administrationItem.view',
+      'administrationSupplier.view',
+    ],
   },
   {
     key: 'administration-procurement-officer',
@@ -51,7 +61,11 @@ export const ADMINISTRATION_ROLE_BUNDLES: readonly AdministrationRoleBundle[] = 
     key: 'administration-affairs-manager',
     name: { en: 'Administrative Affairs manager', ar: 'مدير الشئون الإدارية' },
     // Every view key, and every approve key, as each ships.
-    permissionKeys: ['administrationItem.view', 'administrationWarehouse.view'],
+    permissionKeys: [
+      'administrationItem.view',
+      'administrationWarehouse.view',
+      'administrationSupplier.view',
+    ],
   },
   {
     key: 'administration-master-data',
@@ -66,12 +80,19 @@ export const ADMINISTRATION_ROLE_BUNDLES: readonly AdministrationRoleBundle[] = 
       'administrationItem.create',
       'administrationItem.edit',
       'administrationCatalog.manage',
+      'administrationSupplier.view',
+      'administrationSupplier.create',
+      'administrationSupplier.edit',
     ],
   },
   {
     key: 'administration-auditor',
     name: { en: 'Internal auditor', ar: 'المراجع الداخلي' },
     // Every view key, as each ships; nothing that writes.
-    permissionKeys: ['administrationItem.view', 'administrationWarehouse.view'],
+    permissionKeys: [
+      'administrationItem.view',
+      'administrationWarehouse.view',
+      'administrationSupplier.view',
+    ],
   },
 ];

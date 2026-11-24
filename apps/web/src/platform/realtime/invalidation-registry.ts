@@ -664,6 +664,9 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   ],
   // A warehouse moves the warehouse screens: its register, its branch options and one warehouse.
   'administration.warehouse': [['administration', 'warehouses']],
+  // A supplier moves the supplier screens, its papers included (§9.4); `rfqs` joins with P3 and
+  // `purchaseOrders` with P4. The screens arrive with P1b.W.
+  'administration.supplier': [['administration', 'suppliers']],
 
   // ── Automation ─────────────────────────────────────────────────────────────
   'automation.workflow': [['automation']],

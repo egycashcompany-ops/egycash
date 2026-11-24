@@ -762,34 +762,33 @@ describe('the branch options (§19.3)', () => {
     expect(own.size, 'every active branch is still listed').toBe((await switcher()).length);
   });
 
-  it('the top bar narrows what may be viewed, never what may be created', async () => {
+  it('the top bar narrows what may be viewed and where a store may be created (ADR-028)', async () => {
     const narrowed = await options(wh.orgToken, world.branchAId);
     expect(narrowed.get(world.branchAId)).toMatchObject({ canView: true, canCreate: true });
-    expect(narrowed.get(world.branchBId)).toMatchObject({ canView: false, canCreate: true });
+    expect(narrowed.get(world.branchBId)).toMatchObject({ canView: false, canCreate: false });
+    const whole = await options(wh.orgToken);
+    expect(whole.get(world.branchBId)).toMatchObject({ canView: true, canCreate: true });
   });
 
-  it('a store created past the top bar’s branch says it cannot be edited from there', async () => {
-    const res = await as(wh.orgToken, world.branchAId).post('/warehouses', {
-      ...fresh(),
-      branchId: world.branchBId,
-      type: 'branch',
+  it('a create past the top bar’s branch is 400 OUT_OF_REACH; the whole company files it', async () => {
+    const body = { ...fresh(), branchId: world.branchBId, type: 'branch' };
+    const before = await AdministrationWarehouseModel.countDocuments({}).exec();
+    const narrowed = await as(wh.orgToken, world.branchAId).post('/warehouses', body);
+    expect(narrowed.status, JSON.stringify(narrowed.body)).toBe(400);
+    expect(refusal(narrowed)).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: [expect.objectContaining({ field: 'body.branchId', code: 'OUT_OF_REACH' })],
     });
+    expect(await AdministrationWarehouseModel.countDocuments({}).exec(), 'nothing written').toBe(
+      before,
+    );
+
+    const res = await as(wh.orgToken).post('/warehouses', body);
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     const store = data<AdministrationWarehouseDto>(res);
-    expect(store.canEdit, 'the narrowed edit would not find it').toBe(false);
-    const narrowed = await as(wh.orgToken, world.branchAId).patch(`/warehouses/${store.id}`, {
-      notes: 'من فرع أ',
-      version: store.version,
-    });
-    expect(narrowed.status).toBe(404);
-
-    const unnarrowed = await as(wh.orgToken).get(`/warehouses/${store.id}`);
-    expect(data<AdministrationWarehouseDto>(unnarrowed).canEdit).toBe(true);
-    const edit = await as(wh.orgToken).patch(`/warehouses/${store.id}`, {
-      notes: 'بلا تضييق',
-      version: store.version,
-    });
-    expect(edit.status, JSON.stringify(edit.body)).toBe(200);
+    expect(store.canEdit).toBe(true);
+    const fromA = await as(wh.orgToken, world.branchAId).get(`/warehouses/${store.id}`);
+    expect(fromA.status, 'narrowed to A, a store in B is out of sight').toBe(404);
   });
 
   it('takes no query', async () => {

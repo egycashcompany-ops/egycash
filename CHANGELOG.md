@@ -279,7 +279,8 @@ its entry here in the same PR.
     department or section holder, or a department copy by role or by delegation, the branch it sits in;
     `own` nothing. A `branchId` filter outside the reader's reach is 400 `OUT_OF_REACH`, and a store
     outside it 404. A create needs `.create` over the body's branch, an edit `.edit` over the store's,
-    which no department grant gives; every row says whether its reader may edit it (`canEdit`), and
+    which no department grant gives; a create files under the top bar's branch, so another branch is
+    400 `OUT_OF_REACH` on `body.branchId` (ADR-028); every row says whether its reader may edit it (`canEdit`), and
     says so only when the edit would find it under the top bar's branch. A write outside the key's
     reach is 403. A closed or unknown branch, or a department that is not an active copy in the
     store's own branch, is 404. An edit that sends a branch is 400 `VALIDATION_FAILED`. An edit sent

@@ -144,10 +144,23 @@ class AdministrationWarehouseService {
   }
 
   /**
+   * Whether `create` would take a store in this branch: `.create` reaches it, AND the top bar's
+   * choice files it there. "The same value decides where a new document is filed" (ADR-028), so an
+   * organization creator narrowed to A opens stores in A, where the keeper picker, the keeper check
+   * and `canEdit` also work; to open one in B they choose B, or the whole company, in the top bar.
+   */
+  canCreateIn(ctx: AuthContext, branchId: string): boolean {
+    const filable = branchScopeBranches(scopeSelector(ctx, CREATE));
+    return (
+      keyReachesBranch(ctx, CREATE, branchId) && (filable === 'all' || filable.includes(branchId))
+    );
+  }
+
+  /**
    * Every active branch, named and ordered as the top bar's switcher names and orders them, each
    * with what this reader may do there (§19.3): `canView` is `.view`'s reach under the top bar's
    * choice — so the register's filter never offers a branch it would then answer empty — and
-   * `canCreate` is `.create`'s reach, which the top bar does not narrow (a write names its branch).
+   * `canCreate` is `canCreateIn`, so the create dialog never offers a branch the write refuses.
    */
   async branchOptions(ctx: AuthContext): Promise<AdministrationWarehouseBranchOptionDto[]> {
     const ids = await activeBranchIds();
@@ -161,7 +174,7 @@ class AdministrationWarehouseService {
           branchId,
           name,
           canView: viewable === 'all' || viewable.includes(branchId),
-          canCreate: keyReachesBranch(ctx, CREATE, branchId),
+          canCreate: this.canCreateIn(ctx, branchId),
         },
       ];
     });
@@ -176,6 +189,9 @@ class AdministrationWarehouseService {
     if (!keyReachesBranch(ctx, CREATE, branchId)) {
       throw new ForbiddenError(`${CREATE} does not reach this branch`);
     }
+    // A grant that reaches the branch still files under the top bar's choice (ADR-028): another
+    // branch is 400 OUT_OF_REACH on the field, as a register filter outside the choice is.
+    narrowToBranch(scopeSelector(ctx, CREATE), branchId, 'body.branchId');
     if (!(await activeBranchIds()).includes(branchId)) {
       throw new NotFoundError('no such active branch');
     }

@@ -3177,14 +3177,15 @@ Repository-wide findings outside this module are listed for the owner in
   - *`canEdit` is what the edit would do:* `.edit` reaches the warehouse's branch (`keyReachesBranch`) and its
     selector, which the top bar narrows, loads the row (`branchScopeBranches`), so the screen never offers an edit
     the server answers 404.
-  - *The top bar and the writes, a question for P1a.W.* §19.3 gives `canCreate` as `keyReachesBranch`, which the top
-    bar does not narrow, while §7.8 builds the picker's reach, and so the keeper check, from `scopeSelector(ctx, key)`,
-    which it does; `canEdit` follows the edit's narrowed load. So an organization-wide editor narrowed to A is offered
-    B in the create dialog and may create there, but the picker finds none of B's people, a B keeper is 404, and the
-    new store answers `canEdit: false` until the top bar lets B back in. The two readings: (a) the people reads, and
-    with them the keeper check and `canEdit`, build the write keys' selectors from the raw grant, ignoring the top
-    bar; or (b) `canCreate` follows the top bar's narrowing as `canView` does. Until the owner answers, neither
-    changes: both halves follow the frozen design.
+  - *The top bar files a new store (ADR-028).* §19.3 gives `canCreate` as `keyReachesBranch`, after the ATM register
+    meta, which the top bar does not narrow, while §7.8 builds the picker's reach, and so the keeper check, from
+    `scopeSelector(ctx, key)`, which it does, and `canEdit` follows the edit's narrowed load. Read literally, an
+    organization-wide editor narrowed to A would be offered B in the create dialog, find none of B's people, get 404
+    on a B keeper, and see the new store answer `canEdit: false`. ADR-028 settles it: "the same value decides where a
+    new document is filed". So `canCreate` is `.create`'s reach AND the top bar's choice (`canCreateIn`), and the
+    create agrees: a branch outside the choice is 400 `OUT_OF_REACH` on `body.branchId`, as a register filter outside
+    it is. To open a store in B, the editor chooses B, or the whole company, in the top bar, where the picker, the
+    keeper check and `canEdit` then agree. An engineering reading of the platform rule, not a business rule.
   - *The picker.* `GET /people` searches the employed only and takes no status, with `branchId` narrowing inside the
     keys' reach and `sortBy` name or code; `GET /people/:employeeId` reads every status through the same scoped
     search, so a stored keeper who left still shows, as one.

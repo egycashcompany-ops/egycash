@@ -1,12 +1,15 @@
 // The printed acknowledgment is the IT department's «إقرار استلام» — every part the owner's form
-// has, in its words, one page per device, filled in with what the system knows: the employee's
-// name and job, the device's kind, serial, specifications and accessories, and the paper's own
-// number in the footer. Each page's words for the item agree with that item's kind. And since the
-// tab inherits the app's Content-Security-Policy, nothing in it may depend on a script of its own.
+// has, in its words, filled in with what the system knows: the employee's name and job, the
+// device's kind, serial, specifications and accessories, and the paper's own number in the footer.
+// A paper of one device is the form; a paper of several is ONE sheet — one statement, a table of
+// the devices, one signature (2026-11-24). The words for the item agree with what is handed over.
+// And since the tab inherits the app's Content-Security-Policy, nothing in it may depend on a
+// script of its own.
 import { describe, expect, it } from 'vitest';
 import { type ItCustodyReceiptDocumentDto, type ItCustodyReceiptLineDto } from '@ecms/contracts';
 import {
   buildCustodyReceiptHtml,
+  DEVICES_STYLE,
   formDigits,
   kindGender,
   RECEIPT_UNDERTAKING,
@@ -16,6 +19,7 @@ import {
   receiptSheet,
   signatureName,
   specGroups,
+  specSummary,
 } from './custody-receipt-print';
 
 const LABELS = { print: 'طباعة الإيصال', close: 'إغلاق' };
@@ -308,18 +312,14 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
     expect(html).toContain('<span class="block"></span>');
   });
 
-  it('prints ONE PAGE PER DEVICE, under the one number, each counted in the footer', () => {
+  it('prints several devices on ONE sheet, under the one number, with no page count', () => {
+    // «عند تسليم أكثر من أصل يتم عمل إيصال لكل أصل على حدي أنا عايز يتطبعوا فى ورقه واحده».
     const two = buildCustodyReceiptHtml(paper({ lines: [LAPTOP, SCREEN] }), LABELS);
-    const [first, second] = pages(two);
-    expect(pages(two)).toHaveLength(2);
-    expect(first).toContain('<bdi>B600DN3</bdi>');
-    expect(second).toContain('<bdi>49WNRS3</bdi>');
-    expect(second).toContain(
-      'استلمت <span class="kind">شاشة</span> <span class="fill whole"><bdi>Dell Screen</bdi></span>',
-    );
-    expect(first).toContain('EGYCASH-IT-F-14-0007</span>\n    <span class="block">1/2</span>');
-    expect(second).toContain('EGYCASH-IT-F-14-0007</span>\n    <span class="block">2/2</span>');
-    expect(two).toMatch(/\.page \{[^}]*break-after: page;/u);
+    expect(pages(two)).toHaveLength(1);
+    expect(two).toContain('>B600DN3<');
+    expect(two).toContain('>49WNRS3<');
+    expect(two).toContain('EGYCASH-IT-F-14-0007</span>\n    <span class="block"></span>');
+    expect(two).not.toMatch(/<span class="block">\d+\/\d+<\/span>/u);
   });
 
   it('a device with nothing on file prints no table and no accessories — the sentence ends there', () => {
@@ -483,24 +483,16 @@ describe('the paper agrees with the item it hands over', () => {
     expect(RECEIPT_UNDERTAKING_FEMININE).toContain('على ماله الخاص');
   });
 
-  it('agrees page by page when one paper hands over a laptop and a screen', () => {
+  it('a sheet of several devices speaks of them as «هي», whatever each one is', () => {
     const screen = { ...SCREEN, manufacturer: 'Dell', model: 'P2419H', accessories: ['كابل HDMI'] };
     const two = buildCustodyReceiptHtml(paper({ lines: [LAPTOP, screen] }), LABELS);
-    const [laptopPage, screenPage] = pages(two);
-    // The laptop's page is the form word for word…
-    expect(laptopPage).toContain('<bdi>B600DN3</bdi></span> ومواصفاته كالتالي:</p>');
-    expect(laptopPage).toContain('<p class="lead">ومشتملاته كالتالي:</p>');
-    expect(laptopPage).toContain(`<p class="undertaking">${RECEIPT_UNDERTAKING}</p>`);
-    expect(laptopPage).not.toContain('ومواصفاتها');
-    expect(laptopPage).not.toContain('ومشتملاتها');
-    expect(laptopPage).not.toContain(RECEIPT_UNDERTAKING_FEMININE);
-    // …and the screen's page, right after it, says «ها».
-    expect(screenPage).toContain('<bdi>49WNRS3</bdi></span> ومواصفاتها كالتالي:</p>');
-    expect(screenPage).toContain('<p class="lead">ومشتملاتها كالتالي:</p>');
-    expect(screenPage).toContain(`<p class="undertaking">${RECEIPT_UNDERTAKING_FEMININE}</p>`);
-    expect(screenPage).not.toContain('ومواصفاته كالتالي');
-    expect(screenPage).not.toContain('ومشتملاته كالتالي');
-    expect(screenPage).not.toContain(RECEIPT_UNDERTAKING);
+    // «الأجهزة الآتية» are a plural of things: the undertaking is the form's feminine, once.
+    expect(two).toContain(`<p class="undertaking">${RECEIPT_UNDERTAKING_FEMININE}</p>`);
+    expect(two).not.toContain(RECEIPT_UNDERTAKING);
+    expect(two.match(/class="undertaking"/gu)).toHaveLength(1);
+    // No device's own lead is left over from the one-device form.
+    expect(two).not.toContain('ومواصفاته');
+    expect(two).not.toContain('ومشتملات');
     // And it still carries no script of its own.
     expect(two).not.toMatch(/<script/iu);
     expect(two).not.toMatch(/\son[a-z]+=/iu);
@@ -634,5 +626,218 @@ describe('a department custody paper', () => {
     expect(own).not.toContain('بصفتي المسؤول');
     expect(own).not.toContain('ليكون في عهدة');
     expect(own).not.toContain('عن إدارة');
+  });
+});
+
+// 2026-11-24 — «عند تسليم أكثر من أصل يتم عمل إيصال لكل أصل على حدي أنا عايز يتطبعوا فى ورقه
+// واحده». A paper of several devices is ONE sheet: one statement, a table with a row per device,
+// one undertaking and one signature — the layout the owner approved from a sample. A paper of one
+// device is the form above, unchanged.
+describe('a paper of several devices, on one sheet', () => {
+  const MOUSE: ItCustodyReceiptLineDto = {
+    ...SCREEN,
+    assetId: '000000000000000000000003',
+    assetCode: 'AST-00003',
+    name: 'Logitech M185',
+    serialNumber: '2135LZ0A1B8',
+    deviceType: 'ماوس',
+    manufacturer: 'Logitech',
+    model: 'M185',
+  };
+  const html = buildCustodyReceiptHtml(paper({ lines: [LAPTOP, SCREEN, MOUSE] }), LABELS);
+  const rows = (doc: string): string[] =>
+    (/<tbody>(.*)<\/tbody>/su.exec(doc.split('<table class="devices">')[1] ?? '')?.[1] ?? '')
+      .split('<tr>')
+      .slice(1);
+
+  it('says the statement once, naming how many devices it received', () => {
+    expect(pages(html)).toHaveLength(1);
+    expect(html.match(/<p class="statement">/gu)).toHaveLength(1);
+    expect(html).toContain('أقر أنا / <span class="fill"><bdi>وليد صفوت جلال صفوت</bdi></span>');
+    expect(html).toContain(
+      'بأنني قد استلمت الأجهزة الآتية وعددها (<span class="fill">٣</span>) وبياناتها كالتالي:</p>',
+    );
+    // No device is received one by one: no «برقم مسلسل», no per-device specifications table.
+    expect(html).not.toContain('برقم مسلسل');
+    expect(html).not.toContain('<table class="specs"');
+  });
+
+  it('lists every device in one table, a row each, in the order handed over', () => {
+    expect(html).toContain(
+      '<tr><th>م</th><th>الجهاز</th><th>الماركة / الموديل</th><th>الرقم المسلسل</th><th>المواصفات</th><th>المشتملات</th></tr></thead>',
+    );
+    const [laptop = '', screen = '', mouse = ''] = rows(html);
+    expect(rows(html)).toHaveLength(3);
+    expect(laptop).toContain(
+      '<td class="n">١</td><td>لاب توب</td><td class="en"><bdi>Dell / N4050</bdi></td>',
+    );
+    expect(laptop).toContain('<td class="en serial">B600DN3</td>');
+    expect(laptop).toContain(
+      '<div><b>CPU:</b> Intel® Core™ i3-2330M CPU @ 2.10GHZ 3MB Cache</div><div><b>RAM:</b> 4.00 GB RAM</div>',
+    );
+    expect(laptop.match(/<b>Network:<\/b>/gu)).toHaveLength(2);
+    expect(laptop).toContain('<td>شاحن لاب توب</td></tr>');
+    // A screen with no make or model on file is named by its own name, its kind not said twice.
+    expect(screen).toContain(
+      '<td class="n">٢</td><td>شاشة</td><td class="en"><bdi>Dell Screen</bdi></td>',
+    );
+    // No specifications or accessories: the cell says so rather than standing empty.
+    expect(screen).toContain('<td class="en spec">—</td><td>—</td></tr>');
+    expect(mouse).toContain(
+      '<td class="n">٣</td><td>ماوس</td><td class="en"><bdi>Logitech / M185</bdi></td>',
+    );
+  });
+
+  it('closes once: one undertaking, in the plural’s «ها», and one signature', () => {
+    expect(html.match(/class="undertaking"/gu)).toHaveLength(1);
+    expect(html).toContain(`<p class="undertaking">${RECEIPT_UNDERTAKING_FEMININE}</p>`);
+    expect(html.match(/<div>التوقيع:<\/div>/gu)).toHaveLength(1);
+    expect(html).toContain('<div>الاسم: وليد صفوت جلال</div>');
+    expect(html).toContain('<div>التاريخ: ٣٠ / ٨ / ٢٠٢٣</div>');
+  });
+
+  it('carries the table’s rules — a row never split across two pages, a serial kept in its cell', () => {
+    expect(html).toContain(DEVICES_STYLE);
+    expect(DEVICES_STYLE).toContain('.devices tr { break-inside: avoid; }');
+    // A serial too long for its column breaks inside its own cell rather than printing over the
+    // make and model beside it: nothing keeps it on one line. The only cell kept on one line is
+    // the row's number, and every cell may break a word that does not fit.
+    expect(DEVICES_STYLE.match(/nowrap/gu)).toEqual(['nowrap']);
+    expect(DEVICES_STYLE).toContain('.devices td.n { text-align: center; white-space: nowrap; }');
+    expect(DEVICES_STYLE.match(/overflow-wrap: [a-z-]+/gu)).toEqual(['overflow-wrap: anywhere']);
+    // A list that runs onto a second page takes the closing over whole — the undertaking never
+    // split, the signature unsplit — and the list's last row with it, so the signed page lists a
+    // device.
+    expect(DEVICES_STYLE).toContain('.undertaking { break-before: avoid; break-inside: avoid; }');
+    expect(DEVICES_STYLE).toContain('.undertaking, .oath { break-after: avoid; }');
+    expect(DEVICES_STYLE).toContain('.signs { break-inside: avoid; }');
+    // A paper of one device is the form, and carries none of it.
+    expect(buildCustodyReceiptHtml(paper(), LABELS)).not.toContain('.devices');
+  });
+
+  it('heads the table with the paper’s number, so every page of a long list names it', () => {
+    // A table's head is repeated on every page it runs onto; the footer is on the last page only.
+    expect(html).toContain(
+      '<thead><tr class="ref"><th colspan="6">EGYCASH-IT-F-14-0007</th></tr><tr><th>م</th>',
+    );
+    // A receipt from before numbering heads it with the form's bare prefix, as its footer does.
+    const unnumbered = buildCustodyReceiptHtml(
+      paper({ formNumber: null, lines: [LAPTOP, SCREEN] }),
+      LABELS,
+    );
+    expect(unnumbered).toContain('<tr class="ref"><th colspan="6">EGYCASH-IT-F-14</th></tr>');
+  });
+
+  it('keeps an Arabic name in its own order inside the left-to-right make-and-model cell', () => {
+    // No make or model on file: the cell holds the asset's own name, isolated like the statement's.
+    const printer = { ...SCREEN, name: 'طابعة HP ليزر', deviceType: 'طابعات' };
+    const [row = ''] = rows(buildCustodyReceiptHtml(paper({ lines: [printer, SCREEN] }), LABELS));
+    expect(row).toContain('<td class="en"><bdi>طابعة HP ليزر</bdi></td>');
+  });
+
+  it('calls a computer «جهاز» in its row, as the form does', () => {
+    const aio = {
+      ...LAPTOP,
+      deviceType: 'كمبيوتر All in One',
+      manufacturer: 'Lenovo',
+      model: 'neo 50a',
+    };
+    const [row = ''] = rows(buildCustodyReceiptHtml(paper({ lines: [aio, SCREEN] }), LABELS));
+    expect(row).toContain('<td>جهاز</td><td class="en"><bdi>Lenovo / neo 50a</bdi></td>');
+  });
+
+  it('escapes what people typed, in every cell', () => {
+    const typed = buildCustodyReceiptHtml(
+      paper({
+        lines: [
+          {
+            ...LAPTOP,
+            deviceType: '<u>',
+            accessories: ['<img src=x>'],
+            model: '<em>',
+            serialNumber: '<i>',
+            specs: LAPTOP.specs === null ? null : { ...LAPTOP.specs, processor: '<s>' },
+          },
+          { ...SCREEN, name: '<q>' },
+        ],
+      }),
+      LABELS,
+    );
+    for (const raw of ['<img src=x>', '<u>', '<em>', '<i>', '<s>', '<q>']) {
+      expect(typed).not.toContain(raw);
+    }
+    expect(typed).toContain('<td>&lt;u&gt;</td>');
+    expect(typed).toContain('&lt;img src=x&gt;');
+    expect(typed).toContain('<bdi>Dell / &lt;em&gt;</bdi>');
+    expect(typed).toContain('<td class="en serial">&lt;i&gt;</td>');
+    expect(typed).toContain('<b>CPU:</b> &lt;s&gt;</div>');
+    expect(typed).toContain('<bdi>&lt;q&gt;</bdi>');
+  });
+
+  it('a department’s sheet: signed FOR the department, the devices kept at its place', () => {
+    const custodian = {
+      departmentId: '000000000000000000000d01',
+      departmentName: { ar: 'تقنية المعلومات', en: 'Information Technology' },
+      locationId: '000000000000000000000f01',
+      locationName: { ar: 'غرفة السيرفرات', en: 'Server room' },
+    };
+    const dept = buildCustodyReceiptHtml(
+      paper({ employeeName: 'شريف ممدوح فاروق', custodian, lines: [LAPTOP, SCREEN] }),
+      LABELS,
+    );
+    expect(dept).toContain(
+      '، بصفتي المسؤول عن إدارة <span class="fill"><bdi>تقنية المعلومات</bdi></span> بأنني قد استلمت الأجهزة الآتية وعددها (<span class="fill">٢</span>) لتكون في عهدة إدارة <span class="fill"><bdi>تقنية المعلومات</bdi></span> بموقع <span class="fill"><bdi>غرفة السيرفرات</bdi></span> وبياناتها كالتالي:</p>',
+    );
+    expect(dept).not.toContain('ليكون في عهدة');
+    expect(dept).toContain('<div>عن إدارة: تقنية المعلومات</div>');
+    expect(dept).toContain(
+      '<title>إقرار استلام EGYCASH-IT-F-14-0007 — إدارة تقنية المعلومات</title>',
+    );
+  });
+
+  it('keeps a long hand-over on one sheet’s flow, every device a row, under one number', () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      ...SCREEN,
+      assetId: String(i + 1).padStart(24, '0'),
+      serialNumber: `SN${String(i + 1)}`,
+    }));
+    const long = buildCustodyReceiptHtml(paper({ lines: many }), LABELS);
+    expect(pages(long)).toHaveLength(1);
+    expect(rows(long)).toHaveLength(20);
+    expect(long).toContain('وعددها (<span class="fill">٢٠</span>)');
+  });
+});
+
+describe('a device’s specifications in short (specSummary)', () => {
+  it('lists every row with something to say, in the form’s order, under its short name', () => {
+    expect(specSummary(LAPTOP)).toEqual([
+      { label: 'CPU', value: 'Intel® Core™ i3-2330M CPU @ 2.10GHZ 3MB Cache' },
+      { label: 'RAM', value: '4.00 GB RAM' },
+      { label: 'System', value: '64-bit Operating System' },
+      { label: 'Storage', value: '500 GB' },
+      { label: 'Media', value: 'CD/DVD RW' },
+      { label: 'Graphics', value: 'Intel® HD Graphic 3000 Family' },
+      { label: 'VRAM', value: '1 GB' },
+      { label: 'Network', value: 'Dell Wireless 1701 802.11 b/g/n' },
+      { label: 'Network', value: 'Realtec PCIe FE Family Controller' },
+    ]);
+  });
+
+  it('leaves out its make and model, and anything blank', () => {
+    const sparse = {
+      ...LAPTOP,
+      specs: {
+        processor: '  ',
+        memory: '8 GB',
+        systemType: null,
+        storage: null,
+        mediaDrive: null,
+        displayAdapter: null,
+        graphicsMemory: null,
+        networkAdapters: [' '],
+      },
+    };
+    expect(specSummary(sparse)).toEqual([{ label: 'RAM', value: '8 GB' }]);
+    expect(specSummary(SCREEN)).toEqual([]);
   });
 });

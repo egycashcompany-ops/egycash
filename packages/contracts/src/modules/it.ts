@@ -1120,9 +1120,10 @@ export type ListItAssignmentsQuery = z.infer<typeof ListItAssignmentsQuerySchema
 //
 // The paper is the IT department's «إقرار استلام» (EGYCASH | IT Dept.): «أقر أنا / … بوظيفة …
 // بأنني قد استلمت جهاز لاب توب برقم مسلسل … ومواصفاته كالتالي:», the device's specifications
-// table, «ومشتملاته كالتالي:», the undertaking, and «المقر بما فيه» with name, signature and date —
-// ONE PAGE PER DEVICE. A hand-over is still ONE receipt over one or more assets, under one number:
-// a page per line, and every interval it opens points back at it. The receipt keeps what it
+// table, «ومشتملاته كالتالي:», the undertaking, and «المقر بما فيه» with name, signature and date.
+// A hand-over is ONE receipt over one or more assets, under one number, and every interval it
+// opens points back at it: one device prints the form's page, several print ONE sheet — one
+// statement, a row per line, one signature (2026-11-24). The receipt keeps what it
 // printed (a snapshot): it is the document the employee signed, and a later edit of the asset or
 // the person must not reprint a different paper.
 
@@ -1163,7 +1164,11 @@ export const ItHandOverLineSchema = z
   .strict();
 export type ItHandOverLine = z.infer<typeof ItHandOverLineSchema>;
 
-/** A page per device: a receipt is a few pages, not a register — and an asset is on it once. */
+/**
+ * A receipt is a paper, not a register — one device prints the form's page, several print one sheet
+ * with a row each (2026-11-24) — and an asset is on it once. Twenty rows still print, the table
+ * running on to further pages, each headed by the paper's number.
+ */
 export const IT_HAND_OVER_MAX_LINES = 20;
 
 const handOverShape = {

@@ -103,6 +103,25 @@ describe('errorMessage', () => {
     expect(new Set(words).size).toBe(words.length);
   });
 
+  // Round 33 critic — the shipment form's edit of «من فرع» / «إلى فرع» on a delivery confirmed with
+  // its receipt: the form says the refusal with `errorMessage`, so it must name the way out — the
+  // undo on «الشحنات المسلَّمة» — in the reader's language, never the server's English.
+  it('words the confirmed delivery’s branch lock in both languages, naming the way out', () => {
+    const refused = new ApiError(
+      ErrorCodes.OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED,
+      'server english',
+      409,
+    );
+    const ar = errorMessage(refused, 'ar');
+    const en = errorMessage(refused, 'en');
+    expect(ar).not.toBe('server english');
+    expect(en).not.toBe('server english');
+    expect(ar).toContain('«الشحنات المسلَّمة»');
+    expect(ar).toContain('«من فرع»');
+    expect(ar).toContain('«إلى فرع»');
+    expect(en).toContain('“Delivered shipments”');
+  });
+
   // «صرف الخزينة» (Round 10) — its two dialogs say a refusal themselves (`errorMessage`): a crew
   // from another day than the shipment's, a captain no longer on the van, a release of a shipment
   // with no crew. Each in both languages, never the server's English.

@@ -244,6 +244,23 @@ export const getSecuredDistribution = async (req: Request, res: Response): Promi
             return counted === undefined ? [] : [{ shipmentId: row.id, ...counted }];
           })
         : null,
+    // Round 33 — …and what the vault handed over, when and by whom: the custody's release, the
+    // vault's own record, so to a reader of the vault only — «تسليم المحصنات»'s grant.
+    recordHandovers:
+      view.past && hasPermission(authContext(req), 'operationsVault.view')
+        ? board.shipments.flatMap((row) => {
+            const handover = view.handovers.get(row.id);
+            return handover === undefined
+              ? []
+              : [
+                  {
+                    shipmentId: row.id,
+                    handedOverAt: handover.at.toISOString(),
+                    handedOverByName: handover.byName,
+                  },
+                ];
+          })
+        : null,
     crewPlanVisible,
     crews: crewPlanVisible
       ? view.vans

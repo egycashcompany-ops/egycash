@@ -7,6 +7,10 @@
 // first day and nothing on it is invented. When he says what the paper is, THIS file is what changes
 // — the button, the form and the print window stay.
 //
+// ROUND 33 — a past day's sheet («تسليم المحصنات» on a record): reprinting is reading, so it prints,
+// and SAYS it is a record — «سجل يوم … — للاطلاع فقط، ولا يُسلَّم منه شيء» where the day was — with
+// what was handed over from the van, by whom and when, after the crew (`record`).
+//
 // ONE FORM. The company's report form (`fleet/lib/fleet-report-print.ts` — letterhead, title, rule,
 // the table with its «م», figures under it), as every printed list of the app is; no signature block
 // (nobody has said who signs a load sheet yet — two empty «التوقيع /» lines would read as a form
@@ -28,6 +32,12 @@ export interface VanLoadSheetInput {
   t: Translate;
   /** The day handed over, 'YYYY-MM-DD'. */
   day: string;
+  /**
+   * Round 33 — the sheet of a past day's RECORD, or null (left out) on today and a day to come.
+   * `handedOver`: what the van's record says of its handover («سُلِّمت محصنتان · سلّمها … · 10:15»),
+   * or null when nothing on it left the vault.
+   */
+  record?: { handedOver: string | null } | null;
   van: Pick<
     OperationsDayBoardVehicleCrewDto,
     | 'vehicleId'
@@ -73,6 +83,7 @@ const packagesCell = (packages: Packaging | undefined, count: (value: number) =>
 export const vanLoadSheet = ({
   t,
   day,
+  record = null,
   van,
   looseNumber = null,
   crewPlanVisible,
@@ -86,7 +97,9 @@ export const vanLoadSheet = ({
   // Round 24c — the card's own order: the day, then the van's time and direction (the head line of
   // its card — «انقل الاتجاه بعد كود السيارة والوقت»), then who rides it.
   const subtitle = [
-    t('operations.handover.sheet.day', { day }),
+    record === null
+      ? t('operations.handover.sheet.day', { day })
+      : t('operations.handover.sheet.record', { day }),
     van.plannedTime === null || van.plannedTime === ''
       ? null
       : `${t('operations.crew.plannedTime')}: ${van.plannedTime}`,
@@ -102,6 +115,9 @@ export const vanLoadSheet = ({
     crewPlanVisible && van.specialist2.length > 0
       ? `${t('operations.crew.slot.specialist2')}: ${joinNames(van.specialist2)}`
       : null,
+    record === null || record.handedOver === null
+      ? null
+      : t('operations.handover.sheet.handedOver', { what: record.handedOver }),
   ]
     .filter((part): part is string => part !== null)
     .join(' · ');

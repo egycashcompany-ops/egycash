@@ -42,6 +42,7 @@ import {
   FilterAreaSelect,
   FilterTextBox,
   CountTile,
+  HEAD_SQUEEZE,
   PackageCounts,
   ShipmentCardBody,
   ShipmentChip,
@@ -796,5 +797,125 @@ describe('Round 31 — «العدد والكلام على صف واحد مش ص�
     expect(some).toContain(CAPTAIN_FRAME.some);
     expect(some).toContain(CAPTAIN_MARK);
     expect(some.indexOf('data-captain-mark')).toBeLessThan(some.indexOf('data-van-person='));
+  });
+});
+
+// Round 33 C — «عاوز كلمة طباعة دى تكون العلامة بس وممكن تحطها فى مكان فى الكارد عشان متخدش مساحة
+// كبيره»: the card takes ONE small act at the end of its head line (`headAction` — the vault's
+// «طباعة»), and draws the row over the head only when there is something to put in it.
+describe('Round 33 C — the head’s own act, and the row over the head only when it holds something', () => {
+  const withProps = (
+    props: { actions?: ReactElement | null | false; headAction?: ReactElement },
+    locale: Locale = 'ar',
+  ): string =>
+    render(
+      <VanCard van={VAN} crewPlanVisible day="2026-11-16" count={3} packages={null} {...props}>
+        <p>load</p>
+      </VanCard>,
+      locale,
+    );
+  const ACT = (
+    <button type="button" aria-label="act" data-the-act="true">
+      x
+    </button>
+  );
+
+  for (const locale of ['ar', 'en'] as const) {
+    // Round 33 C critic — on behaviour-level hooks (the slot after the line, the line's parts in
+    // their order), not on class strings.
+    it(`[${locale}] puts the act at the END of the one line, after the direction, in a slot that never shrinks`, () => {
+      const html = withProps({ headAction: ACT }, locale);
+      const head = html.slice(html.indexOf('<header data-van-band'), html.indexOf('</header>') + 9);
+      const slot = head.slice(head.indexOf('<span data-van-head-action="true"'));
+      expect(slot).toMatch(
+        /^<span data-van-head-action="true"[^>]*><button type="button" aria-label="act" data-the-act="true">x<\/button><\/span><\/header>$/,
+      );
+      expect(slot.slice(0, slot.indexOf('>')).split(/[\s"]/)).toContain('shrink-0');
+      expect(head.indexOf('data-the-act')).toBeGreaterThan(head.indexOf('data-van-direction='));
+      // The line before it keeps its rule: code · time · direction — the direction the one cut.
+      expect(head.indexOf('data-van-code=')).toBeLessThan(head.indexOf('data-van-time='));
+      expect(head.indexOf('data-van-time=')).toBeLessThan(head.indexOf('data-van-direction='));
+      expect(head).toContain('class="min-w-0 truncate">');
+      // Inside the van's group (its card's trigger), not in a row of its own.
+      expect(html).not.toContain('data-van-actions');
+      expect(html.indexOf('data-the-act')).toBeGreaterThan(html.indexOf('data-van-hover='));
+    });
+  }
+
+  // Round 33 C critic — the icon's 30px came out of the direction alone: on a 1366 laptop a crew
+  // without a van kept «ح…» of «حلوان». With an act, the line measures itself and makes the room.
+  it('with an act, the line squeezes on a narrow card — the clock and the no-van drawing go, the direction keeps a floor', () => {
+    const tokens = (tag: string): string[] => (/class="([^"]*)"/.exec(tag)?.[1] ?? '').split(/\s+/);
+    const tagAt = (markup: string, hook: string): string => {
+      const at = markup.indexOf(hook);
+      expect(at, hook).toBeGreaterThan(-1);
+      return markup.slice(markup.lastIndexOf('<', at), markup.indexOf('>', at) + 1);
+    };
+    const svgAfter = (markup: string, hook: string): string => {
+      const at = markup.indexOf('<svg', markup.indexOf(hook));
+      return markup.slice(at, markup.indexOf('>', at) + 1);
+    };
+    const loose = { ...VAN, vehicleId: null, vehicleCode: null };
+    for (const [van, looseNumber] of [
+      [VAN, null],
+      [loose, '1'],
+    ] as const) {
+      const html = render(
+        <VanCard
+          van={van}
+          looseNumber={looseNumber}
+          crewPlanVisible
+          day="2026-11-16"
+          count={3}
+          packages={null}
+          headAction={ACT}
+        >
+          <p>load</p>
+        </VanCard>,
+      );
+      const line = tagAt(html, 'data-van-head="true"');
+      expect(line).toContain('data-van-head-squeeze="true"');
+      expect(tokens(line)).toContain(HEAD_SQUEEZE.container);
+      expect(tokens(svgAfter(html, 'data-van-time='))).toContain(HEAD_SQUEEZE.glyph);
+      const codeGlyph = tokens(svgAfter(html, 'data-van-code='));
+      if (van.vehicleCode === null) expect(codeGlyph).toContain(HEAD_SQUEEZE.glyph);
+      else expect(codeGlyph).not.toContain(HEAD_SQUEEZE.glyph);
+      const direction = tokens(tagAt(html, 'data-van-direction='));
+      expect(direction).toEqual(expect.arrayContaining(HEAD_SQUEEZE.floor.split(' ')));
+      expect(direction).not.toContain('min-w-0');
+    }
+    // Without an act («توزيع المحصنات»): the line, its pills and their drawings as they were.
+    const plain = card(VAN);
+    const plainHead = plain.slice(
+      plain.indexOf('<header data-van-band'),
+      plain.indexOf('</header>'),
+    );
+    expect(plain).not.toContain('data-van-head-squeeze');
+    // (The count tiles below measure themselves too — Round 31 — the head does not.)
+    expect(plainHead).not.toContain(HEAD_SQUEEZE.container);
+    expect(plain).not.toContain(HEAD_SQUEEZE.glyph);
+    expect(plain).not.toContain('basis-[max-content]');
+    expect(plain).toMatch(/data-van-head="true" class="flex min-w-0 flex-1 items-center gap-1\.5"/);
+    expect(tokens(tagAt(plain, 'data-van-direction='))).toContain('min-w-0');
+  });
+
+  it('draws no row over the head when there is nothing for it — left out, null or false', () => {
+    for (const actions of [undefined, null, false] as const) {
+      const html = withProps(actions === undefined ? {} : { actions });
+      expect(html, String(actions)).not.toContain('data-van-actions');
+      expect(html, String(actions)).not.toContain('border-b border-slate-100 py-2');
+    }
+    const html = withProps({ actions: <button type="button">go</button> });
+    expect(html).toContain(
+      '<div data-van-actions="true" class="flex flex-wrap items-center gap-1.5 border-b border-slate-100 py-2 pe-2.5 ps-3.5 dark:border-slate-800"><button type="button">go</button></div>',
+    );
+    expect(html.indexOf('data-van-actions')).toBeLessThan(html.indexOf('data-van-hover='));
+  });
+
+  it('without them the card is «توزيع المحصنات»’s as it was: no slot, no row, the head ending with its line', () => {
+    const html = card(VAN);
+    expect(html).not.toContain('data-van-head-action');
+    expect(html).not.toContain('data-van-actions');
+    expect(html.slice(0, html.indexOf('</header>') + 9)).toMatch(/<\/span><\/div><\/header>$/);
   });
 });

@@ -10,6 +10,7 @@ import {
   PACKAGE_KINDS,
   vanCrewGroups,
   vanHoverAllowed,
+  vanRestArms,
   vanTapAllowed,
 } from './van-card';
 
@@ -114,5 +115,28 @@ describe('when resting on a van opens its card', () => {
     expect(vanTapAllowed({ touch: true, onPerson: true })).toBe(false);
     // A mouse click is the hover's: no toggle.
     expect(vanTapAllowed({ touch: false, onPerson: false })).toBe(false);
+  });
+});
+
+// Round 33 C — «عاوز كلمة طباعة دى تكون العلامة بس وممكن تحطها فى مكان فى الكارد عشان متخدش مساحة
+// كبيره»: «تسليم المحصنات»'s «طباعة» is an icon at the end of the van's head (`VanCard`'s
+// `headAction`). A press on it only prints, and resting on it is no question about the van.
+describe('Round 33 C — the head’s own act is its own', () => {
+  it('a press on it — a tap, a click, Enter or Space — neither opens nor closes the van’s card', () => {
+    // A phone's tap on the head still toggles the card; on the act it does not.
+    expect(vanTapAllowed({ touch: true, onPerson: false, onAct: false })).toBe(true);
+    expect(vanTapAllowed({ touch: true, onPerson: false, onAct: true })).toBe(false);
+    // A mouse click, Enter or Space (a click with no touch before it): never a toggle, act or not.
+    expect(vanTapAllowed({ touch: false, onPerson: false, onAct: true })).toBe(false);
+    // «توزيع المحصنات» has no act: the rule it had.
+    expect(vanTapAllowed({ touch: true, onPerson: false })).toBe(true);
+    expect(vanTapAllowed({ touch: true, onPerson: true, onAct: false })).toBe(false);
+  });
+
+  it('resting on it is not resting on the head — nor is resting on the captain’s own name', () => {
+    expect(vanRestArms({ onPerson: false, onAct: false })).toBe(true);
+    expect(vanRestArms({ onPerson: false, onAct: true })).toBe(false);
+    expect(vanRestArms({ onPerson: true, onAct: false })).toBe(false);
+    expect(vanRestArms({ onPerson: true, onAct: true })).toBe(false);
   });
 });

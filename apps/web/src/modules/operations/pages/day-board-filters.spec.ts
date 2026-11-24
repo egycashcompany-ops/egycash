@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { boardFilterParams } from '../lib/day-board';
+import { boardFilterParams, rememberedFilterParams } from '../lib/day-board';
 
 const read = (path: string): string =>
   readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8');
@@ -24,6 +24,7 @@ const DAY_PAGE = read('./DailyOperationsPage.tsx');
 const HISTORY_PAGE = read('./ShipmentsHistoryPage.tsx');
 const SECURED_PAGE = read('./SecuredBacklogPage.tsx');
 const VAULT_PAGE = read('./VaultReceivePage.tsx');
+const DELIVERED_PAGE = read('./DeliveredShipmentsPage.tsx');
 const FLEET_BAR = read('../../../shared/ui/dark-filter-bar.ts');
 
 /** The filter bar's own markup, from `<FilterBar` to its close — not the rest of the board. */
@@ -86,7 +87,9 @@ describe('the filters sit on the Fleet bar', () => {
     expect(BAR).not.toContain('mb-1 block');
   });
 
-  it('sizes each text filter with a wrapper, since the control base class is w-full', () => {
+  // Round 33 C — REWRITTEN from «sizes each text filter with a wrapper, since the control base class
+  // is w-full» (seven typed boxes): «الشحنات المسلَّمة»'s «رقم الإيصال» is the eighth, sized alike.
+  it('sizes each text filter with a wrapper — «رقم الإيصال» too — since the control base class is w-full', () => {
     // `cn` has no tailwind-merge, so a width passed to the Input loses to its own `w-full` and
     // every box would stretch the bar — one filter per line, which is the bug being fixed.
     // The width may be the first class of a `cn(…)` (the history's dates add a size container).
@@ -96,9 +99,10 @@ describe('the filters sit on the Fleet bar', () => {
         []
       ).length;
     const inputsIn = (source: string): number => (source.match(/<Input\b/g) ?? []).length;
-    // Seven typed boxes in the bar (the van, the bank, the two branches, the area, the captain, the
-    // notes) and the date box the period's pickers are drawn with (`BoardDateBox`).
-    expect(inputsIn(BAR)).toBe(7);
+    // Eight typed boxes in the bar (the van, the bank, the two branches, the area, the captain, the
+    // notes, and «الشحنات المسلَّمة»'s receipt number) and the date box the period's pickers are
+    // drawn with (`BoardDateBox`).
+    expect(inputsIn(BAR)).toBe(8);
     expect(inputsIn(DATE_BOX)).toBe(1);
     expect(BAR).toContain(DATE_BOX_IN_BAR);
     expect(sizedIn(BAR)).toBe(inputsIn(BAR));
@@ -166,7 +170,9 @@ describe('«ارتب الفلاتر على حسب عواميد الجدول» �
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
   });
 
-  it('is the order of the columns themselves', () => {
+  // Round 33 C — REWRITTEN from «is the order of the columns themselves»: «الشحنات المسلَّمة»'s
+  // «رقم الإيصال» (`receiptNumber`) between «ملاحظات» and «صورة الإيصال».
+  it('is the order of the columns themselves — «رقم الإيصال» before «صورة الإيصال»', () => {
     // السيارة | اسم البنك | من فرع | إلى فرع | المنطقة | (قيمة الشحنة) | قائد الطاقم | التاريخ |
     // (تاريخ التسليم — the secured screen's) | النوع | الحالة | ملاحظات — the amount and the delivery
     // date have nothing to type, and the status column is filtered by «التسليم» or the stage. The
@@ -190,9 +196,74 @@ describe('«ارتب الفلاتر على حسب عواميد الجدول» �
       'pickupStatus',
       'vaultStatus',
       'notes',
+      // Round 33 C — «الشحنات المسلَّمة»'s alone, beside the receipt's photo.
+      'receiptNumber',
       'receiptImage',
       'actions',
     ]);
+  });
+
+  // Round 33 C — «عاوز رثم الايصال فى عمود لوحده»: on «الشحنات المسلَّمة» alone, the receipt's number
+  // is a column, and its box stands where the column does — after «ملاحظات», the last of the bar.
+  it('draws «رقم الإيصال» last, after «ملاحظات», on «الشحنات المسلَّمة» alone', () => {
+    const notes = BAR.indexOf("aria-label={t('operations.shipment.notes')}");
+    const receipt = BAR.indexOf("aria-label={t('operations.delivered.receiptNo')}");
+    expect(notes).toBeGreaterThan(-1);
+    expect(receipt).toBeGreaterThan(notes);
+    expect(BAR.slice(receipt)).not.toContain('<FilterWithIcon');
+    expect(BAR).toMatch(
+      /\{delivered && \(\s*<FilterWithIcon[\s\S]*?className="w-32 shrink-0"\s*>\s*<Input[\s\S]*?placeholder=\{t\('operations\.delivered\.receiptNo'\)\}\s*value=\{filters\.receipt\}\s*onChange=\{\(e\) => setFilter\(\{ receipt: e\.target\.value \}\)\}/,
+    );
+    // The board's other four screens offer no such box.
+    for (const kind of ['shipments', 'secured', 'vault'] as const)
+      expect(boardFilterParams(kind)).not.toContain('receipt');
+  });
+
+  // Round 33 C — eleven boxes on that screen's one row: the van's box, which alone carries the
+  // browser's arrow for its suggestions, takes a fifth more than an even share — there alone.
+  it('gives the van’s box a fifth more on «الشحنات المسلَّمة»’s one row, and nowhere else', () => {
+    expect(BOARD).toMatch(
+      /const DELIVERED_BAR_LAYOUT = cn\(\s*'xl:\[&>div>\*:has\(input\[list\]\)\]:!grow-\[1\.2\]',/,
+    );
+    expect(BOARD).toContain('delivered && DELIVERED_BAR_LAYOUT,');
+    expect(BAR).toContain('list="day-board-van-codes"');
+    expect(BOARD).toContain("const delivered = kind === 'delivered';");
+  });
+
+  // Round 33 C critic — cut in eleven, the even share cut the English «From branch» and «Crew
+  // captain» at 1366 and 1440 and the Arabic «رقم الإيصال» at 1280, while the bank, the area and
+  // the notes had room to spare in both languages. The boxes share the row by their words.
+  it('shares «الشحنات المسلَّمة»’s one row by the boxes’ words — the total as the even share’s', () => {
+    const layout = BOARD.slice(
+      BOARD.indexOf('const DELIVERED_BAR_LAYOUT = cn('),
+      BOARD.indexOf(');', BOARD.indexOf('const DELIVERED_BAR_LAYOUT = cn(')),
+    );
+    const shares = Object.fromEntries(
+      [...layout.matchAll(/input\[data-bar-box=(\w+)\]\)\]:!grow-\[([\d.]+)\]/g)].map((m) => [
+        m[1] as string,
+        Number(m[2]),
+      ]),
+    );
+    // The longer names take more, the shorter less; «إلى فرع» keeps its even share.
+    expect(shares).toEqual({
+      bank: 0.9,
+      origin: 1.16,
+      area: 0.8,
+      captain: 1.19,
+      notes: 0.87,
+      receipt: 1.07,
+    });
+    // Seven typed boxes beside the van's: together what seven even shares were (to 0.01), so
+    // the two lists keep theirs.
+    const seven = Object.values(shares).reduce((a, b) => a + b, 0) + 1;
+    expect(Math.abs(seven - 7)).toBeLessThanOrEqual(0.01);
+    // Each box names itself on that screen alone (`barBox`); the receipt's is that screen's box.
+    expect(BOARD).toContain(
+      "const barBox = (name: keyof DayBoardFilters): { 'data-bar-box'?: string } =>\n    delivered ? { 'data-bar-box': name } : {};",
+    );
+    for (const name of ['bank', 'origin', 'destination', 'area', 'captain', 'notes'])
+      expect(BAR).toContain(`{...barBox('${name}')}`);
+    expect(BAR).toContain('data-bar-box="receipt"');
   });
 
   it('reads the van’s code first, as the «السيارة» column is first', () => {
@@ -292,6 +363,25 @@ describe('every screen remembers the filters its board reads, and only those', (
     expect(remembered(VAULT_PAGE)).toEqual([...boardFilterParams('vault')]);
   });
 
+  // Round 33 C — «الشحنات المسلَّمة» remembers its board's boxes and never its day (it opens on
+  // today). Round 33 C critic — nor «رقم الإيصال»: a one-off lookup (`BOARD_LOOKUP_PARAMS`); a
+  // number remembered from last week would open today's screen with every row awaiting its ✓
+  // hidden (none has a number yet). The board still reads it — the address keeps it for the visit.
+  it('remembers «الشحنات المسلَّمة»’s boxes — never «رقم الإيصال», a one-off lookup, nor its day', () => {
+    expect(DELIVERED_PAGE).toContain('kind="delivered"');
+    expect(remembered(DELIVERED_PAGE)).toEqual([...rememberedFilterParams('delivered')]);
+    expect(remembered(DELIVERED_PAGE)).not.toContain('receipt');
+    expect(remembered(DELIVERED_PAGE)).not.toContain('date');
+    // Read, offered, not remembered: the one difference between the two lists.
+    expect(boardFilterParams('delivered')).toContain('receipt');
+    expect(
+      boardFilterParams('delivered').filter((p) => !remembered(DELIVERED_PAGE).includes(p)),
+    ).toEqual(['receipt']);
+    // The other boards remember all they read: none of them offers a lookup.
+    for (const kind of ['shipments', 'secured', 'vault'] as const)
+      expect(rememberedFilterParams(kind)).toEqual(boardFilterParams(kind));
+  });
+
   it('reads only the filters the screen offers — a param with no box never narrows it', () => {
     // …nor a stage its «الحالة» box does not offer (`stages` — the vault queue's depend on «الكل»).
     expect(BOARD).toContain(
@@ -317,7 +407,9 @@ describe('every screen remembers the filters its board reads, and only those', (
   it('draws the vault’s two status boxes in the stage box’s place, and on no other board', () => {
     expect(BOARD).toContain("const splitStatus = kind === 'vault';");
     expect(BAR).toMatch(
-      /\{splitStatus \? \(\s*<>\s*<FilterWithIcon[^>]*>\s*<MultiSelect[\s\S]*?label=\{t\('operations\.vault\.queue\.pickupColumn'\)\}[\s\S]*?options=\{VAULT_PICKUP_COLUMN\.map[\s\S]*?<FilterWithIcon[^>]*>\s*<MultiSelect[\s\S]*?label=\{t\('operations\.vault\.queue\.vaultColumn'\)\}[\s\S]*?options=\{VAULT_HOLD_COLUMN\.map[\s\S]*?<\/>\s*\) : secured \? \(/,
+      // Round 33 B — REWRITTEN: «الشحنات المسلَّمة»'s confirmation box (`delivered`) now stands
+      // between the vault's two and the secured screen's stage box in the one chain.
+      /\{splitStatus \? \(\s*<>\s*<FilterWithIcon[^>]*>\s*<MultiSelect[\s\S]*?label=\{t\('operations\.vault\.queue\.pickupColumn'\)\}[\s\S]*?options=\{VAULT_PICKUP_COLUMN\.map[\s\S]*?<FilterWithIcon[^>]*>\s*<MultiSelect[\s\S]*?label=\{t\('operations\.vault\.queue\.vaultColumn'\)\}[\s\S]*?options=\{VAULT_HOLD_COLUMN\.map[\s\S]*?<\/>\s*\) : delivered \? \([\s\S]*?\) : secured \? \(/,
     );
     expect(BAR).toContain('setFilter({\n                        pickup:');
     expect(BAR).toContain('setFilter({\n                        vault:');

@@ -59,6 +59,8 @@ const OPERATIONS_PAYLOAD: MyApplicationCategoryDto[] = [
     applications: [
       ['Operations Home', '/operations', 'home'],
       ['Daily Operations', '/operations/shipments', 'clipboard'],
+      // Round 33 B — «الشحنات المسلَّمة», right beneath the day board it is cut from.
+      ['Delivered Shipments', '/operations/shipments/delivered', 'receipt'],
       // The day board over a from–to range — the row the lead seeds beside it.
       ['Shipments History', '/operations/shipments/history', 'calendar'],
       ['Crew Board', '/operations/crew-board', 'users'],
@@ -126,7 +128,8 @@ describe('the shell renders the Operations module (B7)', () => {
     expect(modules).toHaveLength(1);
     expect(modules[0]?.name.en).toBe('Operations');
     expect(modules[0]?.name.ar).toBe('العمليات');
-    expect(moduleApps(modules[0]!)).toHaveLength(18);
+    // Round 33 B — «الشحنات المسلَّمة» joined: nineteen pages.
+    expect(moduleApps(modules[0]!)).toHaveLength(19);
   });
 
   it('resolves every catalog icon to a real glyph, not the silent fallback', () => {
@@ -144,7 +147,7 @@ describe('the shell renders the Operations module (B7)', () => {
 
   it('puts every page in the command palette, each carrying its module', () => {
     const flat = flattenApps(OPERATIONS_PAYLOAD);
-    expect(flat).toHaveLength(18);
+    expect(flat).toHaveLength(19);
     for (const app of flat) expect(app.moduleName.en).toBe('Operations');
   });
 });

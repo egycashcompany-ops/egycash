@@ -993,6 +993,11 @@ Neither verb is added to `REALTIME_BROADCAST_ACTIONS` (`packages/contracts/src/p
 
 ### 6.2 Scope helpers — `apps/api/src/modules/atm/shared/branch-scope.ts` (NEW)
 
+> **2026-11-24.** The rule itself now lives in `apps/api/src/shared/base/branch-scope.ts`, written once for every
+> module with branch records (PC-12 of `docs/12-planning/administration-module-decisions-and-phases.md` §18.1).
+> This file keeps ATM's names: it re-exports the rule and keeps `activeBranchIds`, its one data read, which it passes
+> to the shared `writableBranches` and `resolveWorkBranch`. Behavior is unchanged.
+
 - **Move** `mapScopeMatch`, `mapScopeBranches`, `narrowToBranch`, `activeBranchIds` and
   `writableBranches` (`map/map-scope.ts:31-94`) here, under the names `branchScopeMatch`,
   `branchScopeBranches`, `narrowToBranch`, `activeBranchIds` and `writableBranches`.

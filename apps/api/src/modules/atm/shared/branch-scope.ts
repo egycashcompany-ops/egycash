@@ -20,60 +20,18 @@
 //
 // The map's `map/map-scope.ts` re-exports these under its own names, so the map and the
 // settlements pages run one rule.
-import { Types } from 'mongoose';
 import { branchRepository } from '../../../platform/organization';
-import { NEVER_MATCH, orgScopeMatch } from '../../../shared/base/org-scope-match';
-import { ValidationError } from '../../../shared/errors';
-import {
-  keyReachesBranch,
-  scopeSelector,
-  type AuthContext,
-  type ScopeSelector,
-} from '../../../shared/types';
-import { registerScopeBranches } from '../register/register.repository';
+import * as shared from '../../../shared/base/branch-scope';
+import { type AuthContext } from '../../../shared/types';
 
-/** DM-10 / DS-23: the register's rule for every branch-record READ; `own` reads nothing. */
-export const branchScopeMatch = (s: ScopeSelector): Record<string, unknown> => {
-  if (s.scope === 'own') return { ...NEVER_MATCH };
-  const m = orgScopeMatch(s, { branch: 'branchId' }, { finerNarrowsToBranch: true });
-  // orgScopeMatch answers `{}` for organization AND for a department reach it cannot place
-  // (org-scope-match.ts). Only the first may read everything.
-  if (m === undefined || (Object.keys(m).length === 0 && s.scope !== 'organization')) {
-    return { ...NEVER_MATCH };
-  }
-  return m;
-};
-
-/**
- * The branches that match covers: 'all' | ids — `registerScopeBranches`, except that `own` covers
- * nothing here, and neither does a non-organization shape the register calls 'all' (the department
- * reach `branchScopeMatch` refuses). The two can therefore never disagree.
- */
-export const branchScopeBranches = (s: ScopeSelector): 'all' | string[] => {
-  if (s.scope === 'own') return [];
-  const branches = registerScopeBranches(s);
-  if (branches === 'all' && s.scope !== 'organization') return [];
-  return branches;
-};
-
-/**
- * DM-11: a browser branch may only narrow. Throws ValidationError OUT_OF_REACH. Returns `{}` when
- * `branchId` is undefined, else `{ branchId }`. `field` names where the branch came from.
- */
-export const narrowToBranch = (
-  s: ScopeSelector,
-  branchId: string | undefined,
-  field = 'query.branchId',
-): Record<string, unknown> => {
-  if (branchId === undefined) return {};
-  const reach = branchScopeBranches(s);
-  if (reach !== 'all' && !reach.includes(branchId)) {
-    throw new ValidationError([
-      { field, code: 'OUT_OF_REACH', message: 'the branch is outside your reach' },
-    ]);
-  }
-  return { branchId: new Types.ObjectId(branchId) };
-};
+// The rule itself lives in `shared/base/branch-scope.ts` (written once, so any module with branch
+// records reads the same answer). ATM keeps its names and its one data read, the active branches.
+export {
+  branchScopeBranches,
+  branchScopeMatch,
+  narrowToBranch,
+  type WorkBranch,
+} from '../../../shared/base/branch-scope';
 
 /** The company's active branches — the list the top-bar validation reads (active-branch.ts). */
 export const activeBranchIds = async (): Promise<string[]> => {
@@ -87,19 +45,11 @@ export const activeBranchIds = async (): Promise<string[]> => {
  * enumerated through keyReachesBranch over the candidates (or over the company's active branches
  * when candidates === 'all').
  */
-export const writableBranches = async (
+export const writableBranches = (
   ctx: AuthContext,
   key: string,
   candidates: 'all' | string[],
-): Promise<'all' | string[]> => {
-  if (candidates === 'all' && ctx.permissions[key] === 'organization') return 'all';
-  const pool = candidates === 'all' ? await activeBranchIds() : candidates;
-  return pool.filter((branchId) => keyReachesBranch(ctx, key, branchId));
-};
-
-export type WorkBranch =
-  | { branchId: string; canWrite: boolean }
-  | { branchId: null; blocked: 'chooseBranch' | 'noBranch' };
+): Promise<'all' | string[]> => shared.writableBranches(ctx, key, candidates, activeBranchIds);
 
 /**
  * DS-22: the ONE branch a page works in, for THAT page's key pair — the top bar's branch when the
@@ -107,20 +57,8 @@ export type WorkBranch =
  * Read-only holders get a branch too; `canWrite` says whether the write key reaches it. The branch a
  * page loads is therefore the branch it writes (the map's GM-20 lesson, `resolveZoneEditBranch`).
  */
-export const resolveWorkBranch = async (
+export const resolveWorkBranch = (
   ctx: AuthContext,
   viewKey: string,
   writeKey: string,
-): Promise<WorkBranch> => {
-  const readable = branchScopeBranches(scopeSelector(ctx, viewKey));
-  const active = ctx.activeBranchId ?? null;
-  if (active !== null && (readable === 'all' || readable.includes(active))) {
-    return { branchId: active, canWrite: keyReachesBranch(ctx, writeKey, active) };
-  }
-  const candidates = readable === 'all' ? await activeBranchIds() : readable;
-  const only = candidates[0];
-  if (candidates.length === 1 && only !== undefined) {
-    return { branchId: only, canWrite: keyReachesBranch(ctx, writeKey, only) };
-  }
-  return { branchId: null, blocked: candidates.length > 1 ? 'chooseBranch' : 'noBranch' };
-};
+): Promise<shared.WorkBranch> => shared.resolveWorkBranch(ctx, viewKey, writeKey, activeBranchIds);

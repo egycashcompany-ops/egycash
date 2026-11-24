@@ -24,6 +24,9 @@ vi.mock('../../../platform/organization', () => ({
 
 const scope = await import('./branch-scope');
 const map = await import('../map/map-scope');
+const shared = await import('../../../shared/base/branch-scope');
+const { registerScopeBranches } = await import('../register/register.repository');
+const { selectorBranches } = await import('../../../shared/types');
 const {
   activeBranchIds,
   branchScopeBranches,
@@ -64,6 +67,29 @@ describe('the map keeps its names for the same functions', () => {
     expect(map.narrowToBranch).toBe(narrowToBranch);
     expect(map.activeBranchIds).toBe(activeBranchIds);
     expect(map.writableBranches).toBe(writableBranches);
+  });
+});
+
+describe('the rule is the shared one (Administrative Affairs PC-12)', () => {
+  it('re-exports the shared functions themselves', () => {
+    expect(branchScopeMatch).toBe(shared.branchScopeMatch);
+    expect(branchScopeBranches).toBe(shared.branchScopeBranches);
+    expect(narrowToBranch).toBe(shared.narrowToBranch);
+  });
+
+  it("the shared selectorBranches answers what the register's registerScopeBranches answers", () => {
+    const shapes: ScopeSelector[] = [
+      selector({ scope: 'organization' }),
+      selector({ scope: 'own' }),
+      selector({ scope: 'branch' }),
+      selector({ scope: 'branch', branchIds: [ALEX, TANTA] }),
+      selector({ scope: 'section' }),
+      selector({ scope: 'department' }),
+      selector({ scope: 'department', departmentIds: [DEPT], departmentBranchIds: [TANTA] }),
+      selector({ scope: 'department', departmentIds: [DEPT], departmentBranchIds: [] }),
+      selector({ scope: 'branch', branchId: null }),
+    ];
+    for (const s of shapes) expect(selectorBranches(s)).toEqual(registerScopeBranches(s));
   });
 });
 

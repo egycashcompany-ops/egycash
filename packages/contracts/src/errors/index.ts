@@ -675,6 +675,23 @@ export const ErrorCodes = {
    */
   IT_CONSUMABLE_COUNTER_ABOVE_NEXT: 'IT_CONSUMABLE_COUNTER_ABOVE_NEXT',
 
+  // ── Administrative Affairs: master data (docs/12-planning/administration-module-design-flows.md §5.15)
+  /**
+   * 422 — an item category's parent is refused; nothing was written. One detail, `field`
+   * 'parentId', `code` one of `ADMINISTRATION_CATEGORY_PARENT_PROBLEMS`: 'self' (the category
+   * itself), 'cycle' (one of its own subcategories), 'tooDeep' (a subcategory: two levels, OD-06),
+   * 'inactive' (a retired parent) or 'hasChildren' (a category that has subcategories never moves
+   * under another).
+   */
+  ADMINISTRATION_CATEGORY_PARENT_INVALID: 'ADMINISTRATION_CATEGORY_PARENT_INVALID',
+  /**
+   * 409 — a live master row already holds this name or code; nothing was written. One detail whose
+   * `field` names what clashed: 'name' (compared folded, «قطعه» = «قطعة»: the `nameKey` of the
+   * Arabic name) or 'code'. Retired rows still hold theirs: reactivate, never recreate. The answer
+   * to the service's own check and to a unique index that refused a racing write alike.
+   */
+  ADMINISTRATION_DUPLICATE: 'ADMINISTRATION_DUPLICATE',
+
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */
 } as const;

@@ -649,6 +649,18 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   ],
   'it.vendor': [['it', 'vendors']],
 
+  // ── Administrative Affairs ─────────────────────────────────────────────────
+  // A unit or a category moves the catalogs screen and every item screen that names one
+  // (administration-module-design-integration.md §9.4); the screens arrive with P1a.W.
+  'administration.catalogItem': [
+    ['administration', 'catalogs'],
+    ['administration', 'items'],
+  ],
+  'administration.itemCategory': [
+    ['administration', 'catalogs'],
+    ['administration', 'items'],
+  ],
+
   // ── Automation ─────────────────────────────────────────────────────────────
   'automation.workflow': [['automation']],
   'automation.variable': [['automation']],

@@ -242,6 +242,14 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // not in the room.
   'it.vehicleCheck': { permission: 'itVehicleCheck.view' },
 
+  // ── Administrative Affairs ─────────────────────────────────────────────────
+  // Units and item categories (docs/12-planning/administration-module-design-integration.md §9.2):
+  // every item screen shows them, so they move to the wider of their two read keys,
+  // `administrationItem.view`, once that key ships (P1a.2). Until then the catalog key is the only
+  // one that exists. Organization-wide data: their signals name no branch.
+  'administration.catalogItem': { permission: 'administrationCatalog.manage' },
+  'administration.itemCategory': { permission: 'administrationCatalog.manage' },
+
   // ── Automation ─────────────────────────────────────────────────────────────
   'automation.workflow': { permission: 'workflow.view' },
   'automation.variable': { permission: 'variable.view' },

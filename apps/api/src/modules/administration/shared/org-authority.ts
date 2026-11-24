@@ -10,7 +10,11 @@ import { assertOrganizationScope } from '../../../shared/base/org-authority';
 import { type AuthContext } from '../../../shared/types';
 
 /** The module's keys that write organization-wide master data. Grows with each master's slice. */
-export const ADMINISTRATION_ORG_KEYS = ['administrationCatalog.manage'] as const;
+export const ADMINISTRATION_ORG_KEYS = [
+  'administrationCatalog.manage',
+  'administrationItem.create',
+  'administrationItem.edit',
+] as const;
 export type AdministrationOrgKey = (typeof ADMINISTRATION_ORG_KEYS)[number];
 
 /** 403 unless the caller holds `key` company-wide. */

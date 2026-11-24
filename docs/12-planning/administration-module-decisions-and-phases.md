@@ -3076,6 +3076,56 @@ Repository-wide findings outside this module are listed for the owner in
     same terms; moving either category to the top level, which no rule refuses, repairs it.
   - *Deferred to P1a.2,* with the item keys: the read gate `authorizeAny('administrationItem.view', …)`, the topics'
     move to that key, and the §19.7 case "an item viewer reads units and categories".
+- **P1a.2 built** (2026-11-24). Phase 1's second pull request ships as §19.1 says, under the owner's answers
+  (§16.12): items, the `ITM-` code on `administration_counters`, the widened catalog read gate and the topics' move,
+  and the five bundles §6.5 opens with `administrationItem.view`, titled with §6.5's candidates (OD-67's fallback, as
+  in P1a.1). OD-68 B: no go-live step, no run model, no entrypoint change. Three fresh reviewers (design conformance,
+  correctness, ECMS conventions) raised 10 findings, all fixed before the pull request; the largest, an edit that kept
+  a category its first subcategory had left above the level, now re-files the item as §2.3.3 says. Where the code had
+  to choose what the design leaves open:
+  - *The item's level (OD-06 (i)) has a code of its own.* §5.15 lists none for it, so an item a write leaves in a
+    category with active subcategories answers 422 `ADMINISTRATION_SUBCATEGORY_REQUIRED`
+    (`[{ field: 'categoryId', code: 'subcategoryRequired' }]`), on a create and on every edit. "Has any" reads "has an
+    active one": a category whose subcategories all retired takes items again, or nothing under it could be filed. An
+    item filed before its category gained its first subcategory keeps it until it is next edited (§2.3.3), and that
+    edit, whatever it changes, must move it to a subcategory. A PATCH that only retires the item or brings it back
+    (`isActive` and `version`, nothing else) is not that edit (`isStatusChangeOnly`, `item-rules.ts`): §2.3.4's
+    "retiring is an edit" says a retirement is a versioned PATCH and not a delete, and holding it to the level would
+    make a new level the thing that stops an item from being retired, against "adding a level invalidates no item".
+    Adopted as the recommended reading under the owner's 2026-11-24 instruction, and listed for the owner at Phase 1's
+    close. A subcategory is judged on its own `isActive`, not its parent's.
+  - *A stale edit is answered first.* Every register's edit compares its `version` with the row it read before any
+    rule judges the body merged with that row (`assertCurrentVersion`, `shared/master-data.ts`), so a body written
+    against an older row is 409 `STALE_DOCUMENT` (§19.3, §19.10.5), never a 422 over a field its sender did not see;
+    P1a.1's units and categories take it too. `updateById`'s version filter still catches a write that lands after
+    the read.
+  - *References.* An item asks the unit's and the category's own `activeFor` (§5.3), exported from their feature
+    indexes; one it already names is not read. A `unitId` or `categoryId` that names nothing is 404 `NOT_FOUND`, as a
+    category's missing parent is (P1a.1).
+  - *Levels.* "One detail per field out of order" names both ends of every comparison that fails, each field once,
+    detail code `outOfOrder`; they are judged on the row every write leaves. Whole numbers from 0 are the contract's
+    (400), bounded at a line quantity's 1,000,000 (§2.1; `ADMINISTRATION_STOCK_LEVEL_MAX`).
+  - *Barcode.* Trimmed, 1–64 characters, no space inside (what a keyboard wedge types), case kept, `null` clears it.
+    `ADMINISTRATION_DUPLICATE_FIELDS` gains `barcode`; after an index refusal the name is asked first, then the
+    barcode.
+  - *The code's contract.* `formatAdministrationMasterCode(kind, seq)` and `parseAdministrationMasterCode(code)` in
+    `administration.ts`, over `ADMINISTRATION_MASTER_KINDS` and a prefix table keyed by it (`ITM` now, `SUP` in
+    P1b.1); the formatter throws on a number no counter hands out, and the parser reads only the formatter's own
+    spelling, so «ITM-000001» is not «ITM-00001».
+  - *The floor* is read through `ux_code` by an anchored prefix, over the formatter's spelling only (five digits, or
+    more with no leading zero, so a hand-typed «ITM-000042» hides no real code), grouped by length, greatest of the
+    longest: the plain newest-first read breaks past five digits («ITM-99999» sorts after «ITM-100000»). `shared/`
+    imports no feature, so `document-number.ts` holds the key, the pipeline and the parse, and the items repository
+    runs it. The floor and the ensure run at every boot and before every create, outside its transaction (Fleet's
+    posture); the seed logs a failed ensure rather than failing the boot. The shared factory hands out one number per
+    call (`next`), so `counter.model.ts` exports `ensureCounter` and `nextNumber`; `peekNumber` waits for a caller.
+  - *Indexes.* `ux_code` and `ux_counter_key` are the module's only unique indexes not partial on live rows (the
+    indexes spec names them); `ix_unit_active` sits beside `ix_category_active` for the register's unit filter.
+  - *The register.* `search` adds the barcode, as typed, to P1a.1's code, names and `nameKey`; `?categoryId=` of a
+    top-level category reads its subcategories' items too. The DTO's labels are `categoryName`,
+    `categoryParentId`, `categoryParentName` and `unitName`.
+  - *The unit stays editable.* §2.3.4's immutability needs a line or a movement that names the item, which nothing
+    can before P2 and P5, so the checker registry of §3.6 ships with its first registrant.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

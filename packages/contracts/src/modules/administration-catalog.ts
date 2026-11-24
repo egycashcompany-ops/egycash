@@ -1,5 +1,5 @@
-// Administrative Affairs — the catalog (docs/12-planning/administration-module-design.md §2.3.2–§2.3.3,
-// §19.4): units of measure and item categories in P1a.1; items join this file in P1a.2.
+// Administrative Affairs — the catalog (docs/12-planning/administration-module-design.md §2.3.2–§2.3.4,
+// §19.4): units of measure and item categories (P1a.1), and the items that name them (P1a.2).
 //
 // Master data is organization-wide and never deleted: a row retires with `isActive: false` and keeps
 // its name and code, so a retired name is reactivated, never typed again. No schema here takes
@@ -37,8 +37,11 @@ const typedCode = z.string().trim().min(1).max(30);
 const description = z.string().trim().max(500);
 const sortOrder = z.number().int().min(0);
 
-/** What a duplicate refusal names (`ADMINISTRATION_DUPLICATE`'s detail `field`). */
-export const ADMINISTRATION_DUPLICATE_FIELDS = ['name', 'code'] as const;
+/**
+ * What a duplicate refusal names (`ADMINISTRATION_DUPLICATE`'s detail `field`). An item's barcode
+ * has no check of its own before the write: its unique index is the check (§2.3.4).
+ */
+export const ADMINISTRATION_DUPLICATE_FIELDS = ['name', 'code', 'barcode'] as const;
 export type AdministrationDuplicateField = (typeof ADMINISTRATION_DUPLICATE_FIELDS)[number];
 
 // ── Units — `administration_catalog_items`, kind `unit` (§2.3.2) ────────────
@@ -178,3 +181,118 @@ export const ListAdministrationItemCategoriesQuerySchema = PaginationQuerySchema
 export type ListAdministrationItemCategoriesQuery = z.infer<
   typeof ListAdministrationItemCategoriesQuerySchema
 >;
+
+// ── Items — `administration_items` (§2.3.4) ─────────────────────────────────
+
+/**
+ * A stock level (OD-09: on the item, OD-08: whole units of its base unit). Zero is a level — "keep
+ * none" — so the floor is 0, not 1; the ceiling is a line quantity's (§2.1), a bound no store's
+ * level reaches and that keeps every later sum exact.
+ */
+export const ADMINISTRATION_STOCK_LEVEL_MAX = 1_000_000;
+export const AdministrationStockLevelSchema = z
+  .number()
+  .int()
+  .min(0)
+  .max(ADMINISTRATION_STOCK_LEVEL_MAX);
+
+/**
+ * The three levels, in the order they must keep where set: min ≤ reorder point ≤ max
+ * (`ADMINISTRATION_STOCK_LEVELS_ORDER`'s detail `field`, one per field out of order).
+ */
+export const ADMINISTRATION_STOCK_LEVEL_FIELDS = ['minQty', 'reorderPointQty', 'maxQty'] as const;
+export type AdministrationStockLevelField = (typeof ADMINISTRATION_STOCK_LEVEL_FIELDS)[number];
+
+/** What an item names (`ADMINISTRATION_REFERENCE_INACTIVE`'s detail `field`). */
+export const ADMINISTRATION_ITEM_REFERENCE_FIELDS = ['unitId', 'categoryId'] as const;
+export type AdministrationItemReferenceField =
+  (typeof ADMINISTRATION_ITEM_REFERENCE_FIELDS)[number];
+
+/**
+ * A printed or supplier barcode, read by a keyboard wedge (OD-05): what a scan types, so no space
+ * inside it. Optional; one item per barcode among live items (OD-05 (i)), held by its index.
+ */
+const barcode = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^\S+$/, { message: 'a barcode has no spaces' });
+const notes = z.string().trim().max(2000);
+
+export interface AdministrationItemDto {
+  id: string;
+  /** «ITM-00001», generated at creation (OD-05 A): permanent, never reused. */
+  code: string;
+  barcode: string | null;
+  name: LocalizedString;
+  categoryId: string;
+  /** The category's name, resolved at read time (a retired category still names itself). */
+  categoryName: LocalizedString | null;
+  /** The category's parent when the item names a subcategory; null under a top-level category. */
+  categoryParentId: string | null;
+  categoryParentName: LocalizedString | null;
+  /** The base unit (OD-07). */
+  unitId: string;
+  unitName: LocalizedString | null;
+  minQty: number | null;
+  reorderPointQty: number | null;
+  maxQty: number | null;
+  description: string | null;
+  notes: string | null;
+  isActive: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * No `code`: the server takes it inside the create's transaction (OD-05 A). No stock figure: an
+ * item carries none, its stock is the ledger's (ADR-024). The levels' order is the service's rule
+ * (422), judged on the row a write leaves, which an update's schema alone cannot see.
+ */
+export const CreateAdministrationItemSchema = z
+  .object({
+    barcode: barcode.optional(),
+    name: AdministrationNameSchema,
+    categoryId: objectId(),
+    unitId: objectId(),
+    minQty: AdministrationStockLevelSchema.optional(),
+    reorderPointQty: AdministrationStockLevelSchema.optional(),
+    maxQty: AdministrationStockLevelSchema.optional(),
+    description: description.optional(),
+    notes: notes.optional(),
+  })
+  .strict();
+export type CreateAdministrationItem = z.infer<typeof CreateAdministrationItemSchema>;
+
+/** `null` clears a barcode or a level; `isActive: false` retires the item (§5.3, OD-70 A). */
+export const UpdateAdministrationItemSchema = z
+  .object({
+    barcode: barcode.nullable().optional(),
+    name: AdministrationNameSchema.optional(),
+    categoryId: objectId().optional(),
+    unitId: objectId().optional(),
+    minQty: AdministrationStockLevelSchema.nullable().optional(),
+    reorderPointQty: AdministrationStockLevelSchema.nullable().optional(),
+    maxQty: AdministrationStockLevelSchema.nullable().optional(),
+    description: description.nullable().optional(),
+    notes: notes.nullable().optional(),
+    isActive: z.boolean().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateAdministrationItem = z.infer<typeof UpdateAdministrationItemSchema>;
+
+/**
+ * `search` reads the code, both names, the folded Arabic name and the barcode, so a scan finds
+ * its item (§19.4). `categoryId` reads a category with its subcategories: the register's filter is
+ * picked from the top level down, and a top-level category holds its subcategories' items.
+ */
+export const ListAdministrationItemsQuerySchema = PaginationQuerySchema.extend({
+  search: z.string().trim().max(200).optional(),
+  categoryId: objectId().optional(),
+  unitId: objectId().optional(),
+  isActive: booleanQuery().optional(),
+}).strict();
+export type ListAdministrationItemsQuery = z.infer<typeof ListAdministrationItemsQuerySchema>;

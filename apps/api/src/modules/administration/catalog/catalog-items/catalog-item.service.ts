@@ -6,11 +6,17 @@ import {
   type AdministrationDuplicateField,
   type CreateAdministrationCatalogItem,
   type ListAdministrationCatalogItemsQuery,
+  type LocalizedString,
   type Paginated,
   type UpdateAdministrationCatalogItem,
 } from '@ecms/contracts';
 import { type AuthContext } from '../../../../shared/types';
-import { assertNotTaken, explainDuplicate, masterSearchClause } from '../../shared/master-data';
+import {
+  assertCurrentVersion,
+  assertNotTaken,
+  explainDuplicate,
+  masterSearchClause,
+} from '../../shared/master-data';
 import { assertAdministrationOrgAuthority } from '../../shared/org-authority';
 import { auditCatalogItemCreated, auditCatalogItemEdited } from './catalog-item-audit';
 import { type AdministrationCatalogItemDoc } from './catalog-item.model';
@@ -39,6 +45,24 @@ class AdministrationCatalogItemService {
       sortDir: query.sortDir,
       sortableFields: ['sortOrder', 'name.ar', 'createdAt'],
     });
+  }
+
+  /**
+   * The unit `id` names, retired or not, or null when no unit does: what an item's write reads to
+   * judge the unit it names (the item asks `activeFor` of it).
+   */
+  async findUnit(id: string): Promise<AdministrationCatalogItemDoc | null> {
+    const doc = await repository.findById(id);
+    return doc?.kind === 'unit' ? doc : null;
+  }
+
+  /**
+   * The units' names, by id, read unfiltered — a retired unit still names itself on the items
+   * that keep it (§19.4's label).
+   */
+  async unitNames(ids: readonly string[]): Promise<ReadonlyMap<string, LocalizedString>> {
+    const units = await repository.findByIdsSystem(ids);
+    return new Map(units.map((unit) => [String(unit._id), unit.name]));
   }
 
   async create(
@@ -82,6 +106,7 @@ class AdministrationCatalogItemService {
   ): Promise<AdministrationCatalogItemDoc> {
     assertAdministrationOrgAuthority(ctx, 'administrationCatalog.manage');
     const before = await repository.getById(id);
+    assertCurrentVersion(before, input.version);
     const claim: Claim = {
       kind: before.kind,
       nameKey: input.name === undefined ? before.nameKey : foldName(input.name.ar),

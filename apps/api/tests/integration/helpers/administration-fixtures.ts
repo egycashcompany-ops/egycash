@@ -1,9 +1,9 @@
 // What the Administrative Affairs suites share (design §19.8): a real mongo booted with every
 // module, as production boots; two branches; and signed-in people with exactly the grants a case
-// needs — the whole register at organization scope, the catalog key held only in branch A (which
-// OD-04 A turns away from every master-data write), and someone holding no key of this module.
-// Written once, so each suite states its cases and not its plumbing; the warehouse and supplier
-// suites add their people here as they ship.
+// needs — the master-data desk at organization scope, the same keys held only in branch A (which
+// OD-04 A turns away from every master-data write), a catalog manager and an item reader each with
+// nothing else, and someone holding no key of this module. Written once, so each suite states its cases and not its
+// plumbing; the warehouse and supplier suites add their people here as they ship.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { type Express } from 'express';
@@ -27,10 +27,14 @@ export interface AdministrationWorld {
   branchBId: string;
   /** Super-admin: every key, organization-wide. */
   adminToken: string;
-  /** `administrationCatalog.manage` at organization scope — the master-data desk. */
+  /** The catalog key and the item keys at organization scope — the master-data desk. */
   managerToken: string;
-  /** `administrationCatalog.manage` at BRANCH scope, placed in branch A. */
+  /** The same keys at BRANCH scope, placed in branch A. */
   branchManagerToken: string;
+  /** `administrationCatalog.manage` alone, at organization scope: the catalogs screen's own key. */
+  catalogManagerToken: string;
+  /** `administrationItem.view` alone, at organization scope. */
+  itemViewerToken: string;
   /** Signed in, with a key of another module only. */
   outsiderToken: string;
 }
@@ -153,18 +157,26 @@ export const bootAdministration = async (label: string): Promise<AdministrationW
     return login(email);
   };
 
+  const masterDataKeys = [
+    'administrationCatalog.manage',
+    'administrationItem.view',
+    'administrationItem.create',
+    'administrationItem.edit',
+  ];
   return {
     app,
     branchAId,
     branchBId,
     adminToken,
-    managerToken: await person('manager', ['administrationCatalog.manage'], 'organization', null),
-    branchManagerToken: await person(
-      'branch-manager',
+    managerToken: await person('manager', masterDataKeys, 'organization', null),
+    branchManagerToken: await person('branch-manager', masterDataKeys, 'branch', branchAId),
+    catalogManagerToken: await person(
+      'catalog-manager',
       ['administrationCatalog.manage'],
-      'branch',
-      branchAId,
+      'organization',
+      null,
     ),
+    itemViewerToken: await person('item-viewer', ['administrationItem.view'], 'organization', null),
     outsiderToken: await person('outsider', ['itVendor.view'], 'organization', null),
   };
 };

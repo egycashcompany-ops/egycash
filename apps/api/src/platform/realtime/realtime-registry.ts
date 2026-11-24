@@ -250,6 +250,10 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'administration.item': { permission: 'administrationItem.view' },
   'administration.catalogItem': { permission: 'administrationItem.view' },
   'administration.itemCategory': { permission: 'administrationItem.view' },
+  // Warehouses (§9.2), branch records: every act also sends one `update` WITH the warehouse's
+  // branch (`signalWarehouse`), so a branch-scoped reader's room hears it, not only the
+  // organization-wide one the audit row reaches.
+  'administration.warehouse': { permission: 'administrationWarehouse.view' },
 
   // ── Automation ─────────────────────────────────────────────────────────────
   'automation.workflow': { permission: 'workflow.view' },

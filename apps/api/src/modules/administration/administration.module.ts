@@ -3,15 +3,18 @@
 //
 // The one manifest of the module, grown slice by slice exactly as IT's and ATM's were, never a
 // second one. P1a.1 shipped the catalog's first two lists — units of measure and item categories —
-// on one key and one page; P1a.2 adds the items, their three keys and their page; warehouses join
-// in P1a.3, suppliers in P1b.1 (§19.1). A key ships with its operation and a page with its keys: a
-// key whose page is missing fails boot, and so does a page with no key.
+// on one key and one page; P1a.2 added the items, their three keys and their page; P1a.3 adds the
+// warehouses, their three keys and their page, and the people the keeper is picked from; suppliers
+// join in P1b.1 (§19.1). A key ships with its operation and a page with its keys: a key whose page
+// is missing fails boot, and so does a page with no key.
 import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { seedAdministration } from './administration.seed';
 import { buildAdministrationCatalogItemsRouter } from './catalog/catalog-items';
 import { buildAdministrationItemCategoriesRouter } from './catalog/item-categories';
 import { buildAdministrationItemsRouter } from './catalog/items';
+import { buildAdministrationPeopleRouter } from './people/index';
+import { buildAdministrationWarehousesRouter } from './warehouses/warehouses/index';
 
 // One grant over every catalog kind, as `itCatalog.manage` is (§6.2): units and item categories
 // are configuration the same people keep. Held at ORGANIZATION scope by its services (OD-04 A).
@@ -32,6 +35,18 @@ const catalogPermissions = declarePermissions(
   'administration.catalogs',
 );
 
+// The stores of each branch (§6.2): `view` reads the warehouses its scope reaches, fail-closed
+// (§7.2), and `create`, `edit` write — deactivation included — in a branch the key reaches. Not
+// held to organization scope: a warehouse is a branch record, not organization-wide master data.
+const warehousePermissions = declarePermissions(
+  'administration',
+  'administrationWarehouse',
+  { en: 'Warehouses', ar: 'المخازن' },
+  ['view', 'create', 'edit'],
+  [],
+  'administration.warehouses',
+);
+
 // The item master (§6.2): `view` reads the register organization-wide — master data is read whole
 // (§7.1) — and `create`, `edit` write it, deactivation included, at organization scope (OD-04 A).
 const itemPermissions = declarePermissions(
@@ -44,17 +59,24 @@ const itemPermissions = declarePermissions(
 );
 
 export const administrationPermissions: PermissionDef[] = [
+  ...warehousePermissions,
   ...itemPermissions,
   ...catalogPermissions,
 ];
 
 export const administrationPages: PageDef[] = [
   {
+    id: 'administration.warehouses',
+    moduleId: 'administration',
+    name: { en: 'Warehouses', ar: 'المخازن' },
+    route: '/administration/warehouses',
+    sortOrder: 10,
+  },
+  {
     id: 'administration.items',
     moduleId: 'administration',
     name: { en: 'Items', ar: 'الأصناف' },
     route: '/administration/items',
-    // Warehouses (10) come before it when they ship (§6.3).
     sortOrder: 20,
   },
   {
@@ -80,12 +102,16 @@ export const administrationModule: ModuleManifest = {
       router: buildAdministrationItemCategoriesRouter(),
     },
     { prefix: '/administration/items', router: buildAdministrationItemsRouter() },
+    { prefix: '/administration/warehouses', router: buildAdministrationWarehousesRouter() },
+    // The keeper picker (§7.8): read-only, over the platform directory.
+    { prefix: '/administration/people', router: buildAdministrationPeopleRouter() },
   ],
   // Bookkeeping included (§3.3): the counter the item codes are taken from.
   collections: [
     'administration_catalog_items',
     'administration_item_categories',
     'administration_items',
+    'administration_warehouses',
     'administration_counters',
   ],
   eventSubscriptions: [],

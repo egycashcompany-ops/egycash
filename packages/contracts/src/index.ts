@@ -81,3 +81,4 @@ export * from './modules/atm-settlements.js';
 export * from './modules/atm-settings.js';
 export * from './modules/administration.js';
 export * from './modules/administration-catalog.js';
+export * from './modules/administration-warehouses.js';

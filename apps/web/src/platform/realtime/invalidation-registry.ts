@@ -662,6 +662,8 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['administration', 'catalogs'],
     ['administration', 'items'],
   ],
+  // A warehouse moves the warehouse screens: its register, its branch options and one warehouse.
+  'administration.warehouse': [['administration', 'warehouses']],
 
   // ── Automation ─────────────────────────────────────────────────────────────
   'automation.workflow': [['automation']],

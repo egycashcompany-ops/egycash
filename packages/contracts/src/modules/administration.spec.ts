@@ -1,11 +1,15 @@
 // The master codes (design §2.8, §19.7; OD-05 A): «ITM-00001» formats and parses, one spelling per
 // number, and no number a counter never hands out — 0, a negative, a fraction, an overflow — makes
-// or reads a code (the `consumable-number.spec.ts` shape).
+// or reads a code (the `consumable-number.spec.ts` shape). And the people the module names (§7.8):
+// a search with no status, since only the employed are offered, and an id parameter.
 import { describe, expect, it } from 'vitest';
 import {
   ADMINISTRATION_MASTER_CODE_DIGITS,
   ADMINISTRATION_MASTER_CODE_PREFIXES,
   ADMINISTRATION_MASTER_KINDS,
+  ADMINISTRATION_PERSON_STATUSES,
+  AdministrationPersonIdParamSchema,
+  ListAdministrationPeopleQuerySchema,
   formatAdministrationMasterCode,
   parseAdministrationMasterCode,
 } from './administration.js';
@@ -57,5 +61,56 @@ describe('the master codes', () => {
     ['an empty string', ''],
   ])('reads %s as no code', (_label, code) => {
     expect(parseAdministrationMasterCode(code)).toBeNull();
+  });
+});
+
+describe('the people the module names (§7.8)', () => {
+  const oid = (n: number): string => n.toString(16).padStart(24, '0');
+
+  it('reads HR’s five employment statuses, `exited` among them', () => {
+    expect(ADMINISTRATION_PERSON_STATUSES).toEqual([
+      'probation',
+      'active',
+      'onLeave',
+      'suspended',
+      'exited',
+    ]);
+  });
+
+  it('searches by the code or the name, by name first, a page at a time', () => {
+    expect(
+      ListAdministrationPeopleQuerySchema.parse({ search: ' أحمد ', branchId: oid(1) }),
+    ).toEqual({
+      search: 'أحمد',
+      branchId: oid(1),
+      page: 1,
+      pageSize: 25,
+      sortBy: 'name',
+      sortDir: 'asc',
+    });
+    expect(
+      ListAdministrationPeopleQuerySchema.parse({ sortBy: 'code', sortDir: 'desc' }),
+    ).toMatchObject({ sortBy: 'code', sortDir: 'desc' });
+  });
+
+  it.each([
+    ['a status — only the employed are offered to a new reference', { status: 'all' }],
+    ['a sort the directory cannot give', { sortBy: 'hiredAt' }],
+    ['a branch that is not an id', { branchId: 'cairo' }],
+    ['a page past 100', { pageSize: 101 }],
+  ])('refuses %s', (_label, query) => {
+    expect(ListAdministrationPeopleQuerySchema.safeParse(query).success).toBe(false);
+  });
+
+  it('names one person by an id, and nothing else', () => {
+    expect(AdministrationPersonIdParamSchema.parse({ employeeId: oid(7) })).toEqual({
+      employeeId: oid(7),
+    });
+    expect(AdministrationPersonIdParamSchema.safeParse({ employeeId: 'E-001' }).success).toBe(
+      false,
+    );
+    expect(
+      AdministrationPersonIdParamSchema.safeParse({ employeeId: oid(7), extra: 1 }).success,
+    ).toBe(false);
   });
 });

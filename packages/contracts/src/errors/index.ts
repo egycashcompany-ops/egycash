@@ -712,6 +712,21 @@ export const ErrorCodes = {
    * 'subcategoryRequired'.
    */
   ADMINISTRATION_SUBCATEGORY_REQUIRED: 'ADMINISTRATION_SUBCATEGORY_REQUIRED',
+  /**
+   * 422 — a warehouse is given a keeper whom HR answers as having left (IT's rule: a positive
+   * `exited` only; an id the directory cannot read passes); nothing was written. A warehouse whose
+   * keeper left later keeps them until the keeper is changed. One detail, `field`
+   * 'responsibleEmployeeId', `code` 'exited'.
+   */
+  ADMINISTRATION_EMPLOYEE_EXITED: 'ADMINISTRATION_EMPLOYEE_EXITED',
+  /**
+   * 422 — a warehouse is retired while something still holds it (OD-70 B): stock on hand or in
+   * transit, or a document not yet ended that names it; nothing was written. One detail per hold,
+   * `field` 'isActive', `code` one of `ADMINISTRATION_DEACTIVATION_PROBLEMS`: 'holdsStock' or
+   * 'openDocument'. Nothing can hold a warehouse before stock and documents exist (P5), so the
+   * code is first met then.
+   */
+  ADMINISTRATION_DEACTIVATION_BLOCKED: 'ADMINISTRATION_DEACTIVATION_BLOCKED',
 
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */

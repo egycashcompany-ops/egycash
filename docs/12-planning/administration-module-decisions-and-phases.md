@@ -3138,6 +3138,39 @@ Repository-wide findings outside this module are listed for the owner in
   (`apps/api/src/modules/fleet/fleet.seed.ts:127-148`; `apps/api/src/modules/fleet/go-live/vocabulary.ts:52-62`); and
   137 imported visits name the import's «غير محدد» placeholder row, not a workshop
   (`apps/api/src/modules/fleet/go-live/maintenance-import.ts:25-27, 228-229`). Nothing else in this design changes.
+- **P1a.3 built** (2026-11-24). Phase 1's third pull request ships as §19.1 says, under the owner's answers
+  (§16.12): warehouses on the shared fail-closed branch rule, the branch-options read, the `people/` keeper picker,
+  the `administration.warehouse` topic with its branch signal, `keep` for `administration_warehouses` (OD-64 A), and
+  the warehouse keys in the six bundles §6.5 gives them. OD-68 B: nothing loaded, no entrypoint change. Where the code
+  had to choose what the design leaves open:
+  - *The branch list.* `shared/branch-scope.ts`'s `activeBranchIds` reads `platform/organization`'s
+    `branchService.options()`, the top bar's own `/platform/branches/options` read, paged to exhaustion, in place of
+    the `branchRepository` list §19.8 names: ATM's loader reads one page of 200, which the base repository clamps to
+    100. It is the branch-options list and the create's candidates; names come from `findByIdsSystem`, as the DTO's
+    `branchName` does.
+  - *What a write may name.* A create's branch must be one of those active branches, and a department named anew an
+    active copy in the warehouse's own branch, which §7.6's Unit pairs with it; anything else is 404 `NOT_FOUND`, the
+    P1a.1 precedent, since §5.15 names no answer. A department or keeper the row already names is kept by an edit
+    that leaves it, retired or gone. The answers come in the order 404 (the scoped load), 403 (the key's reach),
+    409 `STALE_DOCUMENT`, then the rules. Adopted as the recommended reading under the owner's 2026-11-24
+    instruction, and listed for the owner at Phase 1's close, with one question the design leaves open: no rule
+    refuses a keeper placed in another branch (the picker is scoped by the keys, so only an organization-wide
+    editor can name one).
+  - *The keeper on the DTO.* `keeper` is `{ employeeId, code, fullNameAr, status }`, read through
+    `getDirectoryEmployees` at every read; it is null both with no keeper and with an id that resolves to nobody,
+    which the screen tells apart by `responsibleEmployeeId` (OD-64 keeper (i)). No name is stored, so HR's
+    `employee-name-copies.ts` gains no path. The DTO carries no department name: §19.4 lists none, and the web's
+    department options name it (§19.8).
+  - *The picker.* `GET /people` searches the employed only and takes no status, with `branchId` narrowing inside the
+    keys' reach and `sortBy` name or code; `GET /people/:employeeId` reads every status through the same scoped
+    search, so a stored keeper who left still shows, as one.
+  - *The retirement registry.* `warehouse-holds.ts` holds it, exported through the feature's index as
+    `registerWarehouseHoldChecker`; a checker answers `holdsStock`, `openDocument` or null, the contract's
+    `ADMINISTRATION_DEACTIVATION_PROBLEMS`, and the refusal names each hold once, in that order. It is asked on a
+    retirement only, never on a reactivation. The warehouse's `activeFor` (§5.16) waits for its first caller, the
+    first document that names a warehouse (P5).
+  - *Fields.* `location` is free text up to 200 characters, `notes` up to 2,000 as an item's; the code is required,
+    trimmed, in the org units' pattern. `GET /warehouses/branch-options` takes no query: a stray one is a 400.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

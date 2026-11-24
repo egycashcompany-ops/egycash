@@ -1,11 +1,14 @@
 // Administrative Affairs — what the whole module shares (docs/12-planning/administration-module-design.md
-// §2.8, §19.4): in P1a.2, the master codes. An item is «ITM-00001» (OD-05 A), generated, global,
-// permanent and never reused, the way IT's asset and consumable codes are; P1b.1 adds the
-// supplier's «SUP-». The formatter and the parser live here, not in the API, because a screen
-// reads a code too (a scanned label, a search) — IT's `formatConsumableMemoNumber` precedent.
+// §2.8, §19.4): the master codes (P1a.2) and the people it names (P1a.3). An item is «ITM-00001»
+// (OD-05 A), generated, global, permanent and never reused, the way IT's asset and consumable codes
+// are; P1b.1 adds the supplier's «SUP-». The formatter and the parser live here, not in the API,
+// because a screen reads a code too (a scanned label, a search) — IT's `formatConsumableMemoNumber`
+// precedent.
 //
 // Names are not folded here: the module folds them with the shared `foldName`
 // (`common/fold-name.ts`), so there is one fold for every module (PC-13).
+import { z } from 'zod';
+import { PaginationQuerySchema, objectId } from '../common/index.js';
 
 /** Each master that takes a generated code. Grows with its slice (the supplier, P1b.1). */
 export const ADMINISTRATION_MASTER_KINDS = ['item'] as const;
@@ -62,3 +65,46 @@ export const parseAdministrationMasterCode = (
   if (!isCodeNumber(seq)) return null;
   return formatAdministrationMasterCode(kind, seq) === code ? { kind, seq } : null;
 };
+
+// ── People — the employees the module names (design §7.8) ───────────────────
+//
+// A warehouse names its keeper (OD-10 keeper (i)), and from P2 documents name their requesters and
+// recipients. The module asks the platform directory, never HR (no `employee.view`, no import of
+// HR), under its own keys, and publishes exactly the facts below: who, and where HR places them.
+// Nothing about a person is stored here or written by the module.
+
+/** HR's employment status, as the directory answers it; a screen marks `exited` as «left». */
+export const ADMINISTRATION_PERSON_STATUSES = [
+  'probation',
+  'active',
+  'onLeave',
+  'suspended',
+  'exited',
+] as const;
+export type AdministrationPersonStatus = (typeof ADMINISTRATION_PERSON_STATUSES)[number];
+
+/**
+ * The picker's search: the code or the name, matched the way HR's own register matches them, within
+ * the reach of the keys that open it. Only the people who work here today are offered — a new
+ * reference never names a leaver — so the query has no status. `branchId` narrows to one branch.
+ */
+export const ListAdministrationPeopleQuerySchema = PaginationQuerySchema.extend({
+  search: z.string().trim().max(100).optional(),
+  branchId: objectId().optional(),
+  sortBy: z.enum(['name', 'code']).default('name'),
+  sortDir: z.enum(['asc', 'desc']).default('asc'),
+}).strict();
+export type ListAdministrationPeopleQuery = z.infer<typeof ListAdministrationPeopleQuerySchema>;
+
+export const AdministrationPersonIdParamSchema = z.object({ employeeId: objectId() }).strict();
+
+/** One person, as the module's screens print them (§7.8): these seven facts and nothing else. */
+export interface AdministrationPersonDto {
+  employeeId: string;
+  code: string;
+  fullNameAr: string;
+  status: AdministrationPersonStatus;
+  branchId: string | null;
+  departmentId: string | null;
+  jobTitleId: string | null;
+}

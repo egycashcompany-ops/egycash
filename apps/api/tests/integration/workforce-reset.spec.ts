@@ -69,7 +69,9 @@ const ensureRole = async (key: string): Promise<Types.ObjectId> => {
     .updateOne({ key } as never, { $setOnInsert: { key, isSystem: true } } as never, {
       upsert: true,
     });
-  const role = await db().collection('roles').findOne({ key } as never);
+  const role = await db()
+    .collection('roles')
+    .findOne({ key } as never);
   if (role === null) throw new Error(`role ${key} missing after upsert`);
   return role._id as Types.ObjectId;
 };
@@ -87,39 +89,55 @@ const seed = async (): Promise<void> => {
   // `isDeleted: false` on every row is not decoration: `ux_email`, `ux_username` and
   // `ux_userId_roleId_scope` are all partial on it, so rows without the field are exempt from the
   // uniqueness the real system enforces. These are meant to be rows the database would accept.
-  await db().collection('users').insertMany([
-    {
-      _id: ADMIN,
-      username: 'admin@ecms.local',
-      email: 'admin@ecms.local',
-      employeeId: ADMIN_EMPLOYEE,
-      isDeleted: false,
-    },
-    { _id: HR_ADMIN, username: 'hr@ecms.local', email: 'hr@ecms.local', employeeId: null, isDeleted: false },
-    { _id: STAFF, username: 'br1000001', email: 'staff@ecms.com', employeeId: EMPLOYEE, isDeleted: false },
-    {
-      _id: APPLICANT,
-      username: 'applicant-app-2026-000079',
-      email: null,
-      employeeId: null,
-      isDeleted: false,
-    },
-  ] as never);
+  await db()
+    .collection('users')
+    .insertMany([
+      {
+        _id: ADMIN,
+        username: 'admin@ecms.local',
+        email: 'admin@ecms.local',
+        employeeId: ADMIN_EMPLOYEE,
+        isDeleted: false,
+      },
+      {
+        _id: HR_ADMIN,
+        username: 'hr@ecms.local',
+        email: 'hr@ecms.local',
+        employeeId: null,
+        isDeleted: false,
+      },
+      {
+        _id: STAFF,
+        username: 'br1000001',
+        email: 'staff@ecms.com',
+        employeeId: EMPLOYEE,
+        isDeleted: false,
+      },
+      {
+        _id: APPLICANT,
+        username: 'applicant-app-2026-000079',
+        email: null,
+        employeeId: null,
+        isDeleted: false,
+      },
+    ] as never);
 
-  await db().collection('role_assignments').insertMany([
-    { userId: ADMIN, roleId: SUPER_ROLE, validFrom: null, validTo: null, isDeleted: false },
-    // EXPIRED, and it must still save this account: deleting an administrator whose grant lapsed
-    // last week locks a real person out of a system that has just been emptied.
-    {
-      userId: HR_ADMIN,
-      roleId: PLATFORM_ROLE,
-      validFrom: null,
-      validTo: new Date('2020-01-01'),
-      isDeleted: false,
-    },
-    { userId: STAFF, roleId: ESS_ROLE, validFrom: null, validTo: null, isDeleted: false },
-    { userId: APPLICANT, roleId: ESS_ROLE, validFrom: null, validTo: null, isDeleted: false },
-  ] as never);
+  await db()
+    .collection('role_assignments')
+    .insertMany([
+      { userId: ADMIN, roleId: SUPER_ROLE, validFrom: null, validTo: null, isDeleted: false },
+      // EXPIRED, and it must still save this account: deleting an administrator whose grant lapsed
+      // last week locks a real person out of a system that has just been emptied.
+      {
+        userId: HR_ADMIN,
+        roleId: PLATFORM_ROLE,
+        validFrom: null,
+        validTo: new Date('2020-01-01'),
+        isDeleted: false,
+      },
+      { userId: STAFF, roleId: ESS_ROLE, validFrom: null, validTo: null, isDeleted: false },
+      { userId: APPLICANT, roleId: ESS_ROLE, validFrom: null, validTo: null, isDeleted: false },
+    ] as never);
 
   await db()
     .collection('hr_employees')
@@ -129,8 +147,12 @@ const seed = async (): Promise<void> => {
     ] as never);
 
   // Employee-scoped rows, which go.
-  await db().collection('hr_payslips').insertMany([{ _id: oid(), employeeId: EMPLOYEE }] as never);
-  await db().collection('hr_leave_requests').insertMany([{ _id: oid(), employeeId: EMPLOYEE }] as never);
+  await db()
+    .collection('hr_payslips')
+    .insertMany([{ _id: oid(), employeeId: EMPLOYEE }] as never);
+  await db()
+    .collection('hr_leave_requests')
+    .insertMany([{ _id: oid(), employeeId: EMPLOYEE }] as never);
   await db()
     .collection('operations_crew_assignments')
     .insertMany([{ _id: oid(), captainEmployeeIds: [EMPLOYEE] }] as never);
@@ -159,8 +181,12 @@ const seed = async (): Promise<void> => {
     .insertMany([{ _id: oid(), items: [{ applicantId: APPLICANT_PERSON }] }] as never);
 
   // User-scoped rows for a doomed account, and the audit entry that must outlive it.
-  await db().collection('sessions').insertMany([{ _id: oid(), userId: STAFF }] as never);
-  await db().collection('push_subscriptions').insertMany([{ _id: oid(), userId: STAFF }] as never);
+  await db()
+    .collection('sessions')
+    .insertMany([{ _id: oid(), userId: STAFF }] as never);
+  await db()
+    .collection('push_subscriptions')
+    .insertMany([{ _id: oid(), userId: STAFF }] as never);
   await db()
     .collection('audit_logs')
     .insertMany([{ _id: oid(), userId: STAFF, action: 'update' }] as never);
@@ -180,7 +206,9 @@ describe('who survives a workforce reset', () => {
   it('keeps the two administrators and nobody else — an expired grant still saves an account', async () => {
     const survivors = await findSurvivors();
     expect(survivors.map((s) => s.username).sort()).toEqual(['admin@ecms.local', 'hr@ecms.local']);
-    expect(survivors.find((s) => s.username === 'hr@ecms.local')?.roles).toEqual(['platform-admin']);
+    expect(survivors.find((s) => s.username === 'hr@ecms.local')?.roles).toEqual([
+      'platform-admin',
+    ]);
   });
 
   /**
@@ -221,6 +249,8 @@ describe('a dry run', () => {
     const gold = report.untouched.find((u) => u.collection === 'gold_receiving_receipts');
     expect(gold?.documentsNamingAnEmployee).toBe(1);
     expect(report.untouched.map((u) => u.collection)).toEqual([
+      // A warehouse names its keeper and outlives them: the ledger and the store documents cite it.
+      'administration_warehouses',
       'atm_maintenances',
       // An accident is a record about the VEHICLE and the money, with the driver named on it —
       // so it is kept, and the report has to say it holds a person's id.
@@ -301,7 +331,9 @@ describe('the reset itself', () => {
    * their account — this is the user rule's own collection, so clearing it is its business.
    */
   it('clears the surviving administrator’s link to a now-deleted employee', async () => {
-    const admin = await db().collection('users').findOne({ _id: ADMIN } as never);
+    const admin = await db()
+      .collection('users')
+      .findOne({ _id: ADMIN } as never);
     expect(admin?.employeeId).toBeNull();
   });
 
@@ -312,7 +344,9 @@ describe('the reset itself', () => {
       .updateOne({ _id: 'employee:global' as never }, { $set: { value: 2717 } }, { upsert: true });
     const report = await runReset({ write: true });
     expect(report.employeeSequence).toBe(2717);
-    const after = await db().collection('hr_sequences').findOne({ _id: 'employee:global' as never });
+    const after = await db()
+      .collection('hr_sequences')
+      .findOne({ _id: 'employee:global' as never });
     expect(Number(after?.value)).toBe(2717);
   }, 240_000);
 });
@@ -357,8 +391,8 @@ describe('the recruitment pipeline', () => {
     const report = await runReset({ write: false, includeRecruitment: true });
     expect(report.untouched.map((u) => u.collection)).not.toContain('hr_job_offers');
     expect(report.recruitment.map((r) => r.collection)).toContain('hr_job_offers');
-    // The other twelve are still off limits.
-    expect(report.untouched).toHaveLength(12);
+    // The other thirteen are still off limits.
+    expect(report.untouched).toHaveLength(13);
   }, 240_000);
 });
 

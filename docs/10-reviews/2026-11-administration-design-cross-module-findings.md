@@ -4,7 +4,8 @@ The discovery and design review of the Administrative Affairs module
 (`docs/12-planning/administration-module-design.md` and its three companion files) read most of the code base. Along
 the way it found the items below in **other** modules and in repository-wide documents. They are not the Administrative
 Affairs design's work, and nobody has decided to defer them, so they are not in `technical-debt.md` (which holds only
-decided deferrals). They are listed here so the owners of those areas can find them. Citations are against `4c0fa1b0`.
+decided deferrals). They are listed here so the owners of those areas can find them. Citations are against `4c0fa1b0`,
+except row 12, which Phase 2's P2.2 found and cites against its own tree.
 
 | # | Area | Finding | Evidence |
 |---|---|---|---|
@@ -19,3 +20,4 @@ decided deferrals). They are listed here so the owners of those areas can find t
 | 9 | Counters | Fleet's custody counter and ATM's note counter are two copies of one counter rule; the Administrative Affairs design's PC-13 writes a shared counter factory in `apps/api/src/shared/base/` that both could move onto | `apps/api/src/modules/fleet/custody/custody-counter.model.ts`; `apps/api/src/modules/atm/settlements/plans/note-counter.model.ts` |
 | 10 | Scope rules | ATM keeps `registerScopeBranches` beside the shared `selectorBranches`, which was written as its copy | `apps/api/src/modules/atm/register/register.repository.ts:33-47`; `apps/api/src/shared/types/index.ts:284-308` |
 | 11 | Stray file | An empty tracked file, `__tmp_ignore__`, sits among IT's web helpers | `apps/web/src/modules/it/lib/__tmp_ignore__` (added in `9770febc`) |
+| 12 | Platform load order | Three platform files import each other in a cycle: `org-unit.ts` imports `auditService`, `audit.service.ts` imports `directoryProfileService`, and `directory-profile.service.ts` imports the organization's models, whose schemas call `org-unit.ts`'s `addOrgUnitIndexes`. A process whose first platform import is the approvals barrel meets `TypeError: (0 , addOrgUnitIndexes) is not a function`; a boot loads the platform in another order and does not. To reproduce, swap the two imports of Administrative Affairs' indexes spec, which loads the module's manifest first as its workaround, and run it | `apps/api/src/platform/organization/shared/org-unit.ts:25`; `apps/api/src/platform/audit/audit.service.ts:33`; `apps/api/src/platform/directory/directory-profile.service.ts:13-15`; `apps/api/src/platform/organization/departments/department.model.ts:36`; the workaround, `apps/api/src/modules/administration/administration-indexes.spec.ts:15-18` |

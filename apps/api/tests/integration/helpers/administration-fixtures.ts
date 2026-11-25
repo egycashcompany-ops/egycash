@@ -330,13 +330,18 @@ export interface WarehouseWorld {
   creatorAToken: string;
 }
 
-/** An HR employee placed in `branchId`, written as HR stores one; the employee's id. */
+/**
+ * An HR employee placed in `branchId`, written as HR stores one; the employee's id. `userId` links
+ * a login to them (P2.2), so the directory's self lookup finds the person a purchase request's
+ * caller is — the login's own placement is the account's, set when it is made.
+ */
 export const plantEmployee = async (
   code: string,
   fullNameAr: string,
   branchId: string,
   departmentId: string,
   status: 'active' | 'exited',
+  userId?: string,
 ): Promise<string> => {
   const _id = new Types.ObjectId();
   const branch = new Types.ObjectId(branchId);
@@ -357,7 +362,7 @@ export const plantEmployee = async (
     branchId: branch,
     departmentId: department,
     sectionId: null,
-    userId: null,
+    userId: userId === undefined ? null : new Types.ObjectId(userId),
     exit: null,
     hiredAt: new Date('2024-01-01T00:00:00.000Z'),
     isDeleted: false,

@@ -253,6 +253,14 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
     action: 'keep',
     why: 'a warehouse is a record in its own right and outlives its keeper',
   },
+  // A purchase request names its requester, and is a need and a spending decision the later
+  // documents cite — the RFQ, the PO and, through it, the receipt (OD-64 A; design §15.3.3).
+  // Purged, they would cite nothing; kept, its requester's name is rewritten by HR's permanent
+  // delete (`employee-name-copies.ts`), and its id resolves to nobody.
+  administration_purchase_requests: {
+    action: 'keep',
+    why: 'a need and a spending decision that later documents cite',
+  },
 
   // ── Owned by the user rule, not this one ──
   //

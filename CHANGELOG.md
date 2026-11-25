@@ -586,6 +586,49 @@ its entry here in the same PR.
 
 ### Added
 
+- **Administrative Affairs («الشئون الإدارية»), purchase requests: drafts — the record, the
+  register and the editor's API.** This is P2.2 of Phase 2
+  (`docs/12-planning/administration-module-phase-2.md` §3): the contracts and the API. A
+  department's focal point raises a purchase request, «طلب شراء», and edits it while it is a
+  draft; nobody submits, decides, returns or cancels one yet (P2.3 to P2.5), and no screen shows
+  them (P2.W1).
+  - **Four keys and a page:** `administrationPurchaseRequest.view`, `.create`, `.edit` and
+    `.approve` («عرض طلبات الشراء», «إنشاء طلبات الشراء», «تعديل طلبات الشراء», «اعتماد طلبات
+    الشراء») on «طلبات الشراء», over `/api/v1/administration/purchase-requests` and `/:id`. The
+    approve key is declared now so the chains of P2.3 can name it, and opens the record of what it
+    reaches; it decides nothing before P2.4.
+  - **For the department's focal point** (OD-16 A), who holds the new ready-made role «منسق طلبات
+    الإدارة» / Department requester at department scope: `POST /purchase-requests` raises a draft
+    with its needed-by date, justification, notes and up to 100 lines, each an item and a whole
+    quantity (OD-14 C: no free-text line). The requester is always the caller's own employee, read
+    from HR through the directory, and the request is filed on that employee's department copy and
+    its branch, under the top bar's choice; a login with no employee, an employee with no
+    department, one who has left and one whose branch is not their department's are refused, each
+    with its own detail. Retired items are refused on a new line and kept on a line that already
+    names them. `PATCH /purchase-requests/:id` edits a draft with its version — its requester's
+    alone; a colleague of the same department reads it and is refused the edit (403).
+  - **For readers:** the register filters by status (several), department copy, requester, created
+    day (Cairo days) and the start of a number, and sorts by number, created, submitted or needed
+    by; a department reader reads their copy, a branch reader the branch, `own` what they raised,
+    and a `section` grant only what its holder raised (read as `own`, since a request carries no
+    section). The record carries the requester's and the branch's snapshots, the
+    lines with their items' snapshots and counters, and `availableActions` — what this reader may
+    do now, with the reason when not. The procurement officer and manager, the Administrative
+    Affairs manager and the auditor gain `.view`; the Administrative Affairs manager gains
+    `.approve`.
+  - **Items:** the item register and one item now also open to `.create`, so the request's item
+    picker reads them without the item key; and once a request's line names an item, an edit that
+    changes the item's unit is refused (422 `ADMINISTRATION_ITEM_UNIT_LOCKED`), every other edit
+    unaffected.
+  - New refusals `ADMINISTRATION_INVALID_TRANSITION`, `ADMINISTRATION_TRANSITION_BLOCKED` and
+    `ADMINISTRATION_ITEM_UNIT_LOCKED`, worded in both languages; audited as `create` and `update`,
+    each followed by a signal with the request's branch (topic `administration.purchaseRequest`).
+    The workforce reset keeps the requests, and HR's permanent delete rewrites their requester's
+    name. The boot ensures this year's purchase-request number counter.
+  - Rollback (RK-30): reverting removes the keys, the page, the routes and the role's keys at the
+    next boot; the collection, its counter row and the role stay, unread, and nothing else is
+    rewritten.
+
 - **Administrative Affairs («الشئون الإدارية»), purchase requests' groundwork: yearly document
   numbers and the item's kind.** This is P2.1, the first module slice of Phase 2, purchase
   requests (`docs/12-planning/administration-module-phase-2.md` §3): the contracts and the API

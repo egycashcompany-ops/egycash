@@ -1594,7 +1594,7 @@ listed, then modified.
 | `administration.module.ts` + `.spec.ts` | M | P2.2–P2.7 | keys, page, routes, collection, the file authorizer (P2.6), `scheduledTasks` (P2.7) |
 | `administration.seed.ts` | M | P2.2–P2.7 | the year's counter (P2.2); each template in its slice (P2.3–P2.5, P2.7); the request-attachments category (P2.6) |
 | `administration.seed.spec.ts` | C, M | P2.3; P2.4, P2.5, P2.7 | every sent template seeded |
-| `administration-indexes.ts` + `administration-indexes.spec.ts` | M | P2.1 (the spec), P2.2 | the item input's parsed `stockTracked` (P2.1); the PR model |
+| `administration-indexes.ts` + `administration-indexes.spec.ts` | M | P2.1 (the spec), P2.2, P2.6 (the spec) | the item input's parsed `stockTracked` (P2.1); the PR model; the seed's request-attachments step in its order (P2.6) |
 | `administration-roles.ts` | M | P2.2, P2.5 | §9.3 |
 | `administration.mappers.ts` | M | P2.1; P2.2; P2.6 | `stockTracked ?? true` on the item DTO; the PR DTOs; the detail's files with their scan states (P2.6) |
 | `administration-scope-guards.spec.ts` | M | P2.2 | the PR repository's fields |

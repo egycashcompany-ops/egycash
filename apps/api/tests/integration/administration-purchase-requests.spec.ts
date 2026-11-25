@@ -1122,6 +1122,21 @@ describe('a request’s files (P2.6; P2 plan §4.3)', () => {
     return doc.version + 1;
   };
 
+  /** Out of draft at the version the requester holds, so a write's draft set alone refuses it. */
+  const outOfDraft = async (doc: { id: string }): Promise<void> => {
+    submitted += 1;
+    await plant(doc.id, {
+      status: 'pendingApproval',
+      number: `PR-2024-${String(600 + submitted).padStart(6, '0')}`,
+    });
+  };
+
+  /** The request's links as stored, by attachment id. */
+  const linksOf = async (requestId: string): Promise<string[]> => {
+    const row = await AdministrationPurchaseRequestModel.findById(requestId).lean().exec();
+    return (row?.attachments ?? []).map((file) => String(file.attachmentId));
+  };
+
   const path = (doc: { id: string }, attachmentId: string) =>
     `/purchase-requests/${doc.id}/attachments/${attachmentId}`;
 
@@ -1290,6 +1305,69 @@ describe('a request’s files (P2.6; P2 plan §4.3)', () => {
     expect(await filesUnder(created.id), 'and withdrawn: no file is left unlinked').toBe(20);
   });
 
+  it('the link write holds the draft set itself: a request out of draft since the load refuses the link, then its withdrawal, and the file stays unlinked', async () => {
+    const created = await draft(focal);
+    const row = await administrationPurchaseRequestRepository.getById(created.id);
+    await outOfDraft(created);
+    // The route's load and the upload's authorizer read the draft as it was; the write does not.
+    const spy = vi
+      .spyOn(administrationPurchaseRequestRepository, 'findById')
+      .mockResolvedValueOnce(row)
+      .mockResolvedValueOnce(row);
+    const res = await attach(focal.token, created, 'بين التحميل والربط');
+    spy.mockRestore();
+    refused(res, 422, 'ADMINISTRATION_INVALID_TRANSITION', ['status:pendingApproval']);
+    expect(await filesUnder(created.id, 'stored'), 'the upload was stored').toBe(1);
+    // The withdrawal asks the write rule too, which the request out of draft refuses (P2 plan
+    // §4.3): the file stays, and nothing lists it.
+    expect(await filesUnder(created.id), 'the file stays, unlinked').toBe(1);
+    expect(await linksOf(created.id)).toEqual([]);
+  });
+
+  it('the link write holds the version itself: a link landing after the load makes this one stale, and its upload is withdrawn', async () => {
+    const created = await draft(focal);
+    const row = await administrationPurchaseRequestRepository.getById(created.id);
+    const first = await linked(focal.token, created, 'الأول');
+    const spy = vi
+      .spyOn(administrationPurchaseRequestRepository, 'findById')
+      .mockResolvedValueOnce(row);
+    const res = await attach(focal.token, created, 'الثاني');
+    spy.mockRestore();
+    refused(res, 409, 'STALE_DOCUMENT');
+    expect(await filesUnder(created.id, 'stored'), 'the second upload was stored').toBe(2);
+    expect(await filesUnder(created.id), 'and withdrawn').toBe(1);
+    expect(await linksOf(created.id)).toEqual(first.attachments.map((file) => file.attachmentId));
+  });
+
+  it('the unlink write holds the version and the draft set itself: a removal decided on a load since overtaken is refused by the write', async () => {
+    const created = await draft(focal);
+    const first = await linked(focal.token, created, 'أ');
+    const attachmentId = first.attachments[0]?.attachmentId ?? '';
+    const before = await administrationPurchaseRequestRepository.getById(created.id);
+    const second = await linked(focal.token, first, 'ب');
+    const removal = (version: number) =>
+      as(focal.token).delete(`${path(created, attachmentId)}?version=${String(version)}`);
+
+    // A link landed after the load: the removal's version is stale at the write.
+    let spy = vi
+      .spyOn(administrationPurchaseRequestRepository, 'findById')
+      .mockResolvedValueOnce(before);
+    const stale = await removal(first.version);
+    spy.mockRestore();
+    refused(stale, 409, 'STALE_DOCUMENT');
+
+    // The request left draft after the load, at the version held: the draft set refuses it.
+    const held = await administrationPurchaseRequestRepository.getById(created.id);
+    await outOfDraft(created);
+    spy = vi.spyOn(administrationPurchaseRequestRepository, 'findById').mockResolvedValueOnce(held);
+    const submittedNow = await removal(second.version);
+    spy.mockRestore();
+    refused(submittedNow, 422, 'ADMINISTRATION_INVALID_TRANSITION', ['status:pendingApproval']);
+    expect(await linksOf(created.id), 'both links stand').toEqual(
+      second.attachments.map((file) => file.attachmentId),
+    );
+  });
+
   it('takes PDF and images only (OD-76 formats (i)): an Office file is 422 FILE_TYPE_NOT_ALLOWED', async () => {
     const created = await draft(focal);
     refused(
@@ -1358,6 +1436,7 @@ describe('a request’s files (P2.6; P2 plan §4.3)', () => {
 
     await FileModel.updateOne({ _id: fileId }, { $set: { status: 'archived' } }).exec();
     expect(await stateNow(), 'a file gone or archived reads unavailable').toBeNull();
+    refused(await bytes(), 404, 'NOT_FOUND');
   });
 
   it('the platform’s own file paths ask the request’s rule: a draft’s file is replaced, a submitted request’s neither replaced nor deleted', async () => {

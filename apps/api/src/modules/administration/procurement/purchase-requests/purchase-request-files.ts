@@ -64,6 +64,7 @@ import {
   type AdministrationPurchaseRequestDoc,
 } from './purchase-request.model';
 import { administrationPurchaseRequestRepository as repository } from './purchase-request.repository';
+import { administrationPurchaseRequestService } from './purchase-request.service';
 
 // ── The category ────────────────────────────────────────────────────────────
 
@@ -92,31 +93,27 @@ const resolveCategoryId = async (): Promise<string> =>
 
 // ── Who reaches a request's files (ADR-023; design §11.3) ───────────────────
 
-const VIEW = 'administrationPurchaseRequest.view';
-const APPROVE = 'administrationPurchaseRequest.approve';
 const CREATE = 'administrationPurchaseRequest.create';
 const EDIT = 'administrationPurchaseRequest.edit';
 
-/** The record's readers, and the approvers who decide it (design §11.3). */
-const READ_KEYS = [VIEW, APPROVE] as const;
 /** The keys of the acts that make the draft the files belong to. */
 const WRITE_KEYS = [CREATE, EDIT] as const;
 
 /**
- * The request under the first read key the caller holds whose own scope finds it — `.view`
- * first, as the record's read tries them — or null. Never the widest of the two selectors: it
- * would drop the other key's reach (design §11.3).
+ * The request as its record's read finds it — `.view` first, then `.approve`, each with its own
+ * scope, never the widest of the two (design §11.3) — or null where that read answers 404. The
+ * record's own read decides, so the files and the record never disagree on who reads a request.
  */
 const readable = async (
   ctx: AuthContext,
   id: string,
 ): Promise<AdministrationPurchaseRequestDoc | null> => {
-  for (const key of READ_KEYS) {
-    if (!hasPermission(ctx, key)) continue;
-    const doc = await repository.findById(id, scopeSelector(ctx, key));
-    if (doc !== null) return doc;
+  try {
+    return await administrationPurchaseRequestService.get(id, ctx);
+  } catch (error) {
+    if (error instanceof NotFoundError) return null;
+    throw error;
   }
-  return null;
 };
 
 /** Where a file write lands: the request, and the scope of the write key that reaches it. */
@@ -126,27 +123,26 @@ interface WriteTarget {
 }
 
 /**
- * The request under the first write key the caller holds whose own scope finds it AND that covers
- * its Unit (`keyCoversUnit`, P2 plan §4.2). `outOfReach` when a key's scope finds it but none
- * covers the Unit — an `own` grant reads what its holder raised and covers no Unit — and
- * `notFound` when no key's scope finds it. At most two lookups, design §11.3's budget.
+ * The request under the act's key: the first write key the caller holds whose own scope finds it,
+ * which must then cover its Unit (`keyCoversUnit`, P2 plan §4.2, §4.3). `outOfReach` when that key
+ * covers no Unit — an `own` grant reads what its holder raised and covers none — even where the
+ * other key would: the first finder wins, as on the record's read. `notFound` when no key's scope
+ * finds it. At most two lookups, design §11.3's budget.
  */
 const writeTarget = async (
   ctx: AuthContext,
   id: string,
 ): Promise<WriteTarget | 'outOfReach' | 'notFound'> => {
-  let seen = false;
   for (const key of WRITE_KEYS) {
     if (!hasPermission(ctx, key)) continue;
     const scope = scopeSelector(ctx, key);
     const doc = await repository.findById(id, scope);
     if (doc === null) continue;
-    if (keyCoversUnit(ctx, key, String(doc.branchId), String(doc.departmentId))) {
-      return { doc, scope };
-    }
-    seen = true;
+    return keyCoversUnit(ctx, key, String(doc.branchId), String(doc.departmentId))
+      ? { doc, scope }
+      : 'outOfReach';
   }
-  return seen ? 'outOfReach' : 'notFound';
+  return 'notFound';
 };
 
 /**
@@ -335,10 +331,10 @@ class AdministrationPurchaseRequestAttachments {
   }
 
   /**
-   * One file's bytes. The request is read under `.view`, then `.approve`, each with its own scope,
-   * and the file must be on THIS request; it is read through `readEntityOwnedBuffer`, which refuses
-   * a file still being scanned (422 `FILE_SCAN_PENDING`) or found infected (422 `FILE_BLOCKED`) and
-   * asks the authorizer again.
+   * One file's bytes. The request is read as its record is, and the file must be on THIS request;
+   * it is read through `readEntityOwnedBuffer`, which refuses a file still being scanned (422
+   * `FILE_SCAN_PENDING`) or found infected (422 `FILE_BLOCKED`) and asks the authorizer again. A
+   * file archived since its link is a 404, as the record names it unavailable.
    */
   async read(
     ctx: AuthContext,
@@ -349,6 +345,9 @@ class AdministrationPurchaseRequestAttachments {
     if (request === null) throw new NotFoundError('purchase request not found');
     const entry = attachmentOf(request, attachmentId);
     const { doc, buffer } = await fileService.readEntityOwnedBuffer(ctx, String(entry.fileId));
+    // Files reads an archived file by id all the same, but the record names it unavailable (its
+    // scan state null, design §11.4): its bytes are not sent either.
+    if (doc.status !== 'active') throw noSuchFile();
     return { buffer, mime: doc.mime, fileName: entry.fileName };
   }
 

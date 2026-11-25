@@ -2,8 +2,9 @@
 // `.view` or `.approve` reads one request, each with its own scope, so an approver who holds the
 // approve key alone opens what they decide (design §5.1.4); `.create` raises a draft and `.edit`
 // edits one — the requester's own, checked in the service, since the gate here knows the key and
-// not the request. There is no delete: a request ends in a terminal status. Submission, decisions,
-// returns, cancels and files join with their slices (P2.3 to P2.6).
+// not the request. There is no delete of a request: it ends in a terminal status; the one DELETE
+// removes a file's link (P2.6). Submission, decisions, returns and cancels join with their slices
+// (P2.3 to P2.5).
 import { Router } from 'express';
 import { z } from 'zod';
 import {

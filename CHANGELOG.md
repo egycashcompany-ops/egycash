@@ -569,7 +569,8 @@ its entry here in the same PR.
   - **For readers and approvers:** `GET …/attachments/:attachmentId` sends the bytes inline and
     `private, no-store` to whoever reads the record — a holder of `.view`, or of `.approve` alone —
     and the platform's scan gate refuses a file still being scanned (`FILE_SCAN_PENDING`) or blocked
-    (`FILE_BLOCKED`). The record now lists its files, each with its scan state.
+    (`FILE_BLOCKED`); a file archived since its link is 404, as the record names it unavailable. The
+    record now lists its files, each with its scan state.
   - **The platform's file paths** (`/api/v1/platform/files`) ask the request's own rule through the new
     `administration/purchaseRequest` file authorizer: reading takes `.view` or `.approve`, and every
     change — upload, replace, update, archive, restore, delete — takes the requester, on a draft, with
@@ -578,7 +579,12 @@ its entry here in the same PR.
     for ever, OD-77 A). Each link and removal is audited as `update` with an `attachment` field and
     followed by a signal with the request's branch. No key, page or navigation row changes.
   - Rollback (RK-30): reverting removes the three routes and the authorizer; files already filed stay
-    in Files under their requests, and the category stays, unread.
+    in Files under their requests, and the category stays, unread. With the authorizer gone, those
+    files fall back to the platform's own file rules: `file.view` lists them and `file.download`
+    reads them through `/platform/files`, and `file.edit` and `file.delete` change them. A rollback
+    that must keep them closed reverts the three routes but keeps `purchaseRequestFileAuthorizer` in
+    the manifest's `fileEntityAuthorizers`. Any cleanup of the stored files is an operator act the
+    owner approves (P2 plan §15).
 
 - **Administrative Affairs («الشئون الإدارية»), purchase requests: drafts — the record, the
   register and the editor's API.** This is P2.2 of Phase 2

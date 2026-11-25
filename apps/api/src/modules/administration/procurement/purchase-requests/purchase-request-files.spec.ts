@@ -187,13 +187,22 @@ describe('the authorizer: a write (P2 plan §4.3)', () => {
     expect(mocks.findById).not.toHaveBeenCalled();
   });
 
-  it('a key that finds the request but covers no Unit (`own`) writes nothing; one that covers does', async () => {
+  it('the first key whose scope finds the request is the act’s: one that covers no Unit (`own`) writes nothing, beside a key that would too', async () => {
     expect(await ask(ctx({ [CREATE]: 'own' }), 'write')).toBe(false);
     mocks.findById.mockClear();
-    expect(await ask(ctx({ [CREATE]: 'own', [EDIT]: 'department' }), 'write')).toBe(true);
-    expect(scopesAsked(), 'each key under its own scope, at most two').toEqual([
+    expect(await ask(ctx({ [CREATE]: 'own', [EDIT]: 'department' }), 'write')).toBe(false);
+    expect(scopesAsked(), 'the first finder wins (P2 plan §4.2): `.edit` is not asked').toEqual([
       'own',
+    ]);
+  });
+
+  it('a key whose scope misses passes to the next: `.edit` finds and covers what `.create` does not reach', async () => {
+    mocks.findById.mockResolvedValueOnce(null).mockResolvedValueOnce(request());
+    const moved = ctx({ [CREATE]: 'department', [EDIT]: 'branch' }, REQUESTER, OTHER_COPY);
+    expect(await ask(moved, 'write')).toBe(true);
+    expect(scopesAsked(), 'each key under its own scope, at most two').toEqual([
       'department',
+      'branch',
     ]);
   });
 
@@ -258,8 +267,12 @@ describe('linking a file (P2 plan §4.2, §4.3)', () => {
     nothingStored();
   });
 
-  it('a key that finds it but covers no Unit is 403', async () => {
+  it('a key that finds it but covers no Unit is 403, the other key not asked', async () => {
     await expect(link(ctx({ [CREATE]: 'own' }))).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(link(ctx({ [CREATE]: 'own', [EDIT]: 'department' }))).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+    expect(scopesAsked()).toEqual(['own', 'own']);
     nothingStored();
   });
 
@@ -446,7 +459,7 @@ describe('reading a file’s bytes (design §11.5)', () => {
   beforeEach(() => {
     mocks.findById.mockResolvedValue(request({ attachments: [entry(FILE, KEPT)] }));
     mocks.readBuffer.mockResolvedValue({
-      doc: { mime: 'application/pdf' },
+      doc: { mime: 'application/pdf', status: 'active' },
       buffer: Buffer.from('%PDF'),
     });
   });
@@ -460,6 +473,14 @@ describe('reading a file’s bytes (design §11.5)', () => {
       fileName: 'x.pdf',
     });
     expect(mocks.readBuffer).toHaveBeenCalledWith(approver, FILE);
+  });
+
+  it('a file archived since its link is 404, as the record names it unavailable', async () => {
+    mocks.readBuffer.mockResolvedValue({
+      doc: { mime: 'application/pdf', status: 'archived' },
+      buffer: Buffer.from('%PDF'),
+    });
+    await expect(files.read(focal(), REQUEST, String(KEPT))).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it('a file another request lists, or none, is 404 — and no file is read', async () => {

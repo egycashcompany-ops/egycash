@@ -588,7 +588,13 @@ export interface AdministrationPurchaseRequestDetailDto extends AdministrationPu
   businessDate: string | null;
   requester: AdministrationPurchaseRequestRequesterDto;
   lines: AdministrationPurchaseRequestLineDto[];
-  /** Linked only while the request is a draft, by its requester (phase-2 §4.3). */
+  /**
+   * Linked and removed only while the request is a draft, by its requester, through the act's key —
+   * the first of `.create` and `.edit` whose own scope finds the request — when that key covers its
+   * Unit (phase-2 §4.2, §4.3). Where the write keys the reader holds share one scope and reach, as
+   * the department requester's bundle grants them, the record offers these writes exactly when
+   * `availableActions` holds `edit` or `submit` enabled; never on status and requester alone.
+   */
   attachments: AdministrationPurchaseRequestAttachmentDto[];
   approvalRounds: AdministrationPurchaseRequestRoundDto[];
   submittedBy: string | null;

@@ -29,8 +29,26 @@
 //     with a colour from the contract's palette, and archived (`isActive: false`) and restored from
 //     the row in one click: a type is never deleted, because a saved row may still carry it.
 //
+// ROUND 34 B — «وعاوز أغير اللي اوت بتاع بيانات المراجعة يكون بروفيشنال أكتر من كده، وعاوز الداتا اللي
+// تبقى كبيرة زي الفروع والمناطق والبنوك وهكذا يكون في سيرش اقدر اسيرش بيه». The screen in the
+// boards' look (the day board's framed table and dark filter bar, Fleet's figures):
+//   · the kinds are a row of cards (`CatalogKindCards`) — each one's icon, name and how many rows it
+//     holds, still a real tab list in the address bar's `?kind=`. The counts: banks from the bank
+//     list the screen already reads whole; branches and areas from a one-row read (`COUNT_READ` —
+//     its `totalItems`); currencies and «أنواع التشغيل» from the whole lists their tabs show;
+//   · banks, branches and areas get a toolbar (`CatalogToolbar`): the search, «الحالة», on the
+//     branches «البنك», the reset and «n نتيجة». The search is the SERVER's (`search`, folded there),
+//     sent ~300ms after the last key, kept in `?q=`; the rules are `lib/catalog-filters.ts`;
+//   · the table sits in a frame with its pager in the frame's foot (25 / 50 / 100 a page), its head
+//     held while the rows scroll on a computer, and an empty answer says what was searched for and
+//     offers the way back;
+//   · currencies and «أنواع التشغيل» keep their drag, their arrows and their whole list on one page,
+//     and take no search: a filter over a dragged list would hide the rows a drop lands between.
+//   · without `operationsCatalog.manage` (the route asks for it; the screen does not lean on that)
+//     there is no add, no import, no pen, no grip and no archive.
+//
 // URL-synced tabs, exactly like the fleet catalogs screen, so an operator can bookmark a kind.
-import { useMemo, useState, type HTMLAttributes } from 'react';
+import { useMemo, useState, type HTMLAttributes, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
@@ -44,27 +62,47 @@ import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { Pagination } from '../../../shared/ui/Pagination';
-import { Button } from '../../../shared/ui/Button';
-import { StatusBadge } from '../../../shared/ui/Badge';
+import { NumberedPager } from '../../../shared/ui/NumberedPager';
+import { Badge } from '../../../shared/ui/Badge';
+import { EmptyState } from '../../../shared/ui/states/EmptyState';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import {
   ChevronIcon,
-  EditIcon,
   GripIcon,
   PauseIcon,
   PinIcon,
   PlayIcon,
-  PlusIcon,
+  SearchIcon,
   UploadIcon,
 } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
+import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
 import { useAppSelector } from '../../../store';
+import { BoardIcon, NUM, PATH } from '../../fleet/components/FuelCardBoard';
 import { ACTION_GROUP, actionTone } from '../../fleet/components/row-actions-look';
 import { SquarePenIcon } from '../../fleet/components/row-action-icons';
 import { mapsUrl } from '../lib/maps-link';
 import { inPendingOrder, moveInOrder, stepInOrder } from '../lib/catalog-order';
 import {
+  CATALOG_DEFAULT_PAGE_SIZE,
+  CATALOG_PAGE_SIZES,
+  catalogListQuery,
+  foldCatalogSearch,
+  hasCatalogFilter,
+  isSearchableKind,
+  matchParts,
+  readCatalogFilters,
+  withCatalogFilters,
+  withCatalogKind,
+  withCatalogSearch,
+  withKnownBank,
+  withoutCatalogFilters,
+} from '../lib/catalog-filters';
+import {
+  useCatalogAreasPage,
+  useCatalogBanksPage,
+  useCatalogBranchesPage,
   useOperationsAreas,
   useOperationsBankBranches,
   useOperationsBanks,
@@ -83,9 +121,10 @@ import {
 } from '../components/CatalogDialogs';
 import { ShiftTypeTag } from '../components/shift-type-look';
 import { BranchImportPanel } from '../components/branch-import/BranchImportPanel';
+import { CATALOG_PANEL_ID, CatalogKindCards, catalogTabId } from '../components/CatalogKindCards';
+import { CatalogToolbar } from '../components/CatalogToolbar';
+import { ADD_BUTTON, BOARD_TABLE_LOOK, BRAND_BUTTON } from '../components/ShipmentsBoard';
 import { SHIFT_TYPE_LIST } from '../lib/crew-plan';
-
-const DEFAULT_PAGE_SIZE = 25;
 
 export const OPERATIONS_CATALOG_KINDS = [
   'banks',
@@ -108,6 +147,82 @@ export const resolveCatalogKind = (raw: string | null): OperationsCatalogKind =>
  * so a drag saved here re-orders a board's money lines from the same cache entry.
  */
 export const CURRENCY_TAB_PARAMS = { page: 1, pageSize: MAX_PAGE_SIZE } as const;
+
+/**
+ * The read a kind card counts by — one row, for its `totalItems` (Round 34 B). The branches and the
+ * areas only: the banks' card reads the bank list the screen holds whole anyway, and the dragged
+ * lists' cards read the whole lists their tabs show.
+ */
+export const COUNT_READ = { page: 1, pageSize: 1 } as const;
+
+/** The bank list the branch rows name their bank from — whole, by code. */
+export const BANK_OPTIONS = {
+  page: 1,
+  pageSize: MAX_PAGE_SIZE,
+  sortBy: 'code',
+  sortDir: 'asc',
+} as const;
+
+/**
+ * The frame the table and its pager sit in — the boards' surface. The table inside it is the
+ * boards' table (`BOARD_TABLE_LOOK`), its own wrapper drawing no second frame: `embedded` drops its
+ * border, and the doubled `&&` outranks the look's rounded corners, which on a scrolling wrapper
+ * would clip the last row's corners above the pager.
+ */
+const FRAME =
+  'flex min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#111827] lg:min-h-[14rem] lg:flex-1';
+const CATALOG_TABLE = cn(
+  BOARD_TABLE_LOOK,
+  BOARD_TABLE_FILL,
+  '[&&>div]:!rounded-none',
+  // A comfortable row: the rows are read one by one, not scanned fourteen columns wide.
+  '[&_tbody_td]:!py-3 min-[1750px]:[&_tbody_td]:!py-3.5',
+  // The names in Cairo. The boards' cells set their words in the figures' monospace stack, whose
+  // wide space pulls «فرع المعادي - شارع 9» apart word by word — right for a van code, wrong for a
+  // list read by its names. The codes and numbers keep the figure face (`Figure`).
+  "[&&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif]",
+);
+
+/** What the search found, marked in the cell — the folded match (`matchParts`). */
+const Found = ({ text, term }: { text: string; term: string }): JSX.Element => (
+  <>
+    {matchParts(text, term).map((part, i) =>
+      part.hit ? (
+        <mark
+          key={i}
+          data-catalog-match="true"
+          className="rounded-sm bg-amber-300/50 text-inherit dark:bg-amber-400/30 dark:text-amber-50"
+        >
+          {part.text}
+        </mark>
+      ) : (
+        <span key={i}>{part.text}</span>
+      ),
+    )}
+  </>
+);
+
+/** A code or a number, in the boards' figures: Latin digits, left to right inside Arabic. */
+const Figure = ({ children }: { children: ReactNode }): JSX.Element => (
+  <bdi dir="ltr" className={NUM}>
+    {children}
+  </bdi>
+);
+
+/** The boards' status badge: the small one, its dot, «مُفعَّل» green or «غير مُفعَّل» grey. */
+const ActiveBadge = ({ active }: { active: boolean }): JSX.Element => {
+  const t = useT();
+  return (
+    <span data-catalog-status={active ? 'active' : 'inactive'}>
+      <Badge tone={active ? 'success' : 'neutral'} size="sm">
+        <span
+          className={cn('h-1.5 w-1.5 rounded-full', active ? 'bg-emerald-500' : 'bg-slate-400')}
+        />
+        {t(active ? 'operations.common.active' : 'operations.common.inactive')}
+      </Badge>
+    </span>
+  );
+};
 
 /**
  * A catalog DRAGGED INTO ORDER — Fleet's catalogs page, step for step: the currencies (Round 8) and
@@ -184,42 +299,52 @@ export const CatalogsPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state) => state.locale.locale);
+  const dir = useAppSelector((state) => state.locale.dir);
   const [sp, setSp] = useSearchParams();
 
   const kind = resolveCatalogKind(sp.get('kind'));
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
-  const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
-  const paramsKey = sp.toString();
+  const pageSize =
+    Number(sp.get('size') ?? String(CATALOG_DEFAULT_PAGE_SIZE)) || CATALOG_DEFAULT_PAGE_SIZE;
+  // Branch rows name their bank, the branches' bank filter lists them, and the banks' card counts
+  // them — so the bank list is read whole on every kind.
+  const bankOptions = useOperationsBanks(BANK_OPTIONS);
+  // The address bar's narrowing, read as the server would take it: a `bank` that is no id, or
+  // names no bank on the list, is no filter (Round 34 critic).
+  const filters = withKnownBank(
+    readCatalogFilters(sp),
+    bankOptions.data?.items.map((bank) => bank.id),
+  );
+  const searchable = isSearchableKind(kind);
+  const filtered = hasCatalogFilter(kind, filters);
+  // The search the rows mark — only on a kind that takes one.
+  const term = searchable ? filters.q : '';
+  const mayManage = can('operationsCatalog.manage');
 
-  const patchParams = (updates: Record<string, string | null>, resetPage = true): void => {
-    const next = new URLSearchParams(sp);
-    for (const [key, val] of Object.entries(updates)) {
-      if (val === null || val === '') next.delete(key);
-      else next.set(key, val);
-    }
-    if (resetPage && !('page' in updates)) next.delete('page');
-    setSp(next);
-  };
+  const params = useMemo(
+    () => catalogListQuery(kind, filters, page, pageSize),
+    [kind, filters.q, filters.status, filters.bank, page, pageSize],
+  );
 
-  const params = useMemo(() => ({ page, pageSize }), [paramsKey]);
-
-  // Only the active tab's query runs; the other two stay idle rather than pre-fetching a screen
-  // the operator may never open.
-  const banks = useOperationsBanks(params, kind === 'banks');
-  const branches = useOperationsBankBranches(params, kind === 'branches');
-  const currencies = useOperationsCurrencies(CURRENCY_TAB_PARAMS, kind === 'currencies');
-  const areas = useOperationsAreas(params, kind === 'areas');
+  // Only the active tab's list runs; the others stay idle rather than pre-fetching a screen the
+  // operator may never open. The last answer stays on screen while the next is asked.
+  const banks = useCatalogBanksPage(params, kind === 'banks');
+  const branches = useCatalogBranchesPage(params, kind === 'branches');
+  const areas = useCatalogAreasPage(params, kind === 'areas');
+  // The dragged lists are read whole — and on every kind, small as they are, for their cards' counts.
+  const currencies = useOperationsCurrencies(CURRENCY_TAB_PARAMS);
   // The board's own list (`SHIFT_TYPE_LIST` — whole, archived included, the catalog's order): one
   // cache entry, so a type dragged or recoloured here is what the board shows next.
-  const shiftTypes = useOperationsShiftTypes(SHIFT_TYPE_LIST, kind === 'shiftTypes');
+  const shiftTypes = useOperationsShiftTypes(SHIFT_TYPE_LIST);
 
-  // Branch rows name their bank, so the bank list is needed on the branches tab too.
-  const bankOptions = useOperationsBanks({ page: 1, pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
-  // ...and the branch FORM suggests areas, so that list is needed on the branches tab as well.
+  // The branch FORM suggests areas, so that list is needed on the branches tab as well.
   const areaOptions = useOperationsAreas(
     { page: 1, pageSize: MAX_PAGE_SIZE, sortBy: 'name', sortDir: 'asc' },
     kind === 'branches',
   );
+  // The cards' counts for the two lists too big to read whole.
+  const branchCount = useOperationsBankBranches(COUNT_READ);
+  const areaCount = useOperationsAreas(COUNT_READ);
 
   const [editingBank, setEditingBank] = useState<OperationsBankDto | null>(null);
   const [editingBranch, setEditingBranch] = useState<OperationsBankBranchDto | null>(null);
@@ -231,8 +356,38 @@ export const CatalogsPage = (): JSX.Element => {
   // tab shows the sheet import in place of its list while this is on.
   const [importing, setImporting] = useState(false);
 
+  // ── The address bar: the kind, the search and the filters (lib/catalog-filters.ts) ────────────
+  const selectKind = (next: OperationsCatalogKind): void => {
+    setImporting(false);
+    setSp((prev) => withCatalogKind(prev, next));
+  };
+  // Typing replaces the entry rather than adding one per pause: Back leaves the screen's search,
+  // it does not spell it backwards. The same question folded — a space added, ✕ on a text never
+  // sent — writes nothing, so the page the reader is on stays (`withCatalogSearch`).
+  const search = (text: string): void => {
+    const next = withCatalogSearch(sp, text);
+    if (next !== null) setSp(next, { replace: true });
+  };
+  const narrow = (updates: { status?: string; bank?: string }): void =>
+    setSp((prev) => withCatalogFilters(prev, updates));
+  const reset = (): void => setSp((prev) => withoutCatalogFilters(prev));
+  const goToPage = (next: number): void =>
+    setSp((prev) => {
+      const out = new URLSearchParams(prev);
+      if (next <= 1) out.delete('page');
+      else out.set('page', String(next));
+      return out;
+    });
+  const setPageSize = (size: number): void =>
+    setSp((prev) => {
+      const out = new URLSearchParams(prev);
+      out.set('size', String(size));
+      out.delete('page');
+      return out;
+    });
+
   // ── The drag orders — Fleet's catalogs page, step for step (`useDragOrder`) ────────────────────
-  const mayOrder = can('operationsCatalog.manage');
+  const mayOrder = mayManage;
   const currencyOrder = useDragOrder(
     currencies.data?.items ?? [],
     useOrderOperationsCurrencies(),
@@ -270,44 +425,87 @@ export const CatalogsPage = (): JSX.Element => {
   const bankName = (bankId: string): string =>
     bankOptions.data?.items.find((bank) => bank.id === bankId)?.opsName ?? '—';
 
+  /** A row's pen, in the boards' action box — only for whoever may change the catalog. */
+  const editColumn = <T,>(mark: string, onEdit: (row: T) => void): Column<T>[] =>
+    mayManage
+      ? [
+          {
+            key: 'actions',
+            header: '',
+            align: 'end',
+            render: (row: T) => (
+              <div className={ACTION_GROUP} {...{ [mark]: 'true' }}>
+                <button
+                  type="button"
+                  className={actionTone('edit')}
+                  aria-label={t('common.edit')}
+                  title={t('common.edit')}
+                  onClick={() => onEdit(row)}
+                >
+                  <SquarePenIcon className="h-4 w-4" />
+                </button>
+              </div>
+            ),
+          },
+        ]
+      : [];
+
   const bankColumns: Column<OperationsBankDto>[] = [
-    { key: 'code', header: t('operations.catalogs.bank.code'), render: (row) => row.code },
-    { key: 'opsName', header: t('operations.catalogs.bank.opsName'), render: (row) => row.opsName },
-    { key: 'nameAr', header: t('operations.catalogs.bank.nameAr'), render: (row) => row.name.ar },
+    {
+      key: 'code',
+      header: t('operations.catalogs.bank.code'),
+      render: (row) => <Figure>{row.code}</Figure>,
+    },
+    {
+      key: 'opsName',
+      header: t('operations.catalogs.bank.opsName'),
+      render: (row) => <Found text={row.opsName} term={term} />,
+    },
+    {
+      key: 'nameAr',
+      header: t('operations.catalogs.bank.nameAr'),
+      render: (row) => <Found text={row.name.ar} term={term} />,
+    },
+    {
+      key: 'nameEn',
+      header: t('operations.catalogs.bank.nameEn'),
+      render: (row) =>
+        row.name.en.trim() === '' ? (
+          '—'
+        ) : (
+          <bdi dir="ltr">
+            <Found text={row.name.en} term={term} />
+          </bdi>
+        ),
+    },
     {
       key: 'sortOrder',
       header: t('operations.catalogs.bank.sortOrder'),
-      render: (row) => row.sortOrder ?? '—',
+      render: (row) => (row.sortOrder === null ? '—' : <Figure>{row.sortOrder}</Figure>),
     },
     {
       key: 'status',
       header: t('operations.common.status'),
-      render: (row) => (
-        <StatusBadge
-          tone={row.isActive ? 'success' : 'neutral'}
-          label={t(row.isActive ? 'operations.common.active' : 'operations.common.inactive')}
-        />
-      ),
+      render: (row) => <ActiveBadge active={row.isActive} />,
     },
-    {
-      key: 'actions',
-      header: '',
-      render: (row) => (
-        <button
-          type="button"
-          aria-label={t('common.edit')}
-          className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
-          onClick={() => setEditingBank(row)}
-        >
-          <EditIcon className="h-4 w-4" />
-        </button>
-      ),
-    },
+    ...editColumn<OperationsBankDto>('data-bank-actions', setEditingBank),
   ];
 
   const branchColumns: Column<OperationsBankBranchDto>[] = [
-    { key: 'code', header: t('operations.catalogs.branch.code'), render: (row) => row.code },
-    { key: 'name', header: t('operations.catalogs.branch.name'), render: (row) => row.name },
+    {
+      key: 'code',
+      header: t('operations.catalogs.branch.code'),
+      render: (row) => (
+        <Figure>
+          <Found text={row.code} term={term} />
+        </Figure>
+      ),
+    },
+    {
+      key: 'name',
+      header: t('operations.catalogs.branch.name'),
+      render: (row) => <Found text={row.name} term={term} />,
+    },
     {
       key: 'bank',
       header: t('operations.catalogs.branch.bank'),
@@ -316,7 +514,8 @@ export const CatalogsPage = (): JSX.Element => {
     {
       key: 'opsArea',
       header: t('operations.catalogs.branch.opsArea'),
-      render: (row) => row.opsAreaName ?? '—',
+      render: (row) =>
+        row.opsAreaName === null ? '—' : <Found text={row.opsAreaName} term={term} />,
     },
     {
       key: 'financeArea',
@@ -329,6 +528,7 @@ export const CatalogsPage = (): JSX.Element => {
       // somebody can work through rather than a field they have to open each branch to discover.
       key: 'location',
       header: t('operations.catalogs.branch.location'),
+      align: 'center',
       render: (row) =>
         row.location?.coordinates == null ? (
           <span className="text-slate-400">—</span>
@@ -338,8 +538,10 @@ export const CatalogsPage = (): JSX.Element => {
             target="_blank"
             rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 text-brand-600 dark:text-brand-400"
+            data-branch-maps={row.id}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-brand-600 transition-colors hover:bg-brand-500/10 dark:text-brand-300"
             title={t('operations.catalogs.branch.maps.open')}
+            aria-label={t('operations.catalogs.branch.maps.open')}
           >
             <PinIcon className="h-4 w-4" />
           </a>
@@ -348,27 +550,9 @@ export const CatalogsPage = (): JSX.Element => {
     {
       key: 'status',
       header: t('operations.common.status'),
-      render: (row) => (
-        <StatusBadge
-          tone={row.isActive ? 'success' : 'neutral'}
-          label={t(row.isActive ? 'operations.common.active' : 'operations.common.inactive')}
-        />
-      ),
+      render: (row) => <ActiveBadge active={row.isActive} />,
     },
-    {
-      key: 'actions',
-      header: '',
-      render: (row) => (
-        <button
-          type="button"
-          aria-label={t('common.edit')}
-          className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
-          onClick={() => setEditingBranch(row)}
-        >
-          <EditIcon className="h-4 w-4" />
-        </button>
-      ),
-    },
+    ...editColumn<OperationsBankBranchDto>('data-branch-actions', setEditingBranch),
   ];
 
   const currencyColumns: Column<OperationsCurrencyDto>[] = [
@@ -389,7 +573,11 @@ export const CatalogsPage = (): JSX.Element => {
           } satisfies Column<OperationsCurrencyDto>,
         ]
       : []),
-    { key: 'code', header: t('operations.catalogs.currency.code'), render: (row) => row.code },
+    {
+      key: 'code',
+      header: t('operations.catalogs.currency.code'),
+      render: (row) => <Figure>{row.code}</Figure>,
+    },
     { key: 'name', header: t('operations.catalogs.currency.name'), render: (row) => row.name },
     {
       key: 'aliases',
@@ -399,31 +587,29 @@ export const CatalogsPage = (): JSX.Element => {
     {
       key: 'status',
       header: t('operations.common.status'),
-      render: (row) => (
-        <StatusBadge
-          tone={row.isActive ? 'success' : 'neutral'}
-          label={t(row.isActive ? 'operations.common.active' : 'operations.common.inactive')}
-        />
-      ),
+      render: (row) => <ActiveBadge active={row.isActive} />,
     },
     {
       key: 'actions',
       header: '',
+      align: 'end',
       render: (row) => {
         const at = currencyIds.indexOf(row.id);
         return (
           // Fleet's row: the pen first, then the two arrows that move the row — how a keyboard
           // moves it — in the owner's box (`row-actions-look`).
           <div className={ACTION_GROUP} data-currency-actions={row.id}>
-            <button
-              type="button"
-              className={actionTone('edit')}
-              aria-label={t('common.edit')}
-              title={t('common.edit')}
-              onClick={() => setEditingCurrency(row)}
-            >
-              <SquarePenIcon className="h-4 w-4" />
-            </button>
+            {mayManage && (
+              <button
+                type="button"
+                className={actionTone('edit')}
+                aria-label={t('common.edit')}
+                title={t('common.edit')}
+                onClick={() => setEditingCurrency(row)}
+              >
+                <SquarePenIcon className="h-4 w-4" />
+              </button>
+            )}
             {mayOrder && (
               <>
                 <button
@@ -455,37 +641,35 @@ export const CatalogsPage = (): JSX.Element => {
   ];
 
   const areaColumns: Column<OperationsAreaDto>[] = [
-    { key: 'name', header: t('operations.catalogs.area.name'), render: (row) => row.name },
-    { key: 'nameEn', header: t('operations.catalogs.area.nameEn'), render: (row) => row.nameEn ?? '—' },
+    {
+      key: 'name',
+      header: t('operations.catalogs.area.name'),
+      render: (row) => <Found text={row.name} term={term} />,
+    },
+    {
+      key: 'nameEn',
+      header: t('operations.catalogs.area.nameEn'),
+      render: (row) =>
+        row.nameEn === null ? (
+          '—'
+        ) : (
+          <bdi dir="ltr">
+            <Found text={row.nameEn} term={term} />
+          </bdi>
+        ),
+    },
     {
       key: 'governorate',
       header: t('operations.catalogs.area.governorate'),
-      render: (row) => row.governorate ?? '—',
+      render: (row) =>
+        row.governorate === null ? '—' : <Found text={row.governorate} term={term} />,
     },
     {
       key: 'status',
       header: t('operations.common.status'),
-      render: (row) => (
-        <StatusBadge
-          tone={row.isActive ? 'success' : 'neutral'}
-          label={t(row.isActive ? 'operations.common.active' : 'operations.common.inactive')}
-        />
-      ),
+      render: (row) => <ActiveBadge active={row.isActive} />,
     },
-    {
-      key: 'actions',
-      header: '',
-      render: (row) => (
-        <button
-          type="button"
-          aria-label={t('common.edit')}
-          className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
-          onClick={() => setEditingArea(row)}
-        >
-          <EditIcon className="h-4 w-4" />
-        </button>
-      ),
-    },
+    ...editColumn<OperationsAreaDto>('data-area-actions', setEditingArea),
   ];
 
   const shiftTypeColumns: Column<OperationsShiftTypeDto>[] = [
@@ -519,26 +703,30 @@ export const CatalogsPage = (): JSX.Element => {
     {
       key: 'nameEn',
       header: t('operations.catalogs.shiftType.nameEn'),
-      render: (row) => row.nameEn ?? '—',
+      render: (row) => (row.nameEn === null ? '—' : <bdi dir="ltr">{row.nameEn}</bdi>),
     },
     {
       key: 'colour',
       header: t('operations.catalogs.shiftType.colour'),
-      render: (row) => t(`operations.catalogs.shiftType.colours.${row.colour}`),
+      // Round 34 C — a type may have no colour: said in words, never a raw key.
+      render: (row) =>
+        row.colour === null ? (
+          <span data-shift-type-colour="none" className="text-slate-500 dark:text-slate-400">
+            {t('operations.catalogs.shiftType.noColour')}
+          </span>
+        ) : (
+          t(`operations.catalogs.shiftType.colours.${row.colour}`)
+        ),
     },
     {
       key: 'status',
       header: t('operations.common.status'),
-      render: (row) => (
-        <StatusBadge
-          tone={row.isActive ? 'success' : 'neutral'}
-          label={t(row.isActive ? 'operations.common.active' : 'operations.common.inactive')}
-        />
-      ),
+      render: (row) => <ActiveBadge active={row.isActive} />,
     },
     {
       key: 'actions',
       header: '',
+      align: 'end',
       render: (row) => {
         const at = shiftTypeIds.indexOf(row.id);
         const toggleLabel = t(
@@ -549,15 +737,17 @@ export const CatalogsPage = (): JSX.Element => {
         return (
           // The currencies' row: the pen first, then archive / restore, then the two arrows.
           <div className={ACTION_GROUP} data-shift-type-actions={row.id}>
-            <button
-              type="button"
-              className={actionTone('edit')}
-              aria-label={t('common.edit')}
-              title={t('common.edit')}
-              onClick={() => setEditingShiftType(row)}
-            >
-              <SquarePenIcon className="h-4 w-4" />
-            </button>
+            {mayManage && (
+              <button
+                type="button"
+                className={actionTone('edit')}
+                aria-label={t('common.edit')}
+                title={t('common.edit')}
+                onClick={() => setEditingShiftType(row)}
+              >
+                <SquarePenIcon className="h-4 w-4" />
+              </button>
+            )}
             {mayOrder && (
               <>
                 <button
@@ -603,16 +793,73 @@ export const CatalogsPage = (): JSX.Element => {
     },
   ];
 
-  const activeMeta =
-    kind === 'banks'
-      ? banks.data?.meta
-      : kind === 'branches'
-        ? branches.data?.meta
-        : kind === 'currencies' || kind === 'shiftTypes'
-          ? // The whole list on one page: nothing to page through, and a pager would suggest a
-            // second page the drag could not reach.
-            undefined
-          : areas.data?.meta;
+  /** The searchable kind's list on screen, or null on a dragged one. */
+  const paged =
+    kind === 'banks' ? banks : kind === 'branches' ? branches : kind === 'areas' ? areas : null;
+  // The whole dragged lists on one page: nothing to page through, and a pager would suggest a
+  // second page the drag could not reach.
+  const activeMeta = paged?.data?.meta;
+  // A new answer on its way while the last one stays on screen (`placeholderData`).
+  const refreshing = paged !== null && paged.isPlaceholderData && paged.isFetching;
+  // The read failed: the table says so with «إعادة المحاولة», and the toolbar's count and the pager
+  // say nothing beside it (Round 34 critic — the count read «جارٍ التحميل…» for good).
+  const failed = paged !== null && paged.isError;
+
+  const counts: Record<OperationsCatalogKind, number | null> = {
+    banks: bankOptions.data?.meta.totalItems ?? null,
+    branches: branchCount.data?.meta.totalItems ?? null,
+    currencies: currencies.data?.meta.totalItems ?? null,
+    areas: areaCount.data?.meta.totalItems ?? null,
+    shiftTypes: shiftTypes.data?.meta.totalItems ?? null,
+  };
+
+  /**
+   * What an empty answer says. A list with nothing narrowing it is empty for real («لا توجد فروع
+   * بعد»); a search or a filter that found nothing says what was asked and offers the way back —
+   * «لا توجد نتائج لـ «…»» with «مسح البحث» — rather than reading as a catalog with nothing in it.
+   */
+  const emptyFor = (plainKey: string): ReactNode => {
+    if (!filtered) return <EmptyState title={t(plainKey)} />;
+    const term = foldCatalogSearch(filters.q) === '' ? '' : filters.q.trim();
+    const narrowed = filters.status !== '' || (kind === 'branches' && filters.bank !== '');
+    return (
+      <div data-catalog-empty={term !== '' ? 'search' : 'filters'}>
+        <EmptyState
+          icon={<SearchIcon className="h-10 w-10" />}
+          title={
+            term !== ''
+              ? t('operations.catalogs.empty.search', { term })
+              : t('operations.catalogs.empty.filters')
+          }
+          description={t('operations.catalogs.empty.searchHint')}
+          action={
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {term !== '' && (
+                <button
+                  type="button"
+                  className={BRAND_BUTTON}
+                  data-catalog-empty-clear="search"
+                  onClick={() => search('')}
+                >
+                  {t('operations.catalogs.empty.clearSearch')}
+                </button>
+              )}
+              {narrowed && (
+                <button
+                  type="button"
+                  className={BRAND_BUTTON}
+                  data-catalog-empty-clear="all"
+                  onClick={reset}
+                >
+                  {t('operations.catalogs.empty.clearFilters')}
+                </button>
+              )}
+            </div>
+          }
+        />
+      </div>
+    );
+  };
 
   /** The `add` label follows the tab. One map, so a new kind cannot be forgotten here. */
   const addLabelKey: Record<typeof kind, string> = {
@@ -623,142 +870,215 @@ export const CatalogsPage = (): JSX.Element => {
     shiftTypes: 'operations.catalogs.shiftType.add',
   };
 
+  /** The dragged lists' note, on the toolbar's line — for whoever may drag. */
+  const orderHint =
+    kind === 'currencies' ? (
+      <p
+        className="text-xs font-semibold text-slate-500 dark:text-slate-400"
+        data-currency-order-hint
+      >
+        {t('operations.catalogs.currency.orderHint')}
+      </p>
+    ) : (
+      <p
+        className="text-xs font-semibold text-slate-500 dark:text-slate-400"
+        data-shift-type-order-hint
+      >
+        {t('operations.catalogs.shiftType.orderHint')}
+      </p>
+    );
+
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('operations.catalogs.title')}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {kind === 'branches' && !importing && can('operationsCatalog.manage') && (
-              <Button
-                variant="secondary"
-                onClick={() => setImporting(true)}
-                data-branch-import-open="true"
-              >
-                <UploadIcon className="h-4 w-4" />
-                {t('operations.catalogs.branchImport.open')}
-              </Button>
-            )}
-            <Button onClick={() => setCreating(true)}>
-              <PlusIcon className="h-4 w-4" />
-              {t(addLabelKey[kind])}
-            </Button>
-          </div>
-        }
-      />
-
-      <div className="mb-4 flex gap-1 border-b border-slate-200 dark:border-slate-800">
-        {OPERATIONS_CATALOG_KINDS.map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => {
-              setImporting(false);
-              patchParams({ kind: option });
-            }}
-            className={
-              option === kind
-                ? 'border-b-2 border-brand-500 px-4 py-2 text-sm font-medium text-brand-600 dark:text-brand-400'
-                : 'px-4 py-2 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400'
+    <PageContainer fullHeight>
+      <div className={BOARD_FRAME}>
+        {/* The header's own bottom margin given up: the frame's gap already parts it from the cards. */}
+        <div className="shrink-0 [&>div]:!mb-0">
+          <PageHeader
+            title={t('operations.catalogs.title')}
+            actions={
+              mayManage ? (
+                // The boards' buttons, at the title's end on every kind: «استيراد فروع من شيت» beside
+                // «إضافة فرع» (Round 29), the add of the kind on screen.
+                <div className="flex flex-wrap items-center gap-2" data-catalog-actions="true">
+                  {kind === 'branches' && !importing && (
+                    <button
+                      type="button"
+                      className={BRAND_BUTTON}
+                      onClick={() => setImporting(true)}
+                      data-branch-import-open="true"
+                    >
+                      <UploadIcon className="h-3.5 w-3.5" />
+                      {t('operations.catalogs.branchImport.open')}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={ADD_BUTTON}
+                    onClick={() => setCreating(true)}
+                    data-catalog-add={kind}
+                  >
+                    <BoardIcon d={[...PATH.plus]} className="h-3.5 w-3.5" width={2.5} />
+                    {t(addLabelKey[kind])}
+                  </button>
+                </div>
+              ) : undefined
             }
-            aria-current={option === kind ? 'page' : undefined}
-          >
-            {t(`operations.catalogs.tab.${option}`)}
-          </button>
-        ))}
+          />
+        </div>
+
+        <CatalogKindCards
+          kinds={OPERATIONS_CATALOG_KINDS}
+          current={kind}
+          counts={counts}
+          dir={dir}
+          onSelect={selectKind}
+        />
+
+        <div
+          role="tabpanel"
+          id={CATALOG_PANEL_ID}
+          aria-labelledby={catalogTabId(kind)}
+          data-catalog-panel={kind}
+          className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1"
+        >
+          {kind === 'branches' && importing ? (
+            <BranchImportPanel
+              banks={(bankOptions.data?.items ?? []).filter((bank) => bank.isActive)}
+              onClose={() => setImporting(false)}
+            />
+          ) : (
+            <>
+              {searchable ? (
+                <CatalogToolbar
+                  kind={kind}
+                  filters={filters}
+                  banks={bankOptions.data?.items ?? []}
+                  results={activeMeta?.totalItems ?? null}
+                  failed={failed}
+                  refreshing={refreshing}
+                  onSearch={search}
+                  onFilters={narrow}
+                  onReset={reset}
+                  active={filtered}
+                />
+              ) : (
+                mayOrder && (
+                  <div
+                    className="flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-[#111827]"
+                    data-catalog-order-bar={kind}
+                  >
+                    <GripIcon className="h-4 w-4 shrink-0 text-slate-400" />
+                    {orderHint}
+                  </div>
+                )
+              )}
+
+              <div className={FRAME} data-catalog-frame={kind}>
+                <div
+                  className={cn(CATALOG_TABLE, 'transition-opacity', refreshing && 'opacity-60')}
+                  aria-busy={refreshing || undefined}
+                >
+                  {kind === 'banks' && (
+                    <DataTable
+                      columns={bankColumns}
+                      rows={banks.data?.items ?? []}
+                      rowKey={(row) => row.id}
+                      loading={banks.isLoading}
+                      error={banks.error}
+                      onRetry={() => void banks.refetch()}
+                      empty={emptyFor('operations.catalogs.bank.empty')}
+                      rowClassName={(row) => (row.isActive ? undefined : 'opacity-60')}
+                      embedded
+                      stickyHead
+                      minColumnWidth={6}
+                    />
+                  )}
+                  {kind === 'branches' && (
+                    <DataTable
+                      columns={branchColumns}
+                      rows={branches.data?.items ?? []}
+                      rowKey={(row) => row.id}
+                      loading={branches.isLoading}
+                      error={branches.error}
+                      onRetry={() => void branches.refetch()}
+                      empty={emptyFor('operations.catalogs.branch.empty')}
+                      rowClassName={(row) => (row.isActive ? undefined : 'opacity-60')}
+                      embedded
+                      stickyHead
+                      minColumnWidth={6}
+                    />
+                  )}
+                  {kind === 'currencies' && (
+                    <DataTable
+                      columns={currencyColumns}
+                      rows={currencyRows}
+                      rowKey={(row) => row.id}
+                      loading={currencies.isLoading}
+                      error={currencies.error}
+                      onRetry={() => void currencies.refetch()}
+                      empty={<EmptyState title={t('operations.catalogs.currency.empty')} />}
+                      rowClassName={currencyOrder.rowClassName}
+                      rowProps={(row) => (mayOrder ? currencyOrder.rowProps(row) : undefined)}
+                      embedded
+                      stickyHead
+                      minColumnWidth={6}
+                    />
+                  )}
+                  {kind === 'areas' && (
+                    <DataTable
+                      columns={areaColumns}
+                      rows={areas.data?.items ?? []}
+                      rowKey={(row) => row.id}
+                      loading={areas.isLoading}
+                      error={areas.error}
+                      onRetry={() => void areas.refetch()}
+                      empty={emptyFor('operations.catalogs.area.empty')}
+                      rowClassName={(row) => (row.isActive ? undefined : 'opacity-60')}
+                      embedded
+                      stickyHead
+                      minColumnWidth={6}
+                    />
+                  )}
+                  {kind === 'shiftTypes' && (
+                    <DataTable
+                      columns={shiftTypeColumns}
+                      rows={shiftTypeOrder.rows}
+                      rowKey={(row) => row.id}
+                      loading={shiftTypes.isLoading}
+                      error={shiftTypes.error}
+                      onRetry={() => void shiftTypes.refetch()}
+                      empty={<EmptyState title={t('operations.catalogs.shiftType.empty')} />}
+                      rowClassName={(row) =>
+                        shiftTypeOrder.rowClassName(row) ??
+                        (row.isActive ? undefined : 'opacity-60')
+                      }
+                      rowProps={(row) => (mayOrder ? shiftTypeOrder.rowProps(row) : undefined)}
+                      embedded
+                      stickyHead
+                      minColumnWidth={6}
+                    />
+                  )}
+                </div>
+                {!failed && activeMeta !== undefined && activeMeta.totalItems > 0 && (
+                  // The pager in the frame's foot — the numbered one the boards wear, with the
+                  // page size beside it.
+                  <div
+                    className="shrink-0 border-t border-slate-200 px-4 dark:border-slate-800 [&>div]:!py-2.5"
+                    data-catalog-pager="true"
+                  >
+                    <NumberedPager
+                      meta={activeMeta}
+                      pageSizeOptions={CATALOG_PAGE_SIZES}
+                      onPageChange={goToPage}
+                      onPageSizeChange={setPageSize}
+                    />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
-
-      {kind === 'banks' && (
-        <DataTable
-          columns={bankColumns}
-          rows={banks.data?.items ?? []}
-          rowKey={(row) => row.id}
-          loading={banks.isLoading}
-          error={banks.error}
-          onRetry={() => void banks.refetch()}
-          empty={t('operations.catalogs.bank.empty')}
-        />
-      )}
-      {kind === 'branches' && importing && (
-        <BranchImportPanel
-          banks={(bankOptions.data?.items ?? []).filter((bank) => bank.isActive)}
-          onClose={() => setImporting(false)}
-        />
-      )}
-      {kind === 'branches' && !importing && (
-        <DataTable
-          columns={branchColumns}
-          rows={branches.data?.items ?? []}
-          rowKey={(row) => row.id}
-          loading={branches.isLoading}
-          error={branches.error}
-          onRetry={() => void branches.refetch()}
-          empty={t('operations.catalogs.branch.empty')}
-        />
-      )}
-      {kind === 'currencies' && (
-        <>
-          {mayOrder && (
-            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400" data-currency-order-hint>
-              {t('operations.catalogs.currency.orderHint')}
-            </p>
-          )}
-          <DataTable
-            columns={currencyColumns}
-            rows={currencyRows}
-            rowKey={(row) => row.id}
-            loading={currencies.isLoading}
-            error={currencies.error}
-            onRetry={() => void currencies.refetch()}
-            empty={t('operations.catalogs.currency.empty')}
-            rowClassName={currencyOrder.rowClassName}
-            rowProps={(row) => (mayOrder ? currencyOrder.rowProps(row) : undefined)}
-          />
-        </>
-      )}
-
-      {kind === 'areas' && (
-        <DataTable
-          columns={areaColumns}
-          rows={areas.data?.items ?? []}
-          rowKey={(row) => row.id}
-          loading={areas.isLoading}
-          error={areas.error}
-          onRetry={() => void areas.refetch()}
-          empty={t('operations.catalogs.area.empty')}
-        />
-      )}
-
-      {kind === 'shiftTypes' && (
-        <>
-          {mayOrder && (
-            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400" data-shift-type-order-hint>
-              {t('operations.catalogs.shiftType.orderHint')}
-            </p>
-          )}
-          <DataTable
-            columns={shiftTypeColumns}
-            rows={shiftTypeOrder.rows}
-            rowKey={(row) => row.id}
-            loading={shiftTypes.isLoading}
-            error={shiftTypes.error}
-            onRetry={() => void shiftTypes.refetch()}
-            empty={t('operations.catalogs.shiftType.empty')}
-            rowClassName={(row) =>
-              shiftTypeOrder.rowClassName(row) ?? (row.isActive ? undefined : 'opacity-60')
-            }
-            rowProps={(row) => (mayOrder ? shiftTypeOrder.rowProps(row) : undefined)}
-          />
-        </>
-      )}
-
-      {activeMeta !== undefined && !(kind === 'branches' && importing) && (
-        <Pagination
-          meta={activeMeta}
-          onPageChange={(next) => patchParams({ page: String(next) }, false)}
-          onPageSizeChange={(size) => patchParams({ size: String(size) })}
-        />
-      )}
 
       <BankDialog
         open={editingBank !== null || (creating && kind === 'banks')}

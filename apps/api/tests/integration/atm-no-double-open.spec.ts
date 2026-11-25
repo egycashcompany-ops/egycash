@@ -387,6 +387,60 @@ describe('after boot: no open-operation index on either log — one per mail tic
     },
   );
 
+  it('the mail accept and restore read a ticket on ix_maintenance_from_ticket — its rows, deleted ones too, not the branch', async () => {
+    const indexes = await AtmMaintenanceModel.collection.listIndexes().toArray();
+    const index = indexes.find((entry) => entry.name === 'ix_maintenance_from_ticket');
+    expect(index?.key).toEqual({ mailTicketId: 1, branchId: 1 });
+    expect(index?.partialFilterExpression).toEqual({ mailTicketId: { $type: 'objectId' } });
+    expect(index?.unique).toBeUndefined();
+
+    // A branch of its own with a log behind the ticket: on 2026-11-25 this read walked the
+    // branch's whole close-time index (~39,000 keys) for each ticket accepted or restored.
+    const branchId = new Types.ObjectId();
+    const ticketId = new Types.ObjectId();
+    const base = { branchId, machineCode: 'T-LOG', isDeleted: false, source: 'manual' };
+    const log = Array.from({ length: 300 }, (_, i) => ({
+      ...base,
+      mailTicketId: null,
+      openedAt: new Date(Date.UTC(2026, 10, 1, 8, i)),
+      closedAt: new Date(Date.UTC(2026, 10, 1, 9, i)),
+    }));
+    // Restored once (its maintenance soft-deleted), then accepted again: one deleted, one live.
+    const fromTicket = [true, false].map((isDeleted, i) => ({
+      ...base,
+      source: 'mail',
+      mailTicketId: ticketId,
+      isDeleted,
+      openedAt: new Date(Date.UTC(2026, 10, 2, 8, i)),
+      closedAt: null,
+    }));
+    const inserted = await AtmMaintenanceModel.collection.insertMany([...log, ...fromTicket]);
+    try {
+      // The repository's OWN filter, captured on its way to the model.
+      const find = vi.spyOn(AtmMaintenanceModel, 'find');
+      const rows = await atmMaintenanceRepository.findFromTicket(branchId, ticketId);
+      // `find` is overloaded; its last overload takes no argument, so the calls read as `[]`.
+      const [filter] = (find.mock.calls[0] ?? []) as unknown as [Record<string, unknown>?];
+      find.mockRestore();
+      if (filter === undefined) throw new Error('findFromTicket did not ask the model');
+      expect(rows.map((row) => row.isDeleted).sort()).toEqual([false, true]);
+
+      const plan = (await AtmMaintenanceModel.find(filter).explain(
+        'executionStats',
+      )) as unknown as {
+        queryPlanner: { winningPlan: unknown };
+        executionStats: { totalKeysExamined: number; nReturned: number };
+      };
+      expect(JSON.stringify(plan.queryPlanner.winningPlan)).toContain('ix_maintenance_from_ticket');
+      expect(plan.executionStats.nReturned).toBe(2);
+      expect(plan.executionStats.totalKeysExamined).toBeLessThanOrEqual(2);
+    } finally {
+      await AtmMaintenanceModel.collection.deleteMany({
+        _id: { $in: Object.values(inserted.insertedIds) },
+      });
+    }
+  });
+
   it('drops the retired indexes — the any-day form and BOTH per-day forms — and nothing else', async () => {
     // A database that ran the earlier forms carries them.
     const perCodeDay = {

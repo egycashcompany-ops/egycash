@@ -102,6 +102,15 @@ describe('a checked selection larger than one request', () => {
     expect(closed).toHaveLength(401);
   });
 
+  it('closes rows that all name their crew leader with no employee key at all (2026-11-25)', async () => {
+    await closeMaintenances(ids(201));
+    expect(sent.map((call) => call.body.ids.length)).toEqual([200, 1]);
+    for (const call of sent) {
+      expect(Object.keys(call.body)).toEqual(['ids']);
+      expect(() => CloseAtmMaintenancesSchema.parse(call.body)).not.toThrow();
+    }
+  });
+
   it('edits every checked row with the same change on every request', async () => {
     await bulkUpdateReplenishments({ ids: ids(250), leaderName: 'SYN LEADER' });
     await bulkUpdateMaintenances({ ids: ids(250), leaderName: 'SYN LEADER' });

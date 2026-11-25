@@ -1,4 +1,5 @@
 import { Types, type ClientSession, type FilterQuery, type PipelineStage } from 'mongoose';
+import { type DataScope } from '@ecms/contracts';
 import { BaseRepository } from '../../shared/base/base.repository';
 import { PermissionModel, type PermissionDoc } from './permission.model';
 import { RoleModel, type RoleDoc } from './role.model';
@@ -222,6 +223,18 @@ class RoleAssignmentRepository extends BaseRepository<RoleAssignmentDoc> {
       })
       .lean<RoleAssignmentDoc[]>()
       .exec();
+  }
+
+  /** Users with a live assignment of `roleId` at exactly `scope` (validity window not consulted). */
+  async distinctUserIdsForRoleAtExactScope(roleId: string, scope: DataScope): Promise<string[]> {
+    const ids = await this.model
+      .distinct('userId', {
+        roleId: new Types.ObjectId(roleId),
+        scope,
+        isDeleted: false,
+      } as FilterQuery<RoleAssignmentDoc>)
+      .exec();
+    return ids.map(String);
   }
 
   async distinctUserIdsForRole(roleId: string): Promise<string[]> {

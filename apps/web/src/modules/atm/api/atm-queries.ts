@@ -40,6 +40,7 @@ import { featureKey, listKey } from '../../../shared/lib/query-keys';
 import { boardQuery } from '../lib/board-filters';
 import { makeBankLookup, type BankLookup } from '../lib/bank-catalog';
 import { fetchWholeBoard } from '../lib/whole-board';
+import { readDoneRange } from '../lib/done-range';
 import * as api from './atm-api';
 import { type AtmListParams } from './atm-api';
 
@@ -446,10 +447,14 @@ export const useAtmReplenishmentFacets = (banks: readonly string[]) =>
 export const useDoneAtmReplenishments = (range: { from: string; to: string }) =>
   useQuery({
     queryKey: listKey(MODULE, 'replenishments', { kind: 'done', whole: true, ...range }),
+    // The range whole, chunk after chunk — never every page at once (`lib/done-range.ts`).
     queryFn: ({ signal }) =>
-      fetchWholeBoard(
-        (page, pageSize, pageSignal) =>
-          api.listDoneReplenishments({ ...range, page, pageSize }, pageSignal),
+      readDoneRange(
+        (cursor, chunkSignal) =>
+          api.doneReplenishmentRange(
+            cursor === undefined ? range : { ...range, cursor },
+            chunkSignal,
+          ),
         signal,
       ),
   });
@@ -534,9 +539,12 @@ export const useDoneAtmMaintenances = (range: { from: string; to: string }) =>
   useQuery({
     queryKey: listKey(MODULE, 'maintenances', { kind: 'done', whole: true, ...range }),
     queryFn: ({ signal }) =>
-      fetchWholeBoard(
-        (page, pageSize, pageSignal) =>
-          api.listDoneMaintenances({ ...range, page, pageSize }, pageSignal),
+      readDoneRange(
+        (cursor, chunkSignal) =>
+          api.doneMaintenanceRange(
+            cursor === undefined ? range : { ...range, cursor },
+            chunkSignal,
+          ),
         signal,
       ),
   });
@@ -572,9 +580,11 @@ export const useOpenAtmMaintenances = () => {
 export const useCloseAtmMaintenances = () => {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ ids, leaderEmployeeId }: { ids: string[]; leaderEmployeeId: string }) =>
+    mutationFn: ({ ids, leaderEmployeeId }: { ids: string[]; leaderEmployeeId?: string }) =>
       api.closeMaintenances(ids, leaderEmployeeId),
-    onSuccess: () => invalidateMaintenances(client),
+    // Settled, not only success: batches before a refused one did close, and a refusal for a
+    // row whose leader was cleared meanwhile is answered by the board showing it as it is now.
+    onSettled: () => invalidateMaintenances(client),
   });
 };
 

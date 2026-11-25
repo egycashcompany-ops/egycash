@@ -19,7 +19,7 @@
 // The screens that call this are proven separately in `apps/web`; nothing here goes through them.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
 import { SettingKeys, platformPermissions, type MeDto } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -316,5 +316,35 @@ describe('what the endpoint refuses', () => {
     expect(
       (await request(app).patch('/api/v1/auth/me/preferences').send({ theme: 'dark' })).status,
     ).toBe(401);
+  });
+});
+
+// 2026-11-25: while the database primary was unreachable, every request's user lookup failed and
+// was answered 401 «User no longer exists». Each open tab then refreshed its session at once, the
+// parallel rotations read as token reuse, and thirteen sessions were revoked. A database that does
+// not answer says nothing about the user.
+describe('a failed user lookup is not a missing user', () => {
+  it('lets a database error through as itself, never as an invalid token', async () => {
+    await getCache().del(userSnapshotKey(adminId));
+    const outage = new Error('connection <monitor> to 35.204.249.83:27017 timed out');
+    const spy = vi.spyOn(userService, 'getById').mockRejectedValueOnce(outage);
+    try {
+      await expect(authService.buildAuthContext(adminToken)).rejects.toBe(outage);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('still answers 401 for an account that is really not there', async () => {
+    await getCache().del(userSnapshotKey(adminId));
+    const { NotFoundError, UnauthenticatedError } = await import('../../src/shared/errors');
+    const spy = vi.spyOn(userService, 'getById').mockRejectedValueOnce(new NotFoundError());
+    try {
+      const refused = authService.buildAuthContext(adminToken);
+      await expect(refused).rejects.toBeInstanceOf(UnauthenticatedError);
+      await expect(refused).rejects.toThrow('User no longer exists');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

@@ -9,7 +9,58 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Added
+
+- **Compliance and Risks — a new module, «الالتزام والمخاطر», with one page: «الملفات»**
+  (`docs/12-planning/compliance-files-design.md`). Folders on a shelf shaped like HR's
+  «مستندات المتقدمين», drawn with the module's own copy of that folder.
+  - **The responsible person** (`complianceFile.manage`, the seeded role «مسؤول ملفات الالتزام
+    والمخاطر») makes folders, names and renames them, puts a picture on each, chooses which active
+    employee accounts see each one, uploads PDF, Word and Excel files of up to 20 MB, renames and
+    deletes them — and sees, per file, who has seen it, how many times they opened and downloaded
+    it, and when.
+  - **A person a folder is shared with** sees only the folders whose list names them (anyone else is
+    answered 404) and may only view and download. «الملفات» appears in their sidebar because the
+    module gives them the reader role with the first folder shared and takes that grant back with
+    the last (`rbacService.removeAssignment`, new); the boot reconciles both directions.
+  - **Every opening and download is recorded** through the module's own endpoints, which are the only
+    way a reader reaches the bytes. Word and Excel files are viewed in the page — headings,
+    paragraphs, tables and sheet rows read on the server under the zip and XML rules every workbook
+    read follows; a PDF opens in a new tab.
+  - A file's type is decided by its extension and checked against its first bytes; Arabic file names
+    are kept. Refusals: `COMPLIANCE_FOLDER_NAME_TAKEN`, `COMPLIANCE_VIEWER_INVALID`,
+    `COMPLIANCE_FILE_CONTENT_MISMATCH`.
+  - Navigation: the «الالتزام والمخاطر» tile (a shield) and its «الملفات» row, opened by either key.
+    The seeded navigation now holds 146 rows.
+
 ### Fixed
+
+- **ATM done pages no longer hang the system (2026-11-25).** «السيستم كان مهنج». From 12:00 Cairo a
+  done-maintenance page over 1–25 November for one branch (29,500 closed rows) asked for up to 200
+  pages at once, and each page sorted the whole range in memory on the database (Atlas slow log:
+  29,500 keys and documents examined per 100-row page), so every screen waited behind it.
+  - Indexes in the done pages' own order on both operation logs (`ix_branch_done_range`,
+    `ix_done_range`), built at boot.
+  - `GET /atm/{replenishments,maintenances}/done/range` reads the range in chunks of 5,000, each
+    continuing where the last stopped; the done pages read the whole range that way, with no cap
+    («عايز إمكانية إنى أستخرجهم كلهم»), so the Excel and PDF are the whole period.
+  - The done tables and the mail log show 100 rows a page (50–500); the column filters, the sort and
+    the files still cover every row («تظهرهم عادى على صفحات فى الجدول»).
+  - The remaining whole-list walks (mail log, machine export) keep at most 4 pages in flight.
+  - Two guards that hold whatever a browser does: the done reads (the chunked one, and the paged
+    one a tab still on the old bundle asks for until it reloads) give up after 15 s instead of
+    running on for minutes after the browser left; and a database error while checking a request's
+    user is answered as the error it is — no longer as 401 «User no longer exists», which sent every
+    open tab to refresh at once and got thirteen sessions revoked as token reuse.
+
+- **Accepting or restoring a mail ticket no longer reads the branch's whole maintenance log.** The
+  read of a ticket's maintenances inside the accept and restore transactions (`findFromTicket`)
+  must see deleted rows too, so it could not use `ux_maintenance_per_mail_ticket`, which leaves them
+  out. It walked `ix_branch_closed` over the ticket's branch instead: ~39,000 keys and 0.2–0.3 s per
+  ticket on 2026-11-25 (Atlas slow log). A new partial index, `ix_maintenance_from_ticket`
+  (`{ mailTicketId, branchId }` over every row opened from a ticket), built at boot, holds it; the
+  read states the index's predicate (`$type: 'objectId'`), which the planner does not infer from an
+  equality, and now reads the ticket's own rows only.
 
 - **The approvals engine: a chain save names its request type's keys and the chain it replaces.**
   This is PX-1.6, the last of PX-1's pull requests, which harden the platform approvals engine
@@ -219,6 +270,32 @@ its entry here in the same PR.
   («NBE» above «- 1056») would otherwise run into the code below it.
 
 ### Changed
+
+- **ATM maintenance close: the crew leader on the row is the one the close keeps.** The owner
+  (2026-11-25): «لما بيتم تقفيل صيانة لماكينة ATM كان بيطلب منه اسم الشخص اللى قفلها / عايز اسم
+  الموظف دا يجي تلقائي من قائد الطاقم فى الجدول لو مُعين .. لو لأ خليه يدخله هو». The close dialog
+  on `/atm/maintenance` shows each selected row's «قائد الطاقم» and asks for an employee only while
+  a row has none; the pick is written on those rows only. `POST /atm/maintenances/close` takes
+  `leaderEmployeeId` as optional and refuses (422) a set with a row without a leader when it is
+  missing, before anything closes. A leader written by name (an edit or a shift cascade) now
+  clears the row's `leaderEmployeeId`, which only the close sets, so a reopened row given another
+  leader never keeps the earlier employee's id (`docs/12-planning/atm-operations-port.md` §6e).
+
+- **HR leave: a request nobody on its approval chain can approve takes the manager and HR path
+  (PXQ-1).** «موافق على كل التوصيات، كمّل». The owner's answer to PXQ-1, option 1
+  (`docs/12-planning/leave-management-design.md` §16). A new request on a chain with nobody holding
+  any rung goes to the employee's manager, or to HR when there is none, as a request with no chain
+  does; its `leaveRequest` audit row names the chain (`unstaffedChain`). A request whose remaining
+  rungs nobody holds after an approval, by a rung's holder or an override, goes to HR's step,
+  keeping the chain's record; its page shows the chain and, under it, the HR step with a line
+  saying why. Managers and HR receive requests that used to wait on the chain with no notice to
+  anyone who could decide them. Requests already waiting on such a chain are not moved. The
+  approvals engine is unchanged. For HR leave this replaces the wait for an override that the
+  PX-1.2, PX-1.3 and PX-1.6 entries above describe: the engine still answers `unstaffed`, and
+  leave now sends such a request to HR; a request whose rung's holders leave while it waits still
+  waits for an override. The chain screen's hint says so, in English and Arabic. Count LC1 (leave
+  design §16.10) is in the pull request. Rollback: revert API and web together; nothing in the
+  data is undone (leave design §16.13).
 
 - **A shared counter for running numbers, and one Arabic name fold for every module.**
   `apps/api/src/shared/base/counter.ts` (`defineCounter`) is Fleet's custody counter written as a factory: a module
@@ -3570,6 +3647,822 @@ its entry here in the same PR.
         markup specs read hooks and order (`data-van-head-action` after `data-van-direction`), not
         whole class strings; (7) the print change labelled «Round 33b» in code, specs and i18n while
         this entry is «C» — every label is «Round 33 C» now.
+  - Round 34 — أسهم «تبديل بين سيارتين» على «لوحة التشغيلة»، و«البيانات المرجعية». The owner, by
+    voice: «عاوز في السواب بتاع العربيتين في الشاشة بتاعت لوحة التشغيلة. السواب عايز يكون أسهم اللي
+    أنا ببدل ما بينهم وبين عربيتين، اللي هو السهم الشمال أو السهم اليمين أو السهمين اللي تحت بعض،
+    يكون السهمين اليمين والشمال نفس اللون والسهم اللي في النص لون مختلف. وعاوز أغير اللي اوت بتاع
+    بيانات المراجعة يكون بروفيشنال أكتر من كده، وعاوز الداتا اللي تبقى كبيرة زي الفروع والمناطق
+    والبنوك وهكذا يكون في سيرش اقدر اسيرش بيه.» («بيانات المراجعة» is the dictation of «البيانات
+    المرجعية», `/operations/catalogs`.)
+    - A — «السواب عايز يكون أسهم … السهم الشمال أو السهم اليمين أو السهمين اللي تحت بعض، يكون
+      السهمين اليمين والشمال نفس اللون والسهم اللي في النص لون مختلف». The three ways between the
+      two cards of «تبديل بين سيارتين» (`CrewSwapDialog`, Round 32 C) are ARROW buttons now (new
+      `components/crew-swap-arrows.tsx`), their word labels and short lines gone: a one-way move is
+      ONE arrow from the card that sends to the card that receives; the swap is the TWO arrows one
+      under the other (⇄).
+      - Where they point, in every layout (`swapArrowAim`, `swapArrowTurn`). Side by side (lg —
+        measured at 1024, 1366 and 1440) the first card is on the RIGHT in Arabic, so «من 213 إلى
+        255» points LEFT and «من 255 إلى 213» RIGHT, the swap's top arrow pointing as the one above
+        it and its bottom one as the one below; in English all of it mirrored (the first card on
+        the left). Stacked (390 and 768 — the cards one above the other, the three in a row between
+        them) the single arrows point DOWN and UP, toward the card below or above, and the swap
+        stands ⇅. Each glyph is drawn once and turned by CSS per layout.
+      - The colours: the two single arrows share one hue, sky — off a soft `sky-50` fill, a
+        `sky-300` border and a `sky-700` glyph (dark: `sky-400/10`, `sky-400/45`, `sky-300`), on a
+        solid `sky-600` (#0284c7) with a white glyph (4.1:1), a `sky-500/70` ring and its shadow;
+        the swap, the default way, the brand's indigo — off `brand-50`/`brand-300`/`brand-700`
+        (dark `brand-400/10`, `brand-200`), on `brand-600` #4f46e5 (6.3:1; dark `brand-500`
+        #6366f1, 4.47:1). Both apart from the preview's emerald «من 213» and rose «يبقى». The
+        keyboard's focus is a neutral outline outside the ring (`slate-900`, dark white); without a
+        second van the three are there at 40% and none can be pressed.
+      - The words: each arrow's name and tooltip say what it does with both vans —
+        «نقل المحدد من 213 إلى 255», «تبديل المحدد بين 213 و255 في الاتجاهين», «نقل المحدد من 255
+        إلى 213» («Move selected from 213 to 255», «Swap selected between 213 and 255, both
+        ways»); the group keeps «طريقة نقل المحدد». No caption under the arrows: each card's head
+        names its van right beside them, a single arrow at once marks the receiving card «تستقبل»
+        and dims its boxes, and the preview under them redraws.
+      - Kept as it was: the radio group, one way in the Tab order, the arrow keys in the reading
+        direction (`modeStepOf`), `data-swap-modes`/`data-swap-mode`, the swap as the default, what
+        each way does (`lib/crew-swap.ts` untouched), «تطبيق» and the preview. The buttons are
+        64×48 in the row and 56×48 in the column; the column went from 144px to 56px, the cards
+        took the room.
+      - i18n: `operations.crewPlan.swap.mode.{aToB,bToA,swap}` rewritten to name both vans;
+        `mode.{aToB,bToA,swap}Short` and `mode.{aToB,bToA,swap}Hint` removed (nothing drew them
+        any more).
+      - Specs. Rewritten (the rule changed): `components/crew-swap-dialog.spec.tsx` «the three ways
+        are a radio group: «نقل المحدد ←» «تبديل المحدد ⇄» «نقل المحدد →», the swap on» → «the
+        three ways are a radio group, the swap on — each named by what it does with both vans».
+        New, in the same file: «Round 34 A — the three ways are ARROWS between the two cards» (an
+        svg each and no word; each one's name and tooltip with both vans, Arabic and English; one
+        hue for the two single arrows and another for the swap, off and on; where each points per
+        language and per layout; `swapArrowAim` and `swapArrowTurn`; the roving Tab stop and the
+        arrow keys; no second van yet).
+      - Verified on the built web against the stubbed API at 390, 768, 1024, 1366 and 1440: each
+        glyph's computed transform points from the sending card's centre to the receiving one's,
+        Arabic and English; every arrow at least 44×44, no horizontal scroll; the two single
+        arrows' computed colours identical and the swap's another, the white glyphs' contrast
+        measured; ← (Arabic) and → (English) and ↓/↑ step the ways with the focus; «تطبيق» counts
+        what crosses one way.
+    - B — «وعاوز أغير اللي اوت بتاع بيانات المراجعة يكون بروفيشنال أكتر من كده، وعاوز الداتا اللي
+      تبقى كبيرة زي الفروع والمناطق والبنوك وهكذا يكون في سيرش اقدر اسيرش بيه». «البيانات المرجعية»
+      (`pages/CatalogsPage.tsx`, `/operations/catalogs`) in the boards' look — the day board's dark
+      filter bar and framed table, Fleet's figures — and a search on the three lists that grow.
+      - The kinds are a row of cards (new `components/CatalogKindCards.tsx`): each kind's icon in
+        its own tone, its name, and how many rows it holds in the boards' figures (Latin digits,
+        isolated left to right — «الفروع 1,340»), the chosen one in the site's purple with an edge
+        under it. Still a real tab list on `?kind=`: `role="tablist"`/`tab`/`tabpanel`,
+        `aria-selected`, one tab in the Tab order, the arrows walking it in the reading direction
+        (← is the next card in Arabic) and Home/End (`kindStep`). The counts: the banks from the
+        bank list the screen already reads whole; the branches and the areas from a one-row read
+        (`COUNT_READ`, its `totalItems`); the currencies and «أنواع التشغيل» from the whole lists
+        their tabs show (now read on every kind — they are 8 and 9 rows). «—» while a count is on
+        its way. On a phone the row scrolls inside itself and the chosen card is scrolled into it.
+      - A toolbar on banks, branches and areas (new `components/CatalogToolbar.tsx`, the boards'
+        `DARK_FILTER_BAR` over `FilterBar`): the search, «الحالة» (الكل / مُفعَّل / غير مُفعَّل →
+        `isActive`), on the branches «البنك» (كل البنوك / each bank → `bankId`), then the bar's own
+        reset once anything narrows and «n نتيجة» (Arabic forms: «نتيجة واحدة», «نتيجتان», «3
+        نتائج», «22 نتيجة»). One row from 1366px; on a phone the search takes a line and the two
+        lists share the next. «إضافة …» and «استيراد فروع من شيت» are the boards' buttons, at the
+        title's end on every kind.
+      - The search is the SERVER's (`search` — banks: operations name and both names; branches:
+        name, code, area; areas: both names and the governorate; folded there, `catalog-search.ts`).
+        Its rules are pure (new `lib/catalog-filters.ts`): sent ~300ms after the last key
+        (`createSearchDebounce` — «م», «مع», «معا» typed in a breath ask once); kept in `?q=` (a
+        reload or a shared link opens on it; typing replaces the history entry); the page back to
+        the first on any change, the page size kept; ✕ and Escape empty it at once; another kind
+        starts clean (`withCatalogKind` drops `q`, `status`, `bank` and the page), and a search
+        still waiting when the kind changes is dropped, never sent to the next kind; digits typed on
+        an Arabic keyboard are sent as Latin («١٢٣» → `123` — the server folds the letters, not the
+        digits) and runs of spaces as one, while the box keeps what was typed (`foldCatalogSearch`).
+        What was found is marked in the rows, folded as the server folds (`matchParts` —
+        «الاسكندريه» marks «الإسكندرية», «٢٠٤» marks «204»). While the next answer is asked the last
+        one stays on screen, dimmed, with a spinner in the count — three hooks of their own
+        (`useCatalogBanksPage`, `useCatalogBranchesPage`, `useCatalogAreasPage`, the same reads and
+        cache keys with `keepPreviousData`), so every other caller of `useOperationsBanks` & co.
+        reads exactly as before. The plain list still asks `{ page, pageSize }`, the query it always
+        asked.
+      - The table sits in one frame with its pager in the frame's foot (the numbered pager the
+        boards wear, 25 / 50 / 100 a page): the boards' table (`BOARD_TABLE_LOOK`) with its head held
+        while the rows scroll on a computer, comfortable rows (59px, 63px from 1750px), the names in
+        Cairo (the boards' monospace stack spread Arabic names word by word) and the codes and
+        numbers in the figures' face, the status as the boards' small badge, an inactive row dimmed,
+        the pen in the boards' action box, the maps pin kept. An empty answer says what was asked:
+        «لا توجد نتائج لـ «…»» with «مسح البحث» (and «مسح كل المرشحات» when a filter narrows too), or
+        «لا توجد نتائج تطابق المرشحات المحددة»; a list empty for real keeps its own words («لا توجد
+        فروع بعد»). Errors as before. On a phone the table scrolls sideways inside its frame.
+      - Currencies and «أنواع التشغيل» keep their drag, their arrows, their whole list on one page
+        and archive / restore, and take NO search: a filter over a dragged list would hide the rows
+        a drop lands between. Their note sits on the toolbar's line. The add / edit forms, the
+        branch import (in the list's place, as Round 29 drew it) and the address bar's `size` are as
+        they were.
+      - Without `operationsCatalog.manage` (the route asks for it; the screen no longer leans on
+        that) there is no add, no import, no pen, no grip, no arrows and no archive — the pens on
+        banks, branches, areas, currencies and types and the add button were drawn regardless
+        before. No new permission.
+      - The server: no change in B (the critic's review below folds the digits in
+        `catalog-search.ts`). Typing a bank's name into the branches' search is NOT matched: the
+        bank filter says it exactly, and the shipment form's branch picker reads the same endpoint
+        with `bankId` and `search` — matching the bank's name there would answer every branch of
+        «بنك مصر» to «مصر». The persistence census keeps the screen EXCLUDED, its reason now naming
+        `q`, `status` and `bank` (`shared/lib/remembered-filters-coverage.spec.ts`): they belong to
+        one kind and never cross a visit.
+      - Specs. Rewritten (the pager changed): `pages/catalogs-currency-order.spec.tsx` «shows no
+        pager — the whole list is on screen» and `pages/catalogs-shift-types.spec.tsx` «lists the
+        WHOLE catalog in the order the server answered — archived types too» — their «no pager»
+        looked for the old pager's «لكل صفحة» only (`common.pagination.perPage`), which the
+        new pager does not write; they now also assert no `data-catalog-pager` and no
+        `common.pager.perPage`. New: `lib/catalog-filters.spec.ts` (the kinds that search, the
+        address bar, the query, the digits, the arrows, the clock with fake timers, Escape, the
+        marks) and `pages/catalogs-layout.spec.tsx` (the cards — order, selection, ids, counts,
+        «—»; the search, the status and the bank reaching the query by its exact cache key; the
+        Arabic digits; the count and the reset; the marks; the figures and the badges; the four
+        empty states; each kind's toolbar and none on the dragged lists; the pager in the frame with
+        25 / 50 / 100; a bigger page; who may change what, on every kind; every new word in both
+        languages; no raw key in English).
+      - Verified on the built web (dist-r34b) against a stubbed API in the server's shapes with 10
+        banks, 1,340 branches over 4 banks, 120 areas, 8 currencies and 9 types, searching as the
+        server does: at 1366, 1440, 1920 and 390, dark and light — no sideways scroll of the page
+        or the board's frame, the toolbar on one row and the five cards in view from 1366, nothing
+        cut, the pager in the frame; at 390 the cards and the table scroll inside themselves and the
+        toolbar stacks. In the browser: seven keys typed 60ms apart sent ONE search, `?q=` and page
+        1, a reload kept it, Escape and ✕ cleared it, «٢٠٤» asked `204`, «غير مُفعَّل» and «بنك مصر»
+        reached the query, the reset cleared all, a kind switch dropped a waiting search, ← and Home
+        on the cards, the pager and 100 a page, a row's pen, «إضافة فرع», the import and back, the
+        empty state and «مسح البحث», the drag lists intact, English left to right.
+    - Round 34 verifier (the build's, never the owner's): on the real stack (the owner's four sheets
+      imported, 1,735 branches) at 768 and 820 the five kind cards share the row at 134–145px, and
+      with the icon BESIDE the name «أنواع التشغيل» had 56px and was cut («أنواع التـ…»). From `md`
+      to `lg` the icon now sits ABOVE the name (`CatalogKindCards`), whole at 768, 820, 900 and
+      1000; beside it again from `lg`, as before. New: `pages/catalogs-layout.spec.tsx` «from md to
+      lg the icon sits above the name, so «أنواع التشغيل» is not cut on a tablet».
+    - Round 34 critic (the build's, never the owner's): seven findings, each fixed with a spec that
+      fails on the code before it (each fix reverted once and its spec seen red).
+      - (1) A list read that failed left the toolbar's count at «جارٍ التحميل…» for good, beside
+        the table's «تعذّر التحميل»; and a `?bank=` that is no ObjectId reached the server, which
+        refuses it (400) — the whole list failed and the bank box named the raw id. Now the count
+        says «—» (named «تعذّر التحميل») and the pager hides while the read has failed;
+        `readCatalogFilters` reads a `bank` that is no id as no filter (contracts `objectId()`), and
+        `withKnownBank` one that names no bank on the list, once the list is in. New:
+        `lib/catalog-filters.spec.ts` «a bank that is not on the list is no filter once the list is
+        in …»; `pages/catalogs-layout.spec.tsx` «a link from elsewhere, and a read that failed»
+        (four cases). Rewritten (the rule changed): `lib/catalog-filters.spec.ts` «reads `q`,
+        `status` and `bank` — an unknown status is no filter at all» → «… — an unknown status, or a
+        bank that is no id, is no filter at all»; `pages/catalogs-layout.spec.tsx`'s bank fixtures
+        are ObjectIds now («b-nbe» → 24 hex digits, the server's shape), its assertions unchanged.
+      - (2) The toolbar's reset (or Back over a filter) pressed inside the 300ms wait left the typed
+        term in the box, and it landed in `?q=` after the reset. The box is a pure model now
+        (`createSearchBox` in `lib/catalog-filters.ts`; `CatalogToolbar` only hands it the keys and
+        the address bar): beside `q` it watches the rest of the narrowing (`searchBoxContext` — the
+        status and the bank), and a change made elsewhere puts the address bar's text in the box
+        and drops what was waiting; its own send coming back changes nothing. New:
+        `lib/catalog-filters.spec.ts` «the search box against the address bar» (the screen in
+        miniature — the model, `withCatalogSearch`, the reset, Back — six cases).
+      - (3) In English below `lg` the swap's ⇅ was not mirrored: the row read ↓ (↑↓) ↑, each of its
+        arrows against the one beside it. It is mirrored there now (`-scale-x-100 rotate-90`, reset
+        from `lg`): ↓ ⇅ ↑ in English, ↑ ⇅ ↓ in Arabic as before; the column (⇄) unchanged.
+        `swapArrowAim` lists the swap's two in the order the eye meets them — top first side by
+        side, left first stacked — so its `stacked` reads `up down` in Arabic, `down up` in English.
+      - (4) ✕ / Escape on a text never sent, or a space added, wrote the address bar anyway — the
+        page back to the first, and a `q` of spaces. `withCatalogSearch` writes nothing when the
+        folded question is unchanged, and never a `q` that folds to nothing. New:
+        `lib/catalog-filters.spec.ts` «what the box writes to the address bar» (three cases).
+      - (5) A code or a name saved with Arabic-Indic digits («١٠٤» — the form keeps what is typed)
+        was found by no typed form: the screen sends «104» for «١٠٤», and the server matched digits
+        literally. apps/api `catalog-search.ts` (`containsText`, every catalog's search) now
+        matches each digit in its Latin, Arabic-Indic and Persian forms («104», «١٠٤», «۱۰۴» find
+        one another). New: `catalog-search.spec.ts` «finds a code stored in Arabic-Indic or Persian
+        digits by its Latin digits, and every way round»; `tests/integration/operations.spec.ts`
+        «9b3. finds a code stored in Arabic-Indic digits by its Latin digits, and back» (Mongo's own
+        engine). Rewritten (the rule changed): `catalog-search.spec.ts` «treats two letters as one
+        exactly when normalizeArabic does» → «treats two characters as one exactly when
+        normalizeArabic, the digits read as Latin, does» (the reference fold gains `asciiDigits`,
+        and the Latin digits join the Arabic block).
+      - (6) The swap's spec pinned the dialog's source text and the turn's class strings: an
+        equivalent refactor broke it, while (3) passed. The radio group is its own hookless
+        component (`SwapWays` in `crew-swap-arrows.tsx`) whose key handler the spec calls, and the
+        arrows are read off the glyph's own svg heads, turned by the matrix its classes give in each
+        layout. Rewritten in `components/crew-swap-dialog.spec.tsx`: «the arrows point from the
+        sending card to the receiving one: left/right by the language, down/up stacked» → «the
+        arrows point where they say: the drawing, turned by its classes, against
+        `data-swap-points`», «each one-way arrow points from the sending card to the receiving one,
+        in every layout and language» and «the swap’s two arrows each point as the one-way arrow
+        beside them — ⇄ in the column, ↑ ⇅ ↓ / ↓ ⇅ ↑ in the row»; «the helpers agree:
+        `swapArrowAim` and `swapArrowTurn` for each way, each language» → «the words and the
+        drawing agree for every way, language and layout — and the two hues»; «the keyboard still
+        steps: one way in the Tab order, the arrow keys toward where the arrows go» → «the keyboard:
+        one way in the Tab order, and each arrow key moves to the way that lies that way»; and the
+        Round 32 critic block's «the arrow keys read the language: `modeStepOf` with the window’s
+        locale» → «the arrow keys read the language: the window’s ways step as its locale reads».
+      - (7) Before the second van each arrow was named «نقل المحدد من 150 إلى —» (and each box «…
+        إلى —»). Until it is chosen the second van is «السيارة الثانية» (new key
+        `operations.crewPlan.swap.secondVan`, «the second vehicle»), and each arrow's name and
+        tooltip add «اختر السيارة الثانية أولًا». Rewritten: «no second van yet: the arrows are
+        there, the swap marked, none to press» → «… — each named without a dash, and why»; «the
+        first card is that row, every item with its own box; the second is the board’s other rows»
+        (its box named «… إلى السيارة الثانية», no longer «إلى —»).
+    - D — the owner's review of A, on its screenshot: «أنا مش عايز كده، أنت كده عامل لي إن السهم اللي فوق
+      رصاصي والسهم اللي تحت رصاصي واللي في النص بنفسجي. أنا يعتبر محدد اللي في النص. البنفسجي ده هو اللون
+      الأشمل للويب سايت. أنا عايز تكون ألوان مختلفة، فاهم قصدي؟ ولما أنا أبقى هوفر يبقى يجيلي اللون ده، أو
+      لو أنا اخترت شمال أو يمين مثلا يفضل موجود لحد ما الداتا تتنقل ثانية أو ثانيتين ويقوم جاي متشال،
+      فاهم؟» The arrows are ACTIONS now, each in its own colour, and the window works on a copy of the
+      two rows until «تطبيق».
+      - The colours (`SWAP_ARROW_LOOK`, `crew-swap-arrows.tsx`): never grey, never the site's violet.
+        The two one-way arrows share sky, the swap is orange — apart from the brand, the cards' emerald
+        «من 213» and rose «لم يُنقل», and the amber «إجازة». At rest each is plainly in its colour: light
+        `sky-50` #f0f9ff / `sky-500` border / `sky-700` #0369a1 glyph (5.57:1) and `orange-50` #fff7ed /
+        `orange-500` / `orange-700` #c2410c (4.88:1); dark a 15% tint over the window's navy, a 70%
+        `sky-400` / `orange-400` border and a `sky-300` #7dd3fc / `orange-300` #fdba74 glyph (9.73:1,
+        9.87:1). Under the pointer and the keyboard's focus each fills solid — `sky-600` #0284c7,
+        `orange-600` #ea580c — with a white glyph (4.10:1, 3.56:1; a glyph's bar is 3:1), dark and light
+        alike; the focus also keeps its neutral outline outside, and its ring is the arrow's own hue (the
+        base layer's brand ring no longer shows on an arrow). All measured from computed styles.
+      - No way is «selected»: the radio group is gone. The three are a toolbar of buttons (`SwapArrows`):
+        one in the Tab order, the arrow keys moving the FOCUS in the reading direction (`modeStepOf`, as
+        A and the critic set the directions — they still point from the sending card to the receiving
+        one at 390, 768 and 1440, Arabic and English), Enter and Space pressing. A press MOVES the ticked
+        items at once with the same rules as before (`planSwap`: away that day, a slot his role does not
+        fit, no room left, an archived type keep an item back, named): the arrived items carry the
+        emerald «من 213» until «تطبيق» or close, a value a one-way field replaced is named struck beside
+        the one that took its place («بدلًا من 09:00» — also when a field went there and back and the
+        other row's value is gone), what a rule kept back flashes rose «لم يُنقل» on its card and the
+        notice under the arrows names it and why («لم يُنقل محمد ياسر احمد علي — خانة القائد في 255
+        ممتلئة»; it stays until the next press or undo, to be read), and the ticks clear. The pressed
+        arrow stays filled in its colour for `SWAP_HOLD_MS` = 1.4s (measured 1,395–1,400ms in the
+        browser), its glyph nudging twice toward the receiving card (`swap-nudge`, 2 × 700ms,
+        `motion-safe:` only — none under reduced motion, the fill stays), what it brought settling in,
+        the receiving card(s) framed in its hue with «تستقبل»; then it rests. Several presses follow one
+        another, each on what the one before left; «تراجع عن آخر نقل» in the footer takes them back one
+        at a time — the items home and ticked again as before the press — down to the opening state.
+      - Why an arrow cannot act, in its tooltip and its name (`aria-disabled`, still focusable — the
+        pressed arrow keeps the focus; softened to 60%, still in its colour): «اختر السيارة الثانية
+        أولًا» (no second van yet), «حدّد ما يُنقل من 213 أولًا» / «حدّد ما يُبدَّل على إحدى السيارتين
+        أولًا» (nothing ticked where it sends from), «النقل الجاري لم يكتمل بعد» (a press still playing).
+        «تطبيق» is off while nothing has changed («لم يتغيّر شيء بعد» — moved there and back is no
+        change); «تغيير» the second van is off while moves stand («طبِّق النقل أو تراجع عنه قبل تغيير
+        السيارة الثانية»).
+      - The window's state is a pure model, new `lib/crew-swap-window.ts` (`swapWindowReducer`: the
+        ticks, the presses, the last press, the arrow held; `swapArrowWhy`; `createSwapHoldClock`);
+        `lib/crew-swap.ts` composes the presses (`SwapStep`, `replaySwap`, `swapChanged`, `swapArrivals`,
+        `swapReplacedValues`, `swapStepsOperation`, `applySwapStepsToDraft`). The window keeps the
+        presses, never the rows they made: the cards are the presses replayed over the two rows as the
+        board holds them NOW, so another desk's save under the open window shows on the cards with the
+        moves on top, judged again.
+      - The page contract: `CrewSwapDialog`'s `onApply(bKey, picks, mode)` → `onApply(bKey, steps)`.
+        «تطبيق» hands over the presses and `CrewBoardPage` replays them on its draft as it is at that
+        press (`applySwapStepsToDraft` with the board's own `swapRules` — a man HR marked away since,
+        or one another desk moved, is judged again) as ONE operation of the board's «تراجع» (one press
+        takes all of it back), the standing crew letting go of the two rows as before; named a move
+        («نقل المحدد من 213 إلى 255») when every press went that one way, else the swap. Nothing is
+        saved until «حفظ». «إلغاء», ✕ and Escape drop every move with the window. `DesignSave` takes a
+        `title` (why it is off).
+      - Removed: the «بعد التطبيق — معاينة» section (`previewCard`, `data-swap-after`/`data-swap-preview`)
+        — the cards show it live — and with it the «ينتقل إلى …» line; the «تستقبل» tag and the
+        disabled receiving boxes of a chosen one-way (no way is chosen; the tag shows only while a press
+        plays); the «shared» field box of the swap way. The window went from the full 900px screen with
+        the preview scrolling to 561px at 1440×900, no scroll. Kept: the footer's count, now «نُقل: ٢ ·
+        بقي: ١» (every item the presses moved; what the last press kept back), and the «المحصنات
+        الموزَّعة … تبقى» note — on the working card, once the row's captains or direction have changed.
+      - i18n: removed `operations.crewPlan.swap.preview`, `swap.previewHint`, `swap.after`,
+        `swap.left`, `swap.receivingHint` and `swap.itemExchange`; new
+        `swap.why.{playing,nothingOn,nothingEither}`, `swap.keptLine`,
+        `swap.undoLast`, `swap.undoLastTitle`, `swap.undoNone`, `swap.nothingChanged`,
+        `swap.changeLocked`; rewritten `swap.summary` («نُقل: … · بقي: …» / «Moved: … · Kept back: …»),
+        `swap.kept` («لم يُنقل» / «Not moved»), `swap.nothing` («حدّد ما يُنقل ثم اضغط سهمًا»),
+        `swap.mode.group` («نقل المحدد بين السيارتين»). Tailwind: keyframes `swap-nudge`,
+        `swap-nudge-back`, `swap-arrive`, `swap-flash`.
+      - Specs. Rewritten (the rule changed), all in `components/crew-swap-dialog.spec.tsx`: «nothing to
+        apply and no preview until the second van is picked» → «nothing to apply until the second van is
+        picked — and no preview section at all»; the describe «two cards side by side, the ticks, the
+        ways and the preview AFTER» → «two cards side by side, the ticks and the arrows between them —
+        the cards are the working copy», and in it: «the first card BEFORE the second in the markup — on
+        the right in Arabic, on the left in English» (the preview's order dropped); «the ticked items
+        are checked; each card has «الكل» · «الطاقم فقط» · «لا شيء»» → «… ; every box live» (4 ticks on
+        150, not the shared field's 5; no box off); «the three ways are a radio group, the swap on —
+        each named by what it does with both vans» → «the three arrows are ACTIONS — a toolbar of
+        buttons, no radio, nothing «selected» — each named by what it does with both vans»; «the
+        preview: who arrives «من 213» / «من 150», the fields exchanged — nothing thrown away — what
+        goes» → «a press of the swap moves at once: each card holds what arrived «من 213» / «من 150» —
+        the fields exchanged, nothing thrown away — and the ticks clear»; «one way: a field moved onto a
+        value names the value it replaces, struck» (on the card after the press); «a rule keeps an item
+        back — shown on the preview with its reason, counted as staying» → «a rule keeps an item back —
+        rose «لم يُنقل» on its card, named with its reason under the arrows, counted in the footer»;
+        «one way: the receiving card says so and its boxes are not read» → «while an arrow plays, the
+        card(s) it sends to say «تستقبل», framed in its hue; at rest neither»; «English: the same window
+        in its own words» (no preview words); in the Round 32 critic block «in «تبديل المحدد ⇄» a field
+        ticked on one card shows ticked on both — the pair’s exchange, named so» → «a field ticked on
+        one card is that card’s own tick — the swap exchanges the pair, nothing thrown away», «an
+        archived type in an exchange: both rows keep theirs, each named why» (the reasons in the
+        notice), «says how many محصنات ride a row — and that they stay when its captain or its
+        direction leaves» → «… — and that they stay once its captain or its direction has left», «the
+        notes start their own line on the preview — never under the label column» → «… on the cards
+        …», «the arrow keys read the language: the window’s ways step as its locale reads» → «the arrow
+        keys read the language: the window’s arrows move the focus as its locale reads»; in the Round 34
+        A block «the two one-way arrows share ONE hue (sky), the swap another (the brand’s) — off and
+        on» → «the two one-way arrows share ONE hue (sky), the swap another (orange) — at rest, under the
+        pointer and held; never the brand’s, never grey», «the keyboard: one way in the Tab order, and
+        each arrow key moves to the way that lies that way» → «the keyboard: a toolbar — one arrow in
+        the Tab order, each arrow key moves the focus to the arrow that lies that way, a press is the
+        button’s own», «no second van yet: the arrows are there, the swap marked, none to press — each
+        named without a dash, and why» → «no second van yet: the arrows are there, none marked, none to
+        press — each named without a dash, and why»; in the board block ««تطبيق» is ONE step of «تراجع»
+        on the draft — `applySwapToDraft` under the board’s own rules» → ««تطبيق» is ONE step of «تراجع»
+        on the draft — the window’s presses replayed by `applySwapStepsToDraft` under the board’s own
+        rules». The Round 34 A block's two renders no longer pass `mode: 'swap'` (the window has none);
+        their assertions are unchanged. New: in the same file the describe «Round 34 D — the arrows
+        are ACTIONS; the window works on a copy until «تطبيق»» (the held arrow solid with its
+        `motion-safe:` nudge, the others off «النقل الجاري لم يكتمل بعد»; each arrow off with its
+        reason; several moves on top of one another and there-and-back as no change; the footer — the
+        frame's ✕/Escape and «إلغاء» only close, «تطبيق» hands over the presses, the undo's name; «تغيير»
+        locked while moves stand); new `lib/crew-swap-window.spec.ts` (a press moves at once with tags
+        and a kept-back reason, the ticks clear; several presses; a press that moves nothing is no step;
+        the in-window undo down to the opening; the reasons; the hold with fake timers — held, still
+        held at 1s, at rest at 1.4s, no press meanwhile, `stop`; 2 × 700ms = `SWAP_HOLD_MS` read off
+        tailwind.config.ts); and in `lib/crew-swap.spec.ts` the describe «Round 34 D — the window’s
+        presses: steps replayed on the two rows» (the replay = `planSwap` in turn; there and back; the
+        lost value; «تطبيق» as ONE step that one «تراجع» takes back, «حفظ (2)»; the same draft when
+        nothing changed; re-judged at «تطبيق» — a man marked away meanwhile stays, a man moved off by
+        another desk is not found; the standing crew let go; the operation's name). Its 32 earlier
+        tests are untouched and green. Each new rule was broken once (the brand colour back on the swap,
+        the ticks not clearing, «إلغاء» applying) and its spec seen red.
+      - Verified on the built web (dist-r34d) against the stubbed API (r34d/shoot-r34d.mjs, from the
+        Round 34 A and critic shooters): 119 checks — the directions and ≥ 44×44 at 390, 768 and 1440 in
+        Arabic and English with no sideways scroll; the colours at rest, under the pointer, on the
+        keyboard's focus and held, dark and light, the two one-way arrows' computed colours identical,
+        none the brand's; Enter on the focused arrow moving 0100007 and 213's direction to 255 at once,
+        0100008 kept back («خانة القائد في 255 ممتلئة») and named, 255's «التجمع الخامس» struck, the
+        ticks cleared, the board untouched; held 1.4s and at rest after; a second press keeping the
+        leave-taker 0100020 back; the undo twice back to the opening; «تطبيق» → «حفظ (2)» and ONE more
+        step of the board's «تراجع» named «التبديل بين 213 و255», one press of which put both rows back;
+        Escape, «إلغاء» and ✕ after moves leaving the board as it was; reduced motion — filled, no
+        nudge; no second van — the three off, saying why.
+    - C — colours on «لوحة التشغيلة» become optional. The owner: «والشاشة بتاعت لوحة التشغيلة عاوز اقدر بعد
+      ما اضيف لون اقدر اشيله عادي، يعني مش عاوز ان انا محصنة يبقى لونها محصنة فهتبقى كذا، لا انا عاوز ان انا
+      ممكن اضيف محصنة بس الصف بتاعها ما يكونش ملون عادي.» Asked to choose: «ما انا عاوز مش لازم نوع يكون واخد
+      اجبارى لون فاهم ولو انا مثبت لون للنوع ممكن لو تندى صف اشيل لونه عادى». So a type may have no colour,
+      and any row may be «بدون لون» over its type's colour; a colour once given can be taken off again.
+      - A row's colour has THREE states, all in `rowColour`: null «لون النوع» (as before — the type's
+        colour, or none when the type has none; every row saved before and every older client keep this
+        meaning), a palette name picked by hand, or the new `'none'` «بدون لون» picked by hand, which wins
+        over the type's colour. Contracts: `OPERATIONS_CREW_ROW_NO_COLOUR = 'none'`,
+        `OperationsCrewRowColourSetting`; `OperationsCrewRowColourSchema` takes `'none'` beside the palette
+        and still maps Round 20's six names; `canonicalCrewRowColour` reads a stored `'none'` as `'none'`;
+        both crew DTOs' `rowColour` is `OperationsCrewRowColourSetting | null`. `'none'` is no palette name
+        and no legacy name (a spec holds it). API: the crew row model's enum takes `'none'`; the save
+        stores it as written and an unchanged `'none'` is a no-op; a row holding only `'none'` is still a
+        row, as a row holding only a colour is. No migration: nothing stored changes meaning.
+      - A type's colour is optional: `OperationsShiftTypeDto.colour` is `OperationsShiftTypeColour | null`;
+        create takes `colour` null or leaves it out (none), the edit takes null to take it off and leaves
+        it unchanged when left out; `'none'` is never a type's colour (400). The model's `colour` is
+        optional (`default: null`); the mapper and the audit snapshot read `?? null`. No data migration:
+        every type keeps the colour it has, the seed's nine included. `paletteFor` still counts a type
+        with no colour (N swatches for N live types) and it wears none of them; `freeColourFor` ignores it.
+      - Drawn neutral everywhere a type's colour shows (`NO_COLOUR_TONE`, `typeDotTone`, `typeTagTone` in
+        `components/shift-type-look.tsx`): its dot a hollow ring in the panel's ink (`slate-500`, dark
+        `slate-400` — 4.8:1 on white, ≥ 6:1 on the dark panels), its tag untinted with a hairline ring;
+        `data-type-dot="none"` / `data-type-tag="none"`. Screens checked: the board's type box and type
+        list, its strip of counts, the row's «اللون» list, the swap window's «النوع» and «لون الصف»,
+        «ألوان الأنواع», the reference tab (its tag and its «اللون» column, «بدون لون» in words) and the
+        type's form preview. The distribution / handover cards, their print sheets and the board's Excel
+        name a type by its name only (`shiftTypeName`), never its colour — nothing to change. A row with
+        no colour (its own «بدون لون», or a type with none and «لون النوع» kept) is drawn exactly as an
+        uncoloured row: no tint, no bar (measured: the same cell fill and no inset shadow as a row with no
+        type, text 16.2:1 dark, 17.9:1 light).
+      - The row's «اللون» list (`RowColourPicker` / `RowColourSwatches`) opens on «لون النوع» (with the
+        type's swatch, or «(بدون لون)» for a type with none, «(لا نوع للصف)» for a row with no type —
+        new prop `hasType`) and «بدون لون» (`data-colour="none"`, the struck ring `NoColourSwatch`, its
+        hint «يظهر الصف بلا لون ولو كان لنوعه لون، ويعيده «لون النوع» إلى لون نوعه»), then the palette as
+        before; exactly one is pressed. The cell's button shows a row «بدون لون» as the struck ring
+        (`data-colour-source="row"`, `data-colour-shown="none"`), named «لون الصف: بدون لون». The board
+        marks such a row `data-row-colour-source="none"`. «بدون لون» is ONE step of «تراجع» —
+        «إزالة لون الصف 213» (`undo.kind.colourNone`).
+      - «ألوان الأنواع»: a column «بدون لون» first on every type's line (`data-swatch-off`, before the
+        palette's columns, which are as before), pressed for a type with none; a press sends the catalog's
+        PATCH with `colour: null` («أصبح لون محصنة: بدون لون»); read only without the grant as before.
+        The type's form (`ShiftTypeDialog`): «بدون لون» is the first choice, a radio of its own beside the
+        palette (`data-colour-off`), checked when the type has none; a new type still opens on a free
+        colour of the palette, «بدون لون» one press away.
+      - The swap window moves «بدون لون» as a value of «لون الصف» (an item, named «بدون لون» with the
+        neutral swatch; struck «بدلًا من كحلي» where it replaced a colour); «لون النوع» (null) is no item,
+        as an empty field never was. The standing crew holds no type and no colour (since Round 27), so
+        «تحميل الطاقم الثابت» fills a row and leaves its `'none'` as it was; nothing changed on
+        «الطاقم الثابت».
+      - i18n (Arabic and English): new `operations.crewPlan.colour.noneHint`,
+        `operations.crewPlan.typeColours.pickNone`, `operations.crewPlan.undo.kind.colourNone`,
+        `operations.catalogs.shiftType.noColour`, `operations.catalogs.shiftType.noColourHint`.
+      - Specs. Rewritten (the rule changed), in `components/type-colours.spec.tsx`: «offers exactly the
+        swatches shown, then «لون النوع» — nothing from Round 20’s six» → «offers «لون النوع» and «بدون لون»
+        first, then exactly the swatches shown — nothing from Round 20’s six»; and «a colour picked when the
+        palette was larger: still offered, at the end, pressed and so named» (title kept — its order now
+        «لون النوع», «بدون لون», the palette, the kept colour). New: contracts
+        `operations-crew-plan.spec.ts` «Round 34 C — colours are optional: a type without one, a row «بدون
+        لون»» (4: three states, `none` stored as written, wrong spellings refused; `none` no palette or
+        legacy name, the legacy names still mapped; `canonicalCrewRowColour`; a type's colour left out /
+        null / taken off / unchanged on a rename, `none` never a type's); API
+        `tests/integration/operations-crew-plan.spec.ts`, the same describe (6, the file run whole, 64
+        green: a type added with no colour, taken off and given back, every other type's colour kept; a
+        «محصنة» row `none` beside one keeping null and one navy — stored `none`, a no-op resent, null and a
+        colour and `none` again; a row with only `none`; old rows null, a row with no field at all null; a
+        type with no colour, its rows as saved; the standing crew holds no colour and a row filled from it
+        keeps `none`); web `lib/type-colours.spec.ts` (6), `components/type-colours.spec.tsx` (11: the
+        list's order and pressed states, the button, the neutral dot and tag and their contrast, the card's
+        column read only and on a phone, «تراجع», the board's wiring), `pages/catalogs-shift-types.spec.tsx`
+        (4: the tab, the form's choice, the palette counting a type with none, the form's source),
+        `lib/crew-swap.spec.ts` (4), `components/crew-swap-dialog.spec.tsx` (3), `lib/crew-plan.spec.ts`
+        (2: the standing load and the save keep `none`, `none` and null two states),
+        `lib/standing-crew.spec.ts` (1), and the five keys in `operations-i18n.spec.ts`. Each new rule was
+        broken once (`resolveRowColour` ignoring `none`; `canonicalCrewRowColour` dropping it; the model's
+        enum without it) and its specs seen red.
+      - Verified on the built web (dist-r34c) against the stubbed API (r34c/shoot-r34c.mjs, from the r27s
+        stub; «شلاتين» given no colour): 27 checks — 213 «محصنة» «بدون لون» drawn as a plain row beside 249
+        «محصنة» in slate, dark and light; «شلاتين»'s rows plain and its dot the ring in the strip; the list
+        on 213 «لون النوع» (slate), «بدون لون» pressed, the palette; «لون النوع» gives slate back and
+        «بدون لون» on 249 takes it off, each one «تراجع» step said so; «حفظ» sent 213 `rowColour: null`
+        and 249 `'none'`; the card's «بدون لون» sent `{ colour: null, version }`; the tab and the form say
+        «بدون لون», the preview following a colour given and taken off; 390 with no sideways scroll.
+    - Round 34 D and C verifier (the build's, never the owner's), on the owner's review of A: «أنا مش عايز
+      كده، أنت كده عامل لي إن السهم اللي فوق رصاصي والسهم اللي تحت رصاصي واللي في النص بنفسجي. أنا يعتبر
+      محدد اللي في النص. البنفسجي ده هو اللون الأشمل للويب سايت. أنا عايز تكون ألوان مختلفة، فاهم قصدي؟
+      ولما أنا أبقى هوفر يبقى يجيلي اللون ده، أو لو أنا اخترت شمال أو يمين مثلا يفضل موجود لحد ما الداتا
+      تتنقل ثانية أو ثانيتين ويقوم جاي متشال، فاهم؟» On the real stack (the live API on an in-memory
+      MongoDB, the built web), a time moved one way onto another («08:00» from 213 onto 61's «09:00») was
+      drawn OVER its own «من 213» tag in the narrow «التوقيت» cell (Arabic at 1366 and 1440, English at
+      1024): the value's wrapper was `min-w-0 flex-1`, so the box's wrap counted it as no width, kept the
+      tag and «بدلًا من 09:00» on its line and squeezed it to 11px while its 41px of digits — which never
+      shorten — spilled across the tag. A time now keeps its width (`flex-none`, `CrewSwapDialog`), so
+      what follows it wraps to the next line; a value that shortens with an ellipsis still gives way.
+      Measured after: no part of any item drawn over another on either card at 1024, 1366, 1440 and 390,
+      Arabic and English. New: `components/crew-swap-dialog.spec.tsx` «a moved time keeps its width
+      beside «من 213» and «بدلًا من …» — only a value that shortens gives way» (red on the code before).
+      Nothing else changed.
+    - Round 34 D critic (the build's, never the owner's), on D — the owner: «أنا مش عايز كده، أنت كده عامل
+      لي إن السهم اللي فوق رصاصي والسهم اللي تحت رصاصي واللي في النص بنفسجي. أنا يعتبر محدد اللي في
+      النص. البنفسجي ده هو اللون الأشمل للويب سايت. أنا عايز تكون ألوان مختلفة، فاهم قصدي؟ ولما أنا أبقى
+      هوفر يبقى يجيلي اللون ده، أو لو أنا اخترت شمال أو يمين مثلا يفضل موجود لحد ما الداتا تتنقل ثانية أو
+      ثانيتين ويقوم جاي متشال، فاهم؟» Seven findings, each fixed with a spec that fails on the code before
+      it (each fix reverted once and its specs seen red). Nothing on the server, the contracts or the board
+      page; the arrows' hues, the hold and what each way does are as D made them.
+      - (1) Moved there and back was «no change» only for a slot of one: 213's «أخصائي 1» [0300012,
+        0300014] came back [0300014, 0300012] (`planSwap` put an arrival at the slot's end), «تطبيق» live
+        and «حفظ» counting the row; and with his own slot taken meanwhile (0300012 to 255, 0200026 into the
+        room he left, 0300012 back) he came home in «أخصائي 2», unmarked. Now `replaySwap` hands `planSwap`
+        the window's opening rows (`home`): a person going back to his row takes his own slot first and his
+        own place in it, ahead of anybody who came in the window — so there and back is no change at all;
+        his own slot full, he takes the other «أخصائي» and his line says so, «من أخصائي 1» (emerald, as
+        «من 213»; `swapSlotChanges`, `data-swap-reseated`). One operation alone (`applySwap`, no opening)
+        keeps arrivals at the slot's end, as before. The window's press reads the same opening, so what it
+        names as moved and kept back is what the replay draws.
+      - (2) ✕, Escape and «إلغاء» dropped every move without a word while the cards showed the data moved.
+        With moves that change something they now ASK, in the footer's place: «لم تنتقل التغييرات إلى
+        اللوحة بعد — هل تريد تطبيقها أم تجاهلها؟» — «تطبيق» (hands them over), «تجاهل التغييرات» (closes,
+        nothing handed over), «متابعة التعديل» (and ✕ / Escape on the question: back to the window), the
+        focus on its «تطبيق» (`SwapCloseAsk`, `swapCloseStep`, the state's `closing`). With nothing changed
+        — moved there and back included — they close at once, as before. While the moves change something
+        the footer says where they go: «تنتقل التغييرات إلى اللوحة عند «تطبيق»» (`data-swap-apply-hint`).
+      - (3) The footer's «نُقل: N» summed every press (there and back read «نُقل: ٢» beside «لم يتغيّر شيء
+        بعد»), and its «·» read as the Arabic zero («نُقل: ٢ · بقي: ١»). It counts what differs from the
+        opening, as the cards show it (`swapWindowCounts(opening, work, state)`): «نُقل» every item on a
+        card it did not open on or in another slot of its own, «استُبدل» every value on neither row now
+        (said only when there is one), «بقي» what the last press kept back — «نُقل: ٢ — استُبدل: ١ —
+        بقي: ١», a dash between them («Moved: 2 — Replaced: 1 — Kept back: 1»). `data-swap-apply` carries
+        the same «نُقل». On a phone the count and the line about the board take a line of their own under
+        the buttons (squeezed beside them they broke a word to a line); one line beside them from `sm`.
+      - (4) A one-way press cleared the RECEIVING card's ticks too, which that arrow neither read nor
+        moved; and a press that moved nothing (everything kept back) cleared its ticks with no step the
+        undo could give them back by. Now a press clears only the ticks it read; the receiving card keeps
+        its own — but a field that took the arriving value (its tick named the value replaced); a press
+        that moves nothing leaves the ticks as they were, its reason under the arrows. The undo gives back
+        both cards' ticks as they were before the press.
+      - (5) The undo's spoken name was its detail only («تراجع عن نقل المحدد من 255 إلى 213»), not the
+        words it shows (WCAG 2.5.3): now «تراجع عن آخر نقل — …». «تطبيق», «تغيير» and the undo were
+        native-disabled, their reasons out of the keyboard's and the screen reader's reach: each is
+        `aria-disabled` now, reachable, its reason in its name and its tooltip, a press doing nothing — as
+        the arrows. `DesignSave` (`fleet/components/DesignDialog.tsx`) takes `why` for this in place of D's
+        `title` (nothing else passed it); every other caller is as before.
+      - (6) An arrow that cannot act — what the window shows most: at opening nothing is ticked — was
+        softened to 60% (2.59:1 sky, 2.52:1 orange in light). It keeps its colour whole now: the rest glyph
+        (`sky-700` / `orange-700`, dark `sky-300` / `orange-300`) on no tint with a lighter border, 5.93:1
+        and 5.18:1 on white (dark 12.1:1, 11.96:1); under the pointer a soft tint of its own colour comes
+        (`sky-100` 5.17:1, dark a 15% tint 9.73:1) — never the solid fill a press follows. Measured from
+        computed styles, nothing ticked, dark and light (`SWAP_ARROW_LOOK[…].off`).
+      - (7) No suite ran the window's press and its hold: the dialog spec drew static markup with the state
+        handed in, the window spec rebuilt the wiring by hand — dropping the clock's start would have held
+        every arrow for good with every spec green. The state, the press and the hold's clock are one store
+        now (`createSwapWindow`, read with `useSyncExternalStore`): a press that acts holds the arrow and
+        starts the clock, one that cannot changes nothing and starts nothing, the undo ends a hold, the
+        window closing (its last watcher gone) stops the clock. Driven with fake timers in the window spec,
+        and in the dialog spec through the arrows' own `onPress` and the footer's `onUndo` on the store the
+        window made.
+      - i18n (Arabic and English): new `operations.crewPlan.swap.applyHint`, `swap.closeAsk`,
+        `swap.closeDiscard`, `swap.closeStay`, `swap.fromSlot`, `swap.summaryReplaced`; rewritten
+        `swap.summary` («نُقل: {{moved}} — بقي: {{kept}}» / «Moved: {{moved}} — Kept back: {{kept}}»).
+      - Specs. Rewritten (the rule changed): in `lib/crew-swap-window.spec.ts` «a press that moves nothing
+        (everything kept back) is no step — but says why» → «a press that moves nothing (everything kept
+        back) is no step — says why, and its ticks stay»; «at once: what crossed lands on the other card
+        «من 213», a rule keeps someone back, the ticks clear» and «several moves in a row — each works on
+        what the one before left» (titles kept: `swapWindowCounts` reads the opening and the working copy,
+        `{ moved: 2, replaced: 1, kept: 1 }` and `{ moved: 2, replaced: 0, kept: 1 }`); «another second
+        van: the first card’s ticks kept, every move and tick of the other gone» (its state gains
+        `closing: false`, assertions unchanged). In `components/crew-swap-dialog.spec.tsx`, titles kept:
+        «nothing to apply until the second van is picked — and no preview section at all», «a rule keeps an
+        item back — rose «لم يُنقل» on its card, named with its reason under the arrows, counted in the
+        footer» and «an archived type in an exchange: both rows keep theirs, each named why» («تطبيق» off
+        by `aria-disabled` with its reason in its name — `applyOff` — not `disabled=""`); «a press of the
+        swap moves at once: each card holds what arrived «من 213» / «من 150» — the fields exchanged,
+        nothing thrown away — and the ticks clear» and «English: the same window in its own words» (the
+        dash for «·»); «the two one-way arrows share ONE hue (sky), the swap another (orange) — at rest,
+        under the pointer and held; never the brand’s, never grey» and «each arrow off with its reason:
+        nothing ticked on the card(s) it sends from» (off: no `opacity-60`, the rest glyph on no tint, a
+        soft tint under the pointer, never the solid fill); «several moves in a row: the cards show them one
+        on top of the other, «من …» against the opening» (the count against the opening — «3» with
+        «استُبدل: ١», there and back «0», no longer «2»); ««تغيير» the second van is off while moves stand
+        — «تطبيق» or take them back first» (`aria-disabled`, its reason in its name); and «the footer:
+        «تطبيق» hands over the presses (off while nothing changed, saying so); «إلغاء» only closes; «تراجع
+        عن آخر نقل» names the last move, off with none» → «the footer: «تطبيق» hands over the presses (off
+        while nothing changed, saying so); ✕, Escape and «إلغاء» close with nothing changed and ASK when
+        the moves change something; «تراجع عن آخر نقل» names the last move, off with none». New: in
+        `lib/crew-swap.spec.ts` the describe «Round 34 D critic — moved there and back: home to his own
+        seat» (4: a two-person slot, his own slot first, his own slot taken meanwhile «من أخصائي 1», one
+        operation alone as before); in `lib/crew-swap-window.spec.ts` «a one-way press clears the ticks it
+        read; the receiving card keeps its own — but a field that took the value arriving» and the describes
+        «Round 34 D critic — the footer counts what differs from the opening» (1), «Round 34 D critic —
+        closing with moves asks first» (2) and «Round 34 D critic — the window’s store: a press, its hold,
+        and the clock let go» (3); in `components/crew-swap-dialog.spec.tsx` «home in the other «أخصائي»
+        (his own taken meanwhile): his line says «من أخصائي 1»» and the describe «Round 34 D critic — the
+        window’s press, wired: the arrow held, then at rest» (2).
+      - Verified on the built web against the stubbed API (`r34x/shoot-r34x.mjs`, from D's shooter): 73
+        checks — the opening's arrows at opacity 1 in their colours, ≥ 4.5:1, a soft tint under the
+        pointer; «تطبيق» and the undo reachable and named why; a press holding 1.4s, 255's own tick kept,
+        «نُقل: ٢ — استُبدل: ١ — بقي: ١» and the line about the board; there and back — 213 in its opening
+        order, «نُقل: ٠ — بقي: ٠», «تطبيق» off, Escape closing at once; the taken slot «من أخصائي 1»;
+        Escape, ✕ and «إلغاء» asking, «متابعة التعديل» and Escape on the question going back, «تجاهل
+        التغييرات» leaving the board as it was, «تطبيق» on the question giving «حفظ (2)» and one «تراجع»
+        step; the question and the footer whole at 390 with no sideways scroll; the window 625px at
+        1024×768, 1366×768 and 1440×900 with the notice, nothing scrolling; English; reduced motion.
+    - E — the owner, on the screenshot of the row's colour list
+      (`ship/r34b/row-colour-picker-1440-dark.png`), circling the toolbar's start — the role legend
+      «● قائد ● أخصائي يعمل قائدًا ● أخصائي» and the hint under it: «واسمح الحاجات اللى فوق دى وحط مكاناها
+      الاجماليات بدل ما انت لما بختار حاجه بينزل سطر ل تحت». The board's head is two lines now — the
+      toolbar and the bar — and nothing picked or chosen adds a third.
+      - Gone from the board: the legend and the hint (`CrewBoardPage`), drawn nowhere else — the role
+        colours are on every chip and on the pools' heads, and every empty slot says «+ اختيار».
+        `operations.crewPlan.hint` removed (Arabic and English; nothing else read it). A reader without
+        `operationsCrew.plan` was told so in the hint's place («يمكنك الاطلاع على التشغيلة؛ …»); now by a
+        lock among the acts (`data-crew-view-only`, behind the same `!canPlan && !isRecord`), the same
+        words its name (screen-reader text) and its tooltip — no line. A past day keeps «سجل · للعرض فقط»
+        and «العودة إلى اليوم» in words in the acts' place.
+      - The totals moved up: the whole strip — «الإجمالي», a chip per type with its dot (a press filters
+        by it, a second lets go), «بدون نوع» when any, «صيانة» with its codes in its tooltip — is the
+        toolbar's start (`CrewPlanHand` handed the strip as its children), the acts at its end, ONE line
+        from 1280 (`flex-nowrap`); below 1280 the totals take a line of their own above the acts. The
+        same handlers, titles and hooks (`data-type-counts`, `data-type-count`, `data-type-archived`,
+        `data-workshop-count`); the strip still counts the whole day.
+      - The sizing (`HEAD_CHIP`, `HEAD_STRIP` in `CrewPlanFrame`): a chip 26px high, 4px inside, 3px
+        between the dot, the name and the number beside it, 10.5px (11px from 1440; the number 11 /
+        11.5px), 2px between chips — `COUNT_CHIP` (still «الطاقم الثابت»'s and «المعروض»'s) is 6px / 4px /
+        11.5px with a 12.5px number. Measured on a catalog of eleven active types, 265 rows (2–3
+        figures), «بدون نوع» 11 and «صيانة» 12: the fourteen chips are 977px in Arabic at 1440 (were
+        1,123) and 948px below it. Even so they did not fit beside the six acts in words (659px in
+        Arabic, 749px in English — 1,600px asked of the 1,320 a 1440 screen gives the board), so below
+        1760 each act but «حفظ» is its icon in a 34px square, its word kept as its name (`ACT_WORD`,
+        read by a screen reader) and in its tooltip (the standing crew's names it before its reason:
+        «الطاقم الثابت — …»); «حفظ (n)» keeps its word and its count; from 1760 every act has its word,
+        as before. The acts are then 261px (281 with «حفظ (n)»). Arabic: every chip whole at 1440 (74px to spare) and 1366
+        (29px; 9px with «حفظ (n)»).
+      - The last resort, where even that is short — Arabic at 1280 (57px), English (longer names: 130px
+        at 1440, 168 at 1366, 254 at 1280): the line scrolls sideways inside its own box, never a
+        wrap, never a sideways page. No scrollbar (it would give the box a height of its own; the box is
+        the acts' 34px whether it scrolls or not): the edge that hides chips fades (a mask — dark and
+        light alike), a plain mouse wheel over it moves it and gives the turn back to the page at its
+        edge, a trackpad or a finger as ever, and a chip reached by Tab comes into view (new
+        `lib/side-scroll.ts`: `sideEdges`, `wheelToSide`, `sideFade`, `useSideScroll`).
+      - The bar is the filters only, ONE line from 1280 (`CREW_PLAN_BAR_LINE` — the shared bar with
+        `flex-nowrap` and 8px between): the day, the van, the person (192px below 1366, 224 above), the
+        direction, the type, and «المعروض N من M — مسح التصفية» at its end in room the line keeps. On a
+        phone the type and that count share a line (the type box gives way), so a filter adds no line
+        there either.
+      - «لما بختار حاجه بينزل سطر ل تحت» — every choice measured: the table's top against the toolbar's,
+        1280, 1366 and 1440, dark, Arabic and English, today's build (dist-r34) and E's (dist-r34e), the
+        stub below (`ship/r34c/head-measure.json`). Before: picking somebody moved the table UP 6px in
+        Arabic and 26px in English (the two-line legend and hint gave way to the one-line pill); at 1280
+        every filter — a van, a person, a direction, the type list, a type chip — moved it DOWN 35px
+        («المعروض» wrapped the bar's first line). After: a chip picked up lies OVER the totals, in their
+        box (`CrewPlanHand` with children: the totals stay in it, unseen and out of the Tab order, the
+        amber pill — «تم اختيار … — اختر الخانة، أو اضغط Esc للإلغاء» and «إلغاء» — absolutely over
+        them, `aria-live="polite"` as before); «إلغاء» and Escape put it down and the totals come back.
+        Picking somebody, a van (one or three), the person search, a direction, the type list, a type
+        chip, a van and a chip together, «حفظ» taking its count: 0px each, at every width and in both
+        languages — and 0px at 768 and 1024, and at 390 (the pill, every filter). The head itself is
+        shorter: the table starts 45px higher in Arabic and 97px higher in English (the toolbar 34px,
+        was 41 / 61; the bar 64px, was 102 / 134). Opening a past day still moves the table by Round 32's
+        calm record notice (62px and its 16px gap: 78px; up to 142px on a phone in English): kept on
+        purpose — a change of day, not a choice on the board, and the notice says what a record is and
+        which changes the day ended on (before E it moved 71px in Arabic and 51 in English, the toolbar
+        losing its hint at the same time).
+      - «الطاقم الثابت» is unchanged: `CrewPlanHand` without children draws its legend, its hint and the
+        pill in their place as before; its bar and chips are the shared ones — pixel-identical in today's
+        and E's build at 1440, at rest and with a chip picked. It still shows the legend and the hint
+        over its own counters' bar; the same move there is the owner's call.
+      - i18n: `operations.crewPlan.hint` removed; in English only, shorter so more of the line is seen:
+        `operations.crewPlan.workshop` «In the workshop» → «Workshop», `operations.crewPlan.type.untyped`
+        «No type yet» → «No type».
+      - Specs. Rewritten (the rule changed): `pages/standing-crew-page.spec.tsx` «draws the board’s
+        frame, toolbar, bar, grid, slots, chips, pools and lists» (title kept: the board's bar is
+        `CREW_PLAN_BAR_LINE`, built from `CREW_PLAN_BAR` — no longer `CREW_PLAN_BAR` itself);
+        `components/crew-slot-picker.spec.tsx` «draws «+ اختيار» in every empty slot with room, and a
+        «+» beside a half-full slot’s ✕» (title kept: «the hint names «+ اختيار»» → the page reads no
+        hint and the key is gone); `operations-i18n.spec.ts` — the crew plan's key list drops `hint`
+        (its Arabic and English cases go with the key). New: `components/crew-board-head.spec.tsx` (17:
+        the legend and the hint gone, the key with them, «الطاقم الثابت» keeping its own; the strip in
+        the toolbar before the acts — its handlers, titles and hooks — and the bar the filters only;
+        one line from 1280 for the toolbar, the acts and the bar, the strip never wrapping, no
+        scrollbar, the fade; the pill over the totals — the name, «إلغاء», `aria-live`, the totals
+        unseen but kept — and Escape; the compact chip; each act's word and tooltip, «حفظ» in words;
+        the past day's words; the lock) and `lib/side-scroll.spec.ts` (10: the edges both ways with a
+        pixel of slack, the wheel, the fade).
+      - Verified on the built web (dist-r34e) against the stubbed API (`r34e/stub-e.mjs` over the r27s
+        stub — eleven active types, 265 rows, 12 vans in the workshop; `r34e/shoot-e.mjs`, 50 checks):
+        no legend and no hint; the strip in the toolbar on its one 34px line and the bar one 64px line
+        at 1280, 1366, 1440 and 1760, Arabic and English, dark and light; no sideways page scroll at
+        any width, 390 included; a van and «يومي» chosen with «المعروض ١ من ٢٦٥» shown and nothing moved;
+        a person picked — the pill within the toolbar's line, said aloud, the totals unseen — «إلغاء»
+        and Escape putting it down; the past day's mark and «العودة إلى اليوم» on the same line; the
+        lock without the grant; a wheel over the totals at 1280 carrying them to their end and the fade
+        following.
+    - F — the owner, in the same message: «و اسمحلى برضو ان ممكن عملية تكون من غير لون مش لازم ان يومى او
+      محصنة تبقى واخده لون اجبارى». Round 34 C made a type's colour optional; this answers what C left
+      open — no type is forced to take a colour: a NEW type starts with none, and nothing puts a colour
+      back on a type that has none, «يومي» and «محصنة» included.
+      - A new type starts with no colour: «إضافة نوع» (`ShiftTypeDialog`) opens on «بدون لون» and saves
+        `colour: null` unless a swatch is pressed; the palette beside it — a colour nobody wears among
+        it — is one press away. An edited type opens on its own colour, or on «بدون لون», from the
+        first paint. Round 24b's «a new type opens on a free colour of the palette» is gone:
+        `freeShiftTypeColour` (`CatalogDialogs`) and `freeColourFor` (`lib/type-colours`) removed —
+        nothing else read them. The contract and the API already create a type left without a colour
+        with none (`colour: …nullable().default(null)`, stored null), and an older client that sends a
+        colour keeps it: no contract or API change.
+      - What could force a colour back — each checked, none does: the boot's legacy nine
+        (`seedOperationsShiftTypes`: keyed on `seedKey`, `$setOnInsert` only — they get their colours
+        on a FRESH database, never again), Operations' boot step (`seedOperations`: the grants and the
+        three data migrations, none of which touches a type), the go-live data (no type in it), the
+        edit (`.partial()`: `colour` left out stays absent, so unchanged), the archive and the order,
+        the palette's size and its «unworn» swatches (`paletteFor` counts a type with none and hands it
+        nothing), and the crew save, the swap and the standing crew (a row's colour, never its type's).
+      - «ألوان الأنواع» on the board: «بدون لون» was already one press on every type's line; it is now
+        SAID, not only drawn — the column's head reads «بدون لون» under its struck ring
+        (`data-swatch-off-word`), and on a phone (no head) each type's first choice is the ring with the
+        words, a 36px pill, as the catalog's form draws it. The subtitle says it too: «لكل نوع لون من
+        ألوان اللوحة (N) أو «بدون لون»، ويجوز أن يشترك نوعان في لون واحد» (English «A colour for each type
+        from the palette (N), or none — two types may share one»). The row's «اللون» list keeps «لون
+        النوع (بدون لون)» for such a type, and the toolbar's totals (E) draw it with the neutral ring.
+      - Specs. Rewritten (the rule changed): `pages/catalogs-shift-types.spec.tsx` «starts a new type
+        on the first shown colour no ACTIVE type wears — an archived one’s is free» → «opens a NEW type
+        on «بدون لون» — no colour forced on it; the palette, a free colour among it, one press away»;
+        in the same file «a type with no colour counts in the palette and never adds a swatch of its
+        own» (title kept: `freeShiftTypeColour(WITH_BARE)` is emerald → the new type's form opens on
+        «بدون لون», emerald offered) and «the form keeps a type’s «بدون لون» when it opens on it, and
+        sends null for it» (title kept: the source lines it reads are the new opening);
+        `lib/type-colours.spec.ts` «a new type starts on the first shown colour nobody live wears, else
+        the first» → «a new type starts with no colour — the palette it is offered holds the colours
+        nobody live wears», and «a type with no colour still counts in the palette, and wears no swatch
+        of it» (title kept: `freeColourFor` → the unworn colours offered). New: in
+        `catalogs-shift-types.spec.tsx` «opens an EDITED type on the colour it has — or on «بدون لون»
+        when it has none»; `components/type-colours.spec.tsx` «Round 34 F — no type is forced to wear a
+        colour: «بدون لون» one press, said in words» (5: the head's words, «يومي» and «محصنة» pressed on
+        «بدون لون» beside a type that keeps its colour, the phone's pill, the subtitle, the totals'
+        neutral ring); API `tests/integration/operations-crew-plan.spec.ts` «Round 34 F — no type is
+        forced to wear a colour: «يومي» and «محصنة» stay bare across a boot» (1; the file run whole, 65
+        green: both taken off — one as the card sends it, one as the form does — then Operations' boot
+        step twice, an edit without `colour`, an archive and back, the order turned round and put back,
+        a day of their rows saved, a new type with no colour and an older client's with one). Each seen
+        red once: the seed writing its colour with `$set` (the API case), the form opening on a palette
+        colour (4 web cases), the card without its words (2).
+      - Verified on the real stack (`r34f/run-r34f.sh` — the live API on a MongoDB that OUTLIVES it,
+        serving dist-r34f; `r34f/shoot-r34f.mjs`, 32 checks): «يومي» set «بدون لون» from «ألوان الأنواع»
+        (one press, `PATCH { colour: null }` → 200), «محصنة» from «البيانات المرجعية» (the form → 200),
+        «طوارئ» added untouched (`POST` with `colour: null`, stored none); the API process stopped and
+        booted again on the same database (every boot step and module seed ran, nothing seeded): the
+        three still have no colour, the other seven keep theirs, ten types; on the board their rows
+        (213, 61, the row without a van — «محصنة» — and 255 — «يومي») carry no colour mark and fill
+        exactly as a row with no type, dark and light; their chips in the toolbar's totals the hollow
+        ring; 213's «اللون» list «لون النوع (بدون لون)»; «إضافة نوع» opens on «بدون لون»; the phone's
+        sheet with the pill, no sideways page scroll.
+    - Round 34 E and F verifier (the build's, never the owner's), on the owner's «و اسمحلى برضو ان ممكن
+      عملية تكون من غير لون مش لازم ان يومى او محصنة تبقى واخده لون اجبارى واسمح الحاجات اللى فوق دى وحط
+      مكاناها الاجماليات بدل ما انت لما بختار حاجه بينزل سطر ل تحت». On the real stack (the live API on a
+      MongoDB that outlives it, the built web; tomorrow 98 rows over eleven active types, six vans in the
+      workshop), at 1280, 1366 and 1440 every choice left the table where it was — but below 1280, from
+      about 1060px (1242 is a 1366 screen at 110%), the bar's five filters fill its first line, and
+      «المعروض N من M» wrapped onto a line of its own: the table 35px down on every filter, Arabic and
+      English, a plan and a record — the very line the owner asked away. Below 1280 (from 640) the count
+      now stands at the start of the toolbar's acts line, which is there already (the totals take the
+      first line, the acts the second) and has the room (`filteredCountAt`, `CrewPlanFrame`); from 1280
+      it is at the bar's end as E made it, and on a phone beside the type. Measured after, 640 to 1279
+      (twelve widths), Arabic and English, a plan and a record: 0px each. New: in
+      `components/crew-board-head.spec.tsx` the describe «Round 34 verifier — below 1280 «المعروض N من M»
+      takes no line of its own either» (2, red on the code before). Everything else E and F report held
+      on the same stack: no legend and no hint, the totals on the acts' line and the bar one line at
+      1280, 1366 and 1440 (Arabic and English, dark and light), every choice 0px there and at 390, 768
+      and 1024; «يومي» and «محصنة» taken off and still bare after the API booted twice on the same
+      database, their rows plain and their chips the neutral ring; a new type on «بدون لون». Nothing
+      else changed.
+    - Round 34 E and F critic (the build's, never the owner's), on the owner's «و اسمحلى برضو ان ممكن
+      عملية تكون من غير لون مش لازم ان يومى او محصنة تبقى واخده لون اجبارى واسمح الحاجات اللى فوق دى وحط
+      مكاناها الاجماليات بدل ما انت لما بختار حاجه بينزل سطر ل تحت». Eight findings on E (F's had none),
+      each re-checked on the built web against the stubbed API (`r34g/probe-g.mjs` over `r34e/stub-e.mjs`
+      — eleven active types, 265 rows, twelve vans in the workshop): all eight real, all fixed.
+      - A chip reached by Tab was NOT brought into view, as E said it was: Chromium leaves a partly seen
+        focused chip where it is — at 1280 in English «Emergency» stood 76 of its 89px past the strip's
+        edge, the rest under the fade. The strip now brings a chip the KEYBOARD focuses whole inside its
+        box, 28px (the fade's width) clear of each edge (`sideReveal`, and the listeners gathered in
+        `followSide` — the scroll, the wheel, the focus, the sizes — which `useSideScroll` calls), at
+        once, never smoothly (reduced motion has nothing to glide). A press focuses its chip too, and is
+        left alone: moving the line under a pressing pointer would land the release on another chip.
+        Measured: every chip, Tab after Tab from «الإجمالي» to «صيانة», whole and clear of the fade at
+        1280 (Arabic, English), 1366, 1440 and 1024 (English), 768 (Arabic) and 390 (both).
+      - «صيانة» could not be reached by the keyboard whenever the line overflowed (1280 Arabic, every
+        laptop width in English, every tablet and phone): it was a span out of the Tab order, its codes
+        only in a hover's tooltip. It takes the focus now (`tabIndex={0}`), so Tab carries the line to
+        its end, and its codes — «سيارات في الصيانة: …», or that there are none — describe it to a
+        screen reader (`aria-describedby`, the words beside the strip, not inside its scrolling box);
+        the mouse still reads them in its tooltip (`workshopWords`, built once for both).
+      - The acts lost their words at EVERY width below 1760, though from 640 to 1279 they have a line of
+        their own: unlabelled squares on a touch tablet, where a tooltip never shows. Their icons are now
+        only where they must be: from 1280 to 1759, where the totals share the acts' one line (34px
+        squares, as E made them — the owner's 1440 laptop among them), and below 820, where the words do
+        not fit one line (English at 768: 709px of words, «Save (n)» 30 more, of 720) — there in 44px
+        squares, a finger's size, «حفظ», a past day's mark and «العودة إلى اليوم» as high (`WORD_ACT`).
+        From 820 to 1279 every act has its word again, as before E. For that line to stay the acts'
+        alone, «المعروض N من M» left it (next).
+      - Where «المعروض N من M» stands below 1280: the verifier put it at the start of the acts' line;
+        it now stands at the END OF THE TOTALS' line (`filteredCountAt({ oneLineHead })` → `head`, the
+        count among the hand's children after the strip). That line never wraps — the totals give way and
+        scroll inside their box — so the count can add no line at any width, a phone's included; the
+        acts' line keeps its width for their words. On a phone it is figures only, «١٢ من ٢٦٥», the whole
+        «المعروض ١٢ من ٢٦٥» its tooltip and what a screen reader says, and «مسح التصفية» an ✕ that keeps
+        its words as its name and tooltip (`FilteredCount`'s `compact`; new key
+        `operations.crewPlan.filter.shownShort`, «{{shown}} من {{total}}» / «{{shown}} of {{total}}»).
+        So the phone's type box no longer shares its line: with «احتياطي سفر» picked by its chip it kept
+        83px at 360 in English (its icon, a figure, the chevron) — now the bar's whole width (302px at
+        360, 332 at 390), like every filter above it; the count 93px beside 227px of totals at 360.
+      - A reader without `operationsCrew.plan` was told the board is read only by a grey lock alone —
+        its words only in a hover's tooltip, nothing on a phone or to the keyboard. It is now a lock and
+        «للعرض فقط» in words (`ViewOnlyMark`, new key `operations.crewPlan.viewOnlyMark`, «View only»),
+        as the past day's «سجل · للعرض فقط» is; why, in full — «يمكنك الاطلاع على التشغيلة؛ أما التوزيع
+        فيحتاج صلاحية تخطيط الطاقم.» — its tooltip and what a screen reader says.
+      - While somebody was picked, the pill lay over the totals and hid them: no type chip could be
+        pressed to narrow the rows before choosing the slot, as it could before E. The pill now stands at
+        the START of the totals' line, on it — at most 70% of the line, 30px high in its 34px — and the
+        totals keep the rest: seen, pressed (a type chip narrows the rows and the pill stays), scrolling
+        inside their box when the room is short. The spoken region is there, empty, before anything is
+        picked (`CrewPlanHand` with children). Still nothing moves: measured below.
+      - The head's spec pinned mostly source text and class names; what it described was checked only by
+        scratch shooters — which is how E's focus claim shipped. Behaviour is now tested where node can:
+        `sideReveal` (4), and the strip's listeners driven on a stand-in box with Node's own events
+        (`followSide`, 5: Tab past the edge in English and in Arabic, a press that moves nothing, the
+        wheel and its edges, the listeners undone); `CrewPlanHand`, `FilteredCount` and `ViewOnlyMark`
+        rendered. The spec's header says what is verified only on the built page, and where.
+      - Three comments put a corrected paraphrase in quote marks as the owner's («امسح … مكانها …»); they
+        quote him as he wrote: «واسمح الحاجات اللى فوق دى وحط مكاناها الاجماليات» (`CrewBoardPage`,
+        `CrewPlanFrame`, `operations-i18n.spec.ts`).
+      - Specs. Rewritten (the rule changed), in `components/crew-board-head.spec.tsx`: «a chip picked up
+        lies OVER the totals, in their box: its name, «إلغاء», said aloud» → «a chip picked up stands at
+        the totals’ start, ON their line: its name, «إلغاء», said aloud — the totals still seen and
+        pressed»; «nothing picked: the totals shown, the spoken region there and empty» → «nothing
+        picked: the totals shown, the spoken region there and empty — no width, no gap»; «below 1760
+        each act but «حفظ» is its icon — its word its name, and its tooltip» → «from 1280 to 1759 — and
+        below 820 — each act but «حفظ» is its icon; its word its name, and its tooltip»; the describe
+        «Round 34 E — a reader without the planning grant: a lock, not a line» → «… a mark, not a line»,
+        its «the lock stands first among the acts, its words its name and its tooltip» → «stands first
+        among the acts: a lock and «للعرض فقط» in words — why in full its tooltip and what is said»; the
+        verifier's «from 1280 at the bar’s end; below it, on the acts’ line; on a phone beside the type»
+        → «from 1280 at the bar’s end; below it — a phone too — at the end of the totals’ line», and its
+        «the board asks it once, by the toolbar’s own width (1280), and draws the count in ONE place»
+        (title kept: the count inside the totals' line after the strip, `compact={phone}`, none among
+        the acts, the bar without `sm:contents`); «the toolbar holds the whole strip — «الإجمالي», the
+        types, «بدون نوع», «صيانة» — before the acts» and «the same behaviour, names and hooks: …» (titles
+        kept: «صيانة»'s words read from `workshopWords`, `title={workshopWords}` asserted).
+        `operations-i18n.spec.ts`: the crew plan's key list gains `viewOnlyMark` and `filter.shownShort`.
+        New: in `lib/side-scroll.spec.ts` the describes «Round 34 critic — a chip reached by Tab stands
+        whole inside the box, clear of the fade» (4) and «Round 34 critic — the strip’s listeners
+        (`followSide`): Tab, the wheel, the edges» (5); in `components/crew-board-head.spec.tsx` «Round
+        34 critic — «صيانة» is reached by Tab, its codes said» (2), «Round 34 critic — on a phone the
+        count is figures only, beside the totals; the type keeps its box» (2) and «Round 34 critic — the
+        owner’s words are quoted as he wrote them» (1). Each fix reverted alone, its spec seen red
+        (`r34g/red/red.log`): the focus listener (2), the keyboard-only guard (1), «صيانة»'s focus (1),
+        the acts' bands (1), the visible «للعرض فقط» (1), the compact count (1), the totals hidden while
+        held (1), the paraphrase (1).
+      - Measured on the built web (`r34g/probe-g.mjs`, the stub above), Arabic and English, dark, at
+        360, 390, 600, 640, 768, 819, 820, 900, 1024, 1100, 1180, 1242, 1279, 1280, 1366, 1440 and
+        1760: the acts in words exactly at 820–1279 and from 1760, 34px icons at 1280–1759, 44px below
+        820; then each from a fresh load — picking somebody, «إلغاء», Escape, one van, three vans, the
+        person typed, a direction, the type list, a type chip, a van and a chip, «مسح التصفية», a type
+        chip pressed WHILE somebody is held (the rows narrow, the pill stays), a row added («حفظ (١)») —
+        the table's top against the toolbar's: 0px for every one of the 442 choices (13 at each of the 17
+        widths, both languages; 646/646 checks). No sideways page scroll anywhere.
+        Somebody picked: the pill on the totals' line, the totals seen. Tab: every chip whole and 28px clear of a fade, «صيانة» reached
+        and its codes said, at the eight widths named above (16/16). F's shots taken again on the real
+        stack with this build (`r34f/shoot-r34f.mjs`, the live API on a MongoDB that outlives it, booted
+        twice): 32/32, «يومي» and «محصنة» bare across the restart as F reported.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

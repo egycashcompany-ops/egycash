@@ -164,8 +164,9 @@ export const LEGACY_CUTOVER_MIN_ROWS = 20;
 
 /**
  * §4.4: the moment the branch began working in ECMS — its first own row (not deleted, not copied)
- * written on the first Cairo day it wrote at least `LEGACY_CUTOVER_MIN_ROWS`; a few test rows
- * before that do not count. Null when no day does. `days` need not be sorted.
+ * of the day's own work (opened for the day it was written; a plan for the next day is not) on the
+ * first Cairo day it wrote at least `LEGACY_CUTOVER_MIN_ROWS` of them; a few test rows before that
+ * do not count. Null when no day does. `days` (counted that way by the service) need not be sorted.
  */
 export const suggestLegacyCutoverAt = (
   days: readonly { day: string; rows: number; firstAt: Date }[],

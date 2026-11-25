@@ -229,9 +229,11 @@ export const useAtmLegacyCutover = (source: AtmLegacySource | null) =>
 export const useAtmLegacyPreview = (body: AtmLegacyImportBody | null) =>
   useQuery({
     queryKey: detailKey(MODULE, 'legacyImport', JSON.stringify(body)),
-    queryFn: () => api.previewLegacyImport(body as AtmLegacyImportBody),
+    queryFn: ({ signal }) => api.previewLegacyImport(body as AtmLegacyImportBody, signal),
     enabled: body !== null,
     staleTime: 0,
+    // A whole source is read: a failure is shown with its retry, never repeated unasked.
+    retry: false,
     // The last numbers stay while a changed cut is read — never another source's.
     placeholderData: (previous) =>
       previous !== undefined && previous.source === body?.source ? previous : undefined,

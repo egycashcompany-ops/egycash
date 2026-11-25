@@ -8,7 +8,7 @@
 // this card drives — one step, or one batch, per request — so closing the page pauses a run:
 // «متابعة» on its row carries it on, and the server ends one left 30 minutes. Nothing is changed in
 // the old system; nothing already in ECMS is changed by a run.
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import {
   type AtmLegacyImportRunDto,
   type AtmLegacySource,
@@ -26,10 +26,12 @@ import { ErrorState } from '../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { formatNumber, localized } from '../../../../shared/lib/format';
 import { stepLegacyImport, undoLegacySource } from '../../api/settings-api';
+import { useMountedRef } from '../../lib/useMountedRef';
 import { useAtmLegacySources, useRestaleAtmLegacySources } from '../../api/settings-queries';
 import { ConfirmActionDialog } from '../ReplenishmentDialogs';
 import { LegacyHistoryDialog, type LegacyImportSubject } from './LegacyHistoryDialog';
 import {
+  isRunEnded,
   isStepBusy,
   legacyErrorText,
   legacyRunProgress,
@@ -100,14 +102,9 @@ export const LegacyHistoryCard = (): JSX.Element => {
   const [opening, setOpening] = useState<LegacyImportSubject | null>(null);
   const [undoing, setUndoing] = useState<AtmLegacySourceDto | null>(null);
   const [busy, setBusy] = useState<LegacyBusy | null>(null);
-  // A loop stops when the card goes: the page closed pauses a run, as the server expects.
-  const alive = useRef(true);
-  useEffect(
-    () => () => {
-      alive.current = false;
-    },
-    [],
-  );
+  // A loop stops when the card goes: the page closed pauses a run, as the server expects. The
+  // project's hook, so StrictMode's second mount sets it again (useMountedRef).
+  const alive = useMountedRef();
 
   const branchOf = (name: LocalizedString | null): string =>
     name === null ? t('atm.settings.unknownBranch') : localized(name, locale);
@@ -145,8 +142,9 @@ export const LegacyHistoryCard = (): JSX.Element => {
         );
       }
     } catch (error) {
-      // A step that fails after the card closed is not news on whatever page the reader is on.
-      if (alive.current) toast.error(legacyErrorText(error, t, locale));
+      // A step that fails after the card closed is not news on whatever page the reader is on;
+      // nor is a run another window finished meanwhile — the card's re-read shows how it ended.
+      if (alive.current && !isRunEnded(error)) toast.error(legacyErrorText(error, t, locale));
     } finally {
       if (alive.current) setBusy(null);
       restale();
@@ -154,16 +152,19 @@ export const LegacyHistoryCard = (): JSX.Element => {
   };
 
   const undoLoop = async (entry: AtmLegacySourceDto): Promise<void> => {
-    const total = entry.copiedRows;
-    setBusy({ source: entry.source, kind: 'undo', done: 0, total });
+    // The server removes every copy the source holds now — more than the card read, if another
+    // window imported since — so the total grows to what the batches report (LinkResolutionCard).
+    let total = entry.copiedRows;
+    let done = 0;
+    setBusy({ source: entry.source, kind: 'undo', done, total });
     try {
       let remaining = total;
       while (remaining > 0 && alive.current) {
         const result = await undoLegacySource(entry.source);
         remaining = result.remaining;
-        if (alive.current) {
-          setBusy({ source: entry.source, kind: 'undo', done: total - remaining, total });
-        }
+        done += result.removed;
+        total = Math.max(total, done + remaining);
+        if (alive.current) setBusy({ source: entry.source, kind: 'undo', done, total });
         // A batch that removed nothing while rows remain would loop for ever: stop and say so.
         if (result.removed === 0 && remaining > 0) break;
       }
@@ -185,6 +186,15 @@ export const LegacyHistoryCard = (): JSX.Element => {
     }
   };
 
+  /**
+   * «تراجع» asks with the count the server holds NOW: a tab left open may have read the source
+   * before another window imported again (review finding, 2026-11-25).
+   */
+  const confirmUndo = async (entry: AtmLegacySourceDto): Promise<void> => {
+    const fresh = await sources.refetch();
+    setUndoing(fresh.data?.find((row) => row.source === entry.source) ?? entry);
+  };
+
   const rows = sources.data ?? [];
   return (
     <Card>
@@ -202,7 +212,12 @@ export const LegacyHistoryCard = (): JSX.Element => {
             {rows.map((entry) => {
               const branch = branchOf(entry.branchName);
               const mine = busy?.source === entry.source ? busy : null;
-              const paused = entry.lastRun?.state === 'running' ? entry.lastRun : null;
+              const run = entry.lastRun?.state === 'running' ? entry.lastRun : null;
+              // Driven by a window now (this one, or another): nothing else is offered.
+              const driven = mine !== null || run?.active === true;
+              // Paused: carried on. Stale (left 30 minutes): also undone or started over — the
+              // server ends it at either.
+              const offerNew = run === null || run.stale;
               const names = { source: entry.source };
               return (
                 <li
@@ -212,24 +227,27 @@ export const LegacyHistoryCard = (): JSX.Element => {
                 >
                   <span className="min-w-0 flex-1 text-sm text-slate-700 dark:text-slate-200">
                     {t('atm.settings.legacy.row', { source: entry.source, branch })}
-                    <span className="block text-xs text-slate-500 dark:text-slate-400">
-                      {legacySourceStatus(entry, t, locale)}
-                    </span>
+                    {/* This window's own loop shows its progress below instead. */}
+                    {mine === null && (
+                      <span className="block text-xs text-slate-500 dark:text-slate-400">
+                        {legacySourceStatus(entry, t, locale)}
+                      </span>
+                    )}
                   </span>
-                  {may && paused !== null && (
+                  {may && run !== null && (
                     <Button
                       variant="secondary"
                       size="sm"
                       leftIcon={<PlayIcon className="h-4 w-4" />}
-                      disabled={busy !== null}
+                      disabled={busy !== null || driven}
                       aria-label={t('atm.settings.legacy.resumeFor', names)}
                       data-legacy-action="resume"
-                      onClick={() => void runLoop(paused)}
+                      onClick={() => void runLoop(run)}
                     >
                       {t('atm.settings.legacy.resume')}
                     </Button>
                   )}
-                  {may && paused === null && (
+                  {may && offerNew && (
                     <Button
                       variant="secondary"
                       size="sm"
@@ -242,7 +260,7 @@ export const LegacyHistoryCard = (): JSX.Element => {
                       {t('atm.settings.legacy.preview')}
                     </Button>
                   )}
-                  {may && paused === null && entry.copiedRows > 0 && (
+                  {may && offerNew && entry.copiedRows > 0 && (
                     <Button
                       variant="ghost-danger"
                       size="sm"
@@ -250,7 +268,7 @@ export const LegacyHistoryCard = (): JSX.Element => {
                       disabled={busy !== null}
                       aria-label={t('atm.settings.legacy.undoFor', names)}
                       data-legacy-action="undo"
-                      onClick={() => setUndoing(entry)}
+                      onClick={() => void confirmUndo(entry)}
                     >
                       {t('atm.settings.legacy.undo')}
                     </Button>
@@ -270,10 +288,20 @@ export const LegacyHistoryCard = (): JSX.Element => {
       <ConfirmActionDialog
         open={undoing !== null}
         title={t('atm.settings.legacy.undoTitle', { source: undoing?.source ?? '' })}
-        body={t('atm.settings.legacy.undoBody', {
-          count: formatNumber(undoing?.copiedRows ?? 0, locale),
-          source: undoing?.source ?? '',
-        })}
+        body={[
+          t('atm.settings.legacy.undoBody', {
+            count: formatNumber(undoing?.copiedRows ?? 0, locale),
+            source: undoing?.source ?? '',
+          }),
+          // Copies changed in ECMS since — closed again, edited, reopened — go too: said aloud.
+          (undoing?.changedRows ?? 0) > 0
+            ? t('atm.settings.legacy.undoChanged', {
+                count: formatNumber(undoing?.changedRows ?? 0, locale),
+              })
+            : '',
+        ]
+          .filter((line) => line !== '')
+          .join(' ')}
         confirmLabel={t('atm.settings.legacy.undo')}
         danger
         busy={busy?.kind === 'undo'}

@@ -31,7 +31,7 @@ import {
   type SaveAtmLeaderDepartments,
   type SaveAtmMailboxConfigInput,
 } from '@ecms/contracts';
-import { get, post, put } from '../../../shared/lib/api-client';
+import { api, get, post, put } from '../../../shared/lib/api-client';
 
 const MAILBOX = '/atm/mailbox';
 const BRANCH_LINKS = '/atm/branch-links';
@@ -109,9 +109,19 @@ export const getLegacySources = (): Promise<AtmLegacySourceDto[]> =>
 export const getLegacyCutover = (source: AtmLegacySource): Promise<AtmLegacyCutoverDto> =>
   get<AtmLegacyCutoverDto>(`${LEGACY}/sources/${source}/cutover`);
 
+/**
+ * The preview reads a whole legacy source: a superseded one (the cut changed meanwhile) is
+ * cancelled on the wire, so its answer is never waited for.
+ */
 export const previewLegacyImport = (
   body: AtmLegacyImportBody,
-): Promise<AtmLegacyImportPreviewDto> => post<AtmLegacyImportPreviewDto>(`${LEGACY}/preview`, body);
+  signal?: AbortSignal,
+): Promise<AtmLegacyImportPreviewDto> =>
+  api<AtmLegacyImportPreviewDto>(`${LEGACY}/preview`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+    ...(signal === undefined ? {} : { signal }),
+  });
 
 export const startLegacyImport = (body: AtmLegacyImportBody): Promise<AtmLegacyImportRunDto> =>
   post<AtmLegacyImportRunDto>(`${LEGACY}/runs`, body);

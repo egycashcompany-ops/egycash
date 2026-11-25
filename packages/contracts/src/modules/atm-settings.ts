@@ -706,6 +706,16 @@ export interface AtmLegacyImportRunDto {
   finishedAt: string | null;
   /** A failed run's error code (never a message that could quote a row). */
   error: string | null;
+  /**
+   * Running, and stepped within the step lease — a window is driving it now. Read on the server's
+   * clock: the screen offers «متابعة» only when it is false, so two windows never drive one run.
+   */
+  active: boolean;
+  /**
+   * Running, and left 30 minutes without a step: the next start or undo of any source ends it
+   * `failed`. The screen then offers «معاينة» and «تراجع» beside «متابعة».
+   */
+  stale: boolean;
 }
 
 /** `GET /atm/legacy-import` — one entry per source, in `ATM_LEGACY_SOURCES` order. */
@@ -718,6 +728,12 @@ export interface AtmLegacySourceDto {
   lastRun: AtmLegacyImportRunDto | null;
   /** Rows copied from this source now in ECMS — what its undo would remove. */
   copiedRows: number;
+  /**
+   * Of those, the ones changed in ECMS since they were copied (closed again, edited, reopened —
+   * any write raises a row's version above the copy's 0). The undo removes them too, so its
+   * confirmation names them.
+   */
+  changedRows: number;
 }
 
 // ── The leader list — whose names the leader pickers offer ───────────────────────────────────────

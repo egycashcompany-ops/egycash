@@ -56,7 +56,9 @@ import {
 import {
   atmLegacyImportRunRepository,
   emptyLegacyKindCounts,
+  LEGACY_STEP_LEASE_MS,
 } from './legacy-history-run.repository';
+import { STALE_RUN_MS } from '../register/import/plan-import';
 import {
   legacyImportAuditRef,
   type AtmLegacyImportRunDoc,
@@ -311,6 +313,7 @@ const kindRunDto = (counts: AtmLegacyKindCounts, mode: AtmLegacyTimeMode) => ({
 const runDto = (
   run: AtmLegacyImportRunDoc,
   branchName: LocalizedString | null,
+  now: Date = new Date(),
 ): AtmLegacyImportRunDto => ({
   id: String(run._id),
   source: run.source,
@@ -327,6 +330,10 @@ const runDto = (
   lastStepAt: run.lastStepAt.toISOString(),
   finishedAt: run.finishedAt === null ? null : run.finishedAt.toISOString(),
   error: run.error,
+  // On the server's clock, so a window's own clock never decides who may drive a run.
+  active:
+    run.state === 'running' && now.getTime() - run.lastStepAt.getTime() < LEGACY_STEP_LEASE_MS,
+  stale: run.state === 'running' && now.getTime() - run.lastStepAt.getTime() >= STALE_RUN_MS,
 });
 
 const branchNameOf = async (branchId: Types.ObjectId): Promise<LocalizedString | null> => {
@@ -338,6 +345,18 @@ const branchNameOf = async (branchId: Types.ObjectId): Promise<LocalizedString |
  * Design §4.4 — the branch's own ECMS rows (not deleted, not copied) per Cairo day they were
  * WRITTEN, both kinds together, with the first moment of each day.
  */
+const cairoDayOf = (field: string) => ({
+  $dateToString: { format: '%Y-%m-%d', date: field, timezone: 'Africa/Cairo' },
+});
+
+/**
+ * The branch's own rows (not deleted, not copied) per Cairo day they were WRITTEN — counting only
+ * the day's own work: a row opened for the day it was written. A plan entered the evening before
+ * for the next day is not work in ECMS yet (review finding, 2026-11-25): Alexandria's 33 rows of
+ * the 23rd were all the 24th's plan, and a cut at the first of them would have left out 14 legacy
+ * operations of the 23rd, closed in the legacy system that evening, that ECMS never recorded.
+ * `openedAt` rather than `openDay`, which older rows do not carry.
+ */
 const ownRowsPerDay = async (
   branchId: Types.ObjectId,
 ): Promise<{ day: string; rows: number; firstAt: Date }[]> => {
@@ -346,15 +365,9 @@ const ownRowsPerDay = async (
       model
         .aggregate<{ _id: string; rows: number; firstAt: Date }>([
           { $match: { branchId, isDeleted: false, legacyImportRunId: null } },
-          {
-            $group: {
-              _id: {
-                $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'Africa/Cairo' },
-              },
-              rows: { $sum: 1 },
-              firstAt: { $min: '$createdAt' },
-            },
-          },
+          { $set: { writtenDay: cairoDayOf('$createdAt'), workDay: cairoDayOf('$openedAt') } },
+          { $match: { $expr: { $eq: ['$writtenDay', '$workDay'] } } },
+          { $group: { _id: '$writtenDay', rows: { $sum: 1 }, firstAt: { $min: '$createdAt' } } },
         ])
         .exec(),
     ),
@@ -370,13 +383,29 @@ const ownRowsPerDay = async (
   return [...days].map(([day, value]) => ({ day, ...value }));
 };
 
-/** Rows of the source now in ECMS — everything its runs copied. */
-const copiesOf = async (runIds: readonly Types.ObjectId[]): Promise<number> => {
+/**
+ * The copies some runs made, as `ix_legacy_import_run` holds them. The filter restates the index's
+ * own `$type: 'objectId'`: the planner does not take an equality (or `$in`) on ObjectIds as
+ * implying it (measured on MongoDB 7 — `maintenanceFromTicketFilter`), so without it the undo's
+ * batches and the card's counts walked the whole collection (review finding, 2026-11-25). A fresh
+ * object per call — Mongoose keeps the filters it is handed.
+ */
+export const legacyCopiesFilter = (runIds: readonly Types.ObjectId[]): Record<string, unknown> => ({
+  legacyImportRunId: { $in: [...runIds], $type: 'objectId' },
+});
+
+/**
+ * Rows of the source now in ECMS — everything its runs copied — or, with `changedOnly`, those
+ * written to since (a copy is written at version 0; every ECMS write raises it).
+ */
+const copiesOf = async (
+  runIds: readonly Types.ObjectId[],
+  changedOnly = false,
+): Promise<number> => {
   if (runIds.length === 0) return 0;
+  const filter = { ...legacyCopiesFilter(runIds), ...(changedOnly ? { __v: { $gt: 0 } } : {}) };
   const counts = await Promise.all(
-    Object.values(TARGETS).map((model) =>
-      model.countDocuments({ legacyImportRunId: { $in: runIds } } as never).exec(),
-    ),
+    Object.values(TARGETS).map((model) => model.countDocuments(filter as never).exec()),
   );
   return counts.reduce((sum, count) => sum + count, 0);
 };
@@ -475,16 +504,19 @@ export const atmLegacyHistoryService = {
   async sources(ctx: AuthContext): Promise<AtmLegacySourceDto[]> {
     assertAtmSettingsManager(ctx);
     const latest = await atmLegacyImportRunRepository.latestPerSource();
+    const now = new Date();
     return Promise.all(
       ATM_LEGACY_SOURCES.map(async ({ source }) => {
         const branch = await branchOfSource(source);
         const last = latest.get(source) ?? null;
+        const runIds = await atmLegacyImportRunRepository.idsOfSource(source);
         return {
           source,
           branchId: branch === null ? null : String(branch.id),
           branchName: branch === null ? null : branch.name,
-          lastRun: last === null ? null : runDto(last, await branchNameOf(last.branchId)),
-          copiedRows: await copiesOf(await atmLegacyImportRunRepository.idsOfSource(source)),
+          lastRun: last === null ? null : runDto(last, await branchNameOf(last.branchId), now),
+          copiedRows: await copiesOf(runIds),
+          changedRows: await copiesOf(runIds, true),
         };
       }),
     );
@@ -699,7 +731,7 @@ export const atmLegacyHistoryService = {
     for (const model of Object.values(TARGETS)) {
       while (removed < undoRows && runIds.length > 0) {
         const batch = await model
-          .find({ legacyImportRunId: { $in: runIds } } as never)
+          .find(legacyCopiesFilter(runIds) as never)
           .select({ _id: 1 })
           .limit(undoRows - removed)
           .lean<{ _id: Types.ObjectId }[]>()
@@ -707,7 +739,7 @@ export const atmLegacyHistoryService = {
         if (batch.length === 0) break;
         const result = await model.collection.deleteMany({
           _id: { $in: batch.map((row) => row._id) },
-          legacyImportRunId: { $in: runIds },
+          ...legacyCopiesFilter(runIds),
         });
         removed += result.deletedCount;
       }

@@ -9,7 +9,7 @@
 // اللى يتنقل بس سجل الصيانة والتغذية اللى اتقفل Done» — so the dialog offers no switch for open ones.
 // The cut is a MOMENT: the branch's first own row in ECMS, suggested by the server. A legacy row
 // closed at or after it is the branch's own work, entered in ECMS, and is not copied.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ATM_LEGACY_KINDS,
   type AtmLegacyImportPreviewDto,
@@ -26,7 +26,8 @@ import { Field, Input } from '../../../../shared/ui/form';
 import { ErrorState } from '../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { cn } from '../../../../shared/lib/cn';
-import { formatNumber } from '../../../../shared/lib/format';
+import { formatBusinessDateTime, formatNumber } from '../../../../shared/lib/format';
+import { DONE_RANGE_COMMIT_DELAY_MS } from '../../lib/done-range-commit';
 import {
   useAtmLegacyCutover,
   useAtmLegacyPreview,
@@ -36,6 +37,7 @@ import { listSeparator } from '../../lib/register-import-view';
 import { toLocalInputValue } from '../ReplenishmentDialogs';
 import {
   cutoverFromLocal,
+  isCommittableCut,
   legacyErrorText,
   legacyImportAllowed,
   legacyImportBody,
@@ -73,6 +75,12 @@ const PreviewBody = ({ preview }: { preview: AtmLegacyImportPreviewDto }): JSX.E
 
   const unclear = unclearKinds(preview);
   const codes = unresolvedCodesText(preview, t, locale);
+  // The cut these numbers were counted with, as the server read it — in Cairo time, whatever the
+  // reader's clock: a box mid-edit never leaves the counts saying another cut's numbers.
+  const countedWith =
+    preview.cutoverAt === null
+      ? t('atm.settings.legacy.cutNone')
+      : t('atm.settings.legacy.cutAt', { at: formatBusinessDateTime(preview.cutoverAt, locale) });
   const nothingToCopy = ATM_LEGACY_KINDS.every((kind) => preview[kind].toImport === 0);
   const row = (key: string, pick: (kind: AtmLegacyKind) => number) => (
     <tr
@@ -95,6 +103,9 @@ const PreviewBody = ({ preview }: { preview: AtmLegacyImportPreviewDto }): JSX.E
         <h4 className="font-semibold text-slate-700 dark:text-slate-200">
           {t('atm.settings.legacy.counts')}
         </h4>
+        <p className="text-xs text-slate-500 dark:text-slate-400" data-legacy-counted-cut="true">
+          {countedWith}
+        </p>
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr className="text-xs text-slate-500 dark:text-slate-400">
@@ -192,21 +203,75 @@ export const LegacyHistoryDialog = ({
   const start = useStartAtmLegacyImport();
   /** The cut as a moment (ISO) — `undefined` until the server's suggestion has answered. */
   const [cutover, setCutover] = useState<string | null | undefined>(undefined);
+  /**
+   * What the box holds. A native date-and-time box reports '' while any part is blank, and a
+   * complete moment at every keystroke of the year (0002, 0020 …): neither is a cut to send. Only
+   * a complete moment, once the box has held still (or been left), becomes the cut; an EMPTY box
+   * is «no cut» — a half-typed one is not (review finding, 2026-11-25).
+   */
+  const [box, setBox] = useState<string | undefined>(undefined);
+  const [incomplete, setIncomplete] = useState(false);
+  const [left, setLeft] = useState(false);
+  const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopTimer = (): void => {
+    if (commitTimer.current !== null) clearTimeout(commitTimer.current);
+    commitTimer.current = null;
+  };
+  useEffect(() => stopTimer, []);
 
   // A fresh dialog starts from the server's suggestion, once it has answered.
   useEffect(() => {
+    stopTimer();
     setCutover(undefined);
+    setBox(undefined);
+    setIncomplete(false);
+    setLeft(false);
   }, [subject?.source]);
   useEffect(() => {
     if (cutover !== undefined || suggested.data === undefined) return;
     if (suggested.data.source !== subject?.source) return;
-    setCutover(suggested.data.suggestedCutoverAt);
+    const at = suggested.data.suggestedCutoverAt;
+    setCutover(at);
+    setBox(at === null ? '' : toLocalInputValue(at));
   }, [cutover, suggested.data, subject?.source]);
+
+  /** The box's value becomes the cut — the suggestion kept to the second while unchanged. */
+  const commit = (value: string): void => {
+    stopTimer();
+    if (!isCommittableCut(value)) {
+      setIncomplete(true);
+      return;
+    }
+    setIncomplete(false);
+    setCutover((current) =>
+      current !== undefined && current !== null && toLocalInputValue(current) === value
+        ? current
+        : cutoverFromLocal(value),
+    );
+  };
+  const edit = (value: string, badInput: boolean): void => {
+    stopTimer();
+    setBox(value);
+    setLeft(false);
+    if (badInput || !isCommittableCut(value)) {
+      setIncomplete(true);
+      return;
+    }
+    setIncomplete(false);
+    commitTimer.current = setTimeout(() => commit(value), DONE_RANGE_COMMIT_DELAY_MS);
+  };
+  /** The box says the cut the counts were read with — not mid-edit, not waiting to be sent. */
+  const settled =
+    box !== undefined &&
+    !incomplete &&
+    cutover !== undefined &&
+    (cutover === null ? box === '' : toLocalInputValue(cutover) === box);
 
   const body =
     subject === null || cutover === undefined ? null : legacyImportBody(subject.source, cutover);
   const preview = useAtmLegacyPreview(body);
   const allowed =
+    settled &&
     preview.data !== undefined &&
     !preview.isFetching &&
     !preview.isError &&
@@ -267,13 +332,18 @@ export const LegacyHistoryDialog = ({
           label={t('atm.settings.legacy.cutover')}
           htmlFor="atm-legacy-cutover"
           hint={t('atm.settings.legacy.cutoverHint')}
+          error={incomplete && left ? t('atm.settings.legacy.cutIncomplete') : undefined}
         >
           <Input
             id="atm-legacy-cutover"
             type="datetime-local"
-            value={cutover === undefined || cutover === null ? '' : toLocalInputValue(cutover)}
-            disabled={cutover === undefined || start.isPending}
-            onChange={(e) => setCutover(cutoverFromLocal(e.target.value))}
+            value={box ?? ''}
+            disabled={box === undefined || start.isPending}
+            onChange={(e) => edit(e.target.value, e.target.validity.badInput)}
+            onBlur={(e) => {
+              setLeft(true);
+              if (!e.target.validity.badInput) commit(e.target.value);
+            }}
           />
         </Field>
         {suggested.isError ? (

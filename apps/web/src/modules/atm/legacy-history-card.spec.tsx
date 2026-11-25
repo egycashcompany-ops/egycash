@@ -34,6 +34,8 @@ import { ApiError } from '../../shared/lib/api-client';
 import { LegacyHistoryCard } from './components/settings/LegacyHistoryCard';
 import {
   cutoverFromLocal,
+  isCommittableCut,
+  isRunEnded,
   isStepBusy,
   legacyErrorText,
   legacyImportAllowed,
@@ -75,6 +77,8 @@ const run = (over: Partial<AtmLegacyImportRunDto> = {}): AtmLegacyImportRunDto =
     lastStepAt: '2026-11-25T10:05:00.000Z',
     finishedAt: null,
     error: null,
+    active: false,
+    stale: false,
     ...over,
   };
 };
@@ -85,6 +89,7 @@ const source = (over: Partial<AtmLegacySourceDto> = {}): AtmLegacySourceDto => (
   branchName: { ar: 'الاسكندرية', en: 'Alexandria' },
   lastRun: null,
   copiedRows: 0,
+  changedRows: 0,
   ...over,
 });
 
@@ -191,6 +196,27 @@ describe('the legacy history card', () => {
     );
   });
 
+  it('a run another window drives offers nothing; a stale one may also be undone or started again', () => {
+    const html = cardWith([
+      source({ lastRun: run({ state: 'running', active: true }), copiedRows: 10 }),
+      source({
+        source: 'tanta',
+        lastRun: run({ state: 'running', source: 'tanta', stale: true }),
+        copiedRows: 10,
+      }),
+    ]);
+    const actions = (name: string) =>
+      [...rowOf(html, name).matchAll(/data-legacy-action="(\w+)"/gu)].map((m) => m[1]);
+    expect(actions('alex')).toEqual(['resume']);
+    expect(
+      /<button[^>]*disabled=""[^>]*data-legacy-action="resume"/u.test(rowOf(html, 'alex')),
+    ).toBe(true);
+    expect(rowOf(html, 'alex')).toContain(
+      t('atm.settings.legacy.runningElsewhere', { done: '٦٣٬٤٣١', total: '١٢٦٬١٠٢' }),
+    );
+    expect(actions('tanta')).toEqual(['resume', 'preview', 'undo']);
+  });
+
   it('a source with no branch cannot be previewed', () => {
     const html = cardWith([source({ source: 'portsaid', branchId: null, branchName: null })]);
     expect(
@@ -222,6 +248,8 @@ describe('a run’s progress', () => {
     expect(percentOf(63_431, 126_102)).toBe(50);
     expect(percentOf(0, 0)).toBe(100);
     expect(percentOf(5, 4)).toBe(100);
+    // Never below nothing, whatever a stale count says.
+    expect(percentOf(-76_000, 10_000)).toBe(0);
   });
 });
 
@@ -235,6 +263,16 @@ describe('the preview and the body', () => {
       source: 'alex',
       cutoverAt: '2026-11-23T19:57:01.000Z',
     });
+  });
+
+  it('a box value is sent as a cut only when it is complete, or empty for no cut', () => {
+    expect(isCommittableCut('')).toBe(true);
+    expect(isCommittableCut('2026-11-24T07:03')).toBe(true);
+    expect(isCommittableCut('2026-11-24T07:03:16')).toBe(true);
+    // A year still being typed is each a whole read of the source: never sent.
+    expect(isCommittableCut('0002-11-24T07:03')).toBe(false);
+    expect(isCommittableCut('0202-11-24T07:03')).toBe(false);
+    expect(isCommittableCut('2026-11-24')).toBe(false);
   });
 
   it('«استيراد» waits for rows found, both kinds’ times decided, and something to copy', () => {
@@ -301,6 +339,12 @@ describe('the preview and the body', () => {
         'atm.settings.legacy.resumeFor',
         'atm.settings.legacy.undoFor',
         'atm.settings.legacy.undoStopped',
+        'atm.settings.legacy.undoChanged',
+        'atm.settings.legacy.runningElsewhere',
+        'atm.settings.legacy.stale',
+        'atm.settings.legacy.cutAt',
+        'atm.settings.legacy.cutNone',
+        'atm.settings.legacy.cutIncomplete',
         'atm.settings.legacy.noneToCopy',
         'atm.settings.legacy.error.running',
         'atm.settings.legacy.error.state',
@@ -362,5 +406,10 @@ describe('a refusal', () => {
     expect(isStepBusy(new ApiError(ErrorCodes.ATM_LEGACY_IMPORT_STEP_BUSY, 'x', 409))).toBe(true);
     expect(isStepBusy(new ApiError(ErrorCodes.ATM_LEGACY_IMPORT_STATE, 'x', 409))).toBe(false);
     expect(isStepBusy(new Error('network'))).toBe(false);
+  });
+
+  it('a run another window ended is not a failure of this one', () => {
+    expect(isRunEnded(new ApiError(ErrorCodes.ATM_LEGACY_IMPORT_STATE, 'x', 409))).toBe(true);
+    expect(isRunEnded(new ApiError(ErrorCodes.ATM_LEGACY_IMPORT_STEP_BUSY, 'x', 409))).toBe(false);
   });
 });

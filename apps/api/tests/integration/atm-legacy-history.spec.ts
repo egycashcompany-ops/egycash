@@ -30,10 +30,13 @@ import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { atmPermissions } from '../../src/modules/atm/atm.module';
 import {
+  legacyCopiesFilter,
   setLegacyStepRowsForTests,
   setLegacyUndoRowsForTests,
 } from '../../src/modules/atm/migration/legacy-history.service';
 import { AtmLegacyImportRunModel } from '../../src/modules/atm/migration/legacy-history-run.model';
+import { AtmBranchMoveRunModel } from '../../src/modules/atm/branch-links/branch-move-run.model';
+import { atmBranchMoveRunRepository } from '../../src/modules/atm/branch-links/branch-move-run.repository';
 import { AtmMachineModel } from '../../src/modules/atm/machines/machine.model';
 import { AtmReplenishmentModel } from '../../src/modules/atm/replenishments/replenishment.model';
 import { AtmMaintenanceModel } from '../../src/modules/atm/maintenances/maintenance.model';
@@ -488,9 +491,10 @@ describe('a run', () => {
   });
 
   it('a second run changes nothing it finds — even a row edited since — and adds what is new', async () => {
+    // An edit in ECMS, as every ECMS write makes it: a new version.
     await AtmMaintenanceModel.updateOne(
       { _id: MAINT.m1._id },
-      { $set: { notes: 'EDITED IN ECMS' } },
+      { $set: { notes: 'EDITED IN ECMS' }, $inc: { __v: 1 } },
     ).exec();
     const fresh = maint('2026-11-22T08:00:00Z', {
       mach_id: '9002',
@@ -514,6 +518,9 @@ describe('a run', () => {
     const alex = data<AtmLegacySourceDto[]>(res).find((s) => s.source === 'alex');
     expect(alex?.lastRun?.state).toBe('done');
     expect(alex?.copiedRows).toBe(8);
+    // m1, edited in ECMS since it was copied: the undo's confirmation names it.
+    expect(alex?.changedRows).toBe(1);
+    expect(alex?.lastRun).toMatchObject({ active: false, stale: false });
     expect(await cutover('alex')).toBeNull();
   });
 });
@@ -523,6 +530,8 @@ describe('one run at a time', () => {
     const started = await call('post', '/atm/legacy-import/runs', adminToken, BODY);
     expect(started.status).toBe(200);
     const running = data<AtmLegacyImportRunDto>(started);
+    // Just started: a window is driving it, so no other offers «متابعة».
+    expect(running).toMatchObject({ state: 'running', active: true, stale: false });
 
     const second = await call('post', '/atm/legacy-import/runs', adminToken, BODY);
     expect(second.status).toBe(409);
@@ -551,6 +560,20 @@ describe('one run at a time', () => {
     const undo = await call('post', '/atm/legacy-import/sources/alex/undo', adminToken);
     expect(undo.status).toBe(409);
 
+    // Read on the server's clock: a run left past the step lease is paused, and past 30 minutes
+    // stale — the card then offers «معاينة» and «تراجع» beside «متابعة».
+    const lastRunAfter = async (minutes: number) => {
+      await AtmLegacyImportRunModel.updateOne(
+        { _id: running.id },
+        { $set: { lastStepAt: new Date(Date.now() - minutes * 60_000) } },
+      ).exec();
+      const res = await call('get', '/atm/legacy-import', adminToken);
+      return data<AtmLegacySourceDto[]>(res).find((s) => s.source === 'alex')?.lastRun;
+    };
+    expect(await lastRunAfter(3)).toMatchObject({ state: 'running', active: false, stale: false });
+    expect(await lastRunAfter(31)).toMatchObject({ state: 'running', active: false, stale: true });
+    await lastRunAfter(0);
+
     const done = await stepToEnd(running);
     expect(done.state).toBe('done');
     // A finished run takes no more steps.
@@ -561,6 +584,19 @@ describe('one run at a time', () => {
 });
 
 describe('the undo', () => {
+  it('reads the copies on ix_legacy_import_run — the undo’s batches and the card’s counts never walk the log', async () => {
+    const runIds = (
+      await AtmLegacyImportRunModel.find({ source: 'alex' }).select({ _id: 1 }).lean().exec()
+    ).map((run) => run._id);
+    expect(runIds.length).toBeGreaterThan(0);
+    for (const model of [AtmReplenishmentModel, AtmMaintenanceModel] as const) {
+      const plan = (await (model as typeof AtmMaintenanceModel)
+        .find(legacyCopiesFilter(runIds))
+        .explain('queryPlanner')) as unknown as { queryPlanner: { winningPlan: unknown } };
+      expect(JSON.stringify(plan.queryPlanner.winningPlan)).toContain('ix_legacy_import_run');
+    }
+  });
+
   it('removes every copy of the source, a batch per call, then marks its runs undone', async () => {
     let result: AtmLegacyUndoResultDto | undefined;
     const removed: number[] = [];
@@ -605,6 +641,56 @@ describe('refusals', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('refuses a target branch linked to work as another — its copies would be seen only company-wide', async () => {
+    const sources = data<AtmLegacySourceDto[]>(await call('get', '/atm/legacy-import', adminToken));
+    const tantaBranchId = sources.find((entry) => entry.source === 'tanta')?.branchId;
+    expect(tantaBranchId).toBeTruthy();
+    const original = [{ branchId: octoberBranchId, actsAsBranchId: alexBranchId }];
+    const linked = await call('put', '/atm/branch-links', adminToken, {
+      links: [...original, { branchId: tantaBranchId, actsAsBranchId: alexBranchId }],
+    });
+    expect(linked.status, JSON.stringify(linked.body)).toBe(200);
+    try {
+      const res = await call('post', '/atm/legacy-import/runs', adminToken, {
+        ...BODY,
+        source: 'tanta',
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      // Refused for the link, before the times are read (Tanta's would be undecided too).
+      expect(JSON.stringify(res.body)).not.toContain('TIME_MODE_UNCLEAR');
+    } finally {
+      const restored = await call('put', '/atm/branch-links', adminToken, { links: original });
+      expect(restored.status, JSON.stringify(restored.body)).toBe(200);
+    }
+  });
+
+  it('a branch move running holds a start and an undo (423); a step on an unknown run is 404', async () => {
+    const moveId = await atmBranchMoveRunRepository.start({
+      sourceBranchId: octoberBranchId,
+      targetBranchId: alexBranchId,
+      actorUserId: null,
+      actorName: 'SYN',
+      startedAt: new Date(),
+    });
+    expect(moveId).not.toBeNull();
+    try {
+      const started = await call('post', '/atm/legacy-import/runs', adminToken, BODY);
+      expect(started.status).toBe(423);
+      expect(errorCode(started)).toBe('ATM_BRANCH_MOVE_RUNNING');
+      const undo = await call('post', '/atm/legacy-import/sources/alex/undo', adminToken);
+      expect(undo.status).toBe(423);
+      expect(errorCode(undo)).toBe('ATM_BRANCH_MOVE_RUNNING');
+    } finally {
+      await AtmBranchMoveRunModel.deleteOne({ _id: moveId }).exec();
+    }
+    const unknown = await call(
+      'post',
+      `/atm/legacy-import/runs/${new Types.ObjectId().toHexString()}/step`,
+      adminToken,
+    );
+    expect(unknown.status).toBe(404);
+  });
 });
 
 describe('the suggested cutover', () => {
@@ -628,6 +714,33 @@ describe('the suggested cutover', () => {
       .sort({ createdAt: 1 })
       .lean()
       .exec();
+    expect(await cutover('alex')).toBe(first?.createdAt.toISOString());
+  });
+
+  it('counts only the day’s own work: a plan entered the evening before for the next day is not the switch', async () => {
+    const first = await AtmMaintenanceModel.findOne({
+      branchId: new Types.ObjectId(alexBranchId),
+      legacyImportRunId: null,
+    })
+      .sort({ createdAt: 1 })
+      .lean()
+      .exec();
+    expect(first).not.toBeNull();
+    // Alexandria's 23rd: 25 rows written at 21:57 Cairo two days before, all opened for the next
+    // morning — two Cairo days, winter time or summer.
+    const day = (offsetDays: number): string =>
+      new Date(first!.createdAt.getTime() - offsetDays * 86_400_000).toISOString().slice(0, 10);
+    const writtenAt = new Date(`${day(2)}T19:57:00.000Z`);
+    const openedAt = new Date(`${day(1)}T06:00:00.000Z`);
+    await AtmMaintenanceModel.collection.insertMany(
+      Array.from({ length: 25 }, () => ({
+        ...first!,
+        _id: new Types.ObjectId(),
+        createdAt: writtenAt,
+        updatedAt: writtenAt,
+        openedAt,
+      })),
+    );
     expect(await cutover('alex')).toBe(first?.createdAt.toISOString());
   });
 });

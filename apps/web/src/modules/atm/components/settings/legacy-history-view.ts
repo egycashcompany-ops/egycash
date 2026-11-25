@@ -16,6 +16,7 @@ import {
 import { ApiError } from '../../../../shared/lib/api-client';
 import { errorMessage } from '../../../../shared/lib/errors';
 import { formatNumber } from '../../../../shared/lib/format';
+import { DONE_RANGE_MIN_YEAR } from '../../lib/done-range-commit';
 import { listSeparator } from '../../lib/register-import-view';
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
@@ -29,6 +30,23 @@ export const LEGACY_CODES_LISTED = 10;
  */
 export const cutoverFromLocal = (value: string): string | null =>
   value === '' ? null : new Date(value).toISOString();
+
+const LOCAL_MOMENT = /^(\d{4})-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
+
+/**
+ * Pure: may this box value be sent as a cut — a complete moment in a year from
+ * `DONE_RANGE_MIN_YEAR`, or empty (no cut)? A year still being typed (0002, 0020, 0202) is not
+ * one: each of those is a whole read of the legacy source (review finding, 2026-11-25).
+ */
+export const isCommittableCut = (value: string): boolean => {
+  if (value === '') return true;
+  const match = LOCAL_MOMENT.exec(value);
+  return (
+    match !== null &&
+    Number(match[1]) >= DONE_RANGE_MIN_YEAR &&
+    !Number.isNaN(new Date(value).getTime())
+  );
+};
 
 /** What the preview and the start send — only «Done» operations are copied, so no open switch. */
 export const legacyImportBody = (
@@ -79,7 +97,7 @@ export const legacyRunProgress = (run: AtmLegacyImportRunDto): { done: number; t
 
 /** Whole percent, 0–100; an empty total is done. */
 export const percentOf = (done: number, total: number): number =>
-  total <= 0 ? 100 : Math.min(100, Math.floor((done / total) * 100));
+  total <= 0 ? 100 : Math.max(0, Math.min(100, Math.floor((done / total) * 100)));
 
 /** What a source's row says under its name: its last run, and the copies it holds now. */
 export const legacySourceStatus = (
@@ -90,15 +108,25 @@ export const legacySourceStatus = (
   const n = (value: number): string => formatNumber(value, locale);
   if (entry.branchId === null) return t('atm.settings.legacy.noBranch');
   const run = entry.lastRun;
+  const place = (key: string): string =>
+    run === null
+      ? ''
+      : t(key, {
+          done: n(legacyRunProgress(run).done),
+          total: n(legacyRunProgress(run).total),
+        });
+  // A running run is one of three, on the server's clock: a window driving it now, paused (its
+  // page closed), or stale (left 30 minutes — the next start or undo ends it).
   const last =
     run === null
       ? t('atm.settings.legacy.never')
-      : run.state === 'running'
-        ? t('atm.settings.legacy.paused', {
-            done: n(legacyRunProgress(run).done),
-            total: n(legacyRunProgress(run).total),
-          })
-        : t(`atm.settings.legacy.last.${run.state}`);
+      : run.state !== 'running'
+        ? t(`atm.settings.legacy.last.${run.state}`)
+        : run.active
+          ? place('atm.settings.legacy.runningElsewhere')
+          : run.stale
+            ? place('atm.settings.legacy.stale')
+            : place('atm.settings.legacy.paused');
   return entry.copiedRows > 0
     ? `${last} — ${t('atm.settings.legacy.copied', { count: n(entry.copiedRows) })}`
     : last;
@@ -129,6 +157,10 @@ export const legacyRefusalText = (error: unknown, t: Translate): string | undefi
 /** A refusal in the reader's language; anything else as the shared helper words it. */
 export const legacyErrorText = (error: unknown, t: Translate, locale: Locale): string =>
   legacyRefusalText(error, t) ?? errorMessage(error, locale);
+
+/** A step refused because its run is no longer running — ended by another window, or taken over. */
+export const isRunEnded = (error: unknown): boolean =>
+  error instanceof ApiError && error.code === ErrorCodes.ATM_LEGACY_IMPORT_STATE;
 
 /** A step refused because another step holds the run — retried, never shown as a failure. */
 export const isStepBusy = (error: unknown): boolean =>

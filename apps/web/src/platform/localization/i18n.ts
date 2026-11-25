@@ -10990,6 +10990,7 @@ const en: Record<string, string> = {
   'systemAdmin.users.audit.atmSettlementPrint': 'Printed replenishment papers',
   // ATM branch links — one row per run that moves a linked branch's ATM data to its target.
   'systemAdmin.users.audit.atmBranchMove': 'Moved ATM data between linked branches',
+  'systemAdmin.users.audit.atmLegacyImport': "Imported the old system's ATM history",
   'systemAdmin.users.audit.applicantFolderDeleted': "Emptied an applicant's documents folder",
   'systemAdmin.users.audit.unlock': 'Unlocked',
   'systemAdmin.users.audit.employeeLinked': 'Employee linked',
@@ -16083,6 +16084,10 @@ const en: Record<string, string> = {
   'atm.settings.legacy.noBranch': "No active branch carries this source's code.",
   'atm.settings.legacy.never': 'Not imported yet',
   'atm.settings.legacy.paused': 'Import paused at {{done}} of {{total}} operations',
+  'atm.settings.legacy.runningElsewhere':
+    'Importing now in another window — {{done}} of {{total}} operations read',
+  'atm.settings.legacy.stale':
+    'Import left at {{done}} of {{total}} operations for over half an hour — continue it, undo it or start again',
   'atm.settings.legacy.last.done': 'Last import finished',
   'atm.settings.legacy.last.failed': 'Last import stopped',
   'atm.settings.legacy.last.undone': 'Last import undone',
@@ -16104,6 +16109,8 @@ const en: Record<string, string> = {
   'atm.settings.legacy.undoTitle': 'Undo the import of «{{source}}»?',
   'atm.settings.legacy.undoBody':
     '{{count}} operations copied from «{{source}}» will be removed, including any reopened or edited since. The old system keeps its own.',
+  'atm.settings.legacy.undoChanged':
+    '{{count}} of them were changed in the new system after they were copied (closed, edited or reopened there); those changes go with them.',
   'atm.settings.legacy.dialogTitle': 'Import «{{source}}» into {{branch}}',
   'atm.settings.legacy.intro':
     'The replenishments and maintenances closed (Done) in «{{source}}» are copied into {{branch}}, as the old system recorded them. Operations still open there are not copied.',
@@ -16112,6 +16119,11 @@ const en: Record<string, string> = {
   'atm.settings.legacy.cutover': 'Started on the new system at',
   'atm.settings.legacy.cutoverHint':
     "Operations closed from this moment on are the branch's own work and are not copied. Empty: copy them all.",
+  'atm.settings.legacy.cutAt': 'Counted from the start on the new system at {{at}} (Cairo time).',
+  'atm.settings.legacy.cutNone':
+    'Counted with no start moment: every closed operation of the source is copied.',
+  'atm.settings.legacy.cutIncomplete':
+    'Complete the date and time, or empty the box to copy every closed operation.',
   'atm.settings.legacy.confirm': 'Import',
   'atm.settings.legacy.nothing': 'The old system holds no operation for this source.',
   'atm.settings.legacy.noneToCopy': 'No operation would be copied with these settings.',
@@ -27337,6 +27349,7 @@ const ar: Record<string, string> = {
   'systemAdmin.users.audit.atmSettlementPrint': 'طباعة أوراق التغذية',
   // ATM branch links — one row per run that moves a linked branch's ATM data to its target.
   'systemAdmin.users.audit.atmBranchMove': 'نقل بيانات الصراف الآلي بين فرعين مرتبطين',
+  'systemAdmin.users.audit.atmLegacyImport': 'استيراد سجل الصراف الآلي من النظام القديم',
   'systemAdmin.users.audit.applicantFolderDeleted': 'إفراغ مجلد مستندات أحد المتقدمين',
   'systemAdmin.users.audit.unlock': 'إلغاء القفل',
   'systemAdmin.users.audit.employeeLinked': 'ربط موظف',
@@ -32268,6 +32281,10 @@ const ar: Record<string, string> = {
   'atm.settings.legacy.noBranch': 'لا يوجد فرع نشط بكود هذا المصدر.',
   'atm.settings.legacy.never': 'لم يُستورد بعد',
   'atm.settings.legacy.paused': 'الاستيراد متوقف عند {{done}} من {{total}} عملية',
+  'atm.settings.legacy.runningElsewhere':
+    'يجري الاستيراد الآن في نافذة أخرى — قُرئت {{done}} من {{total}} عملية',
+  'atm.settings.legacy.stale':
+    'الاستيراد متوقف عند {{done}} من {{total}} عملية منذ أكثر من نصف ساعة — تابعه، أو تراجع عنه، أو ابدأ من جديد',
   'atm.settings.legacy.last.done': 'اكتمل آخر استيراد',
   'atm.settings.legacy.last.failed': 'توقف آخر استيراد',
   'atm.settings.legacy.last.undone': 'تم التراجع عن آخر استيراد',
@@ -32289,6 +32306,8 @@ const ar: Record<string, string> = {
   'atm.settings.legacy.undoTitle': 'التراجع عن استيراد «{{source}}»؟',
   'atm.settings.legacy.undoBody':
     'ستُحذف {{count}} عملية منسوخة من «{{source}}»، ومعها ما أُعيد فتحه أو عُدّل بعد النسخ. يبقى النظام القديم كما هو.',
+  'atm.settings.legacy.undoChanged':
+    'منها {{count}} عملية تغيّرت في النظام الجديد بعد نسخها (أُغلقت أو عُدّلت أو أُعيد فتحها هناك)، وتُحذف هذه التغييرات معها.',
   'atm.settings.legacy.dialogTitle': 'استيراد «{{source}}» إلى {{branch}}',
   'atm.settings.legacy.intro':
     'تُنسخ التغذية والصيانة المغلقة (Done) في «{{source}}» إلى {{branch}} كما سجّلها النظام القديم. لا تُنسخ العمليات التي ما زالت مفتوحة فيه.',
@@ -32297,6 +32316,10 @@ const ar: Record<string, string> = {
   'atm.settings.legacy.cutover': 'بدأ العمل على النظام الجديد في',
   'atm.settings.legacy.cutoverHint':
     'العمليات المغلقة من هذه اللحظة فصاعداً من عمل الفرع على النظام الجديد ولا تُنسخ. إن تُرك فارغاً تُنسخ كلها.',
+  'atm.settings.legacy.cutAt': 'محسوبة على بدء العمل على النظام الجديد في {{at}} (بتوقيت القاهرة).',
+  'atm.settings.legacy.cutNone': 'محسوبة بلا لحظة بدء: تُنسخ كل العمليات المغلقة في المصدر.',
+  'atm.settings.legacy.cutIncomplete':
+    'أكمل التاريخ والوقت، أو أفرغ الحقل لنسخ كل العمليات المغلقة.',
   'atm.settings.legacy.confirm': 'استيراد',
   'atm.settings.legacy.nothing': 'لا توجد عمليات لهذا المصدر في النظام القديم.',
   'atm.settings.legacy.noneToCopy': 'لا توجد عمليات تُنسخ بهذه الإعدادات.',

@@ -3472,16 +3472,35 @@ Repository-wide findings outside this module are listed for the owner in
   - *`shared/cairo-day.ts` re-exports four names*, the four §1.7 lists for it: `cairoCalendarDate`, `cairoYmd`,
     `cairoDayStart` and `addDaysYmd`, which cover §3.5's day bounds and an instant's Cairo date and year. Others join
     when a caller needs them.
-  - *`stockTracked` on the row is optional with a default, not required.* A create always writes it (the schema's
-    default, `true`); a row from before P2.1 lacks it, and an edit of that row neither fails validation nor writes
-    the field unless the edit sets it, so no row is rewritten. Every reader, the DTO mapper and the audit snapshot,
-    says `stockTracked ?? true`, so telling an older row that it is a stock item records no change (its version still
-    moves). The update takes the field optional and never null.
+  - *`stockTracked` on the row is optional with a default, not required.* A create always writes it (the contract's
+    default, `true`, which the model's default repeats); a row from before P2.1 lacks it, and an edit of that row
+    writes the field only when the edit sets it, so no row is rewritten. The row's type therefore says
+    `stockTracked?`, and every reader, the DTO mapper and the audit snapshot, says `stockTracked ?? true`, so telling
+    an older row that it is a stock item records no change (its version still moves). The update takes the field
+    optional and never null.
   - *A change of kind is an ordinary edit.* It has no rule of its own and no key of its own; a PATCH that sets it is
     held to the category's level like any edit but a status change (P1a.2's `isStatusChangeOnly`).
-  - *The client's create type.* With the default, the parsed create body always carries the field, so the contracts
-    add `CreateAdministrationItemInput` (`z.input`), ATM's `CreateAtmBankInput` precedent, for what a client sends; the
-    web's item create calls take it, and its item fixture gains the field. The form gains no kind field before P2.W2.
+  - *Open for P5's re-detail, a question for the owner:* may an item's kind change once a movement names it or it
+    holds a balance? Until P5 nothing reads the kind, so P2 lets the desk change it on any edit, as the base unit
+    could be changed before its lock (§2.3.4).
+  - *The floor's pattern ends at the string's true end.* Re-detail §6.3 wrote the pattern with a closing `$`. MongoDB
+    reads `$regex` with PCRE, whose `$` also matches before a final newline, so a hand-typed «PR-2026-000042\n»
+    would pass it, outgrow every real number by one character and floor a missing counter at 0. The pattern ends in
+    `(?![\s\S])` instead, which PCRE and JavaScript read alike, checked on mongod 7.0; the prefix stays anchored, so
+    `ux_number` still bounds the read, and re-detail §6.3 now prints that pattern. Phase 1's `codePattern`, the item
+    and supplier codes' floor in the same file, ends in the same `$`; it is master-code code outside P2.1 and is left
+    as it is, an item for the owner to schedule.
+  - *The client's create type, and five files outside P2.1's rows.* With the default, the parsed create body always
+    carries the field, so the contracts add `CreateAdministrationItemInput` (`z.input`), ATM's `CreateAtmBankInput`
+    precedent, for what a client sends. Five files that re-detail §13 gives to other slices or to none change for it,
+    each type-only, and §13 now names P2.1 on each: `api/catalog-api.ts` (`createItem` takes the input type),
+    `api/catalog-queries.ts` (`useCreateItem` takes it) and `lib/item-form.ts` (`itemCreateBody` returns it) in the
+    web, because `CreateAdministrationItem` now requires `stockTracked`; the web's `screen-fixtures.tsx`, whose item
+    fixture gains `stockTracked: true`, because `AdministrationItemDto` gained a required field; and the API's
+    `administration-indexes.spec.ts`, whose service input carries `stockTracked: true`, because that input is typed as
+    the parsed body. The form gains no kind field before P2.W2.
+  - *A pin off by one.* Re-detail §4.1 cited `cairoDayStart` at `cairo-date.ts:147-151`; it is `:148-152`, now
+    corrected there. No other file P2.1 cites had changed since `de38fd71`.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

@@ -123,9 +123,15 @@ export const documentNumberAt = (
 
 const NUMBER_DIGITS = ADMINISTRATION_DOCUMENT_DIGITS;
 
-/** The formatter's spelling of the series' numbers: six digits exactly, or wider with no leading 0. */
+/**
+ * The formatter's spelling of the series' numbers: six digits exactly, or wider with no leading 0,
+ * and nothing after them. MongoDB reads `$regex` with PCRE, whose `$` also matches before a final
+ * newline, so a hand-typed «PR-2026-000042\n» would pass a `$` and, one character longer than any
+ * real number, become the top the parser refuses. `(?![\s\S])` ends the match at the string's true
+ * end in PCRE and in JavaScript alike.
+ */
 const numberPattern = (series: DocumentNumberSeries): string =>
-  `^${series.prefix}-(?:[0-9]{${String(NUMBER_DIGITS)}}|[1-9][0-9]{${String(NUMBER_DIGITS)},})$`;
+  `^${series.prefix}-(?:[0-9]{${String(NUMBER_DIGITS)}}|[1-9][0-9]{${String(NUMBER_DIGITS)},})(?![\\s\\S])`;
 
 /**
  * The aggregation that finds the series' highest number in its collection's `number` field. The

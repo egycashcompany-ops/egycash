@@ -58,7 +58,8 @@ const itemSchema = new Schema<AdministrationItemDoc>(
     maxQty: { type: Number, default: null, min: 0 },
     description: { type: String, default: null },
     notes: { type: String, default: null },
-    // Not required: an older row lacks it, and an edit of that row must not fail validation.
+    // Optional: a row written before P2.1 has no such field and nothing rewrites it, so the type
+    // says `stockTracked?` and every reader says `?? true`; the default fills only a create.
     stockTracked: { type: Boolean, default: true },
     isActive: { type: Boolean, required: true, default: true },
     ...baseFields,

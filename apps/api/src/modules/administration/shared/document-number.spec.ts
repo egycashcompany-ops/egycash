@@ -5,7 +5,11 @@
 // yearly document series (P2.1): the key and the business date from one instant, the year turning
 // at Cairo's midnight and not UTC's (OD-57 A, RK-13), and the floor of that year's numbers by the
 // master codes' rule.
-import { formatAdministrationMasterCode, formatAdministrationNumber } from '@ecms/contracts';
+import {
+  formatAdministrationMasterCode,
+  formatAdministrationNumber,
+  type AdministrationDocumentKind,
+} from '@ecms/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   ITEM_CODE_SERIES,
@@ -187,7 +191,7 @@ describe('the yearly document series (OD-57 A, OD-58 A)', () => {
     expect(match.$type, '`ux_number`’s partial filter, so the index serves the read').toBe(
       'string',
     );
-    expect(match.$regex).toBe('^PR-2026-(?:[0-9]{6}|[1-9][0-9]{6,})$');
+    expect(match.$regex).toBe('^PR-2026-(?:[0-9]{6}|[1-9][0-9]{6,})(?![\\s\\S])');
     const pattern = numberPatternOf(PR_2026);
     for (const number of ['PR-2026-000001', 'PR-2026-999999', 'PR-2026-1000000']) {
       expect(pattern.test(number), number).toBe(true);
@@ -205,9 +209,19 @@ describe('the yearly document series (OD-57 A, OD-58 A)', () => {
       // number behind a top the parser refuses.
       'PR-2026-0000042',
       'PR-2026-01000000',
+      // A hand fix's trailing newline: one character longer than the number, it would be the top.
+      'PR-2026-000042\n',
+      'PR-2026-1000000\n',
     ]) {
-      expect(pattern.test(number), number).toBe(false);
+      expect(pattern.test(number), JSON.stringify(number)).toBe(false);
     }
+    // MongoDB reads `$regex` with PCRE, whose `$` also matches before a final newline. JavaScript's
+    // `m` flag reads `$` at least that loosely, so under it a bare `$` would let those two through.
+    const asLooseAsPcre = new RegExp(match.$regex, 'm');
+    for (const number of ['PR-2026-000042\n', 'PR-2026-1000000\n']) {
+      expect(asLooseAsPcre.test(number), JSON.stringify(number)).toBe(false);
+    }
+    expect(asLooseAsPcre.test('PR-2026-000042'), 'and the number itself still passes').toBe(true);
   });
 
   it('takes the greatest of the longest numbers — the highest at any width', () => {
@@ -258,6 +272,10 @@ describe('the yearly document series (OD-57 A, OD-58 A)', () => {
       numberFloorFrom(documentNumberSeries('purchaseRequest', 2025), [{ top: 'PR-2025-000900' }]),
     ).toBe(900);
     expect(numberFloorFrom(PR_2026, [{ top: 'ITM-00042' }]), 'a master code').toBe(0);
+    // Only one document kind exists yet, so every number that parses is the series' own kind; a
+    // series cast to another kind is what holds the kind clause to its word.
+    const otherKind = { ...PR_2026, kind: 'rfq' as AdministrationDocumentKind };
+    expect(numberFloorFrom(otherKind, [{ top: 'PR-2026-000042' }]), 'another kind').toBe(0);
     expect(numberFloorFrom(PR_2026, [{ top: 'PR-2026-000000' }]), 'no number a counter gives').toBe(
       0,
     );

@@ -236,7 +236,8 @@ class AdministrationItemService {
     if (input.maxQty !== undefined) set.maxQty = input.maxQty;
     if (input.description !== undefined) set.description = input.description;
     if (input.notes !== undefined) set.notes = input.notes;
-    // The kind changes no rule before P5 (OD-14 C), so the desk may set it on any edit.
+    // No rule reads the kind before P5 (OD-14 C); whether it may change once stock exists is P5's
+    // question (design §22, P2.1 built).
     if (input.stockTracked !== undefined) set.stockTracked = input.stockTracked;
     // A deactivation is this field (§5.3); an item has no rule against it (OD-70 A).
     if (input.isActive !== undefined) set.isActive = input.isActive;

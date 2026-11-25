@@ -554,6 +554,32 @@ its entry here in the same PR.
 
 ### Added
 
+- **Administrative Affairs («الشئون الإدارية»), purchase requests: request attachments.** This is
+  P2.6 of Phase 2 (`docs/12-planning/administration-module-phase-2.md` §3): the contracts and the API;
+  no screen shows them yet (P2.W2).
+  - **For the requester** (the department's focal point, OD-16 A): while their purchase request is a
+    draft, `POST /api/v1/administration/purchase-requests/:id/attachments` files a spec sheet, a photo
+    or a memo with it — one PDF, JPEG, PNG or WebP file of up to 10 MB, a label of what it is, and the
+    draft's version — and `DELETE …/attachments/:attachmentId?version=` removes a file's link (the
+    file itself stays in Files). A draft holds at most 20 files (422 `ADMINISTRATION_ATTACHMENT_LIMIT`);
+    each link moves the draft's version. Only the requester writes them, and only on a draft: a
+    colleague of the same department is refused (403), and once the request leaves draft nothing is
+    added or removed (422 `ADMINISTRATION_INVALID_TRANSITION`), so approvers decide on the files the
+    request was submitted with. No file is required.
+  - **For readers and approvers:** `GET …/attachments/:attachmentId` sends the bytes inline and
+    `private, no-store` to whoever reads the record — a holder of `.view`, or of `.approve` alone —
+    and the platform's scan gate refuses a file still being scanned (`FILE_SCAN_PENDING`) or blocked
+    (`FILE_BLOCKED`). The record now lists its files, each with its scan state.
+  - **The platform's file paths** (`/api/v1/platform/files`) ask the request's own rule through the new
+    `administration/purchaseRequest` file authorizer: reading takes `.view` or `.approve`, and every
+    change — upload, replace, update, archive, restore, delete — takes the requester, on a draft, with
+    `.create` or `.edit` over the request's department.
+  - The boot ensures the file category `administration-request-attachments` («مرفقات الطلبات», kept
+    for ever, OD-77 A). Each link and removal is audited as `update` with an `attachment` field and
+    followed by a signal with the request's branch. No key, page or navigation row changes.
+  - Rollback (RK-30): reverting removes the three routes and the authorizer; files already filed stay
+    in Files under their requests, and the category stays, unread.
+
 - **Administrative Affairs («الشئون الإدارية»), purchase requests: drafts — the record, the
   register and the editor's API.** This is P2.2 of Phase 2
   (`docs/12-planning/administration-module-phase-2.md` §3): the contracts and the API. A

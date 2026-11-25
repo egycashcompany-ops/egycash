@@ -17,6 +17,9 @@ import {
   ADMINISTRATION_MAX_DOCUMENT_LINES,
   ADMINISTRATION_MAX_LIST_ATTACHMENTS,
   ADMINISTRATION_PERSON_STATUSES,
+  ADMINISTRATION_REQUEST_ATTACHMENTS_FILE_CATEGORY,
+  ADMINISTRATION_REQUEST_ATTACHMENT_MAX_MB,
+  ADMINISTRATION_REQUEST_ATTACHMENT_MIMES,
   AdministrationPersonIdParamSchema,
   ListAdministrationPeopleQuerySchema,
   formatAdministrationMasterCode,
@@ -233,6 +236,25 @@ describe('the people the module names (§7.8)', () => {
 describe('the typed attachment list (§11.4)', () => {
   it('holds at most 20 entries, the one bound every list B keeps', () => {
     expect(ADMINISTRATION_MAX_LIST_ATTACHMENTS).toBe(20);
+  });
+});
+
+// The request files' category (design §11.2; OD-76 formats (i), P2.6): its own key, PDF and images,
+// 10 MB — the limit a requester meets, below the upload's own cap.
+describe('the request attachments’ category (P2.6)', () => {
+  it('files under one key of its own: PDF and images, 10 MB', () => {
+    expect(ADMINISTRATION_REQUEST_ATTACHMENTS_FILE_CATEGORY).toBe(
+      'administration-request-attachments',
+    );
+    // The platform's key pattern (`CreateFileCategorySchema`), so the seed's ensure accepts it.
+    expect(ADMINISTRATION_REQUEST_ATTACHMENTS_FILE_CATEGORY).toMatch(/^[a-z][a-z0-9-]{1,49}$/);
+    expect([...ADMINISTRATION_REQUEST_ATTACHMENT_MIMES]).toEqual([
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+    ]);
+    expect(ADMINISTRATION_REQUEST_ATTACHMENT_MAX_MB).toBe(10);
   });
 });
 

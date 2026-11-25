@@ -88,3 +88,37 @@ export const auditPurchaseRequestEdited = async (
   });
   signalPurchaseRequest(id, String(after.branchId));
 };
+
+// ── A request's files (P2.6; design §11.4, §10.2) ───────────────────────────
+
+/** The `attachment` pseudo-field's value: the category the file was filed under, and its label. */
+const attachmentFieldValue = (entry: { categoryKey: string; label: string }): string =>
+  `${entry.categoryKey}:${entry.label}`;
+
+/** A file linked to a draft: one `update` row, `attachment` from nothing to it, then the signal. */
+export const auditPurchaseRequestAttachmentAdded = async (
+  doc: AdministrationPurchaseRequestDoc,
+  entry: { categoryKey: string; label: string },
+): Promise<void> => {
+  const id = String(doc._id);
+  await auditService.record({
+    entityRef: purchaseRequestEntityRef(id),
+    action: 'update',
+    changes: [{ field: 'attachment', old: null, new: attachmentFieldValue(entry) }],
+  });
+  signalPurchaseRequest(id, String(doc.branchId));
+};
+
+/** A file's link removed: one `update` row, `attachment` from it to nothing, then the signal. */
+export const auditPurchaseRequestAttachmentRemoved = async (
+  doc: AdministrationPurchaseRequestDoc,
+  entry: { categoryKey: string; label: string },
+): Promise<void> => {
+  const id = String(doc._id);
+  await auditService.record({
+    entityRef: purchaseRequestEntityRef(id),
+    action: 'update',
+    changes: [{ field: 'attachment', old: attachmentFieldValue(entry), new: null }],
+  });
+  signalPurchaseRequest(id, String(doc.branchId));
+};

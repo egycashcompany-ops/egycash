@@ -8,13 +8,15 @@
 // three keys and page, their route and collection, their topic, their papers' authorizer, and the
 // supplier keys each bundle gains; P2.2: the purchase requests' four keys and page, their route and
 // collection, their topic, the department requester's bundle and the request keys four others gain
-// (P2 plan §9), and the item reads opened to the request's create key.
+// (P2 plan §9), and the item reads opened to the request's create key; P2.6: the requests' files —
+// their authorizer and their three routes.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { platformSatisfies, validateManifest } from '../../platform/kernel/module-registry';
 import { REALTIME_TOPICS } from '../../platform/realtime';
+import { purchaseRequestFileAuthorizer } from './procurement/purchase-requests/index';
 import { supplierFileAuthorizer } from './procurement/suppliers';
 import { ADMINISTRATION_ROLE_BUNDLES } from './administration-roles';
 import {
@@ -89,11 +91,17 @@ describe('administration module manifest (Administrative Affairs, P2.2)', () => 
     expect(administrationModule.jobHandlers ?? []).toEqual([]);
   });
 
-  it('claims exactly one file entity, the supplier, for its papers (OD-11 A, §11.3)', () => {
-    expect(administrationModule.fileEntityAuthorizers).toEqual([supplierFileAuthorizer]);
+  it('claims two file entities: the supplier for its papers, the purchase request for its files (§11.3)', () => {
+    expect(administrationModule.fileEntityAuthorizers).toEqual([
+      supplierFileAuthorizer,
+      purchaseRequestFileAuthorizer,
+    ]);
     expect(supplierFileAuthorizer.entityType).toBe('supplier');
-    // Not opted into the separate delete intent: a removal is asked as a write (§11.3).
+    // The request's audited entity type, so the files' own pair is one the registry classifies.
+    expect(purchaseRequestFileAuthorizer.entityType).toBe('purchaseRequest');
+    // Neither opts into the separate delete intent: a removal is asked as a write (§11.3).
     expect(supplierFileAuthorizer.understandsDelete).toBeUndefined();
+    expect(purchaseRequestFileAuthorizer.understandsDelete).toBeUndefined();
   });
 
   it('labels the supplier keys in formal Arabic, the resource genitive after its verbal noun', () => {
@@ -442,7 +450,11 @@ describe('the purchase-request routes (P2 plan §4.1)', () => {
     (/authorize(?:Any)?\(([^)]*)\)/.exec(route.body)?.[1] ?? '').replace(/\s+/g, ' ').trim();
 
   it('serves P2.2’s four routes: the register, the record, the create and a draft’s edit', () => {
-    expect(routes.map((r) => `${r.method.toUpperCase()} ${r.path} ${gate(r)}`)).toEqual([
+    expect(
+      routes
+        .filter((r) => !r.path.includes('/attachments'))
+        .map((r) => `${r.method.toUpperCase()} ${r.path} ${gate(r)}`),
+    ).toEqual([
       "GET / 'administrationPurchaseRequest.view'",
       "GET /:id 'administrationPurchaseRequest.view', 'administrationPurchaseRequest.approve'",
       "POST / 'administrationPurchaseRequest.create'",
@@ -450,11 +462,27 @@ describe('the purchase-request routes (P2 plan §4.1)', () => {
     ]);
   });
 
-  it('validates every :param route’s params, and deletes no request', () => {
+  it('serves P2.6’s three file routes: written under either draft key, read as the record is', () => {
+    expect(
+      routes
+        .filter((r) => r.path.includes('/attachments'))
+        .map((r) => `${r.method.toUpperCase()} ${r.path} ${gate(r)}`),
+    ).toEqual([
+      "POST /:id/attachments 'administrationPurchaseRequest.create', 'administrationPurchaseRequest.edit'",
+      "GET /:id/attachments/:attachmentId 'administrationPurchaseRequest.view', 'administrationPurchaseRequest.approve'",
+      "DELETE /:id/attachments/:attachmentId 'administrationPurchaseRequest.create', 'administrationPurchaseRequest.edit'",
+    ]);
+    // The category's own limit is the one a requester meets: the multipart cap sits above it.
+    expect(source).toContain('multipartUpload(ADMINISTRATION_REQUEST_ATTACHMENT_MAX_MB)');
+  });
+
+  it('validates every :param route’s params, and deletes no request — only a file’s link', () => {
     for (const route of routes.filter((r) => r.path.includes(':'))) {
       expect(route.body, `${route.method} ${route.path}`).toMatch(/params: \w+ParamSchema/);
     }
-    expect(routes.some((r) => r.method === 'delete')).toBe(false);
+    expect(routes.filter((r) => r.method === 'delete').map((r) => r.path)).toEqual([
+      '/:id/attachments/:attachmentId',
+    ]);
   });
 
   it('registers the request’s line lock with the items as its index loads (§6.2)', () => {

@@ -16,7 +16,10 @@ import { buildAdministrationCatalogItemsRouter } from './catalog/catalog-items';
 import { buildAdministrationItemCategoriesRouter } from './catalog/item-categories';
 import { buildAdministrationItemsRouter } from './catalog/items';
 import { buildAdministrationPeopleRouter } from './people/index';
-import { buildAdministrationPurchaseRequestsRouter } from './procurement/purchase-requests/index';
+import {
+  buildAdministrationPurchaseRequestsRouter,
+  purchaseRequestFileAuthorizer,
+} from './procurement/purchase-requests/index';
 import {
   buildAdministrationSuppliersRouter,
   supplierFileAuthorizer,
@@ -174,7 +177,8 @@ export const administrationModule: ModuleManifest = {
     'administration_counters',
   ],
   eventSubscriptions: [],
-  // A supplier's papers are filed under `administration/supplier` (§11.3).
-  fileEntityAuthorizers: [supplierFileAuthorizer],
+  // A supplier's papers are filed under `administration/supplier` (§11.3), and a purchase
+  // request's files under `administration/purchaseRequest` (P2 plan §4.3, P2.6).
+  fileEntityAuthorizers: [supplierFileAuthorizer, purchaseRequestFileAuthorizer],
   seed: seedAdministration,
 };

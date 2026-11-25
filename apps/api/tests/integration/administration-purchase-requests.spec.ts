@@ -8,8 +8,10 @@
 // §4.2's order; scope by real grants — a department copy, a branch, `own`, a `section` grant that
 // must fail closed, an approve key alone — and the register's filters and sorts on stored rows,
 // Cairo days included; the item picker opened to a requester with no item key; and an item edit
-// refused once a request's line names the item.
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+// refused once a request's line names the item. P2.6: a request's files, filed through the
+// platform's real Files under the request, held to its requester and its draft on the module's
+// routes and on the platform's own file paths alike, and behind the platform's scan gate.
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { Types } from 'mongoose';
 import {
@@ -20,6 +22,10 @@ import {
   type AdministrationPurchaseRequestDto,
 } from '@ecms/contracts';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
+import { hasFileEntityAuthorizer } from '../../src/platform/files';
+import { FileCategoryModel } from '../../src/platform/files/file-category.model';
+import { FileModel } from '../../src/platform/files/file.model';
+import { administrationPurchaseRequestRepository } from '../../src/modules/administration/procurement/purchase-requests/purchase-request.repository';
 import { rbacService } from '../../src/platform/rbac';
 import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
 import { AdministrationItemModel } from '../../src/modules/administration/catalog/items/item.model';
@@ -1037,5 +1043,362 @@ describe('the item picker and the unit lock (P2 plan §4.1, §6.2)', () => {
       'ADMINISTRATION_ITEM_UNIT_LOCKED',
       ['unitId:purchaseRequestLine'],
     );
+  });
+});
+
+// P2.6 — a request's files (P2 plan §4.3, §12.2). A status only P2.3's submission reaches is
+// planted, with a past year's number, so this year's series the submission takes stays untouched.
+describe('a request’s files (P2.6; P2 plan §4.3)', () => {
+  const CATEGORY = 'administration-request-attachments';
+  let submitted = 0;
+
+  const pdf = (label = 'x') => ({
+    buffer: Buffer.from(`%PDF-1.4 request file ${label}`),
+    filename: `${label}.pdf`,
+    contentType: 'application/pdf',
+  });
+
+  /** Link one file as `token`, against the version they hold. */
+  const attach = (
+    token: string,
+    doc: { id: string; version: number },
+    label = 'مواصفات الطابعة',
+    file = pdf(),
+  ) =>
+    as(token).upload(
+      `/purchase-requests/${doc.id}/attachments`,
+      { label, version: String(doc.version) },
+      file,
+    );
+
+  const linked = async (
+    token: string,
+    doc: { id: string; version: number },
+    label?: string,
+  ): Promise<AdministrationPurchaseRequestDetailDto> => {
+    const res = await attach(token, doc, label, pdf(label));
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return data<AdministrationPurchaseRequestDetailDto>(res);
+  };
+
+  /** A file's bytes, read whole: superagent keeps no body of its own for a PDF. */
+  const readBytes = (token: string, path: string) =>
+    as(token)
+      .get(path)
+      .buffer(true)
+      .parse((res, done) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => {
+          done(null, Buffer.concat(chunks));
+        });
+      });
+
+  /** The files Files holds under one request: the live ones, or every one ever stored. */
+  const filesUnder = (requestId: string, which: 'live' | 'stored' = 'live') =>
+    FileModel.countDocuments({
+      'entityRef.moduleId': 'administration',
+      'entityRef.entityType': 'purchaseRequest',
+      'entityRef.entityId': requestId,
+      ...(which === 'live' ? { isDeleted: false } : {}),
+    }).exec();
+
+  /** The file a request's entry links, from the stored row: the DTO keeps it on the server. */
+  const fileIdOf = async (requestId: string, attachmentId: string): Promise<string> => {
+    const row = await AdministrationPurchaseRequestModel.findById(requestId).lean().exec();
+    const entry = row?.attachments.find((file) => String(file.attachmentId) === attachmentId);
+    expect(entry, 'the file is linked').toBeDefined();
+    return String(entry?.fileId);
+  };
+
+  /** Where P2.3's submission would leave the request: out of draft, numbered, a version on. */
+  const submit = async (doc: { id: string; version: number }): Promise<number> => {
+    submitted += 1;
+    await plant(doc.id, {
+      status: 'pendingApproval',
+      number: `PR-2024-${String(600 + submitted).padStart(6, '0')}`,
+      __v: doc.version + 1,
+    });
+    return doc.version + 1;
+  };
+
+  const path = (doc: { id: string }, attachmentId: string) =>
+    `/purchase-requests/${doc.id}/attachments/${attachmentId}`;
+
+  it('the seed ensures the category — PDF and images, 10 MB, kept for ever — and the authorizer is registered', async () => {
+    const row = await FileCategoryModel.findOne({ key: CATEGORY }).lean().exec();
+    expect(row).toMatchObject({
+      name: { ar: 'مرفقات الطلبات', en: 'Request attachments' },
+      allowedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
+      maxSizeMb: 10,
+      retentionDays: null,
+      status: 'active',
+    });
+    expect(hasFileEntityAuthorizer('administration', 'purchaseRequest')).toBe(true);
+  });
+
+  it('the requester links a file to the draft, filed under it, read back inline, private, no-store', async () => {
+    const created = await draft(focal);
+    const res = await attach(focal.token, created, 'مواصفات الطابعة', pdf('spec'));
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const after = data<AdministrationPurchaseRequestDetailDto>(res);
+    expect(after.version, 'a file’s link is an edit of the draft').toBe(created.version + 1);
+    expect(after.attachments).toEqual([
+      expect.objectContaining({
+        categoryKey: CATEGORY,
+        label: 'مواصفات الطابعة',
+        fileName: 'spec.pdf',
+        mime: 'application/pdf',
+        addedByUserId: focal.id,
+        scanStatus: 'unscanned',
+      }),
+    ]);
+    expect(after.attachments[0]).not.toHaveProperty('fileId');
+
+    const attachmentId = after.attachments[0]?.attachmentId ?? '';
+    const file = await FileModel.findById(await fileIdOf(created.id, attachmentId))
+      .lean()
+      .exec();
+    expect(file?.entityRef).toEqual({
+      moduleId: 'administration',
+      entityType: 'purchaseRequest',
+      entityId: created.id,
+    });
+    const category = await FileCategoryModel.findOne({ key: CATEGORY }).lean().exec();
+    expect(String(file?.categoryId)).toBe(String(category?._id));
+
+    const bytes = await readBytes(focal.token, path(created, attachmentId));
+    expect(bytes.status).toBe(200);
+    expect(bytes.headers['cache-control']).toBe('private, no-store');
+    expect(bytes.headers['content-type']).toContain('application/pdf');
+    expect(bytes.headers['content-disposition']).toMatch(/^inline; filename\*=UTF-8''spec\.pdf$/);
+    // The parser above hands the body over as the Buffer it gathered.
+    expect((bytes.body as Buffer).toString()).toBe('%PDF-1.4 request file spec');
+
+    expect((await trail(created.id)).at(-1)).toMatchObject({
+      action: 'update',
+      changes: [{ field: 'attachment', old: null, new: `${CATEGORY}:مواصفات الطابعة` }],
+    });
+    // The record read again names it, and an edit decided before the link is stale.
+    const read = data<AdministrationPurchaseRequestDetailDto>(
+      await as(focal.token).get(`/purchase-requests/${created.id}`),
+    );
+    expect(read.attachments.map((entry) => entry.attachmentId)).toEqual([attachmentId]);
+    refused(
+      await as(focal.token).patch(`/purchase-requests/${created.id}`, {
+        notes: 'x',
+        version: created.version,
+      }),
+      409,
+      'STALE_DOCUMENT',
+    );
+  });
+
+  it('a file links in draft and is refused once submitted — 422, also when stale — and nothing more is stored', async () => {
+    const created = await draft(focal);
+    const first = await linked(focal.token, created, 'قبل الإرسال');
+    const attachmentId = first.attachments[0]?.attachmentId ?? '';
+    const version = await submit(first);
+    for (const held of [version, first.version]) {
+      refused(
+        await attach(focal.token, { id: created.id, version: held }, 'بعد الإرسال'),
+        422,
+        'ADMINISTRATION_INVALID_TRANSITION',
+        ['status:pendingApproval'],
+      );
+      refused(
+        await as(focal.token).delete(`${path(created, attachmentId)}?version=${String(held)}`),
+        422,
+        'ADMINISTRATION_INVALID_TRANSITION',
+        ['status:pendingApproval'],
+      );
+    }
+    expect(await filesUnder(created.id, 'stored'), 'no file was stored after submission').toBe(1);
+    // What the approvers read stays readable.
+    expect((await readBytes(focal.token, path(created, attachmentId))).status).toBe(200);
+  });
+
+  it('a link’s DELETE unlinks it under its version — 409 when stale — and the file stays in Files', async () => {
+    const created = await draft(focal);
+    const after = await linked(focal.token, created, 'قديمة');
+    const attachmentId = after.attachments[0]?.attachmentId ?? '';
+    const fileId = await fileIdOf(created.id, attachmentId);
+
+    refused(
+      await as(focal.token).delete(
+        `${path(created, attachmentId)}?version=${String(created.version)}`,
+      ),
+      409,
+      'STALE_DOCUMENT',
+    );
+    refused(await as(focal.token).delete(path(created, attachmentId)), 400, 'VALIDATION_FAILED');
+    const removed = await as(focal.token).delete(
+      `${path(created, attachmentId)}?version=${String(after.version)}`,
+    );
+    expect(removed.status, JSON.stringify(removed.body)).toBe(200);
+    expect(data<AdministrationPurchaseRequestDetailDto>(removed)).toMatchObject({
+      attachments: [],
+      version: after.version + 1,
+    });
+    const file = await FileModel.findById(fileId).lean().exec();
+    expect(file?.isDeleted, 'the link went, the file stayed').toBe(false);
+    refused(await as(focal.token).get(path(created, attachmentId)), 404, 'NOT_FOUND');
+    expect((await trail(created.id)).at(-1)).toMatchObject({
+      action: 'update',
+      changes: [{ field: 'attachment', old: `${CATEGORY}:قديمة`, new: null }],
+    });
+  });
+
+  it('a colleague’s write on another’s draft is 403 and stores nothing; the colleague still reads it', async () => {
+    const created = await draft(focal);
+    refused(await attach(colleague.token, created), 403, 'FORBIDDEN');
+    expect(await filesUnder(created.id, 'stored'), 'the refused upload stored nothing').toBe(0);
+    const after = await linked(focal.token, created, 'للطالب');
+    const attachmentId = after.attachments[0]?.attachmentId ?? '';
+    refused(
+      await as(colleague.token).delete(
+        `${path(created, attachmentId)}?version=${String(after.version)}`,
+      ),
+      403,
+      'FORBIDDEN',
+    );
+    expect((await readBytes(colleague.token, path(created, attachmentId))).status).toBe(200);
+    // Another copy's focal point does not reach the request at all.
+    refused(await attach(focalA2.token, after), 404, 'NOT_FOUND');
+    refused(await as(focalA2.token).get(path(created, attachmentId)), 404, 'NOT_FOUND');
+  });
+
+  it('holds at most 20 files: the 21st is 422 before a byte is stored, and one past the read is refused by the write’s own bound', async () => {
+    const created = await draft(focal);
+    let doc: { id: string; version: number } = created;
+    for (let i = 0; i < 20; i += 1) doc = await linked(focal.token, doc, `ملف ${String(i)}`);
+    refused(await attach(focal.token, doc, 'زائد'), 422, 'ADMINISTRATION_ATTACHMENT_LIMIT', [
+      'attachments:limit',
+    ]);
+    expect(await filesUnder(created.id, 'stored'), 'no 21st file was stored').toBe(20);
+
+    // The bound rides in the link write's filter beside the version: a load made to miss one file
+    // lets the request store its upload, and the write still refuses a 21st, withdrawing it.
+    const row = await administrationPurchaseRequestRepository.getById(created.id);
+    const spy = vi
+      .spyOn(administrationPurchaseRequestRepository, 'findById')
+      .mockResolvedValueOnce({ ...row, attachments: row.attachments.slice(0, 19) });
+    const res = await attach(focal.token, doc, 'سابق');
+    spy.mockRestore();
+    refused(res, 422, 'ADMINISTRATION_ATTACHMENT_LIMIT', ['attachments:limit']);
+    expect(await filesUnder(created.id, 'stored'), 'the 21st was stored').toBe(21);
+    expect(await filesUnder(created.id), 'and withdrawn: no file is left unlinked').toBe(20);
+  });
+
+  it('takes PDF and images only (OD-76 formats (i)): an Office file is 422 FILE_TYPE_NOT_ALLOWED', async () => {
+    const created = await draft(focal);
+    refused(
+      await attach(focal.token, created, 'عقد', {
+        buffer: Buffer.from('docx-bytes'),
+        filename: 'contract.docx',
+        contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }),
+      422,
+      'FILE_TYPE_NOT_ALLOWED',
+    );
+    const now = data<AdministrationPurchaseRequestDetailDto>(
+      await as(focal.token).get(`/purchase-requests/${created.id}`),
+    );
+    expect(now).toMatchObject({ attachments: [], version: created.version });
+  });
+
+  it('a reader holding `.approve` alone reads the file and its scan state; nobody reads it through another request', async () => {
+    const approver = await world.person('pr-files-approver', [APPROVE], 'department', {
+      branchId: world.branchAId,
+      departmentId: deptA1,
+    });
+    const created = await draft(focal);
+    const after = await linked(focal.token, created, 'صورة العطل');
+    const attachmentId = after.attachments[0]?.attachmentId ?? '';
+    await submit(after);
+    expect((await readBytes(approver.token, path(created, attachmentId))).status).toBe(200);
+    const read = data<AdministrationPurchaseRequestDetailDto>(
+      await as(approver.token).get(`/purchase-requests/${created.id}`),
+    );
+    expect(read.attachments.map((entry) => entry.scanStatus)).toEqual(['unscanned']);
+    // An approver holds no write key: the route refuses before anything else is said.
+    refused(await attach(approver.token, { id: created.id, version: 0 }), 403, 'FORBIDDEN');
+
+    const other = await draft(focal);
+    refused(await as(focal.token).get(path(other, attachmentId)), 404, 'NOT_FOUND');
+    refused(
+      await as(focal.token).delete(`${path(other, attachmentId)}?version=${String(other.version)}`),
+      404,
+      'NOT_FOUND',
+    );
+  });
+
+  it('the platform’s scan gate: a file still scanned, or blocked, is refused; the record shows its state', async () => {
+    const created = await draft(focal);
+    const after = await linked(focal.token, created, 'مسح');
+    const attachmentId = after.attachments[0]?.attachmentId ?? '';
+    const fileId = await fileIdOf(created.id, attachmentId);
+    const stateNow = async () =>
+      data<AdministrationPurchaseRequestDetailDto>(
+        await as(focal.token).get(`/purchase-requests/${created.id}`),
+      ).attachments[0]?.scanStatus;
+    const bytes = () => as(focal.token).get(path(created, attachmentId));
+
+    await FileModel.updateOne({ _id: fileId }, { $set: { scanStatus: 'pending' } }).exec();
+    expect(await stateNow()).toBe('pending');
+    refused(await bytes(), 422, 'FILE_SCAN_PENDING');
+
+    await FileModel.updateOne({ _id: fileId }, { $set: { scanStatus: 'blocked' } }).exec();
+    expect(await stateNow()).toBe('blocked');
+    refused(await bytes(), 422, 'FILE_BLOCKED');
+
+    await FileModel.updateOne({ _id: fileId }, { $set: { scanStatus: 'clean' } }).exec();
+    expect(await stateNow()).toBe('clean');
+    expect((await bytes()).status).toBe(200);
+
+    await FileModel.updateOne({ _id: fileId }, { $set: { status: 'archived' } }).exec();
+    expect(await stateNow(), 'a file gone or archived reads unavailable').toBeNull();
+  });
+
+  it('the platform’s own file paths ask the request’s rule: a draft’s file is replaced, a submitted request’s neither replaced nor deleted', async () => {
+    const holder = await requester(
+      'files-platform',
+      'department',
+      { branchId: world.branchAId, departmentId: deptA1 },
+      undefined,
+      [...REQUESTER_KEYS, 'file.view', 'file.edit', 'file.delete'],
+    );
+    const platform = (fileId: string) => ({
+      replace: (label: string) =>
+        request(world.app)
+          .post(`/api/v1/platform/files/${fileId}/replace`)
+          .set('Authorization', `Bearer ${holder.token}`)
+          .attach('file', Buffer.from(`%PDF-1.4 ${label}`), {
+            filename: `${label}.pdf`,
+            contentType: 'application/pdf',
+          }),
+      delete: () =>
+        request(world.app)
+          .delete(`/api/v1/platform/files/${fileId}`)
+          .set('Authorization', `Bearer ${holder.token}`),
+    });
+    const created = await draft(holder);
+    const after = await linked(holder.token, created, 'نسخة');
+    const fileId = await fileIdOf(created.id, after.attachments[0]?.attachmentId ?? '');
+
+    // A draft's file: the requester's own, so the platform's write is theirs too.
+    const replaced = await platform(fileId).replace('second');
+    expect(replaced.status, JSON.stringify(replaced.body)).toBe(201);
+    const latest = data<{ id: string }>(replaced).id;
+
+    await submit(after);
+    refused(await platform(latest).replace('third'), 403, 'FORBIDDEN');
+    refused(await platform(latest).delete(), 403, 'FORBIDDEN');
+    refused(await platform(fileId).delete(), 403, 'FORBIDDEN');
+    const live = await FileModel.countDocuments({
+      _id: { $in: [fileId, latest] },
+      isDeleted: false,
+    });
+    expect(live, 'both versions still stand').toBe(2);
   });
 });

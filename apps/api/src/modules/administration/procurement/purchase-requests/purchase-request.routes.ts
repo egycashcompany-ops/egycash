@@ -7,6 +7,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
+  ADMINISTRATION_REQUEST_ATTACHMENT_MAX_MB,
+  AddAdministrationPurchaseRequestAttachmentSchema,
+  AdministrationPurchaseRequestAttachmentVersionQuerySchema,
   CreateAdministrationPurchaseRequestSchema,
   ListAdministrationPurchaseRequestsQuerySchema,
   UpdateAdministrationPurchaseRequestSchema,
@@ -15,14 +18,19 @@ import {
 import { authenticate } from '../../../../platform/auth';
 import { authorize, authorizeAny } from '../../../../platform/rbac';
 import { asyncHandler, validate } from '../../../../platform/web';
+import { multipartUpload } from '../../shared/file-upload';
 import {
+  addAdministrationPurchaseRequestAttachment,
   createAdministrationPurchaseRequest,
+  getAdministrationPurchaseRequestAttachment,
   getAdministrationPurchaseRequest,
   listAdministrationPurchaseRequests,
+  removeAdministrationPurchaseRequestAttachment,
   updateAdministrationPurchaseRequest,
 } from './purchase-request.controller';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
+const AttachmentParamSchema = z.object({ id: objectId(), attachmentId: objectId() }).strict();
 
 export const buildAdministrationPurchaseRequestsRouter = (): Router => {
   const router = Router();
@@ -53,6 +61,37 @@ export const buildAdministrationPurchaseRequestsRouter = (): Router => {
     authorize('administrationPurchaseRequest.edit'),
     validate({ body: UpdateAdministrationPurchaseRequestSchema, params: IdParamSchema }),
     asyncHandler(updateAdministrationPurchaseRequest),
+  );
+  // A request's files (P2 plan §4.3; P2.6). A write takes either key of the acts that make the
+  // draft, and is the requester's own on a draft — checked in the service, which knows the
+  // request; a read is the record's, an approver's included. The multipart part comes first, so
+  // its text fields are the body the schema reads; the category's own limit, 10 MB, is the one a
+  // requester meets.
+  router.post(
+    '/:id/attachments',
+    authenticate,
+    authorizeAny('administrationPurchaseRequest.create', 'administrationPurchaseRequest.edit'),
+    multipartUpload(ADMINISTRATION_REQUEST_ATTACHMENT_MAX_MB),
+    validate({ body: AddAdministrationPurchaseRequestAttachmentSchema, params: IdParamSchema }),
+    asyncHandler(addAdministrationPurchaseRequestAttachment),
+  );
+  router.get(
+    '/:id/attachments/:attachmentId',
+    authenticate,
+    authorizeAny('administrationPurchaseRequest.view', 'administrationPurchaseRequest.approve'),
+    validate({ params: AttachmentParamSchema }),
+    asyncHandler(getAdministrationPurchaseRequestAttachment),
+  );
+  // The one DELETE removes a file's link, never a request (P2 plan §4.1).
+  router.delete(
+    '/:id/attachments/:attachmentId',
+    authenticate,
+    authorizeAny('administrationPurchaseRequest.create', 'administrationPurchaseRequest.edit'),
+    validate({
+      query: AdministrationPurchaseRequestAttachmentVersionQuerySchema,
+      params: AttachmentParamSchema,
+    }),
+    asyncHandler(removeAdministrationPurchaseRequestAttachment),
   );
   return router;
 };

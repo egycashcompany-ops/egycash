@@ -3617,6 +3617,46 @@ Repository-wide findings outside this module are listed for the owner in
     and 443 keys on `cad4c409` and reaches 123 and 447; the item edit's unit lock check is `item.service.ts:237`, its
     unit write `:251-252` and its `labels` `:142-149`; `ALL_REALTIME_KEY_PREFIXES` is `invalidation-registry.ts:747`;
     the warehouses' census row `targets.ts:248-255`. The re-detail's §1.2 D and §12.3 carry the same re-pins.
+- **P2.6 built** (2026-11-25). Request attachments ship as the P2 re-detail's §3 row says
+  ([administration-module-phase-2.md](administration-module-phase-2.md)), in the supplier papers' shape (P1b.1):
+  the category `administration-request-attachments`, the `purchaseRequest` authorizer, the three routes and the scan
+  states on the record. Built beside P2.3, on P2.2; a submitted request is planted in its integration cases. Where the
+  code had to choose what the re-detail leaves open:
+  - *The act's key, of two.* The write routes take `.create` or `.edit`. Each held key is tried with its own scope, and
+    the first whose scope finds the request and that covers its Unit (`keyCoversUnit`) is the act's key, its scope also
+    the link write's filter; found under a key that covers no Unit (an `own` grant finds what its holder raised) and
+    under no other is 403, found under none 404. Then the requester (403), the draft (422), the version (409) and the
+    act's rule: the bound of 20 on a link (422), a file the request does not list on a removal (404).
+  - *The authorizer's write branch is the route's whole rule*: a write key that finds the request and covers its Unit,
+    the requester, a draft, as P1b.1 held the supplier's write branch to the paper routes' own rule. So
+    `/platform/files` (upload, replace, update, archive, restore and delete) is no wider than the module's routes: a
+    colleague of the same department with a `file.*` key changes nothing of another's draft. The read branch is design
+    §11.3's, `.view` then `.approve`, each with its own scope, at every status.
+  - *The category* is titled «مرفقات الطلبات» / "Request attachments" (design §11.2 names its key and purpose only).
+    Its formats and limit are constants of its own in the contracts, equal to the supplier papers' today, because one
+    key per purpose keeps a later answer to OD-76 or OD-77 for one list from moving the other. The purchase-request
+    feature ensures it, as its first user; where the ensure lives once material requests share it is P6's.
+  - *Scan states on every answer of the record*: the read and the two writes answer the detail, each file's state read
+    once. A reader the authorizer would not let open the files (a custom role whose read keys do not reach the request)
+    gets every state null and Files is not asked in their name, P1b.1's rule; the question is the authorizer's own
+    read, so a request's scope is honoured where a supplier has none.
+  - *A removal unlinks only*: the file stays in Files as history, as a supplier paper's does (design §11.4, list B,
+    "entries are added and removed"). No replace route ships: §11.4's replace of a `blocked` entry serves a
+    required-file gate, and OD-76 A requires no file of a request.
+  - *The guards admit one more writer.* Design §5.16 spec 9's scan read the service as the request's only writer; the
+    link write is the repository's, as the supplier's is, so the spec now holds it to the list alone (a `$push` or
+    `$pull` of `attachments`, the writer and the version) and to the file feature as its only caller, and spec 10 reads
+    its filter for the version and the draft set.
+  - *Three files outside the re-detail's P2.6 rows (its §13), which now names P2.6 on each*: `administration.mappers.ts`
+    maps the detail's files; `purchase-request-guards.spec.ts` carries the scans above; and
+    `packages/contracts/src/errors/index.ts`, whose `ADMINISTRATION_ATTACHMENT_LIMIT` comment now names the request's
+    files beside the supplier's papers (comment only).
+  - *Pins that moved since `de38fd71`*, none changing a rule, read on `90401f23`: the supplier papers' cached category
+    is `supplier-files.ts:65-76` (re-detail §4.3 `:67-76`) and their upload `:277-308` (`:277-300`); the list's bound
+    is `packages/contracts/src/modules/administration.ts:189-196` (§1.2 item 12 `:120`, §4.3 `:112-120`); its refusal
+    `packages/contracts/src/errors/index.ts:734-740` (`:732-737`); the supplier's link schemas
+    `administration-procurement.ts:106-127` (§5 `:100-117`). The authorizer's `supplier-files.ts:83-98`,
+    `shared/file-upload.ts:19-28` and ADR-023's `:63-73, 160-169` hold.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

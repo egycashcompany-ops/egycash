@@ -330,7 +330,11 @@ service checks asked by the open time's own day range, so a row stored before th
   closed maintenance keeps its ticket accepted (the restore refuses it, §6d); a soft-deleted one
   does not, so a restored ticket is accepted again. Manual and imported rows carry no ticket and
   are outside it. Built at boot by `atm-indexes.ts`, reported (collection, index, counts) and
-  skipped over stored duplicates like every unique index there.
+  skipped over stored duplicates like every unique index there. The accept and the restore read a
+  ticket's maintenances — deleted ones too, which this index leaves out — on a second one,
+  `ix_maintenance_from_ticket` (`{ mailTicketId, branchId }` over every row opened from a ticket,
+  not unique); the read restates its `$type` predicate, which the planner does not infer from an
+  equality (2026-11-25: without it the read walked the branch's whole log, ~39,000 keys a ticket).
 - **Accept writes a ticket's two halves in one transaction.** The maintenance and the ticket's flip
   to accepted commit together (`unitOfWork`, as the restore does). A concurrent decision of the
   same ticket — the loser of a double click, or an accept racing a reject — rolls back whole: its
@@ -803,9 +807,20 @@ offered nobody, and the edit dialogs' leader stayed free text.
 - **The card** «موظفو الصراف الآلي — قائمة القائد»: every active department with its branch and
   its people counted, the ATM one marked «باسم الصراف الآلي», a stored one retired since marked «لم
   تعد نشطة»; the count of names the pickers offer; «استخدام إدارة الصراف الآلي باسمها» saves `[]`.
-- **The pickers.** The close: a searchable box, required, each person «name (code)» — the search
-  reads that label, never the employee id — and the close writes their HR name as the leader, as
-  before. Both kinds' edit dialogs: the leader is picked from the same names (each name once); a
+- **The pickers.** The close: a searchable box, each person «name (code)» — the search reads that
+  label, never the employee id — and the close writes their HR name as the leader of the rows that
+  name none. Since 2026-11-25 («عايز اسم الموظف دا يجي تلقائي من قائد الطاقم فى الجدول لو مُعين ..
+  لو لأ خليه يدخله هو») a row that already names its crew leader closes under that name, and the
+  box is shown, and required, only while a selected row names none — its hint counts those rows,
+  and each row in the dialog shows «قائد الطاقم: …» or «بدون قائد طاقم». A name is any character
+  but ASCII spacing (`atmLeaderNamed`, one pattern for the dialog and the database filter).
+  `leaderEmployeeId` is optional on `POST /atm/maintenances/close`; without it, a set that holds an
+  open row with no leader is a 422 before anything closes, and a row whose leader is cleared
+  between that check and the write stays open rather than closing without one. `leaderEmployeeId`
+  is the close's alone: every edit that writes a leader by name — the single edit, the checked
+  rows, either shift cascade — sets it to null, so a row reopened after a close and given another
+  leader never keeps the first person's id (whose purge would blank the new name, and the close
+  that keeps the leader would make that permanent). Both kinds' edit dialogs: the leader is picked from the same names (each name once); a
   name already on the row stays pickable, and the «الوردية» rule is unchanged (§4a). On a checked
   set of maintenances the box opens on the leader the rows share; «حفظ» waits for a change, and a
   clear is the ×, never a blank (the legacy's «empty clears» survives only as that explicit act). A

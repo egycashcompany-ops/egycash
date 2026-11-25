@@ -67,6 +67,20 @@ export const maintenancePerMailTicketFilter = (): Record<string, unknown> => ({
   isDeleted: false,
 });
 
+/** The index the mail accept and restore read a ticket's maintenances on (see its declaration). */
+export const MAINTENANCE_FROM_TICKET_INDEX_NAME = 'ix_maintenance_from_ticket';
+
+/**
+ * The rows that index holds: every row opened from a ticket — live AND soft-deleted, unlike
+ * `ux_maintenance_per_mail_ticket` — so the null of every manual and imported row is outside it.
+ * The read restates it in its own filter (`findFromTicket`): the planner does not take an equality
+ * on an ObjectId as implying `$type: 'objectId'` (measured on MongoDB 7), so without it the index
+ * is never chosen. A fresh object per call — Mongoose keeps the options it is handed.
+ */
+export const maintenanceFromTicketFilter = (): Record<string, unknown> => ({
+  mailTicketId: { $type: 'objectId' },
+});
+
 const maintenanceSchema = new Schema<AtmMaintenanceDoc>(
   {
     branchId: { type: Schema.Types.ObjectId, required: true },
@@ -155,6 +169,19 @@ maintenanceSchema.index(
     unique: true,
     name: MAINTENANCE_PER_MAIL_TICKET_INDEX_NAME,
     partialFilterExpression: maintenancePerMailTicketFilter(),
+  },
+);
+// A TICKET'S MAINTENANCES, LIVE AND DELETED — what the mail accept and restore read inside their
+// transactions (`findFromTicket`). The unique index above leaves deleted rows out, and the restore
+// needs them (a deleted one tells "deleted on the board" from "never linked"), so that read could
+// not use it: it walked `ix_branch_closed` over the ticket's whole branch, ~39,000 keys and 0.2–0.3 s
+// per ticket on 2026-11-25 (Atlas slow log), inside a transaction. On this index it reads the
+// ticket's own rows — one, or a few after restores. Built at boot by atm-indexes.ts.
+maintenanceSchema.index(
+  { mailTicketId: 1, branchId: 1 },
+  {
+    name: MAINTENANCE_FROM_TICKET_INDEX_NAME,
+    partialFilterExpression: maintenanceFromTicketFilter(),
   },
 );
 

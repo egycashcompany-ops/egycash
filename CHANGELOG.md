@@ -53,6 +53,15 @@ its entry here in the same PR.
     user is answered as the error it is — no longer as 401 «User no longer exists», which sent every
     open tab to refresh at once and got thirteen sessions revoked as token reuse.
 
+- **Accepting or restoring a mail ticket no longer reads the branch's whole maintenance log.** The
+  read of a ticket's maintenances inside the accept and restore transactions (`findFromTicket`)
+  must see deleted rows too, so it could not use `ux_maintenance_per_mail_ticket`, which leaves them
+  out. It walked `ix_branch_closed` over the ticket's branch instead: ~39,000 keys and 0.2–0.3 s per
+  ticket on 2026-11-25 (Atlas slow log). A new partial index, `ix_maintenance_from_ticket`
+  (`{ mailTicketId, branchId }` over every row opened from a ticket), built at boot, holds it; the
+  read states the index's predicate (`$type: 'objectId'`), which the planner does not infer from an
+  equality, and now reads the ticket's own rows only.
+
 - **The approvals engine: a chain save names its request type's keys and the chain it replaces.**
   This is PX-1.6, the last of PX-1's pull requests, which harden the platform approvals engine
   before Administrative Affairs' money approvals run on it
@@ -261,6 +270,16 @@ its entry here in the same PR.
   («NBE» above «- 1056») would otherwise run into the code below it.
 
 ### Changed
+
+- **ATM maintenance close: the crew leader on the row is the one the close keeps.** The owner
+  (2026-11-25): «لما بيتم تقفيل صيانة لماكينة ATM كان بيطلب منه اسم الشخص اللى قفلها / عايز اسم
+  الموظف دا يجي تلقائي من قائد الطاقم فى الجدول لو مُعين .. لو لأ خليه يدخله هو». The close dialog
+  on `/atm/maintenance` shows each selected row's «قائد الطاقم» and asks for an employee only while
+  a row has none; the pick is written on those rows only. `POST /atm/maintenances/close` takes
+  `leaderEmployeeId` as optional and refuses (422) a set with a row without a leader when it is
+  missing, before anything closes. A leader written by name (an edit or a shift cascade) now
+  clears the row's `leaderEmployeeId`, which only the close sets, so a reopened row given another
+  leader never keeps the earlier employee's id (`docs/12-planning/atm-operations-port.md` §6e).
 
 - **HR leave: a request nobody on its approval chain can approve takes the manager and HR path
   (PXQ-1).** «موافق على كل التوصيات، كمّل». The owner's answer to PXQ-1, option 1

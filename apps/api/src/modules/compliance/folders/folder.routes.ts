@@ -78,7 +78,8 @@ export const buildComplianceFoldersRouter = (): Router => {
     validate({ query: CoverQuerySchema, params: IdParamSchema }),
     asyncHandler(getComplianceFolderCover),
   );
-  router.put(
+  // POST, as every multipart upload the web client sends is.
+  router.post(
     '/:id/cover',
     authenticate,
     authorize(COMPLIANCE_MANAGE_KEY),

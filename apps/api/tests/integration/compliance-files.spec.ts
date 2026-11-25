@@ -118,14 +118,12 @@ const api = (who: Person) => {
     patch: (path: string, body: Record<string, unknown>) =>
       as(request(app).patch(`${base}${path}`)).send(body),
     delete: (path: string) => as(request(app).delete(`${base}${path}`)),
-    put: (path: string) => as(request(app).put(`${base}${path}`)),
     upload: (
       path: string,
       file: { buffer: Buffer; filename: string; contentType: string },
       fields: Record<string, string> = {},
-      method: 'post' | 'put' = 'post',
     ) => {
-      let req = as(request(app)[method](`${base}${path}`));
+      let req = as(request(app).post(`${base}${path}`));
       for (const [name, value] of Object.entries(fields)) req = req.field(name, value);
       return req.attach('file', file.buffer, {
         filename: file.filename,
@@ -348,7 +346,6 @@ describe('folders', () => {
       `/folders/${folder.id}/cover`,
       { buffer: PNG, filename: 'cover.png', contentType: 'image/png' },
       { version: String(folder.version) },
-      'put',
     );
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     folder = data<ComplianceFolderDto>(res);
@@ -362,7 +359,6 @@ describe('folders', () => {
       `/folders/${folder.id}/cover`,
       { buffer: PDF, filename: 'cover.png', contentType: 'image/png' },
       { version: String(folder.version) },
-      'put',
     );
     expect(notAPicture.status).toBe(422);
   });

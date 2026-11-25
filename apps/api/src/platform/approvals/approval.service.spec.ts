@@ -760,6 +760,18 @@ describe('the chain a request was submitted on (the pin, R1)', () => {
       // Deleted, with nothing wider to fall back to.
       ['deleted', []],
     ];
+
+    // The staffing memo over pinned rungs, as over a row's: one question per distinct key and
+    // level. A repeated rung gets past no save, but the memo must hold whatever a pin says.
+    mocks.hasApprovers.mockResolvedValue(true);
+    await approvalService.statusFor(
+      subject([], {
+        workflowId: pin.workflowId,
+        steps: [rung('unit'), rung('organization'), rung('unit')],
+      }),
+    );
+    expect(mocks.hasApprovers).toHaveBeenCalledTimes(2);
+
     for (const [what, rows] of since) {
       mocks.findActiveForType.mockReset();
       mocks.findActiveForType.mockResolvedValue(rows);
@@ -768,7 +780,7 @@ describe('the chain a request was submitted on (the pin, R1)', () => {
       mocks.record.mockClear();
 
       expect(await approvalService.statusFor(subject([], pin)), what).toBe('pending');
-      // The staffing memo over the pinned rungs: one question per distinct key and level.
+      // Staffing is asked of the two pinned rungs, not of whatever a row now holds.
       expect(mocks.hasApprovers, what).toHaveBeenCalledTimes(2);
       expect(mocks.hasApprovers, what).toHaveBeenCalledWith('leave.approve', 'unit', UNIT);
 

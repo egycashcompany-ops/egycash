@@ -32,8 +32,8 @@ its entry here in the same PR.
     decision, its trail and its notice. A chain edit no longer moves a request already submitted:
     an administrator's edit, deactivation or deletion of a chain applies to new submissions only,
     and the request keeps its rungs, their captions on its chain panel, and the decisions taken on
-    them. A request submitted after a chain is deleted takes leave's manager and HR path, as
-    before. Requests already waiting in `pendingApproval` have no pin and keep reading their chain
+    them. A request submitted after a chain is deleted takes the next wider chain that applies,
+    or, with none, leave's manager and HR path, as before. Requests already waiting in `pendingApproval` have no pin and keep reading their chain
     live, so an edit can still move them; nothing is backfilled, and no migration, command or boot
     step ships. Who stands on a rung still follows the employee's current placement. Leave's
     submission rule, its manager and HR path, its notices, its audit and its API are unchanged.

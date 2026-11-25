@@ -44,10 +44,12 @@ const stepSchema = new Schema<WorkflowStep>(
 /**
  * Whether a write that pins a chain stores its rungs beside the id.
  *
- * Read through `get`, which a document answers with its own rungs and an update query run with
- * `context: 'query'` answers with the rungs the same update sets: a pin is written whole, both
- * fields in the write that starts a round (ADR-041 decision 4). Anything else that sets the id
- * shows no rungs, and is refused with it.
+ * It runs where Mongoose validates a document, at create and save, and there `this` is the
+ * document, so `get` answers with the rungs it holds: a pin is written whole, both fields in the
+ * write that starts a round (ADR-041 decision 4). No update in ECMS runs validators, so an update
+ * that sets the id is not checked here; the engine reads a pin stored that way with no rungs as
+ * `noChain`. The rungs are read at the top-level path, so a host spreads `approvalPinFields` at its
+ * schema's top level, as it spreads `baseFields`.
  */
 function pinHasRungs(
   this: { get?: (path: string) => unknown } | null,

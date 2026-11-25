@@ -15,6 +15,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
 import {
+  HrLeaveTemplates,
   platformPermissions,
   SettingKeys,
   type ApprovalWorkflowDto,
@@ -35,6 +36,7 @@ import {
   type ChainStatus,
 } from '../../src/platform/approvals';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
+import { NotificationModel } from '../../src/platform/notifications/notification.model';
 import { rbacService } from '../../src/platform/rbac';
 import { roleAssignmentRepository } from '../../src/platform/rbac/rbac.repository';
 import { LeaveRequestModel } from '../../src/modules/hr/leave-management/leave-requests/leave-request.model';
@@ -871,8 +873,17 @@ describe('a request keeps the chain it was submitted on (PX-1.4: R1)', () => {
     expect(String(row?.approvalWorkflowId)).toBe(saved.id);
     expect(row?.approvalChainShape).toEqual([UNIT_RUNG, ORGANIZATION_RUNG]);
 
+    // The notice to the next approvers follows the pin as well: the pinned organization rung's
+    // holder is told, where the edited chain's branch rung has nobody to tell.
+    const toHr = () =>
+      NotificationModel.countDocuments({
+        recipientUserId: new Types.ObjectId(hrApprover.userId),
+        templateKey: HrLeaveTemplates.RequestSubmitted,
+      }).exec();
+    const toldBefore = await toHr();
     const first = await decide(created.id, 'approve', created.version, unitApprover.token);
     expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect(await toHr()).toBe(toldBefore + 1);
     const half = first.body.data as LeaveRequestDto;
     expect(half.status).toBe('pendingApproval');
     expect(rungsOf(half)).toEqual([

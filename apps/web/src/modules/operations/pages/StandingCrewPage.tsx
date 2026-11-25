@@ -84,6 +84,11 @@ import {
   useRemoveOperationsStandingCrew,
   useSetOperationsStandingCrew,
 } from '../api/operations-queries';
+import {
+  addLandsOn,
+  useArchivedOperationsAreaNames,
+  useDirectionAreaAdd,
+} from '../api/direction-area';
 import { CrewVehicleHoverCode } from '../components/BoardCrewCards';
 import { DirectionPicker, TimePicker } from '../components/CrewPlanControls';
 import {
@@ -107,7 +112,7 @@ import { CrewPlanPool } from '../components/CrewPlanPools';
 import { CrewPlanSlot } from '../components/CrewPlanSlot';
 import { CrewRosterNotice } from '../components/CrewRosterNotice';
 import { CrewSlotPicker } from '../components/CrewSlotPicker';
-import { CrewVehiclePicker } from '../components/CrewVehiclePicker';
+import { CrewVehiclePicker, NoCodeTag } from '../components/CrewVehiclePicker';
 import { PLAN_ICON } from '../components/crew-plan-icons';
 import { CrewPlanScopeProvider } from '../components/crew-plan-scope';
 import { ADD_BUTTON, BRAND_BUTTON } from '../components/ShipmentsBoard';
@@ -174,7 +179,7 @@ import {
   type UndoHistory,
   type UndoWhat,
 } from '../lib/crew-undo';
-import { type VehicleChoice } from '../lib/crew-vehicles';
+import { vanName, type VehicleChoice } from '../lib/crew-vehicles';
 import { saveReportWorkbook } from '../lib/report-export';
 import { cairoToday } from '../lib/shipment-history';
 import {
@@ -263,7 +268,7 @@ const StandingCrewBoard = (): JSX.Element => {
     const base = seen;
     const lost = standingEditsLost(history.now.rows, base, serverRows);
     if (lost.length > 0) {
-      setLostOnServer(lost.map((row) => row.vehicleCode ?? row.vehicleId ?? '…'));
+      setLostOnServer(lost.map((row) => vanName(row) ?? row.vehicleId ?? '…'));
     }
     setHistory((current) =>
       rebaseHistory(
@@ -369,7 +374,8 @@ const StandingCrewBoard = (): JSX.Element => {
     setStateFilter(null);
   };
   const counts = standingCounts(rows);
-  const rowName = (row: PlanRow): string => row.vehicleCode ?? '…';
+  /** Round 32 critic — its code, or (a code that names nothing) its plate (`vanName`). */
+  const rowName = (row: PlanRow): string => vanName(row) ?? '…';
   const nameOfRow = (key: string): string => {
     const row = rows.find((candidate) => candidate.key === key);
     return row === undefined ? '—' : rowName(row);
@@ -618,6 +624,25 @@ const StandingCrewBoard = (): JSX.Element => {
       mergeKeyOf(kind, key),
     );
   };
+  // Round 28c — the board's «إضافة «…» إلى القائمة», on the same box: for a planner who also holds
+  // the catalog's own grant; the area written at once, the vehicle's direction one operation.
+  const canAddArea = canPlan && can('operationsCatalog.manage');
+  const archivedAreas = useArchivedOperationsAreaNames(canAddArea);
+  // Round 28c critic — and lands only on the row as it was sent (gone, or its direction changed
+  // meanwhile by another route: only added to the list, the toast says so). One board: one scope.
+  const areaAdd = useDirectionAreaAdd('standing', (key, area, from) => {
+    if (!addLandsOn(rows, key, from)) return false;
+    patch(key, { direction: area });
+    return true;
+  });
+  const addFor = (row: { key: string; direction: string | null }) =>
+    canAddArea
+      ? areaAdd.forRow(
+          row.key,
+          row.direction,
+          areaNames.isSuccess && archivedAreas.isSuccess ? archivedAreas.data : null,
+        )
+      : undefined;
   const takeOut = (row: PlanRow): void => {
     applyRows({ kind: 'removeVehicle', vars: { code: rowName(row) } }, (current) =>
       discardRow(current, row.key),
@@ -648,10 +673,12 @@ const StandingCrewBoard = (): JSX.Element => {
   };
   const addVehicle = (choice: VehicleChoice): void => {
     const row = newStandingPlanRow(choice, serverRows);
-    applyRows({ kind: 'addVehicle', vars: { code: choice.vehicleCode } }, (current) =>
-      current.some((candidate) => candidate.vehicleId === choice.vehicleId)
-        ? current
-        : [...current, row],
+    applyRows(
+      { kind: 'addVehicle', vars: { code: vanName(choice) ?? choice.vehicleCode } },
+      (current) =>
+        current.some((candidate) => candidate.vehicleId === choice.vehicleId)
+          ? current
+          : [...current, row],
     );
     // A new vehicle has nobody and no direction yet: every filter would hide it.
     clearFilters();
@@ -727,8 +754,10 @@ const StandingCrewBoard = (): JSX.Element => {
     const { put, removeVehicleIds, count } = pending;
     // The rows the PUT is written from, in its order: a refusal names its row by its place there.
     const sent = standingPutRows(rows, serverRows);
-    const codeOf = (vehicleId: string): string =>
-      serverRows.find((row) => row.vehicleId === vehicleId)?.vehicleCode ?? vehicleId;
+    const codeOf = (vehicleId: string): string => {
+      const row = serverRows.find((candidate) => candidate.vehicleId === vehicleId);
+      return (row === undefined ? null : vanName(row)) ?? vehicleId;
+    };
     setSaving(true);
     setRefusal(null);
     try {
@@ -836,10 +865,19 @@ const StandingCrewBoard = (): JSX.Element => {
           <div className="flex min-h-[2.25rem] items-center gap-1 px-0.5">
             <span className="flex flex-col items-start gap-0.5" data-van-code-stack="true">
               <CrewVehicleHoverCode
-                className={cn(NUM, 'cursor-default text-[14px] font-black')}
+                // Round 32 critic — a code that names nothing: the PLATE, smaller and free to wrap
+                // (it is longer than a code; the column keeps its width).
+                className={cn(
+                  NUM,
+                  'cursor-default font-black',
+                  row.uncoded == null
+                    ? 'text-[14px]'
+                    : 'whitespace-normal text-[12.5px] leading-[16px]',
+                )}
                 code={rowName(row)}
                 vehicleCrew={planRowCard(row, memberOf)}
               />
+              {row.uncoded != null && <NoCodeTag className="!px-0.5 !text-[9.5px]" />}
               {/* Added here, not saved yet: its tag UNDER the code, as the board's «إضافية». */}
               {added && (
                 <span
@@ -921,6 +959,7 @@ const StandingCrewBoard = (): JSX.Element => {
             options={directions}
             disabled={!canPlan}
             onChange={(direction) => patch(row.key, { direction })}
+            add={addFor(row)}
           />
         </div>
       ),
@@ -1317,6 +1356,8 @@ const StandingCrewBoard = (): JSX.Element => {
           trigger={addTrigger}
           sheet={phone}
           choices={choices}
+          // Round 32 — the vehicles nothing names (code and plate), left out: said on the list.
+          unidentified={standing.data?.unidentifiedVehicles ?? 0}
           words={{
             title: t('operations.standingCrew.picker.title'),
             subtitle:

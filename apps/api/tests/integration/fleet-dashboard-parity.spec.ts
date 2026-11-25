@@ -1636,10 +1636,8 @@ const periodParity = async (
   );
   expect(dto.km?.total).toBe(km.km);
   expect(dto.km?.invalidRows).toBe(km.invalidRows);
-  // «أرقام الفترة»: the visits that CHECKED IN in the range (`from`/`to`), and their state now.
-  expect(dto.visits?.count).toBe(await total('/fleet/maintenance', q, branch));
-  expect(dto.visits?.closed).toBe(await total('/fleet/maintenance', { ...q, open: false }, branch));
-  expect(dto.visits?.open).toBe(await total('/fleet/maintenance', { ...q, open: true }, branch));
+  // No count by the CHECK-IN day (`from`/`to`) any more: it left with the retired `period` tab.
+  expect(dto).not.toHaveProperty('visits');
   // «الصيانة والورش» and the overview's «زيارات الصيانة»: the same list over the EXIT day
   // (`outFrom`/`outTo`), never the check-in day — every figure, bar and car of it.
   const { from, to, ...rest } = q;
@@ -1679,14 +1677,12 @@ const periodParity = async (
     );
   }
   const acc = ok<{ count: number }>(await get('/fleet/accidents/summary', q, branch));
-  const accOpen = ok<{ count: number; remaining: number }>(
+  const accOpen = ok<{ count: number }>(
     await get('/fleet/accidents/summary', { ...q, status: 'open' }, branch),
   );
-  expect(dto.accidents).toMatchObject({
-    count: acc.count,
-    open: accOpen.count,
-    openRemaining: accOpen.remaining,
-  });
+  expect(dto.accidents).toMatchObject({ count: acc.count, open: accOpen.count });
+  // The open files' own remaining left with the retired `period` tab; the money is `totals`.
+  expect(dto.accidents).not.toHaveProperty('openRemaining');
   // «مبالغ ملفات حوادث الفترة» = the register's «الإحصائيات» over the same filter (open AND closed).
   const sums = ok<Record<string, number>>(await get('/fleet/accidents/summary', q, branch));
   expect(dto.accidents?.totals).toEqual({
@@ -1857,8 +1853,6 @@ const kmInvariants = (dto: FleetDashboardPeriodDto) => {
   const exits = dto.exits;
   expect((exits?.byWorkType ?? []).reduce((a, b) => a + b.count, 0)).toBe(exits?.count);
   expect((exits?.byWorkshop ?? []).reduce((a, b) => a + b.count, 0)).toBe(exits?.count);
-  const visits = dto.visits;
-  expect((visits?.closed ?? 0) + (visits?.open ?? 0)).toBe(visits?.count);
 };
 
 describe('R2 parity — the company view of October', () => {
@@ -1883,11 +1877,10 @@ describe('R2 parity — the company view of October', () => {
 
   it('every figure = its screen over the same from/to; the deleted car’s history counts', async () => {
     await periodParity(oct, {});
-    expect(oct.visits?.count).toBe(3);
+    expect(oct).not.toHaveProperty('visits');
     expect(oct.accidents).toEqual({
       count: 3,
       open: 3,
-      openRemaining: oct.accidents?.openRemaining,
       undated: 1,
       totals: oct.accidents?.totals,
     });
@@ -1958,8 +1951,6 @@ describe('R2 parity — the company view of October', () => {
       ],
       unregistered: 0,
     });
-    // «أرقام الفترة» keeps the CHECK-IN day: v4 (Oct 25, open), v2 and v7 (closed).
-    expect(oct.visits).toEqual({ count: 3, closed: 2, open: 1 });
     // «مخالفات السائقين في الفترة»: dA's (Oct 5, collected), the deleted v7's book name (Oct 7,
     // owed) and v2's «مجهول» (stored at 21:00Z on Oct 20 — its whole day counts); the statements
     // (a year, no day) and the fines of May–July never.
@@ -2040,7 +2031,7 @@ describe('R2 parity — the company view of October', () => {
       days: 1,
       granularity: 'day',
     });
-    expect(thisMonth.visits?.count).toBe(0);
+    expect(thisMonth).not.toHaveProperty('visits');
     expect(thisMonth.exits).toEqual({
       count: 0,
       avgStayDays: null,

@@ -11,6 +11,7 @@ import { translate } from '../../../platform/localization/i18n';
 import {
   UNDO_LIMIT,
   changedRowKeys,
+  isBoardUndoKey,
   lastStep,
   mergeKeyOf,
   rebaseHistory,
@@ -182,45 +183,123 @@ describe('the board’s operations — each one entry, however many rows it touc
     expect(planChanges(history.now.rows, rows).changed).toEqual([]);
   });
 
-  it('the standing crew loaded on twenty vans is one press back — and its toggle is off again', () => {
-    const empty = [van('1'), van('2'), van('3')];
-    const load = loadStandingIntoPlan(empty, [
-      {
-        vehicleId: 'v-1',
-        captainEmployeeIds: ['c1'],
-        specialist1EmployeeIds: [],
-        specialist2EmployeeIds: [],
-      },
-      {
-        vehicleId: 'v-3',
-        captainEmployeeIds: ['c3'],
-        specialist1EmployeeIds: [],
-        specialist2EmployeeIds: [],
-      },
-    ]);
-    let history = startHistory<CrewDraft>({ rows: empty, standingKeys: null });
-    history = record(
+  // Round 28b — the load brings each filled van's «الاتجاه» too («اه»): the people AND the
+  // directions are one operation, one press back.
+  const standingLoad = (rows: readonly PlanRow[]) =>
+    loadStandingIntoPlan(
+      rows,
+      [
+        {
+          vehicleId: 'v-1',
+          captainEmployeeIds: ['c1'],
+          specialist1EmployeeIds: [],
+          specialist2EmployeeIds: [],
+          direction: 'حلوان',
+        },
+        {
+          vehicleId: 'v-3',
+          captainEmployeeIds: ['c3'],
+          specialist1EmployeeIds: [],
+          specialist2EmployeeIds: [],
+          direction: 'طريق السويس',
+        },
+      ],
+      ['حلوان', 'المعادي'],
+    );
+  /** The page's toggle, on and off, as `toggleStanding` records each. */
+  const loadOn = (history: UndoHistory<CrewDraft>): UndoHistory<CrewDraft> => {
+    const load = standingLoad(history.now.rows);
+    return record(
       history,
-      { rows: load.rows, standingKeys: load.filledKeys },
+      { rows: load.rows, standingKeys: load.filledKeys, standingDirections: load.directions },
       { kind: 'standingLoad' },
       { same: sameCrewDraft },
     );
-    expect(history.now.standingKeys).toEqual(['van:v-1', 'van:v-3']);
-    history = record(
+  };
+  const loadOff = (history: UndoHistory<CrewDraft>): UndoHistory<CrewDraft> =>
+    record(
       history,
       {
-        rows: clearStandingFromPlan(history.now.rows, history.now.standingKeys ?? []),
+        rows: clearStandingFromPlan(
+          history.now.rows,
+          history.now.standingKeys ?? [],
+          history.now.standingDirections ?? {},
+        ),
         standingKeys: null,
       },
       { kind: 'standingClear' },
       { same: sameCrewDraft },
     );
+
+  it('the standing crew loaded on twenty vans is one press back — and its toggle is off again', () => {
+    const empty = [van('1'), van('2'), van('3')];
+    let history = loadOn(startHistory<CrewDraft>({ rows: empty, standingKeys: null }));
+    expect(history.now.standingKeys).toEqual(['van:v-1', 'van:v-3']);
+    expect(history.now.rows.map((row) => row.direction)).toEqual(['حلوان', null, 'طريق السويس']);
+    expect(history.now.standingDirections).toEqual({
+      'van:v-1': 'حلوان',
+      'van:v-3': 'طريق السويس',
+    });
+    expect(planChanges(history.now.rows, empty).changed).toHaveLength(2);
+    history = loadOff(history);
+    expect(history.now.rows).toEqual(empty);
     // Taking back the «off» puts the load back, toggle on; once more, and nothing was loaded.
     history = undo(history);
     expect(history.now.standingKeys).toEqual(['van:v-1', 'van:v-3']);
     expect(history.now.rows[0]?.slots.captain).toEqual(['c1']);
+    expect(history.now.rows.map((row) => row.direction)).toEqual(['حلوان', null, 'طريق السويس']);
     history = undo(history);
     expect(history.now).toEqual({ rows: empty, standingKeys: null });
+    expect(lastStep(history)).toBeNull();
+  });
+
+  it('Round 28b — one press after the load takes the people AND the directions back', () => {
+    const empty = [van('1'), van('2'), van('3', { direction: 'بنها' })];
+    let history = loadOn(startHistory<CrewDraft>({ rows: empty, standingKeys: null }));
+    // The day row's own direction is kept: van 3 holds «بنها», not its standing one.
+    expect(history.now.rows.map((row) => row.direction)).toEqual(['حلوان', null, 'بنها']);
+    expect(history.past).toHaveLength(1);
+    history = undo(history);
+    expect(history.now.rows).toEqual(empty);
+    expect(planChanges(history.now.rows, empty).changed).toEqual([]);
+  });
+
+  it('Round 28b — a direction he typed after the load survives the «off»; «تراجع» takes his typing back first', () => {
+    const empty = [van('1'), van('2'), van('3')];
+    let history = loadOn(startHistory<CrewDraft>({ rows: empty, standingKeys: null }));
+    history = op(history, 'direction', (current) =>
+      patchRow(current, 'van:v-3', { direction: 'المعادي' }),
+    );
+    history = loadOff(history);
+    // His direction stays; the one the load wrote on van 1 goes; both vans are empty again.
+    expect(history.now.rows.map((row) => row.direction)).toEqual([null, null, 'المعادي']);
+    expect(history.now.rows.map((row) => row.slots.captain)).toEqual([[], [], []]);
+    expect(planChanges(history.now.rows, empty).changed.map((row) => row.key)).toEqual(['van:v-3']);
+    history = undo(history); // the «off»
+    expect(history.now.rows.map((row) => row.direction)).toEqual(['حلوان', null, 'المعادي']);
+    history = undo(history); // his typing
+    expect(history.now.rows.map((row) => row.direction)).toEqual(['حلوان', null, 'طريق السويس']);
+    history = undo(history); // the load
+    expect(history.now.rows).toEqual(empty);
+  });
+
+  it('Round 28b — `sameCrewDraft` tells two drafts apart by the directions the load wrote', () => {
+    const rows = [van('1')];
+    const on = { rows, standingKeys: ['van:v-1'] };
+    expect(sameCrewDraft(on, { ...on, standingDirections: {} })).toBe(true);
+    expect(sameCrewDraft(on, { ...on, standingDirections: { 'van:v-1': 'حلوان' } })).toBe(false);
+    expect(
+      sameCrewDraft(
+        { ...on, standingDirections: { 'van:v-1': 'حلوان' } },
+        { ...on, standingDirections: { 'van:v-1': 'حلوان' } },
+      ),
+    ).toBe(true);
+    expect(
+      sameCrewDraft(
+        { ...on, standingDirections: { 'van:v-1': 'حلوان' } },
+        { ...on, standingDirections: { 'van:v-1': 'المعادي' } },
+      ),
+    ).toBe(false);
   });
 
   it('a row added, then deleted: each its own press', () => {
@@ -299,9 +378,52 @@ describe('the page — the owner’s «تراجع»', () => {
   });
 
   it('Ctrl+Z / ⌘Z does the same outside a text box', () => {
-    expect(page).toContain("event.code !== 'KeyZ'");
-    expect(page).toContain('target.closest(\'input, textarea, select, [contenteditable="true"]\')');
+    // Round 32 critic — the press is decided by `isBoardUndoKey` (below), which the page asks with
+    // whether a window stands over the board.
+    expect(page).toContain('if (!isBoardUndoKey(event, overBoard)) return;');
+    expect(page).toContain("document.querySelector('[data-dialog-root]') !== null");
     expect(page).toContain('aria-keyshortcuts="Control+Z Meta+Z"');
+  });
+
+  describe('isBoardUndoKey — the key press that is «تراجع»', () => {
+    const button = { isContentEditable: false, closest: () => null };
+    const box = { isContentEditable: false, closest: () => ({}) };
+    const press = (over: Partial<Parameters<typeof isBoardUndoKey>[0]> = {}) => ({
+      ctrlKey: true,
+      metaKey: false,
+      shiftKey: false,
+      altKey: false,
+      code: 'KeyZ',
+      key: 'z',
+      target: button as unknown as EventTarget,
+      ...over,
+    });
+
+    it('Ctrl+Z and ⌘Z on the board — an Arabic keyboard’s «ئ» too (by the key’s place)', () => {
+      expect(isBoardUndoKey(press(), false)).toBe(true);
+      expect(isBoardUndoKey(press({ ctrlKey: false, metaKey: true }), false)).toBe(true);
+      expect(isBoardUndoKey(press({ key: 'ئ' }), false)).toBe(true);
+    });
+
+    it('never with Shift or Alt, never another key, never in a text box (it keeps its own undo)', () => {
+      expect(isBoardUndoKey(press({ shiftKey: true }), false)).toBe(false);
+      expect(isBoardUndoKey(press({ altKey: true }), false)).toBe(false);
+      expect(isBoardUndoKey(press({ code: 'KeyY', key: 'y' }), false)).toBe(false);
+      expect(isBoardUndoKey(press({ ctrlKey: false }), false)).toBe(false);
+      expect(isBoardUndoKey(press({ target: box as unknown as EventTarget }), false)).toBe(false);
+      expect(
+        isBoardUndoKey(
+          press({ target: { isContentEditable: true } as unknown as EventTarget }),
+          false,
+        ),
+      ).toBe(false);
+    });
+
+    it('Round 32 critic — never while a window stands over the board («تبديل بين سيارتين» …)', () => {
+      // On «تطبيق», a mode, «الكل» or a box of the open window, the press took back the board's
+      // last operation behind it.
+      expect(isBoardUndoKey(press(), true)).toBe(false);
+    });
   });
 
   it('a save clears the history; the notes box seals its typing on leaving, the time its panel on closing', () => {

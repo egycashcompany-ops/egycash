@@ -26,6 +26,12 @@
   --att-ok-soft: #ecfdf5;
   --att-warn: #d97706; /* amber-600 */
   --att-warn-soft: #fffbeb;
+  /* «انصراف مبكر» — its own hue between the amber of the status pill and the red of «متأخر», the
+     two it sits beside on a «تأخير وانصراف مبكر» day. Colour alone does not carry it: the early
+     stripe leans the other way from the late one (45deg against 135deg), so the two ends of a day
+     are still told apart in print and by a reader who does not separate orange from red. */
+  --att-early: #ea580c; /* orange-600 */
+  --att-early-soft: #fff7ed; /* orange-50 */
   --att-bad: #dc2626; /* red-600 */
   --att-bad-soft: #fef2f2;
   --att-info: #0284c7; /* sky-600 */
@@ -57,6 +63,8 @@
   --att-ok-soft: rgb(6 78 59 / 0.35);
   --att-warn: #fbbf24;
   --att-warn-soft: rgb(120 53 15 / 0.35);
+  --att-early: #fb923c; /* orange-400 */
+  --att-early-soft: rgb(124 45 18 / 0.35); /* orange-900 */
   --att-bad: #f87171;
   --att-bad-soft: rgb(127 29 29 / 0.35);
   --att-info: #38bdf8;
@@ -126,4 +134,58 @@ select.att-input {
 .att-rise { transform-origin: bottom; animation: att-rise 520ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 @media (prefers-reduced-motion: reduce) {
   .att-live, .att-rise { animation: none; }
+}
+
+/* Days nobody was due (weekend, holiday, no schedule, no record): a quiet hatch, so the working
+   days carry the colour and the rest recede. */
+.att-hatch {
+  background-color: var(--att-sheet-2);
+  background-image: repeating-linear-gradient(135deg, transparent 0 6px, var(--att-line) 6px 7px);
+}
+.att-kpi {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid var(--att-line);
+  background: var(--att-sheet);
+  box-shadow: var(--att-shadow);
+  transition: border-color 140ms, transform 140ms, box-shadow 140ms;
+}
+button.att-kpi:hover { border-color: var(--att-line-strong); transform: translateY(-1px); }
+.att-kpi[aria-pressed='true'] { border-color: var(--att-accent); box-shadow: 0 0 0 1px var(--att-accent), var(--att-shadow); }
+@keyframes att-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.att-open { animation: att-open 180ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  button.att-kpi:hover { transform: none; }
+  .att-open { animation: none; }
+}
+@keyframes att-pulse-soft { 50% { opacity: 0.65; } }
+.att-live-soft { animation: att-pulse-soft 2.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .att-live-soft { animation: none; } }
+.att-sheet { border-radius: 16px; }
+.att-noscroll { scrollbar-width: none; }
+.att-noscroll::-webkit-scrollbar { display: none; }
+
+/* The late part of a day's bar: shift start to arrival, a soft red stripe rather than a solid block. */
+.att-late-stripe {
+  background: repeating-linear-gradient(135deg, var(--att-bad) 0 3px, color-mix(in srgb, var(--att-bad) 35%, transparent) 3px 6px);
+}
+
+/* The early-leave part: departure to the hour they were due to leave. The SAME treatment as the
+   late stripe at the other end of the day, leaning the opposite way so the two are told apart
+   without relying on the colour. */
+.att-early-stripe {
+  background: repeating-linear-gradient(45deg, var(--att-early) 0 3px, color-mix(in srgb, var(--att-early) 35%, transparent) 3px 6px);
+}
+
+/* The daily dashboard's top card: a soft brand glow in one corner, nothing louder. */
+.att-hero {
+  background:
+    radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--att-brand) 10%, transparent) 0%, transparent 55%),
+    var(--att-sheet);
+}
+[dir='rtl'] .att-hero {
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--att-brand) 10%, transparent) 0%, transparent 55%),
+    var(--att-sheet);
 }

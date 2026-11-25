@@ -5,6 +5,7 @@ import {
   OperationsShipmentAssignmentModel,
   type OperationsShipmentAssignmentDoc,
 } from './shipment-assignment.model';
+import { OperationsShipmentModel } from './shipment.model';
 
 class OperationsShipmentAssignmentRepository extends BaseRepository<OperationsShipmentAssignmentDoc> {
   constructor() {
@@ -37,6 +38,37 @@ class OperationsShipmentAssignmentRepository extends BaseRepository<OperationsSh
       .session(session ?? null)
       .lean<OperationsShipmentAssignmentDoc[]>()
       .exec();
+  }
+
+  /**
+   * Round 30 critic — the SECURED shipments whose LIVE delivery leg rides a crew row of one day:
+   * what a past day's record lists beside the ones due on it (distribution.service.ts `view`). Ids
+   * only, the day's delivery legs alone (`ix_day_captain`'s day prefix), joined to the shipments
+   * here so a day's daily legs — pickup and delivery, as many as the day carries — never come back,
+   * nor reach the record's `$in`.
+   */
+  async securedDeliveryShipmentIdsOfDay(operationsDayId: Types.ObjectId): Promise<string[]> {
+    const rows = await this.model
+      .aggregate<{ _id: Types.ObjectId }>([
+        { $match: { operationsDayId, leg: 'delivery', isDeleted: false } },
+        { $group: { _id: '$shipmentId' } },
+        {
+          $lookup: {
+            from: OperationsShipmentModel.collection.collectionName,
+            localField: '_id',
+            foreignField: '_id',
+            pipeline: [
+              { $match: { shipmentType: 'secured', isDeleted: false } },
+              { $project: { _id: 1 } },
+            ],
+            as: 'secured',
+          },
+        },
+        { $match: { 'secured.0': { $exists: true } } },
+        { $project: { _id: 1 } },
+      ])
+      .exec();
+    return rows.map((row) => String(row._id));
   }
 
   /**
@@ -159,6 +191,23 @@ class OperationsShipmentAssignmentRepository extends BaseRepository<OperationsSh
       .session(session ?? null)
       .exec();
     return new Map(rows.map((row) => [String(row._id), row.count]));
+  }
+
+  /**
+   * Round 33 B — the live legs whose captain confirmed «تم التسليم» within `[from, before)` and that
+   * still say so (delivered, or completed after it). Which of them carried a shipment TO ITS BANK is
+   * the caller's to decide (`deliveryLegOf`: a daily's pickup leg, a محصنة's delivery leg — a secured
+   * pickup leg delivers to the vault). Through `ix_delivered_at_live`.
+   */
+  async deliveredBetween(from: Date, before: Date): Promise<OperationsShipmentAssignmentDoc[]> {
+    return this.model
+      .find({
+        isDeleted: false,
+        deliveredAt: { $gte: from, $lt: before },
+        executionStatus: { $in: ['delivered', 'completed'] },
+      })
+      .lean<OperationsShipmentAssignmentDoc[]>()
+      .exec();
   }
 
   async findByShipmentAndLeg(

@@ -176,6 +176,52 @@ describe('the van’s load sheet (provisional)', () => {
     expect(buildFleetReportHtml(empty)).toContain(ar('operations.handover.sheet.empty'));
   });
 
+  // Round 33 — «تسليم المحصنات» opens a past day as its record; reprinting it is reading, so it
+  // prints — and says it is a record, and what was handed over.
+  it('Round 33 — a past day’s sheet says it is a record, for reference only, and what was handed over', () => {
+    const handed = 'سُلِّمت محصنتان · سلّمها سامح الخزين · 10:15';
+    const recordSheet = vanLoadSheet(
+      input({
+        rows: [
+          shipment('a', [['egp', 5_600_000]], { securedStage: 'dispatched' }),
+          shipment('b', [['egp', 9_200_000]], { securedStage: 'completed' }),
+        ],
+        record: { handedOver: handed },
+      }),
+    );
+    const words = ar('operations.handover.sheet.record', { day: '2026-11-12' });
+    expect(words).toBe('سجل يوم 2026-11-12 — للاطلاع فقط، ولا يُسلَّم منه شيء');
+    // In the day's place, first — and the day's own line is gone.
+    expect(recordSheet.subtitle.startsWith(words)).toBe(true);
+    expect(recordSheet.subtitle).not.toContain(
+      ar('operations.handover.sheet.day', { day: '2026-11-12' }),
+    );
+    // What was handed over, after the crew.
+    const handedLine = ar('operations.handover.sheet.handedOver', { what: handed });
+    expect(recordSheet.subtitle).toContain(handedLine);
+    expect(recordSheet.subtitle.indexOf(handedLine)).toBeGreaterThan(
+      recordSheet.subtitle.indexOf('شادي محمد أحمد'),
+    );
+    // Each محصنة at its stage now — out for delivery, delivered.
+    expect(recordSheet.rows.map((cells) => cells[4])).toEqual([
+      ar('operations.board.stage.dispatched'),
+      ar('operations.board.stage.completed'),
+    ]);
+    // A van nothing left from says the record, and no handover line.
+    const none = vanLoadSheet(input({ record: { handedOver: null } }));
+    expect(none.subtitle.startsWith(words)).toBe(true);
+    expect(none.subtitle).not.toContain(ar('operations.handover.sheet.handedOver', { what: '' }));
+    // Today's sheet (and a day to come's) is unchanged: the day, never «سجل».
+    expect(
+      sheet.subtitle.startsWith(ar('operations.handover.sheet.day', { day: '2026-11-12' })),
+    ).toBe(true);
+    expect(sheet.subtitle).not.toContain(words);
+    expect(translate('en', 'operations.handover.sheet.record', { day: '2026-11-12' })).toContain(
+      'for reference only',
+    );
+    expect(buildFleetReportHtml(recordSheet)).toContain(words);
+  });
+
   it('goes out on the company’s report form — no script of its own', () => {
     const html = buildFleetReportHtml(sheet);
     expect(html).toContain(ar('operations.handover.sheet.title', { van: 'السيارة 104' }));

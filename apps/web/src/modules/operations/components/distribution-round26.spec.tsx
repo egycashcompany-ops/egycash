@@ -542,7 +542,10 @@ describe('B — the van’s card', () => {
     expect(HOVER).toContain("| 'secured-van'");
   });
 
-  it('never opens while a drag is on, over an open «نقل إلى…» menu, or on the captain’s own name', () => {
+  // Round 33 C — REWRITTEN from «never opens while a drag is on, over an open «نقل إلى…» menu, or on
+  // the captain’s own name»: the tap path asks one thing more, the head's own act (`onAct` — the
+  // vault's «طباعة» icon), which is pure and tested in `lib/van-card.spec.ts`.
+  it('never opens while a drag is on, over an open «نقل إلى…» menu, or on the captain’s own name — nor on the head’s own act', () => {
     expect(PARTS).toContain(
       'when: () => vanHoverAllowed({ dragging: dragOn, menuOpen: moveMenuOpen(), onPerson: false }),',
     );
@@ -559,7 +562,7 @@ describe('B — the van’s card', () => {
     // A tap on a phone opens it too — R26 critic: but not on the captain's own name (his card):
     // a tap there closes the van's card if it was open, and leaves the name to open his.
     expect(PARTS).toMatch(
-      /onClick=\{\(event\) => \{\s*(?:\/\/[^\n]*\n\s*)?const onPerson = onPersonName\(event\.target\);\s*if \(onPerson\) setTapped\(false\);\s*if \(!vanTapAllowed\(\{ touch: pointer\.current === 'touch', onPerson \}\)\) return;\s*setTapped\(\(open\) => !open\);/,
+      /onClick=\{\(event\) => \{\s*(?:\/\/[^\n]*\n\s*)?const onPerson = onPersonName\(event\.target\);\s*if \(onPerson\) setTapped\(false\);\s*(?:\/\/[^\n]*\n\s*)?const onAct = onHeadAction\(event\.target\);\s*if \(!vanTapAllowed\(\{ touch: pointer\.current === 'touch', onPerson, onAct \}\)\) return;\s*setTapped\(\(open\) => !open\);/,
     );
   });
 
@@ -1055,7 +1058,9 @@ describe('R26b critic', () => {
     expect(HANDOVER).toMatch(/<MoneyLine[\s\S]*?packages=\{loadFigures\(confirmLoad/);
   });
 
-  it('F8 — a long count stays in its tile: its figure a step smaller, the icon wrapping over it', () => {
+  it('F8 — a long count stays in its STACKED tile (the van’s hover card since Round 31): its figure a step smaller, the icon wrapping over it', () => {
+    // Round 31 — the van card's own tiles are one line now (`lineFigureSize`, its spec in
+    // distribution-van-card.spec.tsx); the stacked tile is the hover card's, and a tile's default.
     expect(tileFigureSize('0')).toBe('text-[15px]');
     expect(tileFigureSize('999')).toBe('text-[15px]');
     expect(tileFigureSize('1,251')).toBe('text-[13px]');

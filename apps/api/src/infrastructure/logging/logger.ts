@@ -19,6 +19,17 @@ export const REGISTER_SECRET_FIELD_NAMES = [
   'plaintextCombination',
 ] as const;
 
+/**
+ * A phone inside a list of contact people — an Administrative Affairs supplier's `contacts`
+ * (administration-module-design-flows.md §6.8). `*.phone` reaches one level only, so a phone one
+ * array deeper is listed at the same three depths as the register's names.
+ */
+export const CONTACT_PHONE_PATHS = [
+  'contacts[*].phone',
+  '*.contacts[*].phone',
+  '*.*.contacts[*].phone',
+] as const;
+
 export const PII_REDACTION_PATHS = [
   'req.headers.authorization',
   'req.headers.cookie',
@@ -29,6 +40,7 @@ export const PII_REDACTION_PATHS = [
   '*.refreshToken',
   '*.nationalId',
   '*.phone',
+  ...CONTACT_PHONE_PATHS,
   '*.secret',
   // Root, one level and two levels deep — 15 paths.
   ...REGISTER_SECRET_FIELD_NAMES.flatMap((name) => [name, `*.${name}`, `*.*.${name}`]),

@@ -13,7 +13,8 @@ import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { formatDate, formatMoneyParts } from '../../../shared/lib/format';
+import { formatMoneyParts } from '../../../shared/lib/format';
+import { latinDate } from '../lib/fleet-figures';
 import { HistoryIcon } from '../../../shared/ui/icons';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
@@ -340,7 +341,7 @@ export const FuelChargingPage = (): JSX.Element => {
       card.number,
       card.balance,
       card.requestedAmount ?? '',
-      card.lastChargedAt === null ? '' : formatDate(card.lastChargedAt, locale),
+      card.lastChargedAt === null ? '' : latinDate(card.lastChargedAt, locale),
     ]);
   const exportSheet = async (): Promise<void> => {
     saveSheet({

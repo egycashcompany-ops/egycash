@@ -18,7 +18,7 @@
 // ٤٨»), so the two numbers never pretend to be one.
 import { foldOperationsAreaName, type OperationsCrewMemberDto } from '@ecms/contracts';
 import { foldIncludes } from '../../../shared/lib/fold';
-import { byVehicleCode } from './crew-vehicles';
+import { byVehicleCode, vanName } from './crew-vehicles';
 import { rowPeople, type PlanRow } from './crew-plan';
 
 /** The van filter's «بدون سيارة», and the direction filter's «بدون اتجاه». */
@@ -73,17 +73,24 @@ export const directionParts = (
 /** The van list: the draft's vans by code (numbers in number order) — `NO_VAN` is the page's. */
 export const vanFilterOptions = (rows: readonly PlanRow[]): { value: string; label: string }[] => {
   const seen = new Set<string>();
-  return rows
-    .flatMap((row) =>
-      row.vehicleId === null || seen.has(row.vehicleId)
-        ? []
-        : [
-            (seen.add(row.vehicleId),
-            { vehicleId: row.vehicleId, vehicleCode: row.vehicleCode ?? '…' }),
-          ],
-    )
-    .sort(byVehicleCode)
-    .map((van) => ({ value: van.vehicleId, label: van.vehicleCode }));
+  return (
+    rows
+      .flatMap((row) =>
+        row.vehicleId === null || seen.has(row.vehicleId)
+          ? []
+          : [
+              (seen.add(row.vehicleId),
+              {
+                vehicleId: row.vehicleId,
+                vehicleCode: row.vehicleCode ?? '…',
+                uncoded: row.uncoded ?? null,
+              }),
+            ],
+      )
+      .sort(byVehicleCode)
+      // Round 32 critic — a code that names nothing is listed by its plate, as the row draws it.
+      .map((van) => ({ value: van.vehicleId, label: vanName(van) ?? van.vehicleCode }))
+  );
 };
 
 /** The direction list: every area the draft's directions name, once, in Arabic order. */
@@ -144,4 +151,20 @@ export const matchesRowFilter = (
     if (!hit) return false;
   }
   return matchesPerson(row, filter.person, context.memberOf);
+};
+
+/**
+ * Round 28b critic — do the filters hide any of these rows (`isShown`, the page's whole test: the
+ * type and the three)? The standing crew's load asks it of the vans it just filled: once a filled
+ * van takes its standing «الاتجاه», «بدون اتجاه» hid it at the press — «حفظ (N)» counted changes
+ * the planner could not see, though the toggle's hint asks him to review them first. When they do,
+ * the filters go, as they go for a new row (`addRow`) and for the row a refusal names.
+ */
+export const hidesAnyOf = (
+  rows: readonly PlanRow[],
+  keys: readonly string[],
+  isShown: (row: PlanRow) => boolean,
+): boolean => {
+  const wanted = new Set(keys);
+  return rows.some((row) => wanted.has(row.key) && !isShown(row));
 };

@@ -52,6 +52,7 @@ describe('the deploy step loads every model the api declares', () => {
       'hr_employees',
       'notification_preferences',
       'it_go_live_runs',
+      'operations_go_live_runs',
     ]) {
       expect(collections, name).toContain(name);
     }

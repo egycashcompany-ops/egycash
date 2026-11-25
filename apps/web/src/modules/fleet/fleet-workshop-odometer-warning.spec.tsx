@@ -35,7 +35,11 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { workshopOdometerBreach } from './lib/workshop-odometer-warning';
-import { CheckInDialog, CheckOutDialog, MaintenanceEditDialog } from './components/MaintenanceDialogs';
+import {
+  CheckInDialog,
+  CheckOutDialog,
+  MaintenanceEditDialog,
+} from './components/MaintenanceDialogs';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM.
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -52,8 +56,10 @@ const read = (rel: string): string => readFileSync(join(HERE, rel), 'utf8');
 const LOWER = 280_500;
 const UPPER = 290_000;
 
-const breach = (counter: number | null, bounds: { lowerBound: number | null; upperBound: number | null }) =>
-  workshopOdometerBreach({ counter, bracket: bounds });
+const breach = (
+  counter: number | null,
+  bounds: { lowerBound: number | null; upperBound: number | null },
+) => workshopOdometerBreach({ counter, bracket: bounds });
 
 const BOTH = { lowerBound: LOWER, upperBound: UPPER };
 
@@ -175,7 +181,9 @@ describe('dates decide which readings are IN the bracket, not whether the rule a
       join(HERE, '../../../../api/src/modules/fleet/odometer/odometer.repository.ts'),
       'utf8',
     );
-    expect(repo, 'a single named order').toContain('const NEWEST_FIRST = { outReading: -1, _id: -1 }');
+    expect(repo, 'a single named order').toContain(
+      'const NEWEST_FIRST = { outReading: -1, _id: -1 }',
+    );
     expect(repo, 'no bare outReading sort is left').not.toMatch(/sort\(\{ outReading: -1 \}\)/);
     for (const sort of repo.match(/\$sort: \{[^}]*outReading[^}]*\}/g) ?? []) {
       expect(sort, `${sort} breaks ties`).toContain('_id');
@@ -350,9 +358,7 @@ describe('the warning reaches all three dialogs', () => {
     expect((source.match(/= counterWarning\(/g) ?? []).length, 'used by all three').toBe(4);
     expect(source).toContain("from '../lib/workshop-odometer-warning'");
     // No dialog re-derives the comparison itself.
-    expect(source, 'no local comparison against a bound').not.toMatch(
-      /[<>]=?\s*bracket\.data/,
-    );
+    expect(source, 'no local comparison against a bound').not.toMatch(/[<>]=?\s*bracket\.data/);
   });
 
   it('the sentence names the bound AND the day that set it', () => {
@@ -365,7 +371,11 @@ describe('the warning reaches all three dialogs', () => {
     expect(body).toContain('upperBound');
     expect(body).toContain('lowerBoundAt');
     expect(body).toContain('upperBoundAt');
-    expect(body, 'and it is dated for the reader').toContain('formatDate(at, locale)');
+    // Both in Latin digits, in Arabic too — every figure in Fleet («اى ارقام خليها بالانجلش حتى لو
+    // عربى»).
+    expect(body, 'and it is dated for the reader').toContain('latinDate(at, locale)');
+    expect(body, 'the bound in Latin digits').toContain('latinNumber(km)');
+    expect(body, 'not the shared Arabic-Indic helpers').not.toMatch(/\bformat(?:Number|Date)\(/u);
   });
 });
 

@@ -678,8 +678,6 @@ export const PERIOD_DTO: FleetDashboardPeriodDto = {
     bottom5: [],
     withoutReadings: [],
   },
-  // By CHECK-IN day («أرقام الفترة»).
-  visits: { count: 27, closed: 20, open: 7 },
   // By EXIT day: each bar list adds up to the 19; one old-book exit (unranked).
   exits: {
     count: 19,
@@ -715,7 +713,6 @@ export const PERIOD_DTO: FleetDashboardPeriodDto = {
   accidents: {
     count: 4,
     open: 2,
-    openRemaining: 1000,
     undated: 0,
     // The four files as they stand now: 2,500 + 600 − 2,300 + 400 − 200 = 1,000 (the closed ones owe 0).
     totals: {

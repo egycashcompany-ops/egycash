@@ -3,9 +3,10 @@
 // («واعمل ديزاين شاشة الطاقم الثابت زى التعيين اليومى»), minus the day.
 //
 // The risk of a twin is in the difference: a day that crept back in (a stepper, a weekday, a date
-// under the drivers sheet's title), a second title or a second Excel control (owner's answer 2 ج:
-// the page header on top, ONE Excel per width), a flag on a standing member who can no longer drive
-// (answer 1 ب: none), the day's workshop lock and workshop group copied over, a «clear» that asks.
+// under the drivers sheet's title), a page header that came back or a second Excel control (the
+// owner had the header removed at every width on 22 November, reversing answer 2 ج; ONE Excel per
+// width), a flag on a standing member who can no longer drive (answer 1 ب: none), the day's
+// workshop lock and workshop group copied over, a «clear» that asks.
 // Each is asserted directly, at the phone, the portrait and the landscape tablet, and a short phone.
 //
 // The web suite runs with `environment: 'node'` and no DOM: the shell is rendered with the layout
@@ -316,22 +317,43 @@ describe('no day — the standing crew is a fact about a car', () => {
   });
 });
 
-// ── 2. one title, one Excel (answer 2 ج) ─────────────────────────────────────────────────────────
+// ── 2. no page header, one Excel (owner, 22 November) ───────────────────────────────────────────
 
-describe('one title and one Excel control per width (owner’s answer 2 ج)', () => {
-  it.each(LAYOUTS)(
-    '%s: the page header’s «الطقم الثابت» is the only h1, above the board',
-    (layout) => {
-      const html = render({ layout });
-      expect(count(html, '<h1')).toBe(1);
+describe('no page header and one Excel control per width (owner, 22 November)', () => {
+  it.each([...LAYOUTS, 'short'] as const)(
+    '%s: no breadcrumbs, no visible title — only a hidden h1 — and the first row opens the page',
+    (which) => {
+      const html =
+        which === 'short' ? render({ layout: 'phone', short: true }) : render({ layout: which });
+      // «الجزء اللى فوق دا شيله بتاع العنوان واللى فوقه»: no trail, no title, no line.
+      expect(html, 'no breadcrumbs: no link to «الحركة»').not.toContain('href="/fleet"');
+      expect(html, 'nor its trail').not.toContain('aria-label="breadcrumb"');
+      expect(html, 'nor the word «الحركة»').not.toContain(`>${t('fleet.module.title')}<`);
+      expect(count(html, '<h1'), 'one h1, for a screen reader').toBe(1);
       const h1 = html.indexOf('<h1');
-      expect(html.slice(h1, html.indexOf('</h1>', h1))).toContain(t('fleet.nav.fixedRoster'));
+      const title = html.slice(h1, html.indexOf('</h1>', h1));
+      expect(title, 'visually hidden').toContain('class="sr-only"');
+      expect(title).toContain(t('fleet.nav.fixedRoster'));
       expect(h1).toBeLessThan(html.indexOf('data-fixed-touch='));
-      // The breadcrumbs: «الحركة» → /fleet, then the screen.
-      expect(html).toContain('href="/fleet"');
-      expect(html).toContain(t('fleet.module.title'));
+      // Between the hidden title and the board: nothing drawn.
+      const between = html.slice(
+        html.indexOf('</h1>') + '</h1>'.length,
+        html.indexOf('data-fixed-touch='),
+      );
+      expect(between, 'nothing visible above the board').not.toMatch(/>[^<\s]/u);
+      // The board's first row (the car search, the Excel button) is the first thing drawn in it.
+      const board = html.slice(html.indexOf('data-fixed-touch='));
+      const first = board.indexOf('data-first-row="true"');
+      expect(first).toBeGreaterThan(-1);
+      expect(board.slice(0, first), 'no text before the first row').not.toMatch(/>[^<\s]/u);
     },
   );
+
+  it('the shell draws no PageHeader for any width', () => {
+    const shell = fixedSource(['shell']);
+    expect(shell).not.toContain('PageHeader');
+    expect(shell).not.toContain('breadcrumbs');
+  });
 
   it('the board itself draws no title', () => {
     expect(TOUCH).not.toMatch(/<h1\b/u);

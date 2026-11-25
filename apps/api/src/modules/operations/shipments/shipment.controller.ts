@@ -2,15 +2,21 @@
 import { type Request, type Response } from 'express';
 import {
   type CompleteOperationsShipment,
+  type ConfirmOperationsDelivery,
   type CreateOperationsShipment,
   type ListOperationsShipmentsQuery,
   type OperationsDayBoardDto,
   type OperationsDayBoardQuery,
+  type OperationsDeliveredBoardDto,
+  type OperationsDeliveredBoardQuery,
+  type OperationsDeliveredShipmentDto,
+  type OperationsDeliveryConfirmationResultDto,
   type OperationsDeletedShipmentsDto,
   type OperationsDeletedShipmentsQuery,
   type OperationsShipmentHistoryDto,
   type OperationsShipmentHistoryQuery,
   type OperationsShipmentLogDto,
+  type UndoOperationsDelivery,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
@@ -21,6 +27,8 @@ import { toShipmentDto } from '../operations.mappers';
 import { boardForReader, utcDayIso } from './board-for-reader';
 import { receiptImageFileName } from './receipt-image-upload';
 import { operationsShipmentService } from './shipment.service';
+import { operationsDeliveryConfirmationService } from './delivery-confirmation.service';
+import { type OperationsShipmentDoc } from './shipment.model';
 
 type IdParam = { id: string };
 
@@ -38,6 +46,74 @@ export const getDayBoard = async (req: Request, res: Response): Promise<void> =>
   const day = operationsShipmentService.boardDay(query.date);
   const view = await operationsShipmentService.dayBoardView(day);
   ok<OperationsDayBoardDto>(res, { date: utcDayIso(day), ...boardForReader(req, view) });
+};
+
+/**
+ * Round 33 B — «الشحنات المسلَّمة»: the shipments delivered to their bank on one Cairo day (today when
+ * none is asked for), the day board's rows mapped for this reader, each with its delivery
+ * confirmation. The day is resolved ONCE and echoed, as the day board's.
+ */
+export const getDeliveredBoard = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, OperationsDeliveredBoardQuery>(req);
+  // Today is read ONCE and the day asked resolved against it, so a request straddling Cairo
+  // midnight never answers one day while calling another today (Round 33 critic: the screen trusts
+  // this `today`, never its PC's clock).
+  const today = operationsDeliveryConfirmationService.dayOf(undefined);
+  const view = await operationsDeliveryConfirmationService.deliveredView(query.date ?? today);
+  const board = boardForReader(req, view);
+  const confirmations = await operationsDeliveryConfirmationService.confirmationsOf(
+    view.rows.map(({ doc }) => doc),
+  );
+  ok<OperationsDeliveredBoardDto>(res, {
+    date: view.date,
+    today,
+    // Every row kept was delivered (the service keeps no other), so its instant is always there.
+    shipments: board.shipments.flatMap((row): OperationsDeliveredShipmentDto[] =>
+      row.captainDeliveredAt === null
+        ? []
+        : [
+            {
+              ...row,
+              captainDeliveredAt: row.captainDeliveredAt,
+              deliveryConfirmation: confirmations.get(row.id) ?? null,
+            },
+          ],
+    ),
+    crews: board.crews,
+  });
+};
+
+/** The ✓ and its undo answer with the shipment's new version and its confirmation now. */
+const confirmationResult = async (
+  doc: OperationsShipmentDoc,
+): Promise<OperationsDeliveryConfirmationResultDto> => ({
+  shipmentId: String(doc._id),
+  version: doc.__v,
+  deliveryConfirmation:
+    (await operationsDeliveryConfirmationService.confirmationsOf([doc])).get(String(doc._id)) ??
+    null,
+});
+
+/** Round 33 B — «الشحنات المسلَّمة»'s ✓: the person is the token's, the bank billed the server's. */
+export const confirmShipmentDelivery = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<ConfirmOperationsDelivery, never, IdParam>(req);
+  const doc = await operationsDeliveryConfirmationService.confirm(
+    params.id,
+    body,
+    authContext(req).userId,
+  );
+  ok(res, await confirmationResult(doc));
+};
+
+/** Round 33 B — «إلغاء التأكيد». */
+export const undoShipmentDelivery = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<UndoOperationsDelivery, never, IdParam>(req);
+  const doc = await operationsDeliveryConfirmationService.undo(
+    params.id,
+    body.version,
+    authContext(req).userId,
+  );
+  ok(res, await confirmationResult(doc));
 };
 
 /**

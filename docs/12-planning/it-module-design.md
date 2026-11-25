@@ -540,8 +540,8 @@ kinds (ADR-021's addendum).
 
 #### 2.5.1 `it_custody_receipts` — Custody receipt (إقرار استلام, FR-18)
 
-The paper the employee signs — the IT department's «إقرار استلام», one page per device — one per
-hand-over:
+The paper the employee signs — the IT department's «إقرار استلام»; several devices on one sheet,
+one row each (§17 2026-11-24) — one per hand-over:
 
 `{ formNumber, employeeId, employeeCode?, employeeName?, jobTitle?{ar,en}, nationalId?, section?{ar,en}, department?{ar,en}, issuedAt, issuedByUserId, branchId,
 lines[{ assetId, assignmentId, assetCode, name, serialNumber?, conditionOnIssue?, notes?,
@@ -1114,13 +1114,17 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   when none was (a number the counter never handed out, or one already on another receipt, is
   refused); a reprint keeps it.
   The print tab shows the paper as A4 sheets (§17, 2026-10-05). The paper is the IT department's
-  «إقرار استلام», one page per device: the statement filled with the employee's name and job and
-  the item's kind (its category; «جهاز» for a computer) with its make and model (its name when
-  neither is on file) and serial, the device's
-  specifications table and accessories (recorded on the
-  asset; a hand-over may say what came with it this time), the undertaking, and the signature
-  block, dated the day of the hand-over; the footer carries the receipt's number and, on a receipt
-  of several pages, the page count (§17, 2026-10-05). The national ID is filled from the system,
+  «إقرار استلام». A paper of ONE device is the form's page: the statement filled with the
+  employee's name and job and the item's kind (its category; «جهاز» for a computer) with its make
+  and model (its name when neither is on file) and serial, the device's specifications table and
+  accessories (recorded on the asset; a hand-over may say what came with it this time), the
+  undertaking, and the signature block, dated the day of the hand-over; the footer carries the
+  receipt's number (§17, 2026-10-05). A paper of SEVERAL devices is ONE sheet (§17, 2026-11-24):
+  one statement — «بأنني قد استلمت الأجهزة الآتية وعددها (n) وبياناتها كالتالي:» — a table with a
+  row per device (its kind, make and model, serial, its specifications in short, its
+  accessories), one undertaking in the plural's «ها», and one signature; a list too long for the
+  sheet runs on to further pages, each headed by the table's header row and the paper's number.
+  The national ID is filled from the system,
   only for a reader holding `itAsset.viewNationalId`; the form's «صادرة من قسم … – … بتاريخ …» is
   not printed; the name under the signature is the first three parts (§17, 2026-10-05). The
   employee's code follows the company, «… بشركة إيجي كاش للحلول النقدية، كود …، بطاقة رقم قومي …»
@@ -1509,6 +1513,16 @@ Priority is trigger order, not calendar order: P1 is gated on OPS timing, and if
 and P3 proceed anyway — they are cheap and non-breaking, and the engine is never blocked by
 them. P4 waits for its owner. Nothing in this table is scheduled by this document; each item
 starts only on an explicit owner GO.
+
+> **P4's trigger has fired (2026-11-24).** The Procurement design P4 waits for is the
+> [Administrative Affairs design](administration-module-design.md) (its §20 and
+> OD-01). The owner adopted OD-01's recommended default, and
+> [ADR-040](../03-decisions/ADR-040-supplier-registry-module-owned-with-a-seam.md) records it: the
+> supplier registry is that module's `administration_suppliers` (P1b.1), not a platform registry
+> yet; IT and Fleet read it later through a platform seam; and `it_vendors` and Fleet's workshop
+> rows join it only on an owner GO, by an operator-run command that keeps the ObjectId of every
+> row with no duplicate. Until that merge stage, `it_vendors` stays IT's. This note adds the
+> decision; the row above is unchanged.
 
 ## 17. Review trail
 
@@ -2414,3 +2428,40 @@ starts only on an explicit owner GO.
   - §2.2, §2.4, §2.4.1, §2.5, §2.5.1, §2.11, §3, §4.3, §5 (FR-13, FR-15, FR-18, FR-20, new FR-22), §7,
     §8.1, §9.1, §10, §11 and §12 amended; ADR-021 gained an addendum (one open interval per asset,
     whatever its holder).
+
+- **Several devices on one sheet** (2026-11-24) — owner request: «عند تسليم أكثر من أصل يتم عمل
+  إيصال لكل أصل على حدي أنا عايز يتطبعوا فى ورقه واحده !». A hand-over was already ONE receipt under
+  one number (§2.5.1), but it printed a page per device, each with its statement and signature,
+  which reads as a receipt per device. Shown a sample — one statement, a table of the devices, one
+  undertaking and one signature — beside one with each device's full specifications table stacked
+  under one statement (two pages for a laptop and three peripherals), he approved the table:
+  1. **A paper of one device is the form's page, unchanged.** Only a paper of several is the sheet.
+  2. **The statement counts the devices**: «بأنني قد استلمت الأجهزة الآتية وعددها (n) وبياناتها
+     كالتالي:»; a department's paper adds «لتكون في عهدة إدارة … بموقع …», signed «عن إدارة …».
+  3. **The table**: «م», «الجهاز» (the kind, «جهاز» for a computer), «الماركة / الموديل»,
+     «الرقم المسلسل», «المواصفات» (in short — CPU, RAM, System, Storage, Media, Graphics, VRAM,
+     Network — the form's own labels taking a line each), «المشتملات»; «—» for a device with no
+     specifications or accessories, the make and model as far as they are known (the asset's own
+     name when neither is on file), and an unknown serial left blank for the pen.
+  4. **The devices are «هي»** — a plural of things — so the undertaking is the form's feminine,
+     «لاستخدامها … عليها … بردها».
+  5. **A long list** runs on to further pages, each headed by the table's header row with the
+     paper's number above it, a row never split; the undertaking, the oath and the signature go
+     over together, never split, and take the list's last row with them, so the signed page lists
+     a device — short of fifteen or more devices with six computers' full specifications, where
+     no page has room for it all (measured in Chromium). No page count: it is one paper.
+
+  Nothing is stored differently: the receipt, its lines and its number are what they were, and a
+  reprint of an older receipt of several devices prints the sheet.
+
+- **The external-party registry's trigger has fired** (2026-11-24) — §16 P4 waits for the
+  Procurement module design, and the
+  [Administrative Affairs design](administration-module-design.md) is it (§20,
+  OD-01). The owner adopted its recommended default, recorded as
+  [ADR-040](../03-decisions/ADR-040-supplier-registry-module-owned-with-a-seam.md): suppliers are
+  that module's own `administration_suppliers` for now, a platform seam on the directory pattern
+  comes later, and IT vendors and Fleet workshops join only on an owner GO, by an operator-run
+  command that keeps the ObjectId of every row with no duplicate. `it_vendors` stays IT's until
+  that merge stage: the collection, `/it/vendors`, its menu row and the asset, licence and
+  maintenance-order vendor checks are unchanged. A note under §16 says the same; nothing else in
+  this design changes.

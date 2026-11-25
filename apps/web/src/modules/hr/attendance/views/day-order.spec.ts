@@ -17,6 +17,7 @@ const day = (
   expected: null,
   worked: over.worked ?? null,
   lateMinutes: null,
+  earlyLeave: null,
   shortfall: null,
   tags: [],
 });

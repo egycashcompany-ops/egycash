@@ -8,6 +8,14 @@
 //
 // The web suite has no DOM, so these render `Indicators` to static markup with the projection
 // seeded under the ONE key the shared hook reads — the same harness the three screens use.
+//
+// Owner, 2026-11-22 («صلحهم»): the car page writes every figure and date of its body in Latin
+// digits — «50,000», not «٥٠٬٠٠٠»; 2026-11-23 («اى ارقام خليها بالانجلش حتى لو عربى»): every figure
+// in Fleet, its print sheet too. Each pin below asserts the Latin form AND the absence of the
+// Arabic-Indic one the shared helpers still write for the other modules.
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -18,14 +26,25 @@ import {
   type FleetMaintenanceAlarmDto,
   type FleetMaintenanceVisitDto,
   type FleetVehicleDto,
+  type FleetVehicleLatestReadingDto,
   type Locale,
   type MeDto,
 } from '@ecms/contracts';
 import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
+import { formatDate, formatNumber } from '../../shared/lib/format';
 import { listKey } from '../../shared/lib/query-keys';
 import { Indicators } from './pages/VehicleDetailPage';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+/** Any Arabic-Indic digit — what the page body wrote its figures and dates in until 2026-11-22. */
+const ARABIC_INDIC = /[\u0660-\u0669]/u;
+
+/** A date as the page body writes it now: the shared style, Latin digits. */
+const latinDate = (iso: string): string =>
+  new Intl.DateTimeFormat('ar-EG-u-nu-latn', { dateStyle: 'medium' }).format(new Date(iso));
 
 const VEHICLE_ID = 'v-200';
 const BASELINE_VISIT = 'visit-periodic';
@@ -121,8 +140,10 @@ const store = () =>
 const render = (
   alarms: FleetMaintenanceAlarmDto[] | undefined,
   visits: FleetMaintenanceVisitDto[] | undefined,
+  readings?: FleetVehicleLatestReadingDto[],
 ): string => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  if (readings !== undefined) qc.setQueryData(['fleet', 'odometer', 'latestReadings'], readings);
   // The one key the shared hook reads. A tile that went looking for the projection anywhere else
   // would find nothing here and print no answer at all.
   if (alarms !== undefined) qc.setQueryData(['fleet', 'alarms'], alarms);
@@ -207,15 +228,22 @@ describe('«آخر صيانة» names the service the countdown is measured from
         }),
       ],
     );
-    expect(markup, 'the baseline date, from the projection').toContain('١٠');
-    expect(markup, 'not the later visit').not.toContain('٢٠٢٦/٠٨/٢٠');
-    // Its counter is not the baseline's, so it is not printed as one.
-    expect(markup).not.toContain('٥٥٬١٠٠');
+    const baseline = latinDate('2026-08-10T00:00:00.000Z');
+    expect(baseline, 'a Latin date').toMatch(/^10\D+08\D+2026$/u);
+    expect(markup, 'the baseline date, from the projection').toContain(baseline);
+    expect(markup, 'in Latin digits').not.toContain(formatDate('2026-08-10T00:00:00.000Z', 'ar'));
+    expect(markup, 'not the later visit').not.toContain(latinDate('2026-08-20T00:00:00.000Z'));
+    expect(markup).not.toContain(formatDate('2026-08-20T00:00:00.000Z', 'ar'));
+    // Its counter is not the baseline's, so it is not printed as one — in either digits.
+    expect(markup).not.toContain('55,100');
+    expect(markup).not.toContain(formatNumber(55_100, 'ar'));
   });
 
   it('the counter is shown when the loaded visit IS the baseline the server named', () => {
     const markup = render([alarm()], [visit()]);
-    expect(markup).toContain('٥٠٬٠٠٠');
+    expect(markup).toContain(translate('ar', 'fleet.vehicle.lastServiceAt', { km: '50,000' }));
+    expect(markup).not.toContain('٥٠٬٠٠٠');
+    expect(markup).not.toMatch(ARABIC_INDIC);
   });
 
   it('no counted service yet reads as none, whatever visits exist', () => {
@@ -239,6 +267,71 @@ describe('«آخر صيانة» names the service the countdown is measured from
     // `computeAlarms()` reports ACTIVE vehicles. A suspended one has no row, and this tile is
     // still the only place its last visit is shown.
     const markup = render([], [visit()]);
-    expect(markup).toContain('٥٠٬٠٠٠');
+    expect(markup).toContain('50,000');
+    expect(markup).not.toContain('٥٠٬٠٠٠');
+    expect(markup, 'the visit’s own date, in Latin digits').toContain(
+      latinDate('2026-08-10T00:00:00.000Z'),
+    );
+  });
+});
+
+describe('the car page writes its figures in Latin digits — the whole body', () => {
+  // A chain that went backwards: the newest reading 120,000, the highest (the alarm's figure)
+  // 120,500 — the tile prints the first and names the second under it.
+  const readings: FleetVehicleLatestReadingDto[] = [
+    {
+      vehicleId: VEHICLE_ID,
+      latestReading: 120_500,
+      latestReadingAt: '2026-11-01T00:00:00.000Z',
+      newest: { reading: 120_000, date: '2026-11-02T00:00:00.000Z' },
+    },
+  ];
+
+  it('«آخر قراءة عداد» and its «أعلى قراءة» line, the alarm caption and the service — all Latin', () => {
+    const markup = render([alarm({ remainingKm: 1_250 })], [visit()], readings);
+    expect(markup).toContain(t('fleet.vehicle.lastReading'));
+    expect(markup, 'the newest reading').toContain('>120,000<');
+    expect(markup).not.toContain(formatNumber(120_000, 'ar'));
+    expect(markup).toContain(translate('ar', 'fleet.vehicle.highestReading', { km: '120,500' }));
+    expect(markup).toContain('أعلى قراءة 120,500 كم');
+    expect(markup).not.toContain(formatNumber(120_500, 'ar'));
+    expect(markup).toContain(translate('ar', 'fleet.dashboard.remainingKm', { km: '1,250' }));
+    expect(markup).toContain(translate('ar', 'fleet.vehicle.lastServiceAt', { km: '50,000' }));
+    expect(markup).toContain(latinDate('2026-08-10T00:00:00.000Z'));
+    // …and not one Arabic-Indic digit anywhere on the tiles.
+    expect(markup).not.toMatch(ARABIC_INDIC);
+  });
+
+  it('an overdue car: «متأخر 1,500 كم», in Latin', () => {
+    const markup = render(
+      [alarm({ level: 'red', remainingKm: -1_500, sinceServiceKm: 11_500 })],
+      [visit()],
+      readings,
+    );
+    expect(markup).toContain(translate('ar', 'fleet.dashboard.overdueKm', { km: '1,500' }));
+    expect(markup).not.toMatch(ARABIC_INDIC);
+  });
+
+  it('the page source: no shared digit helper — the print sheet too', () => {
+    // Owner, 2026-11-23 («اى ارقام خليها بالانجلش حتى لو عربى»): the car's printed sheet («طباعة
+    // التقرير») writes its two dates in Latin as the page body does, through Fleet's own helpers.
+    const source = readFileSync(join(HERE, 'pages/VehicleDetailPage.tsx'), 'utf8');
+    const imported = /import \{([^}]*)\} from '\.\.\/\.\.\/\.\.\/shared\/lib\/format';/u.exec(
+      source,
+    )?.[1];
+    expect(imported, 'the shared format import is found').toBeDefined();
+    expect(imported).not.toMatch(/\bformatNumber\b/u);
+    expect(imported).not.toMatch(/\bformatDate\b/u);
+    expect(imported).not.toMatch(/\bformatDateTime\b/u);
+    expect(source).not.toMatch(/\bformatNumber\(/u);
+    expect(source).not.toMatch(/\bformatDate\(/u);
+    expect(source).not.toMatch(/\bformatDateTime\(/u);
+    expect(source).toMatch(
+      /import \{ latinDate, latinDateTime, latinNumber \} from '\.\.\/lib\/fleet-figures';/u,
+    );
+    const print = /const printReport = async[\s\S]*?\n {2}\};\n/u.exec(source)?.[0] ?? '';
+    expect(print, 'printReport is found').not.toBe('');
+    expect(print).toContain('latinDate(vehicle.joinedAt, locale)');
+    expect(print).toContain('latinDate(vehicle.licenseExpiresAt, locale)');
   });
 });

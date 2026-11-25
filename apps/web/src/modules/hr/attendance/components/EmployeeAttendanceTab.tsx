@@ -119,6 +119,7 @@ const EmployeeAttendanceTab = ({ employee }: { employee: EmployeeDto }): JSX.Ele
         period={period}
         onPeriodChange={setPeriod}
         canDecide={can('attendance.decide')}
+        compactHeader
         {...(can('attendance.export') ? { onExport: runExport } : {})}
       />
 

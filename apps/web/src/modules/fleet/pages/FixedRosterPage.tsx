@@ -10,10 +10,14 @@
 // across 1280px keeps the draft and its undo steps.
 //
 // This file is the SHELL: it reads the URL (the code filter `q`, the missions, the view, the sort —
-// all remembered across visits), builds the query, holds the model, and draws the page header ON
-// TOP AT EVERY WIDTH (owner's answer 2 ج): «الطقم الثابت» under «الحركة», and nothing else in it —
-// the Excel control is the board's own, one per width. Then the board for the screen:
-// `FixedDeskBoard` from 1280px, `FixedTouchBoard` below.
+// all remembered across visits), builds the query, holds the model, and draws the board for the
+// screen: `FixedDeskBoard` from 1280px, `FixedTouchBoard` below. NO PAGE HEADER, at any width — no
+// breadcrumbs, no visible title, no divider (owner, 22 November, over a picture of that header:
+// «الجزء اللى فوق دا شيله بتاع العنوان واللى فوقه»; it reverses answer 2 ج). The board's own first
+// row is the top of the page: the car count and the Excel pill on a computer, the car search and
+// the Excel button on a phone or a tablet; the table and the cards get the header's rows back. The
+// one title left is a visually hidden h1 («الطقم الثابت», `sr-only`), so a screen reader still
+// lands on the screen's name; nothing of it is drawn.
 //
 // Who may edit is `fleetRoster.plan`, the daily roster's own grant; a reader without it sees the
 // board and changes nothing.
@@ -26,7 +30,7 @@ import {
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
-import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
+import { PageContainer } from '../../../platform/layout/PageContainer';
 import { readList } from '../../../shared/lib/list-param';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { clickSort, readSorts, writeSorts } from '../lib/table-sort';
@@ -124,13 +128,8 @@ export const FixedRosterScreen = ({
 
   return (
     <PageContainer fullHeight>
-      <PageHeader
-        title={t('fleet.nav.fixedRoster')}
-        breadcrumbs={[
-          { label: t('fleet.module.title'), to: '/fleet' },
-          { label: t('fleet.nav.fixedRoster') },
-        ]}
-      />
+      {/* The screen's name for a screen reader only — no breadcrumbs, no visible title, no line. */}
+      <h1 className="sr-only">{t('fleet.nav.fixedRoster')}</h1>
       {layout === 'desktop' ? (
         <FixedDeskBoard
           m={m}

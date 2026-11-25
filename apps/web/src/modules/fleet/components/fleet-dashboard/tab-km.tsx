@@ -22,9 +22,8 @@
 // never a list's length); «و N أخرى» is that count less the rows the server caps the group at. The
 // per-car average, the coverage, the active / in-workshop / joined-after foot have no link: no screen
 // lists exactly them. «مراجعة القراءات» opens the period's odometer register (no screen filters the
-// negative rows; «أرقام الفترة» does the same), each review row its car on that ONE day. Every data
-// bar and column is the brand's (DECISIONS §5); the status colours stay (amber no-reading, rose review,
-// amber «في الورشة» tags).
+// negative rows), each review row its car on that ONE day. Every data bar and column is the brand's
+// (DECISIONS §5); the status colours stay (amber no-reading, rose review, amber «في الورشة» tags).
 import { type ReactNode } from 'react';
 import {
   FLEET_DASHBOARD_EXCEPTION_ROWS,
@@ -47,7 +46,7 @@ import {
   type NowLinks,
   type PeriodLinks,
 } from '../../lib/fleet-dashboard-links';
-import { sectionPermitted, shareText, slashDay } from '../../lib/fleet-dashboard-tabs';
+import { kmText, sectionPermitted, shareText, slashDay } from '../../lib/fleet-dashboard-tabs';
 import { custodyCountForm } from '../custody-dashboard-parts';
 import {
   Btn,
@@ -99,7 +98,6 @@ import {
 import { ColumnChart } from './dash-columns';
 import { KmChartNotes, KmDayChart } from './km-chart';
 import { PeriodFilterBar } from './period-filter-bar';
-import { kmText } from './tab-period';
 
 /** The word of a key under the tab's own namespace. */
 const useWords = (): ((key: string, params?: Record<string, string | number>) => string) => {

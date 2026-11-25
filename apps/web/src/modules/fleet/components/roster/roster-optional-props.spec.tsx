@@ -374,7 +374,7 @@ describe('NotesSheet — its title, its subtitle and its cap', () => {
     render(
       <NotesSheet row={row()} onSave={() => undefined} onClose={() => undefined} {...props} />,
     );
-  it('is the daily «تعيين السيارة 150» · «تعديل التعيين», uncapped', () => {
+  it('defaults to the daily «تعيين السيارة 150» · «تعديل التعيين», uncapped unless given a cap', () => {
     const html = sheet();
     expect(html).toContain(`data-title="${t('fleet.roster.assignTitle', { code: '150' })}"`);
     expect(html).toContain(`data-subtitle="${t('fleet.roster.editAssignment')}"`);

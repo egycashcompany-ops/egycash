@@ -33,7 +33,11 @@ let app: Express;
  * `src/seed-navigation.spec.ts` pins the same number against the DECLARATIONS and needs no
  * database, so adding a row fails there first — on the author's machine, naming the number.
  */
-const SEEDED_APPLICATIONS = 139;
+// 139 → 140: «الشحنات المسلَّمة» (Operations, Round 33 B), beneath the day board.
+// 140 → 144: Administrative Affairs' first four rows (P1a.W): its home, warehouses, items, and the
+// units and categories.
+// 144 → 145: its supplier register, «الموردون» (P1b.W).
+const SEEDED_APPLICATIONS = 145;
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
@@ -136,8 +140,9 @@ describe('seed → password login (regression)', () => {
     // B7 puts Operations at 17, so it lands between Fleet (15) and Organization (20). Its position
     // here IS the assertion that the sort order took effect: a category appended with a colliding
     // or absent order would surface at the end of this list rather than in the middle. The ported
-    // Gold Vault module says the same at 27 — between IT (25) and Administration (30), and the
-    // ported ATM module at 28 — between Gold Vault and Administration.
+    // Gold Vault module says the same at 27 — between IT (25) and Administration (30), the
+    // ported ATM module at 28 — between Gold Vault and Administration, and Administrative Affairs
+    // at 29 — between ATM and System Administration, whose English name it must never take.
     expect(groups.map((g) => g.name.en)).toEqual([
       'HR',
       'Fleet',
@@ -146,6 +151,7 @@ describe('seed → password login (regression)', () => {
       'IT',
       'Gold Vault',
       'ATM',
+      'Administrative Affairs',
       'Administration',
     ]);
     // Applications map to the app's real client routes, granted directly to the admin.
@@ -287,9 +293,14 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/atm/map');
     // P-HR-REQ — the request to hire, beside the offer it may end in.
     expect(routes).toContain('/job-requisitions');
-    // 31 (HR) + 24 (Fleet) + 18 (Operations) + 7 (Organization) + 18 (IT) + 12 (Gold Vault)
-    //   + 18 (ATM) + 11 (Administration) = 139 — «شجرة الهيكل التنظيمي» joined Organization (P-ORG-3). Operations still 18 after Round 14, which took
-    //   «تجميع الخزينة» out and put «إدارات العمليات» in. Re-counted from `seed-navigation.ts`, because an
+    // Administrative Affairs' Phase 1 screens (P1a.W, P1b.W).
+    expect(routes).toContain('/administration');
+    expect(routes).toContain('/administration/warehouses');
+    expect(routes).toContain('/administration/suppliers');
+    // 31 (HR) + 24 (Fleet) + 19 (Operations) + 7 (Organization) + 18 (IT) + 12 (Gold Vault)
+    //   + 18 (ATM) + 5 (Administrative Affairs) + 11 (Administration) = 145 — Administrative
+    //   Affairs' five Phase 1 rows (four in P1a.W, the suppliers in P1b.W); Operations 19 since
+    //   «الشحنات المسلَّمة» (Round 33 B). Re-counted from `seed-navigation.ts`, because an
     //   earlier breakdown said 103 while the constant beside it said 116 — it had
     //   drifted by fourteen rows and nothing added it up, which is the exact failure the note
     //   above it was written about. A breakdown that does not sum to the constant is worse than
@@ -310,8 +321,8 @@ describe('seed → password login (regression)', () => {
       }
     ).data;
     // B7 added Operations beside HR, Fleet, Organization, IT and Admin; the gold port adds a
-    // seventh and the ATM port an eighth.
-    expect(groups).toHaveLength(8);
+    // seventh, the ATM port an eighth and Administrative Affairs a ninth.
+    expect(groups).toHaveLength(9);
     // Counted across sections too: re-seeding must not duplicate a row, wherever it is grouped.
     expect(
       groups.reduce(

@@ -9,7 +9,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { FLEET_DASHBOARD_PAGE_KEYS, FLEET_DASHBOARD_PERIOD_TABS } from '@ecms/contracts';
+import { FLEET_DASHBOARD_PAGE_KEYS, FLEET_DASHBOARD_TABS } from '@ecms/contracts';
+import { translate } from '../../platform/localization/i18n';
 import { custodyQueryKeys } from './api/fleet-queries';
 import {
   ALL_KEYS,
@@ -22,7 +23,7 @@ import {
   dashboardClient,
   renderDashboard,
 } from './fleet-dashboard-fixtures';
-import { PERIOD_FULL } from './fleet-dashboard-period-fixtures';
+import { KM_TOTAL, PERIOD_FULL } from './fleet-dashboard-period-fixtures';
 import { REMEMBERED_FILTERS, dashboardView } from './pages/FleetDashboardPage';
 import { alertLines, alertSummary, tabBadges, visibleTabs } from './lib/fleet-dashboard-tabs';
 
@@ -46,6 +47,12 @@ const element = (html: string, marker: string): string => {
   return html.slice(start);
 };
 const B1_NAMED = { id: B1, name: { ar: 'القاهرة', en: 'Cairo' } };
+/**
+ * The removed period-figures tab (22 November): its key and its Arabic name, spelled apart so a
+ * search of the code for leftovers finds only these absence checks.
+ */
+const REMOVED_TAB = 'period';
+const REMOVED_NAME = ['أرقام', 'الفترة'].join(' ');
 const B2_NAMED = { id: B2, name: { ar: 'الجيزة', en: 'Giza' } };
 
 /** The tabs the bar shows, in its order. */
@@ -78,7 +85,7 @@ describe('the frame', () => {
     expect(html.match(/role="tablist"/gu)).toHaveLength(1);
   });
 
-  it('shows all twelve tabs, in the bar’s order, to a reader with every key', () => {
+  it('shows all eleven tabs, in the bar’s order, to a reader with every key — «ملخصات» last, no period-figures tab', () => {
     expect(barTabs(html)).toEqual([
       'overview',
       'today',
@@ -90,15 +97,22 @@ describe('the frame', () => {
       'fuel',
       'custody',
       'licences',
-      'period',
       'summaries',
     ]);
+    expect(FLEET_DASHBOARD_TABS).toEqual(barTabs(html));
+    // The owner removed the period-figures tab (22 November): no pill, no key, no word of it.
+    expect(FLEET_DASHBOARD_TABS).not.toContain(REMOVED_TAB);
+    expect(html).not.toContain(`data-dash-tab="${REMOVED_TAB}"`);
+    expect(html).not.toContain(REMOVED_NAME);
+    expect(ar('fleet.dash.shell.tab.summaries')).toBe('ملخصات');
+    expect(html).toContain(`>${ar('fleet.dash.shell.tab.summaries')}<`);
     expect(ar('fleet.dash.shell.tab.km')).toBe('العدادات والكيلومترات');
     expect(ar('fleet.dash.shell.tab.accidents')).toBe('الحوادث ومطالبات التأمين');
     expect(ar('fleet.dash.shell.tab.violations')).toBe('المخالفات المرورية والتسويات');
     expect(ar('fleet.dash.shell.tab.fuel')).toBe('الوقود والمصروفات');
     // «العهدة» NEW right after «الوقود والمصروفات», then «التراخيص والتجديدات» under the old key —
-    // each pill with its full approved name (no short word, no tooltip); the two old tabs last.
+    // each pill with its full approved name (no short word, no tooltip); «ملخصات», the one old tab
+    // kept, last.
     expect(ar('fleet.dash.shell.tab.custody')).toBe('العهدة');
     expect(ar('fleet.dash.shell.tab.licences')).toBe('التراخيص والتجديدات');
     for (const tab of ['km', 'accidents', 'violations', 'fuel', 'custody', 'licences'])
@@ -168,12 +182,105 @@ describe('the frame', () => {
     expect(barTabs(ranking)).not.toContain('ranking');
   });
 
-  it('renders «أرقام الفترة» alone through the period hand-over (H1)', () => {
-    expect(FLEET_DASHBOARD_PERIOD_TABS).toEqual(['period']);
-    for (const tab of FLEET_DASHBOARD_PERIOD_TABS) {
-      const html = renderDashboard({ url: `/fleet?tab=${tab}` });
-      expect(html, tab).toContain(`data-period-tab="${tab}"`);
-      expect(html, tab).toContain(ar(`fleet.dash.shell.tab.${tab}`));
+  it('opens an old link to the removed period-figures tab on «نظرة عامة» — no dead link', () => {
+    for (const url of [`/fleet?tab=${REMOVED_TAB}`, `/fleet?tab=${REMOVED_TAB}&period=last30`]) {
+      const html = renderDashboard({
+        url,
+        client: dashboardClient({ page: { url, dto: PERIOD_FULL } }),
+      });
+      expect(pressed(html), url).toBe('overview');
+      expect(html, url).toContain('data-dash-panel="overview"');
+      expect(html, url).toContain('data-dash-tab-body="overview"');
+      expect(html, url).not.toContain('data-period-tab');
+      expect(html, url).not.toContain(`data-dash-panel="${REMOVED_TAB}"`);
+      expect(barTabs(html), url).not.toContain(REMOVED_TAB);
+      expect(html, url).not.toContain(REMOVED_NAME);
+    }
+    // The page mounts no period-only tab any more: every R2 figure is a mixed panel's.
+    expect(PAGE).not.toContain('PeriodTab');
+    expect(PAGE).not.toContain('FLEET_DASHBOARD_PERIOD_TABS');
+    expect(PAGE).not.toContain('period-tabs');
+  });
+
+  it('keeps the page’s period on a mixed tab: `?tab=km&period=last30` still reads «آخر 30 يومًا»', () => {
+    const url = '/fleet?tab=km&period=last30';
+    const html = renderDashboard({
+      url,
+      client: dashboardClient({ page: { url, dto: PERIOD_FULL } }),
+    });
+    expect(pressed(html)).toBe('km');
+    const body = html.slice(html.indexOf('data-dash-tab-body="km"'));
+    expect(body).toMatch(/<option value="last30" selected="">/u);
+    // The figure is the last-30-days answer's, read under the address bar's filters.
+    expect(body).toContain(new Intl.NumberFormat('en-US').format(KM_TOTAL));
+  });
+
+  it('still shows the old tab’s reader every home of its figures: the km, the workshop, the accidents, the spend', () => {
+    // Exactly the five keys the removed tab needed (km, visits, accidents, opex, dealership).
+    const permissions = [
+      'fleetOdometer.view',
+      'fleetMaintenance.view',
+      'fleetAccident.view',
+      'fleetReceipt.view',
+      'fleetDealership.view',
+    ];
+    const home = '/fleet?period=last30';
+    const bar = barTabs(
+      renderDashboard({
+        url: home,
+        permissions,
+        client: dashboardClient({ page: { url: home, dto: PERIOD_FULL } }),
+      }),
+    );
+    for (const tab of ['maintenance', 'km', 'accidents', 'fuel']) expect(bar, tab).toContain(tab);
+    expect(bar).not.toContain(REMOVED_TAB);
+    // Each tab draws its period figures under the page's filters for this reader.
+    for (const [tab, figure] of [
+      ['km', 'data-km-kpi="total"'],
+      ['maintenance', 'data-maint-kpi="exits"'],
+      ['accidents', 'data-acc-kpi="period"'],
+      ['fuel', 'data-fuel-opex="card"'],
+      ['fuel', 'data-fuel-dealer="card"'],
+    ] as const) {
+      const url = `/fleet?tab=${tab}&period=last30`;
+      const html = renderDashboard({
+        url,
+        permissions,
+        client: dashboardClient({ page: { url, dto: PERIOD_FULL } }),
+      });
+      expect(pressed(html), tab).toBe(tab);
+      expect(html, `${tab}: ${figure}`).toContain(figure);
+    }
+  });
+
+  it('drops every word only the removed tab read — each key reads as itself in both languages', () => {
+    const removed = [
+      `fleet.dash.shell.tab.${REMOVED_TAB}`,
+      'fleet.dash.filters.rangeHead',
+      'fleet.dash.period.today',
+      ...[
+        'title',
+        'average',
+        'confirmedThrough',
+        'noneConfirmed',
+        'open',
+        'invalid',
+        'coverage',
+      ].map((k) => `fleet.dash.period.km.${k}`),
+      ...['title', 'split', 'note', 'bar'].map((k) => `fleet.dash.period.visits.${k}`),
+      ...['title', 'split', 'undated', 'bar'].map((k) => `fleet.dash.period.accidents.${k}`),
+      ...['title', 'split', 'note', 'bar'].map((k) => `fleet.dash.period.opex.${k}`),
+      ...['title', 'pending', 'note', 'bar'].map((k) => `fleet.dash.period.dealership.${k}`),
+    ];
+    expect(removed).toHaveLength(26);
+    for (const key of removed) {
+      expect(translate('ar', key), key).toBe(key);
+      expect(translate('en', key), key).toBe(key);
+    }
+    // The two the fuel and custody tabs still draw stay.
+    for (const key of ['fleet.dash.period.dataFrom', 'fleet.dash.period.notSummed']) {
+      expect(translate('ar', key), key).not.toBe(key);
+      expect(translate('en', key), key).not.toBe(key);
     }
   });
 
@@ -560,12 +667,12 @@ describe('the tabs a reader sees (R-28: permission first, then the server’s nu
     expect(asked.length).toBeGreaterThan(0);
   });
 
-  it('shows a receipts-only reader «الوقود والمصروفات» with its receipts part alone, beside «أرقام الفترة»', () => {
+  it('shows a receipts-only reader «الوقود والمصروفات» with its receipts part alone', () => {
     const url = '/fleet?tab=fuel&period=last30';
     const client = dashboardClient({ now: null, period: null, page: { url, dto: PERIOD_FULL } });
     const html = renderDashboard({ url, permissions: ['fleetReceipt.view'], client });
-    // The overview's month card, the fuel tab and «أرقام الفترة»: the three that draw the receipts.
-    expect(barTabs(html)).toEqual(['overview', 'fuel', 'period']);
+    // The overview's month card and the fuel tab: the two that draw the receipts.
+    expect(barTabs(html)).toEqual(['overview', 'fuel']);
     expect(html).not.toContain('data-fuel-band="now"');
     expect(html).toContain('data-fuel-band="period"');
     expect(html).toContain('data-fuel-opex="card"');

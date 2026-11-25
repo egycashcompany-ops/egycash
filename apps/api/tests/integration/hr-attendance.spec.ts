@@ -2564,6 +2564,12 @@ describe('AT-6 — screens, self-service and export', () => {
         'Overtime (calculated)',
         'Overtime (approved)',
         'Punches',
+        // «مرات تسجيل الحضور» / «مرات تسجيل الانصراف» — how many times the person PRESSED each,
+        // which is not the same as how many scans the readers saw: a repeat press counts here and
+        // changes none of the times, because only the first check-in and the first check-out after
+        // it are counted. They sit beside the scan count and before the notes.
+        'Times checked in',
+        'Times checked out',
         'Notes',
       ]
         .map((header) => `"${header}"`)
@@ -2573,7 +2579,7 @@ describe('AT-6 — screens, self-service and export', () => {
     const row = (lines.find((line) => line.includes(emp.code)) ?? '')
       .split('","')
       .map((cell) => cell.replace(/^"|"$/g, ''));
-    expect(row).toHaveLength(18);
+    expect(row).toHaveLength(20);
     expect(row[0]).toBe(emp.code);
     // dd/mm/yyyy, his words — read, not parsed.
     const [y, m, d] = dateOnlyIso(workday).split('-');
@@ -2590,6 +2596,9 @@ describe('AT-6 — screens, self-service and export', () => {
     // than «0:00», because nothing was wrong with this day and five zeros per row is noise.
     expect(row.slice(11, 16)).toEqual(['', '', '', '', '']);
     expect(row[16]).toBe('2');
+    // Pressed once each, so one check-in and one check-out — no repeats on this day.
+    expect(row[17]).toBe('1');
+    expect(row[18]).toBe('1');
 
     // A MISSING CHECK-OUT IS BLANK, NEVER 0:00 — the defect the owner reported by name.
     const half = await regEmployee();
@@ -2606,7 +2615,10 @@ describe('AT-6 — screens, self-service and export', () => {
     // Worked, late, shortfall, early leave and overtime: all five blank, none of them zero.
     expect(halfRow.slice(9, 10)).toEqual(['']);
     expect(halfRow.slice(11, 16)).toEqual(['', '', '', '', '']);
-    expect(halfRow[17]).toContain('Check-out missing');
+    expect(halfRow[19]).toContain('Check-out missing');
+    // One press of Check-in, none of Check-out — which is why every figure above is blank.
+    expect(halfRow[17]).toBe('1');
+    expect(halfRow[18]).toBe('0');
 
     // The window is capped like recompute: an export is a report, not a dump. 92 days for the
     // sheet, a year for one employee.

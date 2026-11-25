@@ -125,10 +125,14 @@ const store = (permissions: string[], locale: Locale = 'ar') =>
 
 const render = (
   node: ReactNode,
-  { permissions = ALL, qc = client() }: { permissions?: string[]; qc?: QueryClient } = {},
+  {
+    permissions = ALL,
+    qc = client(),
+    locale = 'ar',
+  }: { permissions?: string[]; qc?: QueryClient; locale?: Locale } = {},
 ): string =>
   renderToStaticMarkup(
-    <Provider store={store(permissions)}>
+    <Provider store={store(permissions, locale)}>
       <QueryClientProvider client={qc}>{node}</QueryClientProvider>
     </Provider>,
   );
@@ -225,6 +229,55 @@ describe('the shared name renderers carry the card on a name Fleet knows', () =>
   it('plain text with nobody of ours behind it is the text alone', () => {
     const markup = render(<DriverHoverText people={[]}>طرف ثالث</DriverHoverText>);
     expect(markup).toBe('<span>طرف ثالث</span>');
+  });
+});
+
+// «تعديل» in «تعيين السيارات»: the name and the code touched in Arabic. `ms-2` sat on the code's own
+// left-to-right span, so the margin went to the code's LEFT — the far side from the name in Arabic.
+// The fix is the shared renderer's (every reader of it gains the gap): the margin on an element in
+// the page's direction, the code isolated inside it.
+describe('the name and its code keep a gap in either direction', () => {
+  const GAP =
+    '<span class="ms-2 font-figures text-xs text-slate-500"><bdi dir="ltr">HR-D1</bdi></span>';
+  const OLD = '<span class="ms-2 font-figures text-xs text-slate-500" dir="ltr">HR-D1</span>';
+
+  for (const locale of ['ar', 'en'] as const) {
+    it(`in ${locale}: the margin on a plain element, the code left-to-right inside it`, () => {
+      for (const [what, markup] of [
+        ['with its card', render(<EmployeeName employeeId={D1} />, { locale })],
+        ['an option button’s', render(<EmployeeName employeeId={D1} card={false} />, { locale })],
+        ['through DriverName', render(<DriverName employeeId={D1} name={null} />, { locale })],
+      ] as const) {
+        expect(markup, what).toContain(`ابراهيم السيد رزق جابر${GAP}`);
+        expect(markup, `${what}: the old face is gone`).not.toContain(OLD);
+        const wrap = markup.slice(markup.indexOf('<span class="ms-2'));
+        expect(
+          wrap.slice(0, wrap.indexOf('>')),
+          `${what}: the margin's element has no dir`,
+        ).not.toContain('dir=');
+      }
+    });
+  }
+
+  it('keeps the rest as it was: the card on the name, none on an option, the bare id muted', () => {
+    expect(tagOf(render(<EmployeeName employeeId={D1} />), 'ابراهيم السيد رزق جابر')).toContain(
+      MARK,
+    );
+    expect(render(<EmployeeName employeeId={D1} card={false} />)).not.toContain(
+      'data-driver-hover',
+    );
+    // An id Fleet does not carry has no name to keep a gap from: its tail stays as it was.
+    expect(render(<EmployeeName employeeId={D1} />, { qc: client({ people: false }) })).toBe(
+      '<span class="font-figures text-xs text-slate-400" dir="ltr">dddddd01</span>',
+    );
+  });
+
+  it('is one shared fix: the code is never given a margin of its own', () => {
+    const names = readFileSync(join(HERE, 'components/EmployeeName.tsx'), 'utf8');
+    expect(names).toContain(
+      '<span className="ms-2 font-figures text-xs text-slate-500">\n          <bdi dir="ltr">{person.code}</bdi>',
+    );
+    expect(names).not.toMatch(/className="ms-2[^"]*" dir="ltr"/u);
   });
 });
 

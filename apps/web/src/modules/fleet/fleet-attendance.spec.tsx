@@ -173,6 +173,15 @@ describe('the attendance board draws its rows as the drivers board does', () => 
     expect(body, 'no Arabic-Indic figure left in the grid').not.toMatch(/[٠-٩]/u);
   });
 
+  it('counts the matched records in Latin digits — «2 نتيجة», never «٢»', () => {
+    // Owner, 2026-11-23: «اى ارقام خليها بالانجلش حتى لو عربى» — every figure in Fleet.
+    const at = html.indexOf('data-filtered-count');
+    expect(at, 'the count is on the bar').toBeGreaterThan(-1);
+    const count = html.slice(html.indexOf('>', at) + 1, html.indexOf('</span>', at));
+    expect(count).toBe(translate('ar', 'common.list.count', { count: '2' }));
+    expect(count).not.toMatch(/[\u0660-\u0669]/u);
+  });
+
   it('keeps the reason and the note, and a missing note is a grey dash', () => {
     const body = tbody(html);
     expect(body).toContain('مأمورية');

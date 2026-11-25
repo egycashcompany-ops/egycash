@@ -157,10 +157,6 @@ const render = (node: JSX.Element, path: string, qc: QueryClient, permissions = 
     </Provider>,
   );
 
-/** Whether `markup` writes a figure in any of the given spellings — one per digit set. */
-const shows = (markup: string, spellings: readonly string[]): boolean =>
-  spellings.some((spelling) => markup.includes(spelling));
-
 /** Seed a maintenance page that has both its visits and the shared alarm. */
 const maintenance = (alarms: FleetMaintenanceAlarmDto[] = [ALARM], visits = [visit()]): string => {
   const qc = client(alarms);
@@ -308,23 +304,30 @@ describe('the three screens agree about one vehicle', () => {
   });
 
   it('shows the same SINCE-SERVICE distance where it is shown — no longer on maintenance', () => {
-    // «تحسين شكل البيانات فى جداول …»: the boards are moving their figures to Latin digits, so the
-    // distance is looked for in BOTH digit sets — the claim is that the same figure is shown (or,
-    // on maintenance, that it is not), whichever digits a board writes it in.
-    const since = ['٥٬٢٥٠', '5,250'];
-    for (const spelling of since) {
+    // «تحسين شكل البيانات فى جداول …» and the owner's «اى ارقام خليها بالانجلش حتى لو عربى»: every
+    // board writes the distance in Latin digits, so the same figure is «5,250» wherever it is shown
+    // (and nowhere on maintenance), and its Arabic-Indic spelling is looked for only to be absent.
+    const since = '5,250';
+    const arabicIndic = '٥٬٢٥٠';
+    for (const spelling of [since, arabicIndic]) {
       expect(
         maintenance(),
         `maintenance carries no since-service column (${spelling})`,
       ).not.toContain(spelling);
     }
-    expect(shows(alarmsBoard(), since), 'alarms board').toBe(true);
-    expect(shows(odometer(), since), 'odometer').toBe(true);
+    for (const [board, markup] of [
+      ['alarms board', alarmsBoard()],
+      ['odometer', odometer()],
+    ] as const) {
+      expect(markup, board).toContain(since);
+      expect(markup, `${board}, in Latin digits`).not.toContain(arabicIndic);
+    }
   });
 
   it('shows the OVERDUE distance as overdue, not as a negative number', () => {
     const markup = alarmsBoard();
-    expect(shows(markup, ['٢٥٠', '250']), 'alarms board').toBe(true);
+    expect(markup, 'alarms board').toContain('250');
+    expect(markup, 'in Latin digits').not.toContain('٢٥٠');
     // Read off the TEXT, so a class name with a number in it cannot pass for a minus.
     const text = markup.replace(/<[^>]*>/g, ' ');
     for (const minus of ['-٢٥٠', '-250', '−٢٥٠', '−250']) {

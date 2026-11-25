@@ -145,6 +145,12 @@ export const ATTENDANCE_DAY_FLAGS = [
    * already raise `manualPunch`.
    */
   'overriddenByManager',
+  /**
+   * The person pressed Check-in or Check-out more than once that day. Only the FIRST check-in and
+   * the FIRST check-out after it are counted; every other scan is a repeat. A filter for HR — the
+   * daily sheet, day lists and KPIs never show it as a warning; the employee's scan log does.
+   */
+  'repeatedPunches',
 ] as const;
 export const AttendanceDayFlagSchema = z.enum(ATTENDANCE_DAY_FLAGS);
 export type AttendanceDayFlag = z.infer<typeof AttendanceDayFlagSchema>;
@@ -960,8 +966,30 @@ export interface AttendanceEmployeeDayDto {
    * until this number rises to meet it (D5).
    */
   approvedOvertimeMinutes: number | null;
-  /** Every scan of that date, in order, so the timeline can draw them. */
-  punches: { at: string; direction: AttendancePunchDirection; source: AttendancePunchSource }[];
+  /**
+   * Every scan of that date, in order — the employee's SCAN LOG. `role` says which two were counted
+   * (the first check-in → `arrival`, the first check-out after it → `departure`); every other scan
+   * is a `repeat`. Device and branch are resolved to names by the server.
+   */
+  punches: AttendanceScanLogEntry[];
+  /** Scans that were neither the counted arrival nor the counted departure. */
+  repeatCount: number;
+  checkInCount: number;
+  checkOutCount: number;
+}
+
+export const ATTENDANCE_PUNCH_ROLES = ['arrival', 'departure', 'repeat'] as const;
+export type AttendancePunchRole = (typeof ATTENDANCE_PUNCH_ROLES)[number];
+
+export interface AttendanceScanLogEntry {
+  at: string;
+  direction: AttendancePunchDirection;
+  source: AttendancePunchSource;
+  role: AttendancePunchRole;
+  /** The machine serial the scan came from; null for manual / regularization punches. */
+  deviceId: string | null;
+  deviceName: string | null;
+  branchName: LocalizedString | null;
 }
 
 /**
@@ -1041,6 +1069,9 @@ export interface AttendanceSheetRowDto {
    * visible in the times.
    */
   punchCount: number;
+  /** Times the person pressed Check-in / Check-out that day (CSV columns; never shown as a warning). */
+  checkInCount: number;
+  checkOutCount: number;
 }
 
 /**
@@ -1825,7 +1856,28 @@ export const HrAttendanceSettingKeys = {
   ImportMaxAgeDays: 'hr.attendance.importMaxAgeDays',
   MinPunchGapMinutes: 'hr.attendance.minPunchGapMinutes',
   CountAbsence: 'hr.attendance.countAbsence',
+  /**
+   * WORKING HOURS PER DEPARTMENT — `{ [departmentId]: { hours, startTime } }`. An employee with no
+   * shift assignment is expected to work their department's hours, starting at its start time (or
+   * the company pattern's). Departments not listed use the company default pattern (09:00–17:00,
+   * eight hours). 24 hours is allowed (security): the day ends at the same time the next day, so
+   * leaving before the 24 hours are done is a short / early-leave day.
+   */
+  DepartmentHours: 'hr.attendance.departmentHours',
 } as const;
+
+const hhmm = () => z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected HH:mm');
+
+export const DepartmentHoursRuleSchema = z
+  .object({
+    hours: z.number().min(0.5).max(24),
+    startTime: hhmm().nullable().default(null),
+  })
+  .strict();
+export type DepartmentHoursRule = z.infer<typeof DepartmentHoursRuleSchema>;
+
+export const DepartmentHoursMapSchema = z.record(z.string().regex(/^[a-f0-9]{24}$/), DepartmentHoursRuleSchema);
+export type DepartmentHoursMap = z.infer<typeof DepartmentHoursMapSchema>;
 
 // ── Punch devices (D12.5, D12.7 — AT-D1) ────────────────────────────────────
 

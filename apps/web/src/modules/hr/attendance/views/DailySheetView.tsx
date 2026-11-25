@@ -1,11 +1,17 @@
-// «الحضور اليومي». Two readings up top — who is in (one number, one bar, filters) and when they came
-// (the arrival river) — then the list. Presentational: the page owns data, filters and actions.
-import type { ReactNode } from 'react';
+// «الحضور اليومي». One hero card answers «who is in» (the headline, a stacked bar, the arrivals
+// chart); below it the EMPLOYEE ATTENDANCE TABLE: a title bar (search, a Filter button that opens
+// branch and section, Sort by), status segments with counts, and one row per person — photo, name
+// and code, job title and department, date, FIRST check-in – FIRST check-out, duration, overtime,
+// status and the «⋯». Repeated presses never appear here (the employee's scan log is where they
+// live). Pressing a person opens the pop-up of their recent days. Presentational: the page owns data.
+import { useState, type ReactNode } from 'react';
 import { cn } from '../../../../shared/lib/cn';
-import { ArrivalRiver, PresenceSummary, type ArrivalSlot } from './view-charts';
-import { ariaSort, AttendanceCanvas, DayStepper, DayTimeline, FIG, INK, INK2, INK3, PageHeader, PersonAvatar, Sheet, SheetHead, SortableHead, StatusText, Tag, TimelineScale } from './view-parts';
-import { arrow, clock, num, shortDuration, timeSpan } from './view-format';
+import { type ArrivalSlot } from './view-charts';
+import { SheetHero } from './sheet-hero';
+import { AttendanceCanvas, DayStepper, EARLY_INK, FIG, INK, INK2, INK3, PageHeader, PersonAvatar, RowMenu, Sheet, StatusPill, type Tone } from './view-parts';
+import { clock, num, shortDuration, timeSpan } from './view-format';
 import { useViewLabels } from './view-labels';
+import { SortMenu, StatusSegments } from './toolbar';
 import type { SheetFilter, SheetRow, SheetSort, SheetSortKey, SheetSummary } from './view-types';
 
 export interface DailySheetViewProps {
@@ -15,16 +21,18 @@ export interface DailySheetViewProps {
   dateInput: ReactNode;
   onPrevDay: () => void;
   onNextDay: () => void;
-  /** The page's search / branch / department controls. */
+  /** The page's search box, drawn in the table's title bar. */
+  search?: ReactNode;
+  /** The page's branch / section controls, shown when Filter is pressed. */
   filters: ReactNode;
+  /** How many branch/section values are picked — the Filter button's badge, and it opens itself. */
+  filterCount?: number;
+  /** The board's date, short («17 Nov 2026»), for the Date column. */
+  dateShort?: string;
   summary: SheetSummary;
   /** Arrivals per 15-minute slot for the whole (filtered) day, not just this page of rows. */
   arrivals: ArrivalSlot[];
-  /**
-   * Start of the working day and its grace, minutes — the roster most of the people on this sheet
-   * are held to. `null` when nobody on it has one, and then no line is drawn and nothing is called
-   * late: the screen must not invent an hour the company has not set.
-   */
+  /** Start of the working day and its grace, minutes; null when nobody on the sheet has one. */
   dayStart: number | null;
   grace: number;
   /** Minutes after midnight now, only when the date is today. */
@@ -38,16 +46,9 @@ export interface DailySheetViewProps {
   /** «عرض 1–8 من 8» and the pager, from the page. */
   footer?: ReactNode;
   onExport?: () => void;
-  /** Opens the employee's attendance page. */
+  /** Opens the employee's profile (attendance tab). */
   onOpenEmployee?: (id: string) => void;
-  /**
-   * The order the rows arrived in, and how to ask for another.
-   *
-   * THE VIEW DOES NOT SORT. It renders what it was given and reports a click, because the order is
-   * decided across the WHOLE day on the server and then paged — sorting here would reorder the
-   * fifty rows of this page among themselves and make page 2 a separate little island, which is
-   * the defect the owner reported («never sort only the current page»).
-   */
+  /** The order the rows arrived in, and how to ask for another — the server sorts the whole day. */
   sort?: SheetSort;
   onSort?: (by: SheetSortKey, dir: 'asc' | 'desc') => void;
 }
@@ -56,16 +57,22 @@ export const DailySheetView = (p: DailySheetViewProps): JSX.Element => {
   const { t, status } = useViewLabels();
   const sortHint = (dir: 'asc' | 'desc'): string => t(dir === 'asc' ? 'sortAscending' : 'sortDescending');
   const s = p.summary;
-  const busiest = p.arrivals.reduce<ArrivalSlot | null>((b, a) => (a.count > (b?.count ?? 0) ? a : b), null);
-  const dayStart = p.dayStart;
-  const onTime =
-    dayStart === null
-      ? null
-      : p.arrivals.filter((a) => a.slot < dayStart + p.grace).reduce((n, a) => n + a.count, 0);
-  const arrived = p.arrivals.reduce((n, a) => n + a.count, 0);
+
+  const tabs: { key: SheetFilter; label: string; value: number; tone: Tone }[] = [
+    { key: 'all', label: t('allToday'), value: s.employees, tone: 'accent' },
+    { key: 'present', label: t('present'), value: s.present, tone: 'ok' },
+    { key: 'late', label: t('late'), value: s.late, tone: 'warn' },
+    { key: 'notYetIn', label: t('notYetIn'), value: s.notYetIn, tone: 'muted' },
+    { key: 'absent', label: t('absent'), value: s.absent, tone: 'bad' },
+    { key: 'onLeave', label: t('onLeave'), value: s.onLeave, tone: 'info' },
+    { key: 'noRecord', label: t('noRecord'), value: s.noRecord, tone: 'muted' },
+    { key: 'noSchedule', label: t('noSchedule'), value: s.noSchedule, tone: 'muted' },
+    { key: 'offDay', label: t('offDay'), value: s.offDay, tone: 'muted' },
+  ];
+  const [showFilters, setShowFilters] = useState((p.filterCount ?? 0) > 0);
 
   return (
-    <AttendanceCanvas>
+    <AttendanceCanvas fill>
       <PageHeader
         eyebrow={t('dailyAttendance')}
         title={p.dateTitle}
@@ -82,6 +89,9 @@ export const DailySheetView = (p: DailySheetViewProps): JSX.Element => {
             <DayStepper input={p.dateInput} onPrev={p.onPrevDay} onNext={p.onNextDay} prevLabel={t('prevDay')} nextLabel={t('nextDay')} />
             {p.onExport !== undefined && (
               <button type="button" className="att-btn" onClick={p.onExport}>
+                <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M8 2.5v8M4.5 7.5L8 11l3.5-3.5M3 13.5h10" />
+                </svg>
                 {t('exportCsv')}
               </button>
             )}
@@ -89,248 +99,248 @@ export const DailySheetView = (p: DailySheetViewProps): JSX.Element => {
         }
       />
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] sm:gap-6">
-        <Sheet>
-          <PresenceSummary
-            inCount={s.present + s.late}
-            total={s.employees}
-            inLabel={t('inToday')}
-            ofLabel={t('of')}
-            selected={p.activeFilter}
-            onSelect={(k) => p.onFilter(k as SheetFilter)}
-            // EVERY COUNTER THE SERVER COUNTS, so the band adds up to the total beside it. The
-            // last three were missing, and on a company with no default working pattern that hid
-            // most of the workforce: «5 of 100» with ninety-five people in no counter at all.
-            parts={[
-              { key: 'present', label: t('present'), value: s.present, tone: 'ok' },
-              { key: 'late', label: t('late'), value: s.late, tone: 'warn' },
-              { key: 'notYetIn', label: t('notYetIn'), value: s.notYetIn, tone: 'muted' },
-              { key: 'absent', label: t('absent'), value: s.absent, tone: 'bad' },
-              { key: 'onLeave', label: t('onLeave'), value: s.onLeave, tone: 'info' },
-              { key: 'noSchedule', label: t('noSchedule'), value: s.noSchedule, tone: 'muted' },
-              { key: 'noRecord', label: t('noRecord'), value: s.noRecord, tone: 'muted' },
-              { key: 'offDay', label: t('offDay'), value: s.offDay, tone: 'muted' },
-            ]}
-          />
-          {s.unlinked !== null && s.unlinked.identities > 0 && (
-            <p className={cn('mt-4 rounded-lg px-3 py-2 text-[13px] leading-relaxed', INK2)}
-               style={{ background: 'var(--att-warn-bg, rgba(180,120,0,0.08))' }}>
-              {t('unlinkedScans', {
-                people: num(s.unlinked.identities),
-                rows: num(s.unlinked.rows),
-              })}
-            </p>
-          )}
-        </Sheet>
-        <Sheet>
-          <SheetHead
-            title={t('arrivalsTitle')}
-            note={
-              arrived === 0 || busiest === null
-                ? t('arrivalsEmpty')
-                : onTime === null
-                  ? // Nobody is rostered, so there is no «في الموعد» to report — only when they came.
-                    t('arrivalsNoteNoRoster', { busy: timeSpan(busiest.slot, busiest.slot + 15) })
-                  : t('arrivalsNote', {
-                      busy: timeSpan(busiest.slot, busiest.slot + 15),
-                      p: Math.round((onTime / arrived) * 100),
-                    })
-            }
-          />
-          <div className="pt-8">
-            <ArrivalRiver
-              slots={p.arrivals}
-              dayStart={p.dayStart}
-              grace={p.grace}
-              now={p.now}
-              labels={{ start: t('dayStarts'), now: t('now'), people: (n) => t('people', { n }), empty: t('arrivalsEmpty') }}
-            />
-          </div>
-        </Sheet>
-      </div>
+      {/* THE HERO: today at a glance — a ring, the statuses as tiles (each filters the table), and
+          three facts in words; then when people arrived, in its own card. */}
+      <SheetHero
+        summary={s}
+        tabs={tabs}
+        activeFilter={p.activeFilter}
+        onFilter={p.onFilter}
+        arrivals={p.arrivals}
+        dayStart={p.dayStart}
+        grace={p.grace}
+        now={p.now}
+      />
 
-      <Sheet className="overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 sm:px-6">
-          <div className="min-w-0 flex-1">{p.filters}</div>
-          {p.activeFilter !== 'all' && (
-            <button type="button" className="att-btn" onClick={() => p.onFilter('all')}>
-              {t('showAll')}
-            </button>
+      <Sheet className="flex flex-1 flex-col overflow-hidden">
+        {/* TITLE BAR — the table's name, then search, Filter and Sort by. */}
+        <div className="flex flex-wrap items-center gap-3 px-5 pb-3 pt-5 sm:px-6">
+          <h2 className={cn('me-auto text-[17px] font-semibold', INK)}>
+            {t('employeeAttendance')}
+            <bdi className={cn('ms-2 text-[13px] font-medium', FIG, INK3)}>{num(s.employees)}</bdi>
+          </h2>
+          {p.search !== undefined && <div className="w-full sm:w-64">{p.search}</div>}
+          <button
+            type="button"
+            aria-expanded={showFilters}
+            onClick={() => setShowFilters((v) => !v)}
+            className={cn(
+              'inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] font-medium transition-colors',
+              showFilters || (p.filterCount ?? 0) > 0
+                ? 'border-[var(--att-accent)] bg-[var(--att-accent-soft)] text-[color:var(--att-accent)]'
+                : cn('border-[var(--att-line)] hover:border-[var(--att-line-strong)]', INK2),
+            )}
+          >
+            <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M2.5 3.5h11l-4.2 5v4l-2.6 1.2V8.5z" />
+            </svg>
+            {t('filter')}
+            {(p.filterCount ?? 0) > 0 && (
+              <bdi className={cn('rounded-full bg-[var(--att-accent)] px-1.5 text-[11px] font-semibold text-white', FIG)}>{p.filterCount}</bdi>
+            )}
+          </button>
+          {p.onSort !== undefined && (
+            <SortMenu
+              options={SORTS.map(([key, labelKey]) => ({ key, label: t(labelKey) }))}
+              by={p.sort?.by}
+              dir={p.sort?.dir}
+              onSort={p.onSort}
+              sortByLabel={t('sortBy')}
+              reverseLabel={t('reverseOrder')}
+              hint={sortHint}
+            />
           )}
         </div>
 
-        <div className="mt-4 hidden lg:block">
-          <table className="w-full">
+        {showFilters && <div className="att-open px-5 pb-3 sm:px-6">{p.filters}</div>}
+
+        <div className="px-5 pb-4 sm:px-6">
+          <StatusSegments segments={tabs} active={p.activeFilter} allKey="all" onPick={p.onFilter} moreLabel={t('moreStatuses')} ariaLabel={t('status')} />
+        </div>
+
+        {/* THE TABLE. `flex-1` so the spare height of a tall screen lands HERE, under the rows,
+            rather than outside the card as a gap — the table keeps its natural height on a screen
+            that is already full, because a flex item never shrinks below its content. */}
+        <div className="flex-1 overflow-x-auto px-3 pb-2 sm:px-4">
+          <table className="w-full min-w-[60rem] border-separate border-spacing-0 text-start">
             <thead>
-              <tr className={cn('group/head border-y border-[var(--att-line)] bg-[var(--att-sheet-2)] text-[12px]', INK3)}>
-                <th className="py-2.5 pe-3 ps-6 text-start font-medium" aria-sort={ariaSort('name', p.sort)}>
-                  <SortableHead column="name" label={t('employee')} sort={p.sort} onSort={p.onSort} hint={sortHint} />
-                  <span className={cn('mx-1', INK3)} aria-hidden="true">
-                    ·
-                  </span>
-                  <SortableHead column="code" label={t('codeCol')} sort={p.sort} onSort={p.onSort} hint={sortHint} />
-                </th>
-                <th className="px-3 py-2.5 text-start font-medium" aria-sort={ariaSort('status', p.sort)}>
-                  <SortableHead column="status" label={t('status')} sort={p.sort} onSort={p.onSort} hint={sortHint} />
-                </th>
-                {/* One cell holds both times, so it holds both controls — «الحضور» is the sheet's
-                    default order and «الانصراف» the other end of the same day. */}
-                <th className="px-3 py-2.5 text-start font-medium" aria-sort={ariaSort('checkIn', p.sort)}>
-                  <SortableHead column="checkIn" label={t('arrived')} sort={p.sort} onSort={p.onSort} hint={sortHint} />
-                  <span className={cn('mx-1', INK3)} aria-hidden="true">
-                    ·
-                  </span>
-                  <SortableHead column="checkOut" label={t('left')} sort={p.sort} onSort={p.onSort} hint={sortHint} />
-                </th>
-                <th className="w-[22%] px-3 py-2 text-start font-medium">
-                  <TimelineScale />
-                </th>
-                <th className="px-3 py-2.5 text-start font-medium" aria-sort={ariaSort('worked', p.sort)}>
-                  <SortableHead column="worked" label={t('worked')} sort={p.sort} onSort={p.onSort} hint={sortHint} />
-                </th>
-                <th className="px-3 py-2.5 text-start font-medium" aria-sort={ariaSort('late', p.sort)}>
-                  <SortableHead column="late" label={t('lateCol')} sort={p.sort} onSort={p.onSort} hint={sortHint} />
-                </th>
-                <th className="px-3 py-2.5 text-start font-medium" aria-sort={ariaSort('shortfall', p.sort)}>
-                  <SortableHead column="shortfall" label={t('shortfallCol')} sort={p.sort} onSort={p.onSort} hint={sortHint} />
-                </th>
-                <th className="px-3 py-2.5 text-start font-medium">{t('overtime')}</th>
-                <th className="py-2.5 pe-6 ps-3">
-                  <span className="sr-only">{t('actions')}</span>
-                </th>
+              <tr>
+                <Th label={t('employee')} sortKey="name" sort={p.sort} onSort={p.onSort} hint={sortHint} first />
+                <Th label={t('jobTitle')} />
+                <Th label={t('date')} />
+                <Th label={t('checkInOut')} sortKey="checkIn" sort={p.sort} onSort={p.onSort} hint={sortHint} />
+                <Th label={t('duration')} sortKey="worked" sort={p.sort} onSort={p.onSort} hint={sortHint} />
+                <Th label={t('overtime')} />
+                <Th label={t('status')} sortKey="status" sort={p.sort} onSort={p.onSort} hint={sortHint} />
+                <th className="w-12 rounded-e-xl bg-[var(--att-sheet-2)]" aria-label={t('actions')} />
               </tr>
             </thead>
             <tbody>
-              {p.rows.map((r) => (
-                <tr key={r.id} className="group border-b border-[var(--att-line)] last:border-b-0 hover:bg-[var(--att-sheet-2)]">
-                  <td className="max-w-[300px] py-3 pe-3 ps-6">
-                    <Person row={r} onOpen={p.onOpenEmployee} />
-                  </td>
-                  <td className="px-3 py-3">
-                    <StatusText status={r.status} label={status(r.status)} />
-                    {r.tags.length > 0 && (
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {r.tags.map((tag) => (
-                          <Tag key={tag} tone="accent">
-                            {tag}
-                          </Tag>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-3 py-3">
-                    <InOut row={r} />
-                  </td>
-                  <td className="px-3 py-3">
-                    <DayTimeline inAt={r.inAt} outAt={r.outAt} expected={r.expected} />
-                  </td>
-                  {/* WORKED, as h:mm — and a dash, never «0:00», on a day with no check-out. The
-                      figure is the server's and it is null exactly when nothing was measured. */}
-                  <td className={cn('px-3 py-3 text-sm', FIG)}>
-                    {r.worked === null ? <Dash /> : <span className={cn('font-semibold', INK)}>{shortDuration(r.worked)}</span>}
-                  </td>
-                  <td className={cn('px-3 py-3 text-sm', FIG)}>
-                    {r.lateMinutes !== null && r.lateMinutes > 0 ? (
-                      <span className="font-semibold text-[color:var(--att-warn)]">{shortDuration(r.lateMinutes)}</span>
-                    ) : (
-                      <Dash />
-                    )}
-                  </td>
-                  {/* «النقص» — what is actually missing from the day, which is NOT the lateness: a
-                      09:40 arrival that stays until 17:40 is late by nothing and short by nothing. */}
-                  <td className={cn('px-3 py-3 text-sm', FIG)}>
-                    {r.shortfallMinutes !== null && r.shortfallMinutes > 0 ? (
-                      <span className="font-semibold text-[color:var(--att-warn)]">{shortDuration(r.shortfallMinutes)}</span>
-                    ) : (
-                      <Dash />
-                    )}
-                  </td>
-                  <td className={cn('px-3 py-3 text-sm', FIG)}>
-                    {r.overtimeApproved + r.overtimeDerived > 0 ? (
-                      <bdi>
-                        <span className={cn('font-semibold', INK)}>{shortDuration(r.overtimeApproved)}</span>
-                        <span className={INK3}> / {shortDuration(r.overtimeDerived)}</span>
-                      </bdi>
-                    ) : (
-                      <Dash />
-                    )}
-                  </td>
-                  <td className="py-3 pe-6 ps-3">
-                    <div className="flex justify-end gap-2">{r.actions}</div>
-                  </td>
-                </tr>
-              ))}
+              {p.rows.map((r) => {
+                const late = (r.lateMinutes ?? 0) > 0 ? (r.lateMinutes ?? 0) : null;
+                // The engine's status decides, as it does on the timeline: the flexible-hours rule
+                // means a departure before the hour costs nothing once the hours are complete.
+                const early =
+                  (r.status === 'earlyLeave' || r.status === 'lateAndEarly') &&
+                  (r.earlyLeaveMinutes ?? 0) > 0
+                    ? (r.earlyLeaveMinutes ?? 0)
+                    : null;
+                const short = (r.shortfallMinutes ?? 0) > 0 ? (r.shortfallMinutes ?? 0) : null;
+                const open = (): void => p.onOpenEmployee?.(r.id);
+                return (
+                  <tr
+                    key={r.id}
+                    onClick={open}
+                    className={cn('group transition-colors hover:bg-[var(--att-sheet-2)] [&>td]:border-b [&>td]:border-[var(--att-line)] [&>td]:px-3 [&>td]:py-3', p.onOpenEmployee !== undefined && 'cursor-pointer')}
+                  >
+                    <td>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          open();
+                        }}
+                        className="flex min-w-0 items-center gap-3 text-start"
+                      >
+                        {r.avatar ?? <PersonAvatar name={r.name} photoUrl={r.photoUrl} />}
+                        <span className="min-w-0">
+                          <span className={cn('block truncate text-[13.5px] font-semibold group-hover:text-[color:var(--att-accent)]', INK)}>{r.name}</span>
+                          <bdi className={cn('block text-[12px]', FIG, INK3)}>{r.code}</bdi>
+                        </span>
+                      </button>
+                    </td>
+                    <td>
+                      <span className={cn('block max-w-[14rem] truncate text-[13px]', INK)}>{r.jobTitle ?? '—'}</span>
+                      <span className={cn('block max-w-[14rem] truncate text-[12px]', INK3)}>{r.department ?? ''}</span>
+                    </td>
+                    <td className={cn('whitespace-nowrap text-[13px]', INK2)}>{p.dateShort ?? ''}</td>
+                    <td className="whitespace-nowrap">
+                      <span className={cn('text-[13px]', FIG, r.inAt === null ? INK3 : INK)}>
+                        {r.inAt === null ? '— — —' : <bdi>{clock(r.inAt)}</bdi>}
+                        {r.inAt !== null && (
+                          <>
+                            <span className={cn('mx-1.5', INK3)}>–</span>
+                            {r.outAt === null ? <span className={INK3}>—</span> : <bdi>{clock(r.outAt)}</bdi>}
+                          </>
+                        )}
+                      </span>
+                      {r.expected !== null && <span className={cn('block text-[11.5px]', INK3)}>{timeSpan(r.expected.start, r.expected.end)}</span>}
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <span className={cn('text-[13px]', FIG, r.worked === null ? INK3 : INK)}>{r.worked === null ? '—' : shortDuration(r.worked)}</span>
+                      {short !== null && (
+                        <span className="block text-[11.5px] text-[color:var(--att-warn)]">
+                          {t('shortfallCol')} <bdi className={FIG}>{shortDuration(short)}</bdi>
+                        </span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap">
+                      {r.overtimeDerived > 0 ? (
+                        <bdi
+                          className={cn('text-[13px]', FIG, r.overtimeApproved > 0 ? 'text-[color:var(--att-ok)]' : INK)}
+                          title={`${t('overtime')}: ${shortDuration(r.overtimeApproved)} / ${shortDuration(r.overtimeDerived)}`}
+                        >
+                          {shortDuration(r.overtimeDerived)}
+                        </bdi>
+                      ) : (
+                        <span className={INK3}>—</span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap">
+                      <StatusPill status={r.status} label={status(r.status)} />
+                      {(late !== null || early !== null || r.tags.length > 0) && (
+                        <span className="mt-1 flex flex-wrap gap-1 text-[11.5px]">
+                          {/* `+` arrived late, `−` left early. The titles are what make the pair
+                              readable side by side on a «تأخير وانصراف مبكر» row. */}
+                          {late !== null && (
+                            <span className="text-[color:var(--att-warn)]" title={t('lateCol')}>
+                              +<bdi className={FIG}>{shortDuration(late)}</bdi>
+                            </span>
+                          )}
+                          {early !== null && (
+                            <span className={EARLY_INK} title={t('earlyLeaveCol')}>
+                              −<bdi className={FIG}>{shortDuration(early)}</bdi>
+                            </span>
+                          )}
+                          {r.tags.map((tag) => (
+                            <span key={tag} className="text-[color:var(--att-accent)]">
+                              {tag}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </td>
+                    <td onClick={(e) => e.stopPropagation()}>{r.actions !== undefined && <RowMenu label={t('actions')}>{r.actions}</RowMenu>}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
-        <ul className="mt-4 border-t border-[var(--att-line)] lg:hidden">
-          {p.rows.map((r) => (
-            <li key={r.id} className="border-b border-[var(--att-line)] px-5 py-4 last:border-b-0">
-              <div className="flex items-start justify-between gap-3">
-                <Person row={r} onOpen={p.onOpenEmployee} />
-                <StatusText status={r.status} label={status(r.status)} />
-              </div>
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <InOut row={r} />
-                <div className="flex flex-wrap justify-end gap-1">
-                  {/* The owner's own wording, «متأخر 0:25» — the word and the amount, because on a
-                      phone there is no column heading to supply the word. */}
-                  {r.worked !== null && <Tag tone="accent">{`${t('worked')} ${shortDuration(r.worked)}`}</Tag>}
-                  {r.lateMinutes !== null && r.lateMinutes > 0 && (
-                    <Tag tone="warn">{`${status('late')} ${shortDuration(r.lateMinutes)}`}</Tag>
-                  )}
-                  {r.shortfallMinutes !== null && r.shortfallMinutes > 0 && (
-                    <Tag tone="warn">{`${t('shortfallCol')} ${shortDuration(r.shortfallMinutes)}`}</Tag>
-                  )}
-                  {r.tags.map((tag) => (
-                    <Tag key={tag} tone="accent">
-                      {tag}
-                    </Tag>
-                  ))}
-                </div>
-              </div>
-              <div className="mt-2">
-                <DayTimeline inAt={r.inAt} outAt={r.outAt} expected={r.expected} />
-              </div>
-              {r.actions !== undefined && <div className="mt-3 flex flex-wrap justify-end gap-2">{r.actions}</div>}
-            </li>
-          ))}
-        </ul>
-
         {p.rows.length === 0 && p.loading !== true && <p className={cn('px-6 py-16 text-center text-sm', INK3)}>{t('noRows')}</p>}
-        {p.footer !== undefined && <div className={cn('border-t border-[var(--att-line)] px-5 py-3 text-sm sm:px-6', INK2)}>{p.footer}</div>}
+        {p.footer !== undefined && <div className={cn('px-5 py-3 text-sm sm:px-6', INK2)}>{p.footer}</div>}
       </Sheet>
     </AttendanceCanvas>
   );
 };
 
-const Dash = (): JSX.Element => <span className="text-[color:var(--att-muted)]">—</span>;
+const SORTS: [SheetSortKey, 'arrived' | 'left' | 'worked' | 'lateCol' | 'shortfallCol' | 'employee' | 'codeCol' | 'status'][] = [
+  ['checkIn', 'arrived'],
+  ['checkOut', 'left'],
+  ['worked', 'worked'],
+  ['late', 'lateCol'],
+  ['shortfall', 'shortfallCol'],
+  ['name', 'employee'],
+  ['code', 'codeCol'],
+  ['status', 'status'],
+];
 
-const Person = ({ row, onOpen }: { row: SheetRow; onOpen: ((id: string) => void) | undefined }): JSX.Element => (
-  <button type="button" onClick={() => onOpen?.(row.id)} className="group/p flex min-w-0 items-center gap-3 text-start">
-    <PersonAvatar name={row.name} photoUrl={row.photoUrl} />
-    <span className="min-w-0">
-      <span className={cn('block truncate text-sm font-semibold group-hover/p:text-[color:var(--att-accent)]', INK)}>{row.name}</span>
-      <span className={cn('block text-[12px]', INK3)}>
-        <bdi className={FIG}>{row.code}</bdi>
-        {row.department ? ` · ${row.department}` : ''}
-      </span>
-    </span>
-  </button>
-);
+/** The rows in the order the table draws them (the server's order), for previous/next in the pop-up. */
+export const boardOrder = (rows: SheetRow[]): SheetRow[] => rows;
 
-const InOut = ({ row }: { row: SheetRow }): JSX.Element => (
-  <div className={FIG}>
-    <span className={cn('whitespace-nowrap text-[13.5px]', row.inAt === null ? 'text-[color:var(--att-muted)]' : cn('font-semibold', INK))}>
-      {clock(row.inAt)} <span className={INK3}>{arrow()}</span> {clock(row.outAt)}
-    </span>
-    {row.expected !== null && (
-      <div className={cn('text-[11px]', INK3)}>
-        {timeSpan(row.expected.start, row.expected.end)}
-      </div>
-    )}
-  </div>
-);
+/** A column heading; a sortable one is a button with ⇅, and the th carries aria-sort. */
+const Th = ({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  hint,
+  first = false,
+}: {
+  label: string;
+  sortKey?: SheetSortKey;
+  sort?: SheetSort | undefined;
+  onSort?: ((by: SheetSortKey, dir: 'asc' | 'desc') => void) | undefined;
+  hint?: (dir: 'asc' | 'desc') => string;
+  first?: boolean;
+}): JSX.Element => {
+  const active = sortKey !== undefined && sort?.by === sortKey;
+  const next: 'asc' | 'desc' = active && sort?.dir === 'asc' ? 'desc' : 'asc';
+  return (
+    <th
+      scope="col"
+      aria-sort={active ? (sort?.dir === 'asc' ? 'ascending' : 'descending') : undefined}
+      className={cn('whitespace-nowrap bg-[var(--att-sheet-2)] px-3 py-3 text-start text-[12.5px] font-medium', INK3, first && 'rounded-s-xl')}
+    >
+      {sortKey === undefined || onSort === undefined ? (
+        label
+      ) : (
+        <button
+          type="button"
+          onClick={() => onSort(sortKey, next)}
+          title={hint?.(next)}
+          className={cn('inline-flex items-center gap-1 transition-colors hover:text-[color:var(--att-ink)]', active && INK)}
+        >
+          {label}
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M5 6.5L8 3.5l3 3" className={active && sort?.dir === 'desc' ? 'opacity-30' : ''} />
+            <path d="M5 9.5l3 3 3-3" className={active && sort?.dir === 'asc' ? 'opacity-30' : ''} />
+          </svg>
+        </button>
+      )}
+    </th>
+  );
+};
 
 export { num };

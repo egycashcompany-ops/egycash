@@ -52,7 +52,8 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { CheckIcon, CornerDownIcon, HistoryIcon } from '../../../shared/ui/icons';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
 import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
-import { formatDate, formatMoney, formatMoneyParts } from '../../../shared/lib/format';
+import { formatMoney, formatMoneyParts } from '../../../shared/lib/format';
+import { latinDate } from '../lib/fleet-figures';
 import { errorMessage } from '../../../shared/lib/errors';
 import { cn } from '../../../shared/lib/cn';
 import {
@@ -484,7 +485,7 @@ export const AccidentsPage = (): JSX.Element => {
       rows: all.map((r) => [
         codeOf(r),
         t(`fleet.accidents.status.${r.status}`),
-        formatDate(r.occurredAt, locale),
+        latinDate(r.occurredAt, locale),
         r.culprit,
         r.statement,
         r.amountCollected,

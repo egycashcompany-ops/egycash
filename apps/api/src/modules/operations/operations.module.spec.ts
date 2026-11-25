@@ -3,7 +3,8 @@
 // 15 permissions (Round 10 added `operationsVault.cancelReceipt`), 5 pages, 13 route prefixes,
 // 12 collections (Round 20 added `/operations/shift-types` and `operations_shift_types`). B6 adds `/operations/areas` and
 // `operations_areas` — the legacy /data_edit city list — under the EXISTING catalog grants, and
-// the vault roll-up joins the EXISTING reports prefix, so no permission or page moves.
+// the vault roll-up joins the EXISTING reports prefix, so no permission or page moves. Round 29b
+// adds the 13th collection, `operations_go_live_runs` — the deploy's one-time loads' run rows.
 import { describe, expect, it } from 'vitest';
 import { platformSatisfies, validateManifest } from '../../platform/kernel/module-registry';
 import { operationsModule, operationsPages, operationsPermissions } from './operations.module';
@@ -68,6 +69,7 @@ describe('operations module manifest (B6)', () => {
       'operations_crew_requirements',
       'operations_currencies',
       'operations_days',
+      'operations_go_live_runs',
       'operations_shift_types',
       'operations_shipment_assignments',
       'operations_shipments',

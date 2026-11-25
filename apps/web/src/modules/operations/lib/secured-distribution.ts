@@ -24,15 +24,20 @@
 // The vault's screen reads the same answer and moves nothing: its vans' loads are the SAVED places,
 // and «تسليم» sends only the shipments the vault actually holds (`handoverRequest`).
 import {
+  addDaysYmd,
+  daysBetweenYmd,
   isYmd,
   type OperationsDayBoardPersonDto,
   type OperationsDayBoardVehicleCrewDto,
+  type OperationsSecuredDistributionHandoverDto,
+  type OperationsSecuredDistributionPackagesDto,
   type OperationsSecuredDistributionRowDto,
   type OperationsShipmentDto,
   type SecuredDistributionChange,
 } from '@ecms/contracts';
 import { record, startHistory, type UndoHistory } from './crew-undo';
 import { boardFigures } from './day-board';
+import { cairoStamp, ltrIsolate } from './shipment-log';
 
 /** The fields of a distribution row these rules read — the specs build rows with no more. */
 export type DistributionRowFacts = Pick<
@@ -57,13 +62,118 @@ export type DistributionVan = Pick<
 > & { securedType?: boolean };
 
 /**
- * The day the URL asks for (`?date=`), or null for the server's default — TODAY in Cairo. Null as
- * well for anything that is not a real calendar day, and for a day BEFORE `today`: the server
- * refuses a past day (422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST` — the boards' «no past day» rule: a
- * past day's vans have left), so a stale bookmark opens on today rather than on a refusal.
+ * Round 30 — «عاوز هنا يقدر يجيب اليوم اللى قبله ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل يعنى»:
+ * «توزيع المحصنات»'s day from the URL — ANY real calendar day, a past one too (it opens as that day's
+ * record, `isRecordDay`); null for the server's default, today in Cairo, and for anything that is
+ * not a real day.
+ *
+ * Round 33 — «انا عاوزك تفتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط زى ما عملنا فى شاشة
+ * توزيع المحصنات»: «تسليم المحصنات»'s day too. It had its own reader (`readDistributionDate`), which
+ * turned a day before today into today («a past day's vans have left»); a past day now opens there as
+ * its record as well, view only — and its «تسليم» stays today's, on the server too.
  */
-export const readDistributionDate = (raw: string | null, today: string): string | null =>
-  raw !== null && isYmd(raw) && raw >= today ? raw : null;
+export const readDistributionDay = (raw: string | null): string | null =>
+  raw !== null && isYmd(raw) ? raw : null;
+
+/**
+ * Round 30 — is the screen's day a RECORD: before today? Then it is read only — no drag, no «نقل
+ * إلى…», no «توزيع تلقائي», no «تراجع», no «حفظ», no proposal — and the server refuses its save (422
+ * `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`) whatever is sent. Judged against EVERY today given.
+ * Days are 'YYYY-MM-DD' (they order as text); an empty today is no day and judges nothing. R30
+ * critic: the screen asks `isRecordScreen`, which asks this one only before its read is in — once
+ * the read is in, the server's `past` decides, never the PC's clock against the read's `today`.
+ */
+export const isRecordDay = (day: string, ...todays: readonly string[]): boolean =>
+  todays.some((today) => today !== '' && day < today);
+
+/** What the screen knows of its read when it judges the day (`isRecordScreen`). */
+export interface RecordRead {
+  /** The read's `today` ('YYYY-MM-DD') — the SERVER's Cairo day when it answered. */
+  today: string;
+  /** The read's `past` — the server's word that the day is a record. */
+  past: boolean;
+  /** The Cairo day on THIS screen's clock when the read arrived ('YYYY-MM-DD'). */
+  readOn: string;
+}
+
+/**
+ * R30 critic — is the SCREEN a record? Once the read is in, the SERVER decides: `past`, and nothing
+ * the desk PC's clock says overrides a `past: false` — a clock a day (or a few minutes before
+ * midnight) ahead turned today's screen into a record and stopped the desk distributing. The one
+ * thing the screen adds is MIDNIGHT PASSING while it stays open: the days its own clock has seen go
+ * by since the read arrived (`readOn` to `liveToday`, both on that clock, so a clock set wrong
+ * moves both ends alike) move the server's today on by as many — a read of today turns into its
+ * record, a read of a day to come does not. Before the read is in, the URL's day against the live
+ * Cairo day (`isRecordDay`) — nothing is drawn to move yet.
+ */
+export const isRecordScreen = (
+  day: string,
+  liveToday: string,
+  read: RecordRead | null,
+): boolean => {
+  if (read === null) return isRecordDay(day, liveToday);
+  if (read.past) return true;
+  if (!isYmd(read.readOn) || !isYmd(liveToday) || !isYmd(read.today)) return false;
+  const passed = daysBetweenYmd(read.readOn, liveToday);
+  return passed > 0 && day < addDaysYmd(read.today, passed);
+};
+
+/**
+ * R30 critic — «يوم التسليم» changed to `value`: the `?date=` to set (null — none: the server's
+ * default, today), and whether the read must be ASKED AGAIN because the URL does not change. A
+ * screen opened with no `?date=` and left open past midnight is yesterday's record under the URL
+ * of "today": picking today there leaves the URL — and the read's key — as they are, so nothing
+ * would be read; it is read again instead (as «العودة إلى اليوم» does).
+ */
+export const distributionDayChange = (
+  current: string | null,
+  value: string,
+  liveToday: string,
+): { date: string | null; reread: boolean } => {
+  const date = value === '' || value === liveToday ? null : value;
+  return { date, reread: date === current };
+};
+
+/**
+ * R30 critic — the work on screen a RECORD no longer draws: the changes still in the draft when the
+ * day turned into one (the screen left open past midnight with moves not saved — the server refuses
+ * a past day's save, so they can never be saved). 0 on a day that can be distributed.
+ */
+export const unsavedOnRecord = (
+  isRecord: boolean,
+  rows: readonly DistributionRowFacts[],
+  draft: DistributionDraft,
+): number => (isRecord ? distributionChanges(rows, draft).length : 0);
+
+/** R30 critic — may «تراجع» take a step back: on a screen that may distribute (never a record), with one to take. */
+export const mayUndo = (canEdit: boolean, lastMove: unknown): boolean =>
+  canEdit && lastMove !== null && lastMove !== undefined;
+
+/** The fields of a key press the screen's Ctrl+Z reads — a `KeyboardEvent`'s own. */
+export type UndoKeyPress = Pick<
+  KeyboardEvent,
+  'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey' | 'code' | 'key' | 'target' | 'preventDefault'
+>;
+
+/**
+ * R30 critic — Ctrl+Z (⌘Z), as the page registers it on the document. Outside a text box the key
+ * is the screen's: it takes back one step when `allowed()` (`mayUndo`) says so, and is swallowed
+ * otherwise. In a text box, with Shift or Alt, or any other key: the browser's. On a RECORD
+ * `allowed()` is false — the key changes nothing, not even the history kept behind the record.
+ */
+export const distributionUndoKey =
+  (step: {
+    allowed: () => boolean;
+    undo: () => void;
+    inTextBox: (target: EventTarget | null) => boolean;
+  }) =>
+  (event: UndoKeyPress): void => {
+    if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return;
+    if (event.code !== 'KeyZ' && event.key.toLowerCase() !== 'z') return;
+    if (step.inTextBox(event.target)) return;
+    event.preventDefault();
+    if (step.allowed()) step.undo();
+  };
 
 /** Where a shipment is: a van of the day and the captain it goes with, or both null — unplaced. */
 export interface Placement {
@@ -454,6 +564,98 @@ export const handoverRequest = <
   return ids.length === 0 ? null : { crewAssignmentId, shipmentIds: ids };
 };
 
+// ── Round 33 — «تسليم المحصنات» on a past day: its record ─────────────────────────────────────
+//
+// The owner: «انا عاوزك تفتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط زى ما عملنا فى شاشة
+// توزيع المحصنات». A past day opens as that day's RECORD (`isRecordScreen`, the distribution's own
+// rule): each van with what rode it, and what became of each محصنة on it as the vault reads it back —
+// handed over (when, and by whom: `recordHandovers`), kept in the vault, or never received. No
+// «تسليم», no confirmation; «طباعة» prints the record and says so.
+
+/** One shipment the vault handed over on a record: when (ISO instant) and by whom (null: unnamed). */
+export interface Handover {
+  at: string;
+  byName: string | null;
+}
+
+/**
+ * The record's handovers (`recordHandovers` on the read of a past day), by shipment id — null when
+ * the read carries none: today and every later day (nothing listed there has left), or a reader
+ * without the vault's grant.
+ */
+export const recordHandovers = (
+  list: readonly OperationsSecuredDistributionHandoverDto[] | null | undefined,
+): ReadonlyMap<string, Handover> | null =>
+  list === null || list === undefined
+    ? null
+    : new Map(
+        list.map(({ shipmentId, handedOverAt, handedOverByName }) => [
+          shipmentId,
+          { at: handedOverAt, byName: handedOverByName },
+        ]),
+      );
+
+/**
+ * What became of a محصنة on a record's van, for the vault — by its status NOW:
+ *   · `handedOver` — it left the vault (out for delivery, or delivered since);
+ *   · `keptInVault` — the vault still holds it: it was not handed over that day;
+ *   · `notReceived` — the vault never took it in, so it could not leave with the van.
+ */
+export type RecordHandoverState = 'handedOver' | 'keptInVault' | 'notReceived';
+
+export const recordHandoverState = (
+  row: Pick<DistributionRowFacts, 'status'>,
+): RecordHandoverState =>
+  row.status === 'dispatched' || row.status === 'completed'
+    ? 'handedOver'
+    : row.status === 'inVault'
+      ? 'keptInVault'
+      : 'notReceived';
+
+/** A record's van as the vault reads it back (`vanHandoverRecord`). */
+export interface VanHandoverRecord {
+  /** How many of its load left the vault. */
+  handedOver: number;
+  /** How many did not — kept in the vault, or never received. */
+  notHandedOver: number;
+  /** The LAST release among them (ISO instant), or null when the read names none. */
+  at: string | null;
+  /** Who pressed «تسليم» for them, each once, in the order they did; the unnamed left out. */
+  names: string[];
+}
+
+export const vanHandoverRecord = (
+  load: readonly Pick<DistributionRowFacts, 'id' | 'status'>[],
+  handovers: ReadonlyMap<string, Handover> | null,
+): VanHandoverRecord => {
+  const out = load.filter((row) => recordHandoverState(row) === 'handedOver');
+  const known = out
+    .map((row) => handovers?.get(row.id))
+    .filter((handover): handover is Handover => handover !== undefined)
+    .sort((a, b) => a.at.localeCompare(b.at));
+  const names: string[] = [];
+  for (const { byName } of known) {
+    if (byName !== null && byName !== '' && !names.includes(byName)) names.push(byName);
+  }
+  return {
+    handedOver: out.length,
+    notHandedOver: load.length - out.length,
+    at: known.at(-1)?.at ?? null,
+    names,
+  };
+};
+
+/**
+ * When a record's محصنة left the vault, as its van and its card say it — the Cairo clock, whatever
+ * the reader's browser zone («10:15»), with the Cairo day before it when that is not the record's
+ * own day («2026-11-19 10:15»). Latin figures in a left-to-right isolate, so the Arabic sentence
+ * around them never reorders them.
+ */
+export const handoverWhen = (at: string, day: string): string => {
+  const { day: on, time } = cairoStamp(at);
+  return ltrIsolate(time === '' ? on : on === day ? time : `${on} ${time}`);
+};
+
 /** A person's name as the cards print it — «…» where the directory could not name them. */
 export const personName = (person: Pick<OperationsDayBoardPersonDto, 'fullNameAr'>): string =>
   person.fullNameAr ?? '…';
@@ -572,6 +774,25 @@ export const loadPackages = (
  * the good read's counts: 'ready'.
  */
 export type PackagingRead = 'ready' | 'pending' | 'failed' | 'forbidden';
+
+/**
+ * Round 30 — a RECORD's packages (`recordPackages` on the read of a past day): shipment id → its
+ * counts at the vault's receipt, held now or SINCE HANDED OVER — the vault's holdings no longer carry
+ * what left on the day's vans, so a record read from them would call a van that went out «0». Null
+ * when the read carries none (today and every later day, or a reader without the vault's grant):
+ * the screen then reads the vault's holdings, as before.
+ */
+export const recordPackaging = (
+  counted: readonly OperationsSecuredDistributionPackagesDto[] | null | undefined,
+): ReadonlyMap<string, Packaging> | null =>
+  counted === null || counted === undefined
+    ? null
+    : new Map(
+        counted.map(({ shipmentId, bags, cartons, boxes }) => [
+          shipmentId,
+          { bags, cartons, boxes },
+        ]),
+      );
 
 export const packagingRead = (
   readable: boolean,

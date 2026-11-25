@@ -1,11 +1,11 @@
 // «لوحة تحكم الحركة» — ONE builder for the link behind every figure of the dashboard's tabs (plan R-28,
 // unified.md §6.2): «نظرة عامة» · «الحركة اليوم» · «توزيع السيارات» · «الصيانة والورش» ·
 // «العدادات والكيلومترات» · «الحوادث ومطالبات التأمين» · «المخالفات المرورية والتسويات» ·
-// «الوقود والمصروفات» · «العهدة» · «التراخيص والتجديدات», and the two old tabs («أرقام الفترة» ·
-// «ملخصات»). A figure on the dashboard opens the screen that shows the same number: this file knows
-// each screen's OWN parameter names and fills them from the server's echo only — `today`, the `range`
-// of a period, the `vehicleScope` filters, the active `branchId` and the reader's `scopeBranches` —
-// never from the browser clock and never from a list the browser assembled.
+// «الوقود والمصروفات» · «العهدة» · «التراخيص والتجديدات», and the one old tab kept («ملخصات»). A
+// figure on the dashboard opens the screen that shows the same number: this file knows each screen's
+// OWN parameter names and fills them from the server's echo only — `today`, the `range` of a period,
+// the `vehicleScope` filters, the active `branchId` and the reader's `scopeBranches` — never from the
+// browser clock and never from a list the browser assembled.
 //
 // THREE RULES THE LINK CENSUS HOLDS IT TO:
 //   · NO BARE LIST LINK. A list screen opened without a query restores the reader's remembered
@@ -632,7 +632,10 @@ export const periodLinks = ({ range, vehicleScope }: PeriodEcho) => {
         )
       : over('receipts', metric, { kind, source: 'custody' });
   return {
-    /** T6.1 and «العدادات والكيلومترات»: the odometer register over the range and the set. */
+    /**
+     * «العدادات والكيلومترات» and the overview's month: the odometer register over the range and the
+     * set.
+     */
     km: (metric = 'km.total'): DashLink | null => over('odometer', metric),
     /**
      * T8.x: one car's readings over the period, under the period's types, operations and branches
@@ -679,9 +682,6 @@ export const periodLinks = ({ range, vehicleScope }: PeriodEcho) => {
       to: `/fleet/vehicles/${encodeURIComponent(vehicleId)}`,
       metric,
     }),
-    /** T6.3 / T6.4 — «أرقام الفترة»: the visits that ENTERED in the range (check-in day). */
-    visits: (metric = 'visits.count', extra: { state?: 'open' | 'closed' } = {}): DashLink | null =>
-      over('maintenance', metric, extra),
     /**
      * The visits that LEFT the workshop in the range — the screen's check-out bounds (`outFrom` /
      * `outTo`), never `from` / `to` (the check-in day): «زيارات الصيانة» of the overview's month and
@@ -702,18 +702,19 @@ export const periodLinks = ({ range, vehicleScope }: PeriodEcho) => {
         { outFrom: range.from, outTo: range.to, ...set, ...extra, sort: LATEST_OUT_FIRST },
         metric,
       ),
-    /** T6.5 / T6.6 / T10.2. */
+    /** «الحوادث ومطالبات التأمين» and the overview's month (T10.2); `open` = the still-open files. */
     accidents: (metric = 'accidents.count', status?: 'open'): DashLink | null =>
       over('accidents', metric, { status }),
     accidentDay: (code: string, day: string, metric = 'accidentList.row'): DashLink =>
       at('accidents', { vehicleCodes: [code], from: day, to: day }, metric),
-    /** T6.7 / T6.8 (`custody`: the custody part for a reader without the custody screen, D20). */
+    /**
+     * «مصروف التشغيل» of «الوقود والمصروفات» and the overview's month: the receipts of the range;
+     * `source` narrows them to the card's or the custody's.
+     */
     opex: (metric = 'opex.total', source?: 'card' | 'custody'): DashLink | null =>
       over('receipts', metric, { source }),
     /** «مصروف الوقود»: the fuel receipts (card + custody) of the range. */
     opexFuel: (): DashLink | null => over('receipts', 'opex.fuel', { kind: 'fuel' }),
-    /** D20: the custody part — the spend screen when nothing but codes narrows, else the receipts. */
-    opexCustody: (): DashLink | null => custodySpend('opex.custody'),
     /**
      * «العهدة»'s period figures (D20): «مصروفات العهدة» (a kind of its own for a bar) on the spend
      * screen when nothing but codes narrows — it reads no type, operation or branch — else the
@@ -725,7 +726,7 @@ export const periodLinks = ({ range, vehicleScope }: PeriodEcho) => {
      * figure counts it (a memo has no branch, type or operation).
      */
     licenceSpend: (metric: string): DashLink => at('license-expenses', { ...dates }, metric),
-    /** T6.9 (+ «بانتظار الفاتورة»: `state=pending`). */
+    /** «فواتير التوكيل» of «الوقود والمصروفات» (+ «بانتظار الفاتورة»: `state=pending`). */
     dealership: (metric = 'dealership.amount', state?: 'pending'): DashLink | null =>
       over('dealership', metric, { state }),
     /** «مصروف التشغيل حسب النوع»: the receipts of one kind (and, for fuel, one source). */

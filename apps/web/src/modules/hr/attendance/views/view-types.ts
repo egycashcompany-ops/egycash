@@ -31,7 +31,13 @@ export interface SheetRow {
   name: string;
   code: string;
   photoUrl?: string | null;
+  /** The profile photo's file, so the page can draw the face (`avatar`). */
+  photoFileId?: string | null;
+  /** The face, drawn by the page (it fetches the photo); initials when absent. */
+  avatar?: React.ReactNode;
   department?: string | null;
+  jobTitle?: string | null;
+  branch?: string | null;
   status: ViewStatus;
   expected: TimeSpan | null;
   inAt: number | null;
@@ -44,6 +50,8 @@ export interface SheetRow {
    */
   worked: number | null;
   lateMinutes: number | null;
+  /** «انصراف مبكر» — the engine's figure, shown under the status pill beside the late minutes. */
+  earlyLeaveMinutes: number | null;
   /** How much of the required day is missing — «النقص». Different from `lateMinutes`. */
   shortfallMinutes: number | null;
   /** Approved / derived overtime in minutes; both 0 hides the cell. */
@@ -141,11 +149,36 @@ export interface EmployeeDay {
   /** Worked minutes; null when it cannot be counted (no check-out). */
   worked: number | null;
   lateMinutes: number | null;
+  /**
+   * «انصراف مبكر» — the expected end minus the departure, when the day fell short. The ENGINE
+   * decides it (`derive-day.ts`): under the flexible-hours rule leaving before the hour costs
+   * nothing once the hours are complete, so this is 0 on a day that is only `present`. The views
+   * draw it only on a day whose status already says `earlyLeave` or `lateAndEarly`, and never
+   * compute it themselves.
+   */
+  earlyLeave: number | null;
   /** The day's missing time, or null when the day cannot be judged. */
   shortfall: number | null;
   tags: string[];
   /** Optional per-day action (e.g. «اتخاذ قرار»). */
   action?: React.ReactNode;
+  /** Every scan of the day, in order — the scan log. Empty when there were none. */
+  scans?: ScanEntry[];
+  /** Scans beyond the counted arrival and departure; the «N repeats» badge shows only when > 0. */
+  repeats?: number;
+}
+
+/** One scan in the employee's scan log. */
+export interface ScanEntry {
+  /** Cairo wall clock to the second, «08:59:41». */
+  time: string;
+  /** Days after the work date the scan fell on (a night or 24-hour shift's check-out). */
+  dayOffset: number;
+  direction: 'in' | 'out' | 'unknown';
+  role: 'arrival' | 'departure' | 'repeat';
+  source: 'device' | 'manual' | 'regularization' | 'web';
+  device: string | null;
+  branch: string | null;
 }
 
 /**

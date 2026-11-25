@@ -151,5 +151,8 @@ export const toggleZoom = (
 /** Is anything magnified? The tolerance keeps float dust from calling a fitted image zoomed. */
 export const isZoomed = (state: ZoomState): boolean => state.scale > MIN_SCALE + 1e-6;
 
-/** What the control prints: «١٠٠٪», as a plain number for the caller to localize. */
+/**
+ * What the control prints: «100%» in Fleet (Latin in both languages), as a plain number for the
+ * caller to format — the viewer's default path (Operations) still shows the reader's own digits.
+ */
 export const zoomPercent = (state: ZoomState): number => Math.round(state.scale * 100);

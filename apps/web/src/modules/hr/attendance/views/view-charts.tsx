@@ -82,13 +82,13 @@ export const ArrivalRiver = ({
               const late = dayStart !== null && q >= dayStart + grace;
               const isPeak = busiest !== null && q === busiest.slot;
               return (
-                <div key={q} className="group absolute bottom-0 flex h-full items-end px-[2px]" style={{ insetInlineStart: x(q), width: `${(15 / (hi - lo)) * 100}%` }}>
+                <div key={q} className="group/col absolute bottom-0 flex h-full items-end px-[2px]" style={{ insetInlineStart: x(q), width: `${(15 / (hi - lo)) * 100}%` }}>
                   {n > 0 && (
                     <>
                       <div
                         className={cn(
                           'att-rise w-full rounded-t-[4px] transition-colors',
-                          isPeak ? 'bg-[var(--att-brand-strong)]' : late ? 'bg-[var(--att-warn)] opacity-80 group-hover:opacity-100' : 'bg-[var(--att-brand)] group-hover:bg-[var(--att-brand-strong)]',
+                          isPeak ? 'bg-[var(--att-brand-strong)]' : late ? 'bg-[var(--att-warn)] opacity-80 group-hover/col:opacity-100' : 'bg-[var(--att-brand)] group-hover/col:bg-[var(--att-brand-strong)]',
                         )}
                         style={{ height: `${(n / top) * 100}%` }}
                       />
@@ -423,12 +423,12 @@ export const ArrivalTrend = ({
           {/* Hover targets: one column per day, a dot and a bubble on hover. */}
           <div className="absolute inset-0 flex">
             {days.map((d) => (
-              <div key={d.date} className="group relative flex-1">
+              <div key={d.date} className="group/col relative flex-1">
                 {d.inAt !== null && (
                   <>
                     <span
                       className={cn(
-                        'absolute start-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full opacity-0 ring-2 ring-[var(--att-sheet)] transition-opacity group-hover:opacity-100 ltr:-translate-x-1/2 rtl:translate-x-1/2',
+                        'absolute start-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full opacity-0 ring-2 ring-[var(--att-sheet)] transition-opacity group-hover/col:opacity-100 ltr:-translate-x-1/2 rtl:translate-x-1/2',
                         dayStart !== null && d.inAt > dayStart + grace
                           ? 'bg-[var(--att-warn)]'
                           : 'bg-[var(--att-brand)]',
@@ -456,7 +456,7 @@ const Bubble = ({ children, top, hover = false }: { children: ReactNode; top: st
     className={cn(
       'pointer-events-none absolute start-1/2 z-20 -translate-y-[calc(100%+10px)] whitespace-nowrap rounded-lg bg-[var(--att-brand-strong)] px-2.5 py-1 text-[12px] font-semibold text-white shadow-lg ltr:-translate-x-1/2 rtl:translate-x-1/2 dark:text-slate-900',
       "after:absolute after:start-1/2 after:top-full after:border-[5px] after:border-transparent after:border-t-[color:var(--att-brand-strong)] after:content-[''] ltr:after:-translate-x-1/2 rtl:after:translate-x-1/2",
-      hover && 'hidden group-hover:block',
+      hover && 'hidden group-hover/col:block',
     )}
     style={{ top }}
   >
@@ -522,7 +522,7 @@ export const HoursBars = ({
               const old = d.date.slice(0, 7) !== lastMonth;
               const isLatest = i === latest;
               return (
-                <div key={d.date} className="group relative flex h-full flex-1 items-end">
+                <div key={d.date} className="group/col relative flex h-full flex-1 items-end">
                   {d.worked !== null && (
                     <>
                       <div
@@ -531,8 +531,8 @@ export const HoursBars = ({
                           isLatest
                             ? 'bg-[var(--att-brand-strong)]'
                             : old
-                              ? 'border border-b-0 border-[var(--att-brand-edge)] bg-[var(--att-brand-soft)] group-hover:bg-[var(--att-brand-edge)]'
-                              : 'bg-[var(--att-brand)] group-hover:bg-[var(--att-brand-strong)]',
+                              ? 'border border-b-0 border-[var(--att-brand-edge)] bg-[var(--att-brand-soft)] group-hover/col:bg-[var(--att-brand-edge)]'
+                              : 'bg-[var(--att-brand)] group-hover/col:bg-[var(--att-brand-strong)]',
                         )}
                         style={{ height: `${Math.max(2, (d.worked / top) * 100)}%` }}
                       />

@@ -106,13 +106,9 @@ const periodSections = (
     ),
   ),
 
-  // T6.3/T6.4 — «أرقام الفترة» alone: the visits that CHECKED IN in the period (`from`/`to`) and
-  // their state now, over the maintenance list's own filter.
-  visits: section('visits', 'company+set', () => fleetMaintenanceService.visitStates(dated(p))),
-
   // «الصيانة والورش» (every period figure) and the overview's «زيارات الصيانة» (D6) — the visits that
   // LEFT the workshop in the period, by the maintenance list's own filter over `outFrom`/`outTo`
-  // (the EXIT day) and never `from`/`to` (the check-in day `visits` keeps for «أرقام الفترة»).
+  // (the EXIT day), never `from`/`to` (the check-in day, which no tab counts by).
   exits: section('exits', 'company+set', () =>
     fleetMaintenanceService.exitBreakdown({
       outFrom: ymdToUtcDate(p.range.from),
@@ -133,7 +129,7 @@ const periodSections = (
     // «مبالغ ملفات حوادث الفترة» — the period's files' sums (open AND closed, as they are now),
     // the register's «الإحصائيات» over the same filter: `all` itself, no new query.
     const { count, ...totals } = all;
-    return { count, open: open.count, openRemaining: open.remaining, undated, totals };
+    return { count, open: open.count, undated, totals };
   }),
 
   // T10.1 — the accidents screen's own list, newest accident first, then «+M».

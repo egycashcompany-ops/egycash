@@ -153,8 +153,13 @@ compute due-ness with the same utility.
 `hr_leave_types` (§2) · `hr_leave_requests` — employeeId + denormalized employeeCode/searchName/
 branchId/departmentId/sectionId (scoping) + `employeeUserId` (nullable — the own-scope owner
 field, C1-R), typeId, startDate, endDate, halfDayStart/End, frozen `days`, reason,
-`attachments: fileId[]`, status, `approvals[]`, `actualReturnDate`, `statusDriveOutcome`,
-`version`, createdBy; indexes `(employeeId, status, startDate)`, `(status, startDate)`,
+`attachments: fileId[]`, status, `approvals[]` (the manager and HR path's decisions),
+`approvalSteps[]` (the approvals engine's trail, on a request a configured chain runs),
+`approvalWorkflowId` and `approvalChainShape` (that request's pin: the chain row it was submitted
+on and its rungs, written at submission and never rewritten; null and empty otherwise, and missing
+on a request submitted before the pin shipped, which reads its chain live;
+[ADR-041](../03-decisions/ADR-041-money-approvals-on-the-platform-engine.md) decision 4),
+`actualReturnDate`, `statusDriveOutcome`, `version`, createdBy; indexes `(employeeId, status, startDate)`, `(status, startDate)`,
 `(branchId, status, startDate)`, `(employeeUserId, startDate)` · `hr_leave_ledger` (§4) ·
 `hr_leave_balances` (§4) · `hr_holidays` (§5).
 

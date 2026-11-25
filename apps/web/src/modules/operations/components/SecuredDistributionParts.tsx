@@ -52,6 +52,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  operationsDirectionNamesSomething,
   type Locale,
   type OperationsDayBoardPersonDto,
   type OperationsDayBoardVehicleCrewDto,
@@ -86,6 +87,7 @@ import {
   PACKAGE_KINDS,
   vanCrewGroups,
   vanHoverAllowed,
+  vanRestArms,
   vanTapAllowed,
   type CountKind,
 } from '../lib/van-card';
@@ -290,6 +292,57 @@ export const TopRow = ({
 export const TOP_FIGURES = 'flex min-w-0 flex-wrap items-center justify-center gap-1.5';
 
 /**
+ * Round 30 — «عاوز هنا يقدر يجيب اليوم اللى قبله ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل يعنى»:
+ * a PAST day's notice, under the top row in the hint's place — calm (the sky of the day's own box,
+ * the clock turned back), never an alarm: the day is a record, view only, and it says what it shows.
+ * `role="status"` so a screen reader hears it once the day opens.
+ */
+export const RecordNotice = ({
+  title,
+  body,
+  unsaved = null,
+  ...rest
+}: {
+  title: string;
+  body: string;
+  /**
+   * R30 critic — the screen was left open past midnight with work not saved: what became of it,
+   * said on the notice while the record stands (the page also says it once, as it happens).
+   */
+  unsaved?: string | null;
+} & Record<`data-${string}`, string>): JSX.Element => (
+  <div
+    {...rest}
+    role="status"
+    className="flex min-w-0 items-start gap-2.5 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 dark:border-sky-400/30 dark:bg-sky-400/[0.08]"
+  >
+    <span
+      aria-hidden
+      className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 ring-1 ring-inset ring-sky-200 dark:bg-sky-400/15 dark:text-sky-200 dark:ring-sky-300/30"
+    >
+      <BoardIcon d={[...SHIPMENT_PATH.history]} className="h-3.5 w-3.5" />
+    </span>
+    <div className="min-w-0">
+      <p
+        data-record-title="true"
+        className="text-[13px] font-black leading-6 text-sky-900 dark:text-sky-100"
+      >
+        {title}
+      </p>
+      <p className="text-xs font-bold leading-5 text-slate-600 dark:text-slate-300">{body}</p>
+      {unsaved !== null && (
+        <p
+          data-record-unsaved="true"
+          className="mt-0.5 text-xs font-black leading-5 text-amber-800 dark:text-amber-200"
+        >
+          {unsaved}
+        </p>
+      )}
+    </div>
+  </div>
+);
+
+/**
  * Under the top row (Round 26b): what the screen has to say about the day — a slim line, no band of
  * its own — and, at its end, the marks of the work not saved yet.
  */
@@ -306,8 +359,9 @@ export const DayNote = ({
 
 /**
  * The day — «يوم التسليم» — as the boards' date box draws a day (`BoardDateBox`: the calendar at its
- * start, its name written beside the date), with a floor: no day before today (`min`), the boards'
- * «no past day» rule.
+ * start, its name written beside the date), with a floor where one is given (`min`). Round 30 —
+ * «توزيع المحصنات» gives none: a past day opens as its record, read only (`RecordNotice`). Round 33 —
+ * nor does «تسليم المحصنات» any more («افتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط»).
  */
 export const DayBox = ({
   label,
@@ -317,7 +371,7 @@ export const DayBox = ({
 }: {
   label: string;
   value: string;
-  min: string;
+  min?: string;
   onChange: (value: string) => void;
 }): JSX.Element => (
   <FilterWithIcon
@@ -916,6 +970,10 @@ const PersonName = ({
           className,
         )}
         {...hover.triggerProps}
+        // R31 review — the name's own direction (an Arabic name, even on the English screen): cut
+        // beside the mark, it loses its END under the «…», never its start — on an LTR screen the
+        // box's direction cut «احمد سيد بركة محمد» to «…يد بركة محمد».
+        dir="auto"
         onPointerDown={(event) => {
           pointer.current = event.pointerType;
         }}
@@ -987,11 +1045,13 @@ const PersonCardBody = ({
 /**
  * ONE COUNT, as a TILE (Round 26b — «عاوز يبقى فى فرق فى الالوان بين الصندوق و الحقائب و الكراتين»):
  * a tile of its kind's own hue (Round 27 — OUTLINED, the owner's colours) — its icon and its figure
- * on the first line, its name under them — the same on the van card and on the van's card
+ * on the first line, its name under them; on the van card itself, since Round 31, all three on ONE
+ * line (`CountTileLayout`) — the same colours on the van card and on the van's card
  * (`COUNT_LOOK`): محصنات cyan, كراتين amber, حقائب blue, صناديق purple. Round 27d — calmer: a soft
  * tile, the hue in its icon and figure, its word slate; a 0 neutral grey, only its icon a faint hue;
  * so do «…» (still reading) and «—» (not to be read). `said`: what a screen reader hears instead of
- * the two lines, and the tile's tooltip — the محصنات' own Arabic form («محصنتان», «3 محصنات»).
+ * the figure and the word, and the tile's tooltip — the محصنات' own Arabic form («محصنتان»,
+ * «3 محصنات»).
  */
 /**
  * A package kind's word for its count (R26b critic): «1 كرتونة · 2 كرتونتان · 3 كراتين · 11 كرتونة»,
@@ -1015,21 +1075,73 @@ export const packageWord = (
 export const tileFigureSize = (figure: string): string =>
   figure.length <= 3 ? 'text-[15px]' : figure.length <= 5 ? 'text-[13px]' : 'text-[12px]';
 
+/**
+ * How a tile lays its three parts (Round 31 — «عاوز العدد والكلام على صف واحد مش صفين يعنى المحصنات
+ * والعدد والايقون فى صف واحد»):
+ *   · `line` — the van card's: ONE line — its icon, its figure, then its word beside them («1 محصنة»,
+ *     «4 حقائب»), so the tile is one line high. The icon and the figure sit close, as one mark; the
+ *     word a space after; the tile's own side room small (the line is centred — it only matters
+ *     when the line is long). A three-digit figure a step smaller (`lineFigureSize`). R31 review —
+ *     the line is ONE line high always, whatever the width and the fonts: on a narrow tile (the
+ *     three-a-row cards, 82–90px: 1024, 1340–1440, 1800) a figure of two characters or more takes
+ *     one more step down and the word sits a pixel closer (`lineFigureTight`), so «10 Secured»,
+ *     «12 Cartons», «103 Secured» at 1440 and «103 محصنات» keep their word; and where even that
+ *     line cannot hold the word (three digits in English on the narrowest card, four digits), the
+ *     word steps out of view, never onto a second line — the tile keeps its icon and figure, and
+ *     says the whole count on hover (`title`) and to a screen reader. Never cut, never spilling,
+ *     never an ellipsis in a count's name.
+ *   · `stack` — the van's hover card's: its icon and figure on one line, its word under them (Round
+ *     26b) — four tiles side by side on that 18rem card leave each too narrow for one line.
+ */
+export type CountTileLayout = 'line' | 'stack';
+
+/**
+ * A one-line tile's figure size (Round 31): one or two characters at 15px as ever; three («103»)
+ * a step smaller at 13px, so the word still has the line at 1440; «1,251» 12px; longer 11px.
+ */
+export const lineFigureSize = (figure: string): string =>
+  figure.length <= 2
+    ? 'text-[15px]'
+    : figure.length === 3
+      ? 'text-[13px]'
+      : figure.length <= 5
+        ? 'text-[12px]'
+        : 'text-[11px]';
+
+/**
+ * R31 review — the same figure on a NARROW one-line tile (its room under 5.5rem: the three-a-row
+ * cards' 82–90px tiles), one step further down so the word keeps the line: two characters 13px,
+ * three 12px, four or five 11px, longer 10px; one character as ever. A container query on the tile
+ * itself (`[container-type:inline-size]`), so it follows the card's width, not the screen's.
+ */
+export const lineFigureTight = (figure: string): string =>
+  figure.length <= 1
+    ? ''
+    : figure.length === 2
+      ? '[@container(max-width:5.5rem)]:text-[13px]'
+      : figure.length === 3
+        ? '[@container(max-width:5.5rem)]:text-[12px]'
+        : figure.length <= 5
+          ? '[@container(max-width:5.5rem)]:text-[11px]'
+          : '[@container(max-width:5.5rem)]:text-[10px]';
+
 export const CountTile = ({
   kind,
   value,
   word,
   said,
+  layout = 'stack',
   className,
   ...rest
 }: {
   kind: CountKind;
   /** The count — or «…» / «—» when there is none to write yet. */
   value: number | '…' | '—';
-  /** The words under the figure — the kind's name. */
+  /** The words beside (or under) the figure — the kind's name. */
   word: string;
   /** The whole count in words, for a screen reader and on hover. */
   said?: string;
+  layout?: CountTileLayout;
   className?: string;
 } & Record<`data-${string}`, string>): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -1037,6 +1149,59 @@ export const CountTile = ({
   const look = COUNT_LOOK[kind];
   const hidden = said === undefined ? {} : { 'aria-hidden': true as const };
   const figure = typeof value === 'number' ? countText(value, locale) : value;
+  if (layout === 'line') {
+    return (
+      <span
+        {...rest}
+        data-count-kind={kind}
+        data-count-zero={some ? undefined : 'true'}
+        data-count-layout="line"
+        // R31 review — the whole count on hover: the محصنات' own phrase, a package's «12 كرتونة» —
+        // where a narrow tile cannot show the word, this still says it.
+        {...(said !== undefined
+          ? { title: said }
+          : typeof value === 'number'
+            ? { title: `${figure} ${word}` }
+            : {})}
+        className={cn(
+          'flex min-w-0 items-center justify-center rounded-lg px-0.5 py-1.5 ring-1 ring-inset [container-type:inline-size]',
+          some ? look.chip : look.zero,
+          className,
+        )}
+      >
+        {/* ONE line: the icon and the figure as one mark, then the word — the same colours, sizes
+            and order as the stacked tile. R31 review — one line HIGH, always (`h-5`): where the
+            three cannot share it, the word alone wraps onto a second line that is out of view
+            (`overflow-hidden`), never a two-line tile; a narrow tile first tightens the line
+            (`lineFigureTight`) so that only the extreme counts ever need it. */}
+        <span
+          {...hidden}
+          className="flex h-5 min-w-0 max-w-full flex-wrap items-center justify-center gap-x-[3px] overflow-hidden [@container(max-width:5.5rem)]:gap-x-0.5"
+        >
+          <span className="flex shrink-0 items-center gap-x-0.5">
+            <BoardIcon
+              d={[...look.icon]}
+              className={cn('h-3.5 w-3.5 shrink-0', some ? look.mark : look.zeroMark)}
+            />
+            <span
+              dir="ltr"
+              className={cn(
+                NUM,
+                'font-black leading-5',
+                lineFigureSize(figure),
+                lineFigureTight(figure),
+                some ? look.figure : look.zeroFigure,
+              )}
+            >
+              {figure}
+            </span>
+          </span>
+          <span className="max-w-full truncate text-[10.5px] font-bold leading-4">{word}</span>
+        </span>
+        {said !== undefined && <span className="sr-only">{said}</span>}
+      </span>
+    );
+  }
   return (
     <span
       {...rest}
@@ -1087,9 +1252,13 @@ export const CountTile = ({
  */
 export const ShipmentsCount = ({
   count,
+  layout = 'stack',
   className,
   ...rest
-}: { count: number; className?: string } & Record<`data-${string}`, string>): JSX.Element => {
+}: { count: number; layout?: CountTileLayout; className?: string } & Record<
+  `data-${string}`,
+  string
+>): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   return (
@@ -1097,6 +1266,7 @@ export const ShipmentsCount = ({
       {...rest}
       kind="shipments"
       value={count}
+      layout={layout}
       word={t(pluralKey('operations.distribution.loadWord', locale, count))}
       said={t(pluralKey('operations.distribution.loadCount', locale, count), {
         count: countText(count, locale),
@@ -1166,10 +1336,13 @@ export const CountChip = ({
 export const PackageCounts = ({
   packages,
   of = 'van',
+  layout = of === 'van' ? 'line' : 'stack',
   className,
 }: {
   packages: Packaging | null | 'pending' | 'failed';
   of?: 'van' | 'card';
+  /** Round 31 — one line on the van card, stacked on the van's hover card (`CountTileLayout`). */
+  layout?: CountTileLayout;
   className?: string;
 }): JSX.Element => {
   const t = useT();
@@ -1203,6 +1376,7 @@ export const PackageCounts = ({
           {...(of === 'van' ? { 'data-van-package': kind } : { 'data-van-card-count-of': kind })}
           value={counted !== null ? counted[kind] : packages === 'pending' ? '…' : '—'}
           word={packageWord(t, locale, kind, counted === null ? null : counted[kind])}
+          layout={layout}
         />
       ))}
     </div>
@@ -1225,29 +1399,54 @@ export const VanCounts = ({
   of: 'van' | 'card';
 }): JSX.Element => (
   <div data-van-counts={of} className="grid grid-cols-4 gap-1.5">
+    {/* Round 31 — four to a row on the 18rem card: each stays stacked (`CountTileLayout`). */}
     <ShipmentsCount
       count={count}
+      layout="stack"
       {...(of === 'van'
         ? { 'data-van-count': String(count) }
         : { 'data-van-card-count-of': 'shipments' })}
     />
-    <PackageCounts packages={packages} of={of} className="col-span-3" />
+    <PackageCounts packages={packages} of={of} layout="stack" className="col-span-3" />
   </div>
 );
 
 /**
+ * Round 33 C critic — «تسليم المحصنات»'s head ends with the «طباعة» icon (`VanCard`'s `headAction`):
+ * 24px and its 6px gap. On a narrow card — the grid's 17.5–19rem, a 1366 or 1440 laptop, 1024 —
+ * that room came out of the direction alone, and a crew without a van (the widest pill, «بدون سيارة
+ * (١)», «No vehicle (1)») kept «ح…» of «حلوان», or only its arrow. So a head that carries an act
+ * measures its line's room (`container` — code · time · direction, the act's slot left out) and
+ * makes the icon's room:
+ *   · `glyph` — at 18rem of line or less, the time drops its clock (its «11:00» says what it is) and
+ *     a crew without a van drops its crossed-van drawing (its words say it): 16px and 22px back;
+ *   · `floor` — the direction shrinks no further than its arrow and 28px of words (or its whole
+ *     words, if fewer): its FLEX minimum is the smaller of its content and its `width` (3.5rem),
+ *     while its basis stays its whole words — a short direction keeps its own width, never padded.
+ * «توزيع المحصنات»'s head carries no act and is none of this: its pills are as they were.
+ */
+export const HEAD_SQUEEZE = {
+  container: '[container-type:inline-size]',
+  glyph: '[@container(max-width:18rem)]:hidden',
+  floor: 'w-14 basis-[max-content]',
+} as const;
+
+/**
  * The van's code as the card draws it (Round 26b — «لون واحد لكل العربيات»): ONE pill for every van,
  * (Round 27 — the owner's blue: a soft blue tint, a blue edge, `VAN_LOOK`), the van's drawing before
- * its code; «بدون سيارة (n)» for a crew without one, in the same pill.
+ * its code; «بدون سيارة (n)» for a crew without one, in the same pill. Round 33 C — `squeeze` (a head
+ * with an act at its end): a crew without a van drops its drawing on a narrow head (`HEAD_SQUEEZE`).
  */
 export const VanCodePill = ({
   van,
   looseNumber,
   size = 'md',
+  squeeze = false,
 }: {
   van: OperationsDayBoardVehicleCrewDto;
   looseNumber: string | null;
   size?: 'sm' | 'md';
+  squeeze?: boolean;
 }): JSX.Element => {
   const t = useT();
   const noVan = hasNoVan(van);
@@ -1264,7 +1463,12 @@ export const VanCodePill = ({
     >
       <BoardIcon
         d={noVan ? [...PLAN_ICON.noVan] : [...PATH.truck]}
-        className={cn('shrink-0', size === 'md' ? 'h-4 w-4' : 'h-3.5 w-3.5', VAN_LOOK.icon)}
+        className={cn(
+          'shrink-0',
+          size === 'md' ? 'h-4 w-4' : 'h-3.5 w-3.5',
+          VAN_LOOK.icon,
+          squeeze && noVan && HEAD_SQUEEZE.glyph,
+        )}
       />
       <span
         className={cn(
@@ -1281,8 +1485,17 @@ export const VanCodePill = ({
   );
 };
 
-/** The van's planned time — calm and neutral (Round 26b, `HEAD_PILL`); nothing when it has none. */
-const TimePill = ({ van }: { van: OperationsDayBoardVehicleCrewDto }): JSX.Element | null => {
+/**
+ * The van's planned time — calm and neutral (Round 26b, `HEAD_PILL`); nothing when it has none.
+ * Round 33 C — `squeeze`: its clock goes on a narrow head that carries an act (`HEAD_SQUEEZE`).
+ */
+const TimePill = ({
+  van,
+  squeeze = false,
+}: {
+  van: OperationsDayBoardVehicleCrewDto;
+  squeeze?: boolean;
+}): JSX.Element | null => {
   const t = useT();
   const time = van.plannedTime === null || van.plannedTime === '' ? null : van.plannedTime;
   if (time === null) return null;
@@ -1295,7 +1508,10 @@ const TimePill = ({ van }: { van: OperationsDayBoardVehicleCrewDto }): JSX.Eleme
         HEAD_PILL.time,
       )}
     >
-      <BoardIcon d={[...PLAN_ICON.clock]} className={cn('h-3 w-3', HEAD_PILL.timeIcon)} />
+      <BoardIcon
+        d={[...PLAN_ICON.clock]}
+        className={cn('h-3 w-3', HEAD_PILL.timeIcon, squeeze && HEAD_SQUEEZE.glyph)}
+      />
       <span dir="ltr" className={NUM}>
         {time}
       </span>
@@ -1306,25 +1522,39 @@ const TimePill = ({ van }: { van: OperationsDayBoardVehicleCrewDto }): JSX.Eleme
 /**
  * The van's direction — a neutral pill with its arrow in blue (Round 27d, `HEAD_PILL`); «بلا اتجاه»,
  * quieter. On the card's one line it is cut, whole on hover and to a screen reader; on the van's
- * card (`wrap`) it is written whole.
+ * card (`wrap`) it is written whole. Round 33 C — `squeeze` (a head with an act at its end): it is
+ * cut no shorter than its arrow and 28px of words (`HEAD_SQUEEZE.floor`).
  */
 const DirectionPill = ({
   van,
   wrap = false,
+  squeeze = false,
 }: {
   van: OperationsDayBoardVehicleCrewDto;
   wrap?: boolean;
+  squeeze?: boolean;
 }): JSX.Element => {
   const t = useT();
+  // Round 28 critic — a direction that names nothing («-», a zero-width space) is «بلا اتجاه», as
+  // the filters count it, never an empty-looking pill.
   const direction =
-    van.direction === null || van.direction.trim() === '' ? null : van.direction.trim();
+    van.direction === null || !operationsDirectionNamesSomething(van.direction)
+      ? null
+      : van.direction.trim();
   const directionText = direction ?? t('operations.distribution.noDirection');
   return (
     <span
       data-van-direction={van.direction ?? ''}
       title={chipTitle(t('operations.crew.direction'), directionText)}
       className={cn(
-        'inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] ring-1 ring-inset',
+        // `cn` does not merge: with the floor, the minimum is the flex item's automatic one — no
+        // `min-w-0`; without it, the pill as it was.
+        squeeze
+          ? cn(
+              'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] ring-1 ring-inset',
+              HEAD_SQUEEZE.floor,
+            )
+          : 'inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] ring-1 ring-inset',
         direction === null
           ? cn('font-bold', HEAD_PILL.none)
           : cn('font-black', HEAD_PILL.direction),
@@ -1479,6 +1709,14 @@ const onPersonName = (target: EventTarget | null): boolean =>
   target instanceof Element && target.closest('[data-van-person]') !== null;
 
 /**
+ * Round 33 C — is the pointer (or a click) on the head's own act (`headAction`: the vault's «طباعة»
+ * icon)? It is that act's alone: resting on it is not resting on the head (`vanRestArms`), and a
+ * press on it toggles no van card (`vanTapAllowed`'s `onAct`).
+ */
+const onHeadAction = (target: EventTarget | null): boolean =>
+  target instanceof Element && target.closest('[data-van-head-action]') !== null;
+
+/**
  * THE VAN — the crew board's row for the day.
  *
  * Round 25 — «شكل العربية بالمحصنات يتغير … العربيه لو عليها اتنين قادة انا عاوز اللى يظهر اللى انا
@@ -1495,10 +1733,12 @@ const onPersonName = (target: EventTarget | null): boolean =>
  *     (Round 27 — the owner's blue: a pill on a soft blue tint, the stripe blue; Round 27d: calmer);
  *   · THE CAPTAIN'S ROW — Round 25's order, «الصف نفسه بتاع القائد يكون قبله عدد المحصنات» (R26b
  *     critic: the redraw had put the count after him): the count of محصنات FIRST, in its own tile,
- *     then the captain in a frame of his own — «قائد» over his name, the FIRST put on the row
- *     (`captains[0]`), cut to the frame, his person card on it; «بلا قائد» in the refusal's rose;
+ *     then the captain in a frame of his own — «قائد» beside his name (Round 31; over it until
+ *     then), the FIRST put on the row (`captains[0]`), cut to the frame, his person card on it;
+ *     «بلا قائد» in the refusal's rose;
  *   · THE PACKAGES under it, in its three columns: كراتين, حقائب, صناديق — four tiles of one width
- *     in all, each its own hue;
+ *     in all, each its own hue, each ONE line — icon, figure, word (Round 31 — «عاوز العدد والكلام
+ *     على صف واحد مش صفين»);
  *   · THE LOAD, a bounded place of its own: the chips on it plain, as on the left; empty, it says
  *     where to drop («اسحب المحصنات إلى هنا») — or, on a van that takes nothing, why, in rose.
  * A row of another type kept for what it carries (`securedType` false) keeps its dashed amber edge
@@ -1524,7 +1764,9 @@ export const VanCard = ({
   count,
   packages,
   takesNone = false,
+  calm = false,
   actions,
+  headAction,
   drop,
   children,
   footer,
@@ -1548,8 +1790,26 @@ export const VanCard = ({
    * nothing, and leaves it out.
    */
   takesNone?: boolean;
-  /** Above the van — the vault's «تسليم» and «طباعة». */
+  /**
+   * R30 critic — a past day's RECORD (`RecordNotice`): the van is read back, never placed on, so it
+   * wears no placing alarm — no rose «بلا قائد» edge, stripe or frame, no amber kept row, no refusal
+   * on an empty load. Its words stay (they say what the row was), in the card's neutral slate.
+   */
+  calm?: boolean;
+  /**
+   * Above the van — the vault's «تسليم» (Round 33 C: «طباعة» is in the head now, `headAction`).
+   * Nothing to put there (left out, null or false): no row at all — never an empty bordered strip.
+   */
   actions?: ReactNode;
+  /**
+   * Round 33 C — «عاوز كلمة طباعة دى تكون العلامة بس وممكن تحطها فى مكان فى الكارد عشان متخدش مساحة
+   * كبيره»: one small act at the END of the head's one line, after the direction. The vault's
+   * «طباعة», an icon only. A press on it, by mouse, touch or keyboard, is its own: the van's card
+   * neither opens nor closes, and resting on it is not resting on the head (`vanTapAllowed`,
+   * `vanRestArms`). On a narrow card the line makes the icon's room without starving the direction
+   * (`HEAD_SQUEEZE`). «توزيع المحصنات» gives none, and its head is as it was.
+   */
+  headAction?: ReactNode;
   drop?: {
     /** A shipment is being dragged and this van would take it. */
     armed: boolean;
@@ -1580,11 +1840,17 @@ export const VanCard = ({
   });
   const { tapped, setTapped, pointer } = useTapCard(hover.anchor);
   // The pointer moved inside the head or the captain's frame: onto the captain's own name, his card
-  // takes over; anywhere else, the van's card waits its beat (again, if the name had it).
+  // takes over; onto the head's own act (Round 33 C — «طباعة»), nobody's — that is no question about
+  // the van; anywhere else, the van's card waits its beat (again, if the name or the act had it).
   const rest = (target: EventTarget | null): void => {
-    if (onPersonName(target)) hover.dismiss();
-    else hover.arm();
+    if (vanRestArms({ onPerson: onPersonName(target), onAct: onHeadAction(target) })) hover.arm();
+    else hover.dismiss();
   };
+  // Round 33 C — the row over the van holds only what the page gives it («تسليم» today): with
+  // nothing (a record, a reader without the dispatch grant), no row and no empty strip.
+  const hasActions = actions !== undefined && actions !== null && actions !== false;
+  // Round 33 C — a head that carries an act: its line measures its own room (`HEAD_SQUEEZE`).
+  const squeeze = headAction !== undefined;
 
   return (
     <article
@@ -1609,13 +1875,15 @@ export const VanCard = ({
           ? VAN_CARD.place
           : drop?.over === 'refuse'
             ? VAN_CARD.refuse
-            : captain === null
-              ? cn(VAN_CARD.noCaptain, kept && VAN_CARD.keptShape)
-              : kept
-                ? VAN_CARD.kept
-                : drop?.armed === true
-                  ? VAN_CARD.armed
-                  : VAN_CARD.rest,
+            : calm
+              ? cn(VAN_CARD.rest, kept && VAN_CARD.keptShape)
+              : captain === null
+                ? cn(VAN_CARD.noCaptain, kept && VAN_CARD.keptShape)
+                : kept
+                  ? VAN_CARD.kept
+                  : drop?.armed === true
+                    ? VAN_CARD.armed
+                    : VAN_CARD.rest,
       )}
     >
       {/* The van's one colour at its start edge — the same on every van; a state's (Round 27 —
@@ -1625,15 +1893,20 @@ export const VanCard = ({
         data-van-stripe="true"
         className={cn(
           'pointer-events-none absolute inset-y-0 start-0 z-[1] w-[3px]',
-          captain === null
-            ? VAN_STATE_STRIPE.noCaptain
-            : kept
-              ? VAN_STATE_STRIPE.kept
-              : VAN_LOOK.stripe,
+          calm
+            ? VAN_LOOK.stripe
+            : captain === null
+              ? VAN_STATE_STRIPE.noCaptain
+              : kept
+                ? VAN_STATE_STRIPE.kept
+                : VAN_LOOK.stripe,
         )}
       />
-      {actions !== undefined && (
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 py-2 pe-2.5 ps-3.5 dark:border-slate-800">
+      {hasActions && (
+        <div
+          data-van-actions="true"
+          className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 py-2 pe-2.5 ps-3.5 dark:border-slate-800"
+        >
           {actions}
         </div>
       )}
@@ -1652,7 +1925,9 @@ export const VanCard = ({
           // R26 critic — a tap on the captain's name is his card's: the van's closes, if open.
           const onPerson = onPersonName(event.target);
           if (onPerson) setTapped(false);
-          if (!vanTapAllowed({ touch: pointer.current === 'touch', onPerson })) return;
+          // Round 33 C — a press on the head's own act («طباعة») is its own: no toggle.
+          const onAct = onHeadAction(event.target);
+          if (!vanTapAllowed({ touch: pointer.current === 'touch', onPerson, onAct })) return;
           setTapped((open) => !open);
         }}
         className="flex min-w-0 flex-col focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/60"
@@ -1664,12 +1939,29 @@ export const VanCard = ({
             VAN_LOOK.band,
           )}
         >
-          {/* ONE line: code · time · direction — nothing else, so the direction has the room. */}
-          <div data-van-head="true" className="flex min-w-0 flex-1 items-center gap-1.5">
-            <VanCodePill van={van} looseNumber={looseNumber} />
-            <TimePill van={van} />
-            <DirectionPill van={van} />
+          {/* ONE line: code · time · direction — nothing else, so the direction has the room.
+              Round 33 C — with an act after it, the line measures its own room (`HEAD_SQUEEZE`). */}
+          <div
+            data-van-head="true"
+            data-van-head-squeeze={squeeze ? 'true' : undefined}
+            className={cn(
+              'flex min-w-0 flex-1 items-center gap-1.5',
+              squeeze && HEAD_SQUEEZE.container,
+            )}
+          >
+            <VanCodePill van={van} looseNumber={looseNumber} squeeze={squeeze} />
+            <TimePill van={van} squeeze={squeeze} />
+            <DirectionPill van={van} squeeze={squeeze} />
           </div>
+          {/* Round 33 C — the head's own act at the line's end (`headAction`): never cut, never
+              wrapped. A press on it is its own — the group's click asks `vanTapAllowed` with
+              `onAct`, so the van's card neither opens nor closes. Not an act of its own (no role,
+              no tab stop): the button inside is what the hand and the keyboard reach. */}
+          {headAction !== undefined && (
+            <span data-van-head-action="true" className="ms-1.5 flex shrink-0 items-center">
+              {headAction}
+            </span>
+          )}
         </header>
         <div className="flex min-w-0 flex-col gap-2 pe-2.5 ps-3.5 pt-2.5">
           {kept && (
@@ -1683,12 +1975,15 @@ export const VanCard = ({
               }
               className={cn(
                 'flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-bold leading-4',
-                KEPT_NOTICE.strip,
+                calm ? KEPT_NOTICE.quietStrip : KEPT_NOTICE.strip,
               )}
             >
               <BoardIcon
-                d={[...PATH.warn]}
-                className={cn('h-3.5 w-3.5 shrink-0', KEPT_NOTICE.icon)}
+                d={calm ? [...SHIPMENT_PATH.info] : [...PATH.warn]}
+                className={cn(
+                  'h-3.5 w-3.5 shrink-0',
+                  calm ? KEPT_NOTICE.quietIcon : KEPT_NOTICE.icon,
+                )}
               />
               <span className="min-w-0">
                 {t('operations.distribution.notSecured')}
@@ -1704,31 +1999,44 @@ export const VanCard = ({
           {/* THE CAPTAIN'S ROW (Round 25 — «الصف نفسه بتاع القائد يكون قبله عدد المحصنات»): the count
               of محصنات FIRST, then the captain — each in a frame of its own since Round 26b («وافصل
               الاليطار بتاع القائد عن المحصنة»). Three columns, the packages' own under them: the
-              count is as wide as a package's tile, the captain's frame as two. */}
+              count is as wide as a package's tile, the captain's frame as two. Round 31 — each
+              ONE line high: the tile's figure and word side by side, his mark and name too. */}
           <div data-van-crew={van.crewAssignmentId} className="grid grid-cols-3 gap-1.5">
-            <ShipmentsCount count={count} data-van-count={String(count)} />
+            <ShipmentsCount count={count} layout="line" data-van-count={String(count)} />
             <div
               data-van-captain-line={van.crewAssignmentId}
               className={cn(
                 'col-span-2 flex min-w-0 items-center rounded-lg px-2 py-1 ring-1 ring-inset',
-                captain === null ? CAPTAIN_FRAME.none : CAPTAIN_FRAME.some,
+                captain === null
+                  ? calm
+                    ? CAPTAIN_FRAME.quiet
+                    : CAPTAIN_FRAME.none
+                  : CAPTAIN_FRAME.some,
               )}
             >
               {captain === null ? (
                 <span
                   data-van-captain="none"
-                  className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-black leading-5 text-rose-700 dark:text-rose-300"
+                  className={cn(
+                    'flex min-w-0 items-center gap-1.5 text-[12.5px] font-black leading-5',
+                    calm ? CAPTAIN_FRAME.quietWords : 'text-rose-700 dark:text-rose-300',
+                  )}
                 >
-                  <BoardIcon d={[...PATH.warn]} className="h-4 w-4 shrink-0" />
+                  <BoardIcon
+                    d={calm ? [...SHIPMENT_PATH.person] : [...PATH.warn]}
+                    className="h-4 w-4 shrink-0"
+                  />
                   <span className="min-w-0 truncate">
                     {t('operations.distribution.noCaptainShort')}
                   </span>
                 </span>
               ) : (
-                // His mark over his name: the name has the frame's whole width.
+                // Round 31 — «واسم القائد برضو يكون جمب الاشارة الخضرة»: his mark, then his name
+                // BESIDE it on the same line, cut to what the frame has left (his card says it
+                // whole).
                 <span
                   data-van-captain={captain.employeeId}
-                  className="flex min-w-0 flex-1 flex-col items-start gap-0.5"
+                  className="flex min-w-0 flex-1 items-center gap-1.5"
                 >
                   <span
                     data-captain-mark="true"
@@ -1767,8 +2075,9 @@ export const VanCard = ({
         </div>
       </div>
       <div className="flex min-w-0 flex-col gap-2 pb-2.5 pe-2.5 ps-3.5 pt-1.5">
-        {/* THE PACKAGES — the vault's three counts, under the captain's row, in its columns. */}
-        <PackageCounts packages={packages} of="van" />
+        {/* THE PACKAGES — the vault's three counts, under the captain's row, in its columns, each
+            on one line (Round 31). */}
+        <PackageCounts packages={packages} of="van" layout="line" />
         {/* THE LOAD — a bounded place of its own; the chips on it plain, as on the left. */}
         <div
           data-van-load={van.crewAssignmentId}
@@ -1777,7 +2086,7 @@ export const VanCard = ({
             // One look at a time — see the card's own edge above.
             drop?.over === 'place'
               ? LOAD_LOOK.place
-              : count === 0 && takesNone
+              : count === 0 && takesNone && !calm
                 ? LOAD_LOOK.refuse
                 : LOAD_LOOK.area,
             count === 0 && 'border-dashed',
@@ -2008,7 +2317,16 @@ export const ChipMark = ({
   ...rest
 }: {
   tone:
-    'proposed' | 'moved' | 'overdue' | 'started' | 'refused' | 'reschedule' | 'waiting' | 'captain';
+    | 'proposed'
+    | 'moved'
+    | 'overdue'
+    | 'started'
+    | 'refused'
+    | 'reschedule'
+    | 'waiting'
+    | 'captain'
+    // Round 33 — on «تسليم المحصنات»'s record: it left the vault on its van.
+    | 'handed';
   icon: readonly string[];
   label: string;
 } & Record<`data-${string}`, string>): JSX.Element => (
@@ -2033,6 +2351,8 @@ export const ChipMark = ({
           'bg-slate-100 text-slate-600 ring-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-600/60',
         captain:
           'bg-emerald-100 text-emerald-800 ring-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-200 dark:ring-emerald-400/40',
+        handed:
+          'bg-sky-100 text-sky-800 ring-sky-300 dark:bg-sky-400/15 dark:text-sky-200 dark:ring-sky-300/40',
       }[tone],
     )}
   >

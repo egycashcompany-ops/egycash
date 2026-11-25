@@ -524,6 +524,63 @@ describe('D3 — the night shift belongs to its start date', () => {
     expect(row?.status).toBe('present');
     expect(row?.workedMinutes).toBe(480);
   });
+
+  /**
+   * LEAVING EARLY OFF A NIGHT SHIFT, which is the case the timeline's early-leave segment has to
+   * draw from: the hour they were due to leave is on the NEXT calendar day, so a reading that
+   * subtracted times within one date would report either nothing or a negative.
+   *
+   * 22:00 → 04:00 is six hours of an eight-hour night, two hours short of a 06:00 end.
+   */
+  it('a night shift left two hours early is early leave, measured across midnight', () => {
+    const row = deriveDay(
+      base({
+        shift: NIGHT,
+        punches: [
+          punch(new Date('2026-07-15T19:00:00.000Z')), // 22:00 Cairo
+          punch(new Date('2026-07-16T01:00:00.000Z')), // 04:00 Cairo, the next morning
+        ],
+      }),
+    );
+    expect(row?.status).toBe('earlyLeave');
+    expect(row?.workedMinutes).toBe(360);
+    expect(row?.earlyLeaveMinutes).toBe(120);
+    expect(row?.shortfallMinutes).toBe(120);
+    // Arrived on the hour, so nothing is owed at the other end: the two figures are independent.
+    expect(row?.lateMinutes).toBe(0);
+  });
+
+  it('a night shift that is late AND short carries both ends', () => {
+    const row = deriveDay(
+      base({
+        shift: NIGHT,
+        punches: [
+          punch(new Date('2026-07-15T19:30:00.000Z')), // 22:30 Cairo — 30 past, grace is 10
+          punch(new Date('2026-07-16T02:00:00.000Z')), // 05:00 Cairo — an hour early
+        ],
+      }),
+    );
+    expect(row?.status).toBe('lateAndEarly');
+    expect(row?.lateMinutes).toBe(30);
+    expect(row?.earlyLeaveMinutes).toBe(60);
+  });
+
+  it('a night shift that completes its hours owes nothing, however the clock reads', () => {
+    // The flexible-hours rule at the other end of the day: in late, out late, eight hours done.
+    const row = deriveDay(
+      base({
+        shift: NIGHT,
+        punches: [
+          punch(new Date('2026-07-15T20:00:00.000Z')), // 23:00 Cairo
+          punch(new Date('2026-07-16T04:00:00.000Z')), // 07:00 Cairo
+        ],
+      }),
+    );
+    expect(row?.workedMinutes).toBe(480);
+    expect(row?.status).toBe('present');
+    expect(row?.earlyLeaveMinutes).toBe(0);
+    expect(row?.lateMinutes).toBe(0);
+  });
 });
 
 describe('D8 flags — signals, never arithmetic', () => {

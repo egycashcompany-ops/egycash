@@ -1,13 +1,12 @@
-// «لوحة تحكم الحركة» — the fixtures of the period specs («أرقام الفترة» and the period parts of the
-// three mixed panels): one R2 answer with every section
+// «لوحة تحكم الحركة» — the fixtures of the period specs (the period parts of the seven mixed
+// panels): one R2 answer with every section
 // over «آخر 30 يومًا» (2026-10-03 … today 2026-11-01, by the day), the same over «هذه السنة» (by the
-// month), and the renderers that mount the real page (or one period tab alone) in the node test
-// environment over seeded caches — no DOM, no fetch.
+// month), and the renderer that mounts the real page in the node test environment over seeded
+// caches — no DOM, no fetch.
 //
 // The figures agree with each other the way the server's do (R-15, R-16, R-18, R-23):
 //   km.total = Σ confirmedKm + Σ spanKm = Σ byBranch + unregistered;
 //   the average = the closed km of 10/03 … 10/30 ÷ 28 closed calendar days;
-//   visits.count = closed + open (CHECK-IN day, «أرقام الفترة»);
 //   Σ exits.byWorkType = Σ exits.byWorkshop = exits.count (EXIT day, «الصيانة والورش»);
 //   opex.total = card + custody = card + fuelCustody + tyres + wash + maintenance, fuel = card +
 //   fuelCustody, Σ opexSeries = total and count (and the dealership figure is never added to it);
@@ -15,12 +14,7 @@
 //   dealershipList.more = dealership.rows − rows;
 //   km.coverage.of = active − inWorkshop − joinedAfter, noDistance.cars = of − withReadings;
 //   accidents.totals.remaining = collected + company − paid + in − out (= the open files' rest).
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { Provider } from 'react-redux';
-import { configureStore } from '@reduxjs/toolkit';
-import { MemoryRouter } from 'react-router-dom';
-import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
+import { type QueryClient } from '@tanstack/react-query';
 import {
   addDaysYmd,
   type FleetDashboardKmBucketDto,
@@ -29,12 +23,7 @@ import {
   type FleetDashboardPeriodDto,
   type FleetDashboardPeriodViolationRowDto,
   type Locale,
-  type MeDto,
 } from '@ecms/contracts';
-import { localeSlice } from '../../store/localeSlice';
-import { authSlice } from '../../store/authSlice';
-import { PeriodTab, type PeriodTabProps } from './components/fleet-dashboard/period-tabs';
-import { CLEARED } from './components/fleet-dashboard/period-filter-bar';
 import {
   ALL_KEYS,
   AS_OF,
@@ -274,8 +263,6 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
       { vehicleId: 'v260', code: '260', reason: 'notActive' },
     ],
   },
-  // By CHECK-IN day: the 27 visits that entered in the 30 days, and their state now.
-  visits: { count: 27, closed: 21, open: 6 },
   // By EXIT day: the 18 visits that left in the 30 days; two of them old-book (counted, not ranked).
   exits: {
     count: 18,
@@ -332,7 +319,6 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
   accidents: {
     count: 4,
     open: 2,
-    openRemaining: 9800,
     undated: 25,
     // The four files as their amounts stand now (open AND closed):
     // 12,000 + 4,500 − 7,200 + 1,000 − 500 = 9,800 — the open files' 6,500 + 3,300 (closed owe 0).
@@ -689,45 +675,3 @@ export const renderPeriod = ({
   permissions?: readonly string[];
   locale?: Locale;
 }): string => renderDashboard({ url, permissions, locale, client: periodClient(url, dto) });
-
-/** One period tab alone, with its props as given (the read's states: loading, failed). */
-export const renderPeriodTab = (
-  props: Partial<PeriodTabProps> & Pick<PeriodTabProps, 'tab'>,
-  permissions: readonly string[] = ALL_KEYS,
-): string => {
-  const store = configureStore({
-    reducer: { locale: localeSlice.reducer, auth: authSlice.reducer },
-    preloadedState: {
-      locale: { locale: 'ar' as const, dir: 'rtl' as const },
-      auth: {
-        me: {
-          id: 'u1',
-          permissions: Object.fromEntries(permissions.map((key) => [key, 'organization'])),
-        } as unknown as MeDto,
-        status: 'signedIn' as const,
-      },
-    },
-  });
-  const full: PeriodTabProps = {
-    data: undefined,
-    loading: false,
-    error: false,
-    onRetry: () => undefined,
-    filters: CLEARED,
-    onFilters: () => undefined,
-    updatedAt: 0,
-    onRefresh: () => undefined,
-    can: (key) => permissions.includes(key),
-    ...props,
-  };
-  return renderToStaticMarkup(
-    createElement(Provider, {
-      store,
-      children: createElement(
-        QueryClientProvider,
-        { client: dashboardClient({ period: null }) },
-        createElement(MemoryRouter, { initialEntries: ['/fleet'] }, createElement(PeriodTab, full)),
-      ),
-    }),
-  );
-};

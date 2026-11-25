@@ -1,4 +1,13 @@
-export { approvalService, APPROVAL_OVERRIDE_KEY, type ApprovalSubject } from './approval.service';
+export {
+  approvalService,
+  APPROVAL_OVERRIDE_KEY,
+  pinOf,
+  readApprovalPin,
+  type ApprovalChainPin,
+  type ApprovalSubject,
+  type LiveChain,
+} from './approval.service';
+export { approvalPinFields } from './workflow.model';
 export { type DecidedEntry, type ChainStatus } from './approval-trail';
 export { type Unit } from './approver-lookup';
 export {

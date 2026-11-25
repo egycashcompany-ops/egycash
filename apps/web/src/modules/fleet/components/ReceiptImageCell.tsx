@@ -12,7 +12,6 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EyeIcon, PrinterIcon } from '../../../shared/ui/icons';
-import { formatDate } from '../../../shared/lib/format';
 import { ZoomableImage } from './ZoomableImage';
 import { IMAGE_EMPTY_BOX, IMAGE_GROUP, actionTone } from './row-actions-look';
 import { ArrowUpFromLineIcon, CloudUploadIcon, Trash2Icon } from './row-action-icons';
@@ -20,6 +19,7 @@ import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { printLicenceRecord } from './vehicle-print';
 import { fetchReceiptImage } from '../api/fleet-api';
 import { useDeleteReceiptImage, useUploadReceiptImage } from '../api/fleet-queries';
+import { latinDate } from '../lib/fleet-figures';
 
 const useReceiptImageUrl = (
   rowId: string,
@@ -57,14 +57,18 @@ const useReceiptImageUrl = (
 
 type T = (key: string, vars?: Record<string, string | number>) => string;
 
-/** What the preview and the printed sheet call the row: car, date, kind. */
+/**
+ * What the preview and the printed sheet call the row: car, date, kind. The date is Latin in both
+ * languages, like every Fleet figure (owner, 2026-11-23) — the dialog's subtitle, the printed
+ * subtitle, its «التاريخ» row and the image caption all read it from here.
+ */
 const identity = (
   row: FleetReceiptDto,
   locale: Locale,
   t: T,
 ): { code: string; date: string; kind: string } => ({
   code: row.vehicleCode ?? '—',
-  date: formatDate(row.date, locale),
+  date: latinDate(row.date, locale),
   kind: t(`fleet.receipts.kind.${row.kind}`),
 });
 
@@ -154,7 +158,9 @@ export const ReceiptImagePreviewDialog = ({
             {t('fleet.vehicles.licenseImage.loadFailed')}
           </p>
         )}
-        {url !== null && <ZoomableImage src={url} alt={t('fleet.receipts.image.title')} />}
+        {url !== null && (
+          <ZoomableImage src={url} alt={t('fleet.receipts.image.title')} latinFigures />
+        )}
       </Dialog>
       <ReceiptImageDeleteDialog
         open={confirming}

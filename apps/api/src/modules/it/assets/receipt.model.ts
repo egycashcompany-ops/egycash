@@ -2,7 +2,8 @@
 // department's «إقرار استلام».
 //
 // One receipt per HAND-OVER, not per asset: everything handed over together is one paper under
-// one number — a page per device, each signed. Each line names the custody interval it opened,
+// one number, signed once — one device is the form's page, several are one sheet with a row each
+// (2026-11-24, «أنا عايز يتطبعوا فى ورقه واحده»). Each line names the custody interval it opened,
 // and each interval names its receipt back (`receiptId`).
 //
 // The lines and the employee are a SNAPSHOT of what was printed. The receipt is the document the

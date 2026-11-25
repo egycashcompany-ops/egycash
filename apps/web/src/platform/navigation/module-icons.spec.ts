@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { resolveNavIcon } from './app-icon';
 import {
   AtmIcon,
+  BoxIcon,
   BriefcaseIcon,
   BuildingIcon,
   CashIcon,
@@ -54,6 +55,7 @@ describe('the module launcher', () => {
       'IT',
       'Gold Vault',
       'ATM',
+      'Administrative Affairs',
       'Administration',
     ]);
   });
@@ -70,6 +72,7 @@ describe('the module launcher', () => {
       IT: MonitorIcon,
       'Gold Vault': GoldIcon, // «خزائن الدهب تبقي خزينة او سبيكة»
       ATM: AtmIcon, // «الصراف الآلى تبقي Machine»
+      'Administrative Affairs': BoxIcon, // the stores the department keeps (OD-62.1 A)
       Administration: BriefcaseIcon,
     });
   });

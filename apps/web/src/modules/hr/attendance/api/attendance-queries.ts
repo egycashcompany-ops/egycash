@@ -411,3 +411,22 @@ export const useResumeAttendanceBackfill = () => {
     },
   });
 };
+
+export const useWorkingHours = () =>
+  useQuery({ queryKey: [MODULE, 'workingHours'], queryFn: api.getWorkingHours, staleTime: 30_000 });
+
+export const useWorkingHoursHistory = () =>
+  useQuery({ queryKey: [MODULE, 'workingHoursHistory'], queryFn: api.getWorkingHoursHistory, staleTime: 30_000 });
+
+export const useSaveWorkingHours = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (departments: Parameters<typeof api.saveWorkingHours>[0]) => api.saveWorkingHours(departments),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: [MODULE, 'workingHours'] });
+      void client.invalidateQueries({ queryKey: [MODULE] });
+      // The audit row behind the change log is written through a queue, a moment after the save.
+      setTimeout(() => void client.invalidateQueries({ queryKey: [MODULE, 'workingHoursHistory'] }), 1500);
+    },
+  });
+};

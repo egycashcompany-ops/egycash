@@ -794,7 +794,8 @@ const CREW_PLAN_KEYS = [
   ...['choose', 'clear', 'untyped', 'archived', 'archivedHint', 'empty'].map(
     (key) => `operations.crewPlan.type.${key}`,
   ),
-  ...['type', 'direction'].map((key) => `operations.crewPlan.refused.${key}`),
+  // Round 28 — a direction is no longer refused («عاوز الاتجاه اقدر اكتبه بايدى»): its words are gone.
+  'operations.crewPlan.refused.type',
   // Round 24b — the row's colour is the types' palette (named by `SHIFT_TYPE_KEYS`'s colours) over
   // its type's own: «لون النوع», each swatch naming the types that wear it, and the card «ألوان الأنواع».
   ...[
@@ -832,7 +833,11 @@ const CREW_PLAN_KEYS = [
     ...['addRow', 'removeRow', 'clearRow', 'giveVan', 'dropVan', 'standingLoad', 'standingClear'],
     'restoreRow',
   ].map((key) => `operations.crewPlan.undo.kind.${key}`),
-  ...['empty', 'unknown', 'clear'].map((key) => `operations.crewPlan.direction.${key}`),
+  // Round 28 — «عاوز الاتجاه اقدر اكتبه بايدى»: the typed text offered, and its title once saved.
+  // Round 28 critic — a hand-typed direction past the ceiling is said, never cut without a word.
+  ...['empty', 'useTyped', 'handTyped', 'tooLong', 'clear'].map(
+    (key) => `operations.crewPlan.direction.${key}`,
+  ),
   ...['open', 'hours', 'minutes', 'clear'].map((key) => `operations.crewPlan.time.${key}`),
   ...['clear', 'remove'].map((key) => `operations.crewPlan.row.${key}`),
   ...['captain', 'specialists1', 'specialists2'].map((key) => `operations.crewPlan.short.${key}`),
@@ -888,6 +893,11 @@ const CREW_PLAN_KEYS = [
   ...['refused.slot', 'standingWrongSlot', 'vanWrongSlot', 'vanWrongSlotWho'].map(
     (key) => `operations.crewPlan.${key}`,
   ),
+  // Round 28b critic — the standing crew's load: the vans whose standing direction it left behind,
+  // and the toggle held while the areas' list loads.
+  'operations.crewPlan.standingDirectionLeft',
+  'operations.crewPlan.standingDirectionLeftWho',
+  'operations.crew.standing.areasLoading',
   ...[...PLAN_POOLS, 'free', 'search', 'filters', 'noMatch', 'dropBack', 'returnPicked'].map(
     (key) => `operations.crewPlan.pools.${key}`,
   ),
@@ -939,8 +949,56 @@ const ROUND26_DISTRIBUTION_KEYS = [
   ),
 ];
 
+/** Round 33 B — «الشحنات المسلَّمة»: its row, its filter, its ✓ and undo, the ✓'s dialog. */
+const DELIVERED_KEYS = [
+  'operations.nav.deliveredShipments',
+  'operations.cards.deliveredShipments',
+  ...[
+    'day',
+    'empty',
+    'filter',
+    'filter.awaiting',
+    'filter.confirmed',
+    'filter.all',
+    'awaiting',
+    'confirmed',
+    'receiptNo',
+    'billedTo',
+    'side.origin',
+    'side.destination',
+    'noPhoto',
+    'confirm',
+    'undo',
+    'undoConfirm',
+    'undone',
+    'dialog.title',
+    'dialog.save',
+    'receipt.label',
+    'receipt.hint',
+    'receipt.required',
+    'receipt.tooLong',
+    'photo.label',
+    'photo.optional',
+    'photo.current',
+    'photo.pick',
+    'photo.change',
+    'photo.warning',
+    'photo.warningCannotPick',
+    'side.label',
+    'side.sameBank',
+    'side.required',
+    'done',
+    'doneNoPhoto',
+    'photoFailed',
+    // Round 33 critic — the default day moved on under a screen left open.
+    'dayMoved.title',
+    'dayMoved',
+  ].map((key) => `operations.delivered.${key}`),
+];
+
 const ALL_KEYS = [
   ...SHELL_KEYS,
+  ...DELIVERED_KEYS,
   ...CATALOG_KEYS,
   ...BOARD_KEYS,
   ...CREW_KEYS,

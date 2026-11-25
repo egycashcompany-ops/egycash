@@ -34,8 +34,10 @@ import { logger } from '../../../../infrastructure/logging/logger';
 import { notificationsService } from '../../../../platform/notifications';
 import {
   approvalService,
+  pinOf,
+  readApprovalPin,
   registerApprovalRequestType,
-  type DecidedEntry,
+  type ApprovalSubject,
   type Unit,
 } from '../../../../platform/approvals';
 import { departmentRepository } from '../../../../platform/organization/departments/department.repository';
@@ -107,6 +109,31 @@ class LeaveRequestService {
       departmentCatalogId:
         department?.catalogId == null ? null : String(department.catalogId),
       departmentId,
+    };
+  }
+
+  /**
+   * What the engine is told about one request on a chain, wherever leave asks it something: the
+   * trail it has written, and the chain it was submitted on.
+   *
+   * One helper for the decision, the trail and the notice, because a request read against its pin
+   * in one place and against the current chain in another would be decided on rungs its own trail
+   * does not show. A request submitted before leave pinned has no pin, and is read live (ADR-041
+   * decision 10).
+   */
+  private subjectOf(request: LeaveRequestDoc, unit: Unit): ApprovalSubject {
+    return {
+      requestType: LEAVE_REQUEST_TYPE,
+      unit,
+      decisions: request.approvalSteps.map((entry) => ({
+        stepIndex: entry.stepIndex,
+        outcome: entry.outcome,
+        deciderUserId: entry.deciderUserId === null ? null : String(entry.deciderUserId),
+        decidedAt: entry.decidedAt,
+        comment: entry.comment,
+        overriddenWith: entry.overriddenWith,
+      })),
+      pin: readApprovalPin(request),
     };
   }
 
@@ -287,12 +314,18 @@ class LeaveRequestService {
     // a request that starts on a chain keeps that chain's shape. Switching a live request between
     // the two would leave a trail that reads as neither.
     //
+    // It keeps that shape because the create below pins it: the chain's row and rungs are written
+    // in the same create that stamps `pendingApproval`, and the engine decides the request on them
+    // whatever is done to the row afterwards (ADR-041 decision 4). Without the pin an edit would
+    // lay the decisions already taken over other rungs.
+    //
     // And the engine takes over only where a chain was actually configured for this employee's
     // place. That is what makes this change migrate nothing: until an administrator writes a
     // chain, every leave request behaves exactly as it did yesterday.
     const unit = await this.unitOf(employee);
     const chain = await approvalService.chainFor(LEAVE_REQUEST_TYPE, unit);
     const onEngine = chain.steps.length > 0;
+    const pin = pinOf(chain);
     const initialStatus = onEngine
       ? 'pendingApproval'
       : employee.employment.managerId !== null
@@ -300,6 +333,12 @@ class LeaveRequestService {
         : 'pendingHr';
     const doc = await leaveRequestRepository.create(
       {
+        ...(pin === null
+          ? {}
+          : {
+              approvalWorkflowId: new Types.ObjectId(pin.workflowId),
+              approvalChainShape: [...pin.steps],
+            }),
         employeeId: employee._id,
         employeeUserId: employee.userId,
         employeeCode: employee.code,
@@ -554,24 +593,15 @@ class LeaveRequestService {
     input: DecideLeaveRequest,
   ): Promise<LeaveRequestDoc> {
     const unit = await this.unitOf(employee);
-    const decisions: DecidedEntry[] = request.approvalSteps.map((entry) => ({
-      stepIndex: entry.stepIndex,
-      outcome: entry.outcome,
-      deciderUserId: entry.deciderUserId === null ? null : String(entry.deciderUserId),
-      decidedAt: entry.decidedAt,
-      comment: entry.comment,
-      overriddenWith: entry.overriddenWith,
-    }));
 
     const type = await leaveTypeService.getById(String(request.typeId));
     // The certificate gate, unchanged in meaning: a `requiresAttachment` type never reaches
     // APPROVED without one, and an `atSubmission` type holds EVERY rung until it is attached.
     // «Would this decision finish the chain» is the engine's question, so it is asked first.
-    const outcome = await approvalService.decide(
-      { requestType: LEAVE_REQUEST_TYPE, unit, decisions },
-      ctx,
-      { decision: verdict, comment: input.comment ?? null },
-    );
+    const outcome = await approvalService.decide(this.subjectOf(request, unit), ctx, {
+      decision: verdict,
+      comment: input.comment ?? null,
+    });
     if (
       type.requiresAttachment &&
       request.attachments.length === 0 &&
@@ -653,47 +683,42 @@ class LeaveRequestService {
    *
    * Null for a request the two-desk machine is running — not an empty trail, because those are
    * different facts and a screen must not draw an empty chain over a request that never had one.
+   *
+   * A request that is no longer `pendingApproval` keeps its trail and offers nobody a decision on
+   * it. The engine reads only the chain, and a cancelled request's chain may still be waiting on a
+   * staffed rung, or be `unstaffed`, which offers the override. The detail page shows Approve and
+   * Reject whenever the trail says so, and `decide` would only refuse the click («only a pending
+   * request can be decided»).
    */
   async trailFor(request: LeaveRequestDoc, ctx: AuthContext): Promise<ApprovalTrailDto | null> {
     if (request.approvalSteps.length === 0 && request.status !== 'pendingApproval') return null;
     const employee = await employeeRepository.findById(String(request.employeeId));
     if (employee === null) return null;
-    return approvalService.trailFor(
-      {
-        requestType: LEAVE_REQUEST_TYPE,
-        unit: await this.unitOf(employee),
-        decisions: request.approvalSteps.map((entry) => ({
-          stepIndex: entry.stepIndex,
-          outcome: entry.outcome,
-          deciderUserId: entry.deciderUserId === null ? null : String(entry.deciderUserId),
-          decidedAt: entry.decidedAt,
-          comment: entry.comment,
-          overriddenWith: entry.overriddenWith,
-        })),
-      },
+    const trail = await approvalService.trailFor(
+      this.subjectOf(request, await this.unitOf(employee)),
       ctx,
     );
+    if (request.status === 'pendingApproval') return trail;
+    // Off `pendingApproval` nothing waits on any rung, so the panel marks none ("waiting here now")
+    // — a cancelled request's chain still reads pending or unstaffed to the engine.
+    return {
+      ...trail,
+      currentStep: null,
+      viewerMayDecide: false,
+      viewerStep: null,
+      viewerCovers: [],
+      viewerMayOverride: false,
+    };
   }
 
   /** Whoever is standing on the rung the request now waits for — read live, never stored. */
   private async notifyChainApprovers(request: LeaveRequestDoc, unit: Unit): Promise<void> {
-    const decisions: DecidedEntry[] = request.approvalSteps.map((entry) => ({
-      stepIndex: entry.stepIndex,
-      outcome: entry.outcome,
-      deciderUserId: entry.deciderUserId === null ? null : String(entry.deciderUserId),
-      decidedAt: entry.decidedAt,
-      comment: entry.comment,
-      overriddenWith: entry.overriddenWith,
-    }));
-    const userIds = await approvalService.currentApprovers({
-      requestType: LEAVE_REQUEST_TYPE,
-      unit,
-      decisions,
-    });
-    // Nobody to tell is not an error here: the engine has already established that the rung is
-    // staffed, and a lookup that comes back empty a moment later means somebody just left. The
-    // request stays where it is and the screen still shows it; a thrown error would lose the
-    // decision that was just written.
+    const userIds = await approvalService.currentApprovers(this.subjectOf(request, unit));
+    // Nobody to tell is not an error here. A decision can leave the request `unstaffed`, with
+    // nobody on any rung that is left, and then there is nobody to tell: it waits for an override,
+    // which no notice reaches. A lookup can also come back empty because somebody just left the
+    // rung. Either way the request stays where it is and the screen still shows it; a thrown error
+    // would lose the decision that was just written.
     if (userIds.length === 0) return;
     await notificationsService
       .notify({

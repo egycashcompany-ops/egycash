@@ -57,6 +57,17 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     permission: 'operationsShipment.view',
   },
   /**
+   * Round 33 B — «الشحنات المسلَّمة»: what reached its bank on a day, and the ✓ with its receipt.
+   * Beside the day board it is cut from, under the board's own grant.
+   */
+  {
+    to: '/operations/shipments/delivered',
+    titleKey: 'operations.nav.deliveredShipments',
+    descKey: 'operations.cards.deliveredShipments',
+    icon: ReceiptIcon,
+    permission: 'operationsShipment.view',
+  },
+  /**
    * NO legacy equivalent: the day board over a from–to range — «عشان اقدر امسك الhistory بتاع
    * الشحنات». Beside the board it extends, under the board's own grant.
    */

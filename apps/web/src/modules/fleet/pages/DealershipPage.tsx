@@ -29,7 +29,8 @@ import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
 import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
-import { formatDate, formatMoney, formatNumber } from '../../../shared/lib/format';
+import { formatMoney } from '../../../shared/lib/format';
+import { latinDate, latinNumber } from '../lib/fleet-figures';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { openDatePicker } from '../../../shared/lib/open-date-picker';
 import { cn } from '../../../shared/lib/cn';
@@ -367,7 +368,7 @@ export const DealershipPage = (): JSX.Element => {
       serialHeader: t('fleet.violations.report.serial'),
       header,
       rows: all.map((row) => [
-        formatDate(row.outDate, locale),
+        latinDate(row.outDate, locale),
         row.vehicleCode ?? '',
         row.workTypeLabel,
         row.invoiceNumber ?? '',
@@ -396,7 +397,7 @@ export const DealershipPage = (): JSX.Element => {
         subtitle: '',
         header,
         rows: all.map((row) => [
-          formatDate(row.outDate, locale),
+          latinDate(row.outDate, locale),
           row.vehicleCode ?? '—',
           row.workTypeLabel,
           row.invoiceNumber ?? '—',
@@ -475,7 +476,7 @@ export const DealershipPage = (): JSX.Element => {
           >
             {data === undefined
               ? ''
-              : t('common.list.count', { count: formatNumber(data.meta.totalItems, locale) })}
+              : t('common.list.count', { count: latinNumber(data.meta.totalItems) })}
           </span>
           <span className="flex items-center gap-1.5 sm:gap-2">
             <button

@@ -113,6 +113,8 @@ describe('the module tiles', () => {
       IT: 'monitor',
       'Gold Vault': 'gold',
       ATM: 'atm',
+      // A box — the stores the department keeps (OD-62.1 A).
+      'Administrative Affairs': 'box',
       Administration: 'briefcase',
     });
   });

@@ -79,6 +79,9 @@ describe('closed vocabularies', () => {
       'manualPunch',
       'regularizedPunch',
       'overriddenByManager',
+      // The person pressed Check-in or Check-out more than once that day. A FILTER, never a
+      // warning: only the employee's scan log shows it, and the day tags and CSV notes drop it.
+      'repeatedPunches',
     ]);
   });
 
@@ -124,6 +127,9 @@ describe('closed vocabularies', () => {
       // day («lateness only for now»), so such a day reads «لا يوجد تسجيل» rather than «غائب» and
       // nothing new reaches payroll's absent-day count while two years of history are re-derived.
       'hr.attendance.countAbsence',
+      // Hours per department: `{ [departmentId]: { hours, startTime } }`. An employee with no shift
+      // assignment is measured against their department before the company pattern.
+      'hr.attendance.departmentHours',
     ]);
     // §9 names five notification templates; these are the module's own five.
     expect(Object.values(HrAttendanceTemplates)).toEqual([

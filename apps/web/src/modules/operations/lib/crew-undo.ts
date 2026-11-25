@@ -154,18 +154,39 @@ export const rebaseHistory = <S>(
 export interface CrewDraft {
   rows: readonly PlanRow[];
   standingKeys: readonly string[] | null;
+  /**
+   * Round 28b — the «الاتجاه» the standing crew's load wrote, by row key (`loadStandingIntoPlan`'s
+   * `directions`): its «off» clears each only while the row still holds exactly it. Absent with
+   * the toggle off, and on a screen with no toggle («الطاقم الثابت» itself).
+   */
+  standingDirections?: Readonly<Record<string, string>>;
 }
 
 const sameKeys = (a: readonly string[] | null, b: readonly string[] | null): boolean =>
   a === b ||
   (a !== null && b !== null && a.length === b.length && a.every((key, at) => key === b[at]));
 
+const NO_DIRECTIONS: Readonly<Record<string, string>> = {};
+
+const sameDirections = (
+  a: Readonly<Record<string, string>> = NO_DIRECTIONS,
+  b: Readonly<Record<string, string>> = NO_DIRECTIONS,
+): boolean => {
+  if (a === b) return true;
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((key) => Object.hasOwn(b, key) && a[key] === b[key])
+  );
+};
+
 /**
  * The same board: the same rows in the same order, each the same to the save (`sameRow`) and showing
- * the same van — and the standing crew toggled the same way.
+ * the same van — and the standing crew toggled the same way, with the same directions of its own.
  */
 export const sameCrewDraft = (a: CrewDraft, b: CrewDraft): boolean =>
   sameKeys(a.standingKeys, b.standingKeys) &&
+  sameDirections(a.standingDirections, b.standingDirections) &&
   (a.rows === b.rows ||
     (a.rows.length === b.rows.length &&
       a.rows.every((row, at) => {
@@ -189,4 +210,37 @@ export const changedRowKeys = (from: readonly PlanRow[], to: readonly PlanRow[])
     const b = now.get(key);
     return a === undefined || b === undefined || !sameRow(a, b);
   });
+};
+
+/**
+ * Is this key press the board's «تراجع»? Ctrl+Z (⌘Z on a Mac) — never with Shift or Alt; never in
+ * a text box, which keeps its own undo; and (Round 32 critic) never while a window stands over the
+ * board (`overBoard` — «تبديل بين سيارتين», «ألوان الأنواع», the leave dialog): pressed on a box or a
+ * button of «تبديل بين سيارتين», it took back the board's last operation BEHIND the window — a row
+ * just placed vanished from the card being ticked.
+ */
+export const isBoardUndoKey = (
+  event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey' | 'code' | 'key'> & {
+    target: EventTarget | null;
+  },
+  overBoard: boolean,
+): boolean => {
+  if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return false;
+  if (event.code !== 'KeyZ' && event.key.toLowerCase() !== 'z') return false;
+  if (overBoard) return false;
+  const target = event.target as
+    | (EventTarget & {
+        isContentEditable?: boolean;
+        closest?: (selector: string) => unknown;
+      })
+    | null;
+  if (
+    target !== null &&
+    (target.isContentEditable === true ||
+      (typeof target.closest === 'function' &&
+        target.closest('input, textarea, select, [contenteditable="true"]') !== null))
+  ) {
+    return false;
+  }
+  return true;
 };

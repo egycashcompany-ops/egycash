@@ -174,7 +174,7 @@ describe('dateBoundPatch — picking a date lets go of `period=all`', () => {
   });
 });
 
-describe('widerRange — what the «اعرض آخر ١٢ شهر» button asks for', () => {
+describe('widerRange — what the «اعرض آخر 12 شهر» button asks for', () => {
   it('starts at the FIRST of the month a year back and ends where this month does', () => {
     expect(widerRange(at('2026-09-13T11:00:00.000Z'))).toEqual({
       from: '2025-09-01',

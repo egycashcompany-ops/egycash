@@ -38,7 +38,9 @@ import { downloadAttendanceExport } from '../api/attendance-api';
 import { useAttendanceSheet, useAttendanceSheetSummary } from '../api/attendance-queries';
 import { addDays } from '../components/period';
 import { cairoNowMinutes, cairoToday, toSheetRow } from '../view-model';
-import { DailySheetView, type SheetFilter, type SheetSortKey } from '../views';
+import { boardOrder, DailySheetView, type SheetFilter, type SheetSortKey } from '../views';
+import { EmployeeQuickPanel } from '../components/EmployeeQuickPanel';
+import { EmployeeFace } from '../components/EmployeeFace';
 import { exportFileName, soleBranchName } from '../export-name';
 
 /**
@@ -135,6 +137,8 @@ export const DailySheetPage = (): JSX.Element => {
   const [approving, setApproving] = useState<AttendanceDayDto | null>(null);
   const [deciding, setDeciding] = useState<AttendanceSheetRowDto | null>(null);
   const [exporting, setExporting] = useState(false);
+  /** The person whose pop-up is open, by id — so a refetch that reorders the board keeps them. */
+  const [peek, setPeek] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
   // No `can(...)` gate: both hooks read `/platform/<unit>/options`, which is authenticated and NOT
@@ -256,9 +260,11 @@ export const DailySheetPage = (): JSX.Element => {
   };
 
   const today = cairoToday();
-  const rows = (days.data?.items ?? []).map((row) =>
-    toSheetRow(row, { today, locale, label: t, actions: rowActions(row) ?? undefined }),
-  );
+  const rows = (days.data?.items ?? []).map((row) => {
+    const r = toSheetRow(row, { today, locale, label: t, actions: rowActions(row) ?? undefined });
+    // The profile photo where there is one — the same face the Employees list shows.
+    return { ...r, avatar: <EmployeeFace id={r.id} photoFileId={r.photoFileId} name={r.name} /> };
+  });
 
   const dateTitle = new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB', {
     weekday: 'long',
@@ -282,7 +288,9 @@ export const DailySheetPage = (): JSX.Element => {
   }, [counts?.lastPunchAt, locale]);
 
   return (
-    <PageContainer>
+    // `fill`: the sheet reaches the bottom of a tall screen instead of leaving dead space
+    // under it, and a screen it already overflows scrolls exactly as before.
+    <PageContainer fill>
       {exportError !== null && (
         <p role="alert" className="mb-3 text-sm text-red-600">
           {exportError}
@@ -307,15 +315,24 @@ export const DailySheetPage = (): JSX.Element => {
         }
         onPrevDay={() => goToDay(-1)}
         onNextDay={() => goToDay(1)}
+        search={
+          <DebouncedInput
+            value={search}
+            onValueChange={(value) => patch({ q: value })}
+            placeholder={t('attendance.daily.search')}
+            aria-label={t('attendance.daily.search')}
+            className="w-full"
+          />
+        }
+        filterCount={branchIds.length + sectionIds.length}
+        dateShort={new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+          timeZone: 'UTC',
+        }).format(new Date(`${date}T00:00:00Z`))}
         filters={
           <div className="flex flex-wrap items-center gap-2">
-            <DebouncedInput
-              value={search}
-              onValueChange={(value) => patch({ q: value })}
-              placeholder={t('attendance.daily.search')}
-              aria-label={t('attendance.daily.search')}
-              className="w-full sm:w-64"
-            />
             <MultiSelect
               label={t('attendance.daily.branch')}
               value={branchIds}
@@ -369,8 +386,25 @@ export const DailySheetPage = (): JSX.Element => {
         sort={{ by: sortBy, dir: sortDir }}
         onSort={onSort}
         {...(can('attendance.export') ? { onExport: runExport } : {})}
-        onOpenEmployee={(id) => navigate(`/attendance/employees/${id}?from=${date}&to=${date}`)}
+        // A POP-UP of the person's recent days, over the board; «Open profile» inside it goes on to
+        // the profile's attendance tab.
+        onOpenEmployee={setPeek}
       />
+
+      {peek !== null && (() => {
+        const ordered = boardOrder(rows);
+        const index = ordered.findIndex((r) => r.id === peek);
+        return index < 0 ? null : (
+          <EmployeeQuickPanel
+            rows={ordered}
+            index={index}
+            date={date}
+            onIndex={(i) => setPeek(ordered[i]?.id ?? null)}
+            onOpenProfile={(id) => navigate(`/employees/${id}?tab=attendance`)}
+            onClose={() => setPeek(null)}
+          />
+        );
+      })()}
 
       {approving !== null && (
         <OvertimeApprovalDialog day={approving} onClose={() => setApproving(null)} />

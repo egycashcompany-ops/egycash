@@ -69,6 +69,10 @@ import {
   type UpdateOperationsCurrency,
   type UpdateOperationsShipment,
   type UpdateOperationsShiftType,
+  type ConfirmOperationsDelivery,
+  type OperationsDeliveredBoardDto,
+  type OperationsDeliveryConfirmationResultDto,
+  type UndoOperationsDelivery,
 } from '@ecms/contracts';
 import {
   api,
@@ -229,6 +233,34 @@ export const reopenShipment = (
 
 export const deleteShipment = (id: string): Promise<void> =>
   del<void>(`/operations/shipments/${id}`);
+
+/**
+ * Round 33 B — «الشحنات المسلَّمة»: the shipments delivered to their bank on one Cairo day, with each
+ * one's delivery confirmation. Round 33 critic: null names NO day — the server answers its own
+ * Cairo today (and says it: `today`), never the PC's clock's.
+ */
+export const getDeliveredBoard = (date: string | null): Promise<OperationsDeliveredBoardDto> =>
+  get<OperationsDeliveredBoardDto>(`/operations/shipments/delivered${buildQuery({ date })}`);
+
+/** Round 33 B — the ✓: the receipt number and the side billed; the bank and the person are the server's. */
+export const confirmShipmentDelivery = (
+  id: string,
+  body: ConfirmOperationsDelivery,
+): Promise<OperationsDeliveryConfirmationResultDto> =>
+  post<OperationsDeliveryConfirmationResultDto>(
+    `/operations/shipments/${id}/delivery-confirmation`,
+    body,
+  );
+
+/** Round 33 B — «إلغاء التأكيد». */
+export const undoShipmentDelivery = (
+  id: string,
+  body: UndoOperationsDelivery,
+): Promise<OperationsDeliveryConfirmationResultDto> =>
+  del<OperationsDeliveryConfirmationResultDto>(
+    `/operations/shipments/${id}/delivery-confirmation`,
+    body,
+  );
 
 /**
  * «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — one shipment's story, oldest first: every

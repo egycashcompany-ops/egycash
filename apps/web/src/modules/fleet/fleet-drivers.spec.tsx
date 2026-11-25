@@ -522,11 +522,16 @@ describe('the columns are filled from the three real sources', () => {
     // Sixty drivers matched; two of them are on this page. The count answers the first number,
     // because "how many drivers are there" is not a question about pagination.
     expect(html, 'the count names the whole match').toContain(
+      translate('ar', 'fleet.drivers.count', { count: '60' }),
+    );
+    // In Latin digits, as every figure in Fleet (owner, 2026-11-23: «اى ارقام خليها بالانجلش حتى
+    // لو عربى») — never the shared helper's Arabic-Indic «٦٠».
+    expect(html).not.toContain(
       translate('ar', 'fleet.drivers.count', { count: formatNumber(60, 'ar') }),
     );
     // And it is in the FILTER BAR rather than the table: the table no longer carries «م».
     expect(html.slice(0, html.indexOf('<table')), 'above the table').toContain(
-      translate('ar', 'fleet.drivers.count', { count: formatNumber(60, 'ar') }),
+      translate('ar', 'fleet.drivers.count', { count: '60' }),
     );
   });
 

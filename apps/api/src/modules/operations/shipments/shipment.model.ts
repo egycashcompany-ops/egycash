@@ -8,9 +8,11 @@
 // instead of the design's Decimal128 sketch: one money discipline per repo.
 import { Schema, model, type Types } from 'mongoose';
 import {
+  type OperationsDeliveryBilledSide,
   type OperationsSecuredPickedUpBy,
   type OperationsShipmentStatus,
   type OperationsShipmentType,
+  OPERATIONS_DELIVERY_BILLED_SIDES,
   OPERATIONS_SECURED_PICKED_UP_BY,
   OPERATIONS_SHIPMENT_STATUSES,
   OPERATIONS_SHIPMENT_TYPES,
@@ -46,6 +48,25 @@ export interface OperationsShipmentPickup {
   at: Date;
   /** The USER who pressed ✓ (from the token) — a user id, not an employee id. */
   userId: Types.ObjectId;
+}
+
+/**
+ * Round 33 B — «الشحنات المسلَّمة»'s ✓: the delivery confirmed with its paper receipt, and the bank
+ * billed for moving the shipment («لازم يكون فيه رقم الايصال … و يحدد البنك من او الى اللى هيتحسب
+ * عليه تكلفة نقل الشحنة»). ITS OWN RECORD («الشاشة الجديدة حاجاتها لوحدها»): writing it moves nothing
+ * else — not `status`, not the day board's ✓ (`receivedById` / `receivedAt`), not `mainBankId`,
+ * `secondaryBankId`, `receiptNumber` or `vaultReceiptNumber`.
+ */
+export interface OperationsShipmentDeliveryConfirmation {
+  /** Trimmed; at most `OPERATIONS_DELIVERY_RECEIPT_NUMBER_MAX`. */
+  receiptNumber: string;
+  billedSide: OperationsDeliveryBilledSide;
+  /** The branch on that side, and ITS bank as read at the ✓ — the server's, never the client's. */
+  billedBranchId: Types.ObjectId;
+  billedBankId: Types.ObjectId;
+  /** The USER who pressed ✓ (from the token) — a user id, not an employee id. */
+  confirmedById: Types.ObjectId;
+  confirmedAt: Date;
 }
 
 export interface OperationsShipmentDoc extends BaseDocFields {
@@ -86,6 +107,12 @@ export interface OperationsShipmentDoc extends BaseDocFields {
    * would apply the default and turn "never written" into null).
    */
   pickup?: OperationsShipmentPickup | null;
+  /**
+   * Round 33 B — the delivery confirmation (`OperationsShipmentDeliveryConfirmation`), or null /
+   * ABSENT while there is none: rows written before it carry no such field and read `.lean()` as
+   * not confirmed, so no migration. The undo writes an explicit null.
+   */
+  deliveryConfirmation?: OperationsShipmentDeliveryConfirmation | null;
 }
 
 const lineSchema = new Schema<OperationsShipmentLine>(
@@ -112,6 +139,18 @@ const pickupSchema = new Schema<OperationsShipmentPickup>(
     by: { type: String, required: true, enum: OPERATIONS_SECURED_PICKED_UP_BY },
     at: { type: Date, required: true },
     userId: { type: Schema.Types.ObjectId, required: true },
+  },
+  { _id: false },
+);
+
+const deliveryConfirmationSchema = new Schema<OperationsShipmentDeliveryConfirmation>(
+  {
+    receiptNumber: { type: String, required: true },
+    billedSide: { type: String, required: true, enum: OPERATIONS_DELIVERY_BILLED_SIDES },
+    billedBranchId: { type: Schema.Types.ObjectId, required: true },
+    billedBankId: { type: Schema.Types.ObjectId, required: true },
+    confirmedById: { type: Schema.Types.ObjectId, required: true },
+    confirmedAt: { type: Date, required: true },
   },
   { _id: false },
 );
@@ -143,6 +182,7 @@ const shipmentSchema = new Schema<OperationsShipmentDoc>(
     // Default null: a row created from now on says "nobody yet" explicitly — only a pre-Round-10
     // row is ever without the field (see the interface).
     pickup: { type: pickupSchema, default: null },
+    deliveryConfirmation: { type: deliveryConfirmationSchema, default: null },
     ...baseFields,
   },
   baseSchemaOptions,

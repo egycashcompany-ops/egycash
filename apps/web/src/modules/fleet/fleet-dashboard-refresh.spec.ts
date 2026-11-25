@@ -270,11 +270,25 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
     expect(page).toContain('if (month.enabled) void monthQ.refetch({ cancelRefetch: false });');
     expect(page).toContain('enabled: monthEnabled,');
     expect(page).toContain('if (reads.period) void periodQ.refetch({ cancelRefetch: false });');
-    // The period tabs' button spins and holds like the «الآن» tabs' one.
-    expect(page).toContain('refreshing={periodQ.isFetching}');
-    expect(source('components/fleet-dashboard/period-tabs.tsx')).toContain(
-      'refreshing={props.refreshing ?? false}',
-    );
+    // The period parts' button spins and holds like the «الآن» tabs' one: the page hands R2's
+    // fetching to the seven mixed panels (their period read and their heading), and each panel's
+    // «تحديث» holds on it. No tab reads R2 alone any more (the period-figures tab is gone).
+    expect(page).toContain('refreshing: periodQ.isFetching,');
+    expect(page.replace(/\s+/gu, ' ')).toContain('|| (periodDrawn && periodQ.isFetching)');
+    for (const tab of [
+      'maintenance',
+      'km',
+      'accidents',
+      'violations',
+      'fuel',
+      'custody',
+      'licences',
+    ]) {
+      const flat = source(`components/fleet-dashboard/tab-${tab}.tsx`).replace(/\s+/gu, ' ');
+      expect(flat, tab).toMatch(/<RefreshTools [^>]*refreshing=\{props\.refreshing[ }]/u);
+    }
+    expect(page).not.toContain('PeriodTab');
+    expect(page).not.toContain('period-tabs');
   });
 
   it('«توزيع السيارات» asks the month read only for a reader of its km, and «تحديث» joins it to R1', () => {

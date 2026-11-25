@@ -9,8 +9,10 @@
 // (main_ops.ejs:995) — a genuinely fragile idea this replaces with data.
 import {
   OPERATIONS_SECURED_STAGES,
+  asciiDigits,
   type OperationsCurrencyDto,
   type OperationsDayBoardShipmentDto,
+  type OperationsDeliveredShipmentDto,
   type OperationsSecuredStage,
   type OperationsShipmentDto,
   type OperationsShipmentStatus,
@@ -30,7 +32,7 @@ import { matchesVehicleCode } from '../../fleet/lib/vehicle-code-match';
  * Declared in the order the bar shows them, which is the table's column order («ارتب الفلاتر على
  * حسب عواميد الجدول»): the van, the bank, the two branches, the area, the captain, (the day), the
  * type, the status — the delivery on the day board and the history, the محصنة's stage on the
- * secured screen — the notes.
+ * secured screen — the notes, and on «الشحنات المسلَّمة» the receipt's number (Round 33 C).
  */
 export interface DayBoardFilters {
   /**
@@ -61,6 +63,17 @@ export interface DayBoardFilters {
   pickup: VaultPickupColumn | '';
   /** Round 13 — the vault queue's «حالة الخزينة» (`vaultHoldOf`): received yet, and where it is now. */
   vault: VaultHoldColumn | '';
+  /**
+   * Round 33 B — «الشحنات المسلَّمة»'s «الحالة»: `no` «بانتظار التأكيد» (delivered, its ✓ not pressed
+   * yet), `yes` «مؤكَّدة» (confirmed with its receipt); empty is «الكل». That board's alone.
+   */
+  confirmed: 'yes' | 'no' | '';
+  /**
+   * Round 33 C — «الشحنات المسلَّمة»'s «رقم الإيصال» («عاوز رثم الايصال فى عمود لوحده»): the number
+   * the ✓ recorded, found as the box is typed (`matchesReceiptNumber`). That board's alone, after
+   * the notes as its column is.
+   */
+  receipt: string;
 }
 
 export const EMPTY_DAY_BOARD_FILTERS: DayBoardFilters = {
@@ -75,7 +88,9 @@ export const EMPTY_DAY_BOARD_FILTERS: DayBoardFilters = {
   stage: '',
   pickup: '',
   vault: '',
+  confirmed: '',
   notes: '',
+  receipt: '',
 };
 
 /**
@@ -122,24 +137,43 @@ export const DAY_BOARD_FILTER_PARAMS = Object.keys(
  *     as the status filter;
  *   · `vault` (Round 13) — the vault's receive queue: the secured board, with its «الحالة» split
  *     into «حالة الاستلام» and «حالة الخزينة» («مكان الحاله عمودين»), each filtered by its own box
- *     (`pickup`, `vault`) where the stage box stands on the secured screen.
+ *     (`pickup`, `vault`) where the stage box stands on the secured screen;
+ *   · `delivered` (Round 33 B) — «الشحنات المسلَّمة»: the day board's columns over what reached its
+ *     bank, daily rows and محصنات side by side («النوع» kept), its «الحالة» the delivery's
+ *     confirmation (`confirmed`) in «التسليم»'s place — every row on it is delivered. Round 33 C:
+ *     and one column more, «رقم الإيصال» before «صورة الإيصال», with its own box (`receipt`).
  */
-export type BoardKind = 'shipments' | 'secured' | 'vault';
+export type BoardKind = 'shipments' | 'secured' | 'vault' | 'delivered';
 
 /** The filter params a board offers no box for. */
 const UNOFFERED: Record<BoardKind, readonly (keyof DayBoardFilters)[]> = {
-  shipments: ['stage', 'pickup', 'vault'],
-  secured: ['type', 'received', 'pickup', 'vault'],
-  vault: ['type', 'received', 'stage'],
+  shipments: ['stage', 'pickup', 'vault', 'confirmed', 'receipt'],
+  secured: ['type', 'received', 'pickup', 'vault', 'confirmed', 'receipt'],
+  vault: ['type', 'received', 'stage', 'confirmed', 'receipt'],
+  delivered: ['received', 'stage', 'pickup', 'vault'],
 };
 
 /**
  * The filters a board READS — every one it offers a box for. A param with no box on screen must
  * not narrow the table (an old link, a hand-typed `?stage=` on the day board), so it is read as
- * empty (`offeredFilters`); and a page remembers exactly these.
+ * empty (`offeredFilters`); and a page remembers these, less its one-off lookups
+ * (`rememberedFilterParams`).
  */
 export const boardFilterParams = (kind: BoardKind): readonly (keyof DayBoardFilters)[] =>
   DAY_BOARD_FILTER_PARAMS.filter((name) => !UNOFFERED[kind].includes(name));
+
+/**
+ * Round 33 C critic — the boxes that LOOK ONE THING UP rather than set a standing slice of the
+ * day: «رقم الإيصال» (`receipt`) finds one receipt, and every row still awaiting its ✓ has no number
+ * — remembered, a number looked up last week would open «الشحنات المسلَّمة» on today with its work
+ * queue empty until the box was cleared. Offered and read (an address that carries one, and a
+ * reload, keep it); never remembered across visits, as the screen's day is not.
+ */
+export const BOARD_LOOKUP_PARAMS: readonly (keyof DayBoardFilters)[] = ['receipt'];
+
+/** What a page remembers across visits: what its board reads (`boardFilterParams`), less lookups. */
+export const rememberedFilterParams = (kind: BoardKind): readonly (keyof DayBoardFilters)[] =>
+  boardFilterParams(kind).filter((name) => !BOARD_LOOKUP_PARAMS.includes(name));
 
 /**
  * The filters with every one the board offers no box for read as empty — and, given the stages
@@ -172,6 +206,7 @@ export const readDayBoardFilters = (params: URLSearchParams): DayBoardFilters =>
   const stage = params.get('stage') ?? '';
   const pickup = params.get('pickup') ?? '';
   const vault = params.get('vault') ?? '';
+  const confirmed = params.get('confirmed') ?? '';
   return {
     vehicle: params.get('vehicle') ?? '',
     bank: params.get('bank') ?? '',
@@ -190,7 +225,9 @@ export const readDayBoardFilters = (params: URLSearchParams): DayBoardFilters =>
     vault: (VAULT_HOLD_COLUMN as readonly string[]).includes(vault)
       ? (vault as VaultHoldColumn)
       : '',
+    confirmed: confirmed === 'yes' || confirmed === 'no' ? confirmed : '',
     notes: params.get('notes') ?? '',
+    receipt: params.get('receipt') ?? '',
   };
 };
 
@@ -318,8 +355,56 @@ export const filterDayBoard = <T extends OperationsShipmentDto>(
       (filters.pickup === '' ||
         vaultPickupOf(shipment as Partial<Pick<OperationsDayBoardShipmentDto, 'pickedUpBy'>>) ===
           filters.pickup) &&
-      (filters.vault === '' || vaultHoldOf(shipment) === filters.vault),
+      (filters.vault === '' || vaultHoldOf(shipment) === filters.vault) &&
+      // Round 33 B — «الشحنات المسلَّمة»'s «الحالة»: confirmed with its receipt, or awaiting its ✓.
+      (filters.confirmed === '' ||
+        (filters.confirmed === 'yes') ===
+          isDeliveryConfirmed(
+            shipment as Partial<Pick<OperationsDeliveredShipmentDto, 'deliveryConfirmation'>>,
+          )) &&
+      // Round 33 C — its «رقم الإيصال»: a row still awaiting its ✓ has none, so it drops out of a
+      // number typed in the box.
+      matchesReceiptNumber(
+        deliveredReceiptNumber(
+          shipment as Partial<Pick<OperationsDeliveredShipmentDto, 'deliveryConfirmation'>>,
+        ),
+        filters.receipt,
+      ),
   );
+
+/**
+ * Round 33 B — is this «الشحنات المسلَّمة» row confirmed with its receipt? A row with no such field
+ * (any other board's) is not.
+ */
+export const isDeliveryConfirmed = (
+  row: Partial<Pick<OperationsDeliveredShipmentDto, 'deliveryConfirmation'>>,
+): boolean => row.deliveryConfirmation != null;
+
+/**
+ * Round 33 C — the receipt's number as «رقم الإيصال» prints it: the one the ✓ recorded (stored as
+ * typed, trimmed), its digits Latin — a number typed on an Arabic keyboard («٢٠٤١٨») reads as the
+ * board's every figure does. Null on a row still awaiting its ✓ (the column's quiet «—»), and on any
+ * other board's row, which has no confirmation.
+ */
+export const deliveredReceiptNumber = (
+  row: Partial<Pick<OperationsDeliveredShipmentDto, 'deliveryConfirmation'>>,
+): string | null =>
+  row.deliveryConfirmation == null ? null : asciiDigits(row.deliveryConfirmation.receiptNumber);
+
+/** A receipt number compared folded (`fold`) with its spaces gone, as `matchesReceiptNumber` reads it. */
+const receiptKey = (value: string): string => fold(value).replace(/\s+/gu, '');
+
+/**
+ * Round 33 C — the «رقم الإيصال» box against a row's number: a fragment of it is enough, as every
+ * text box of the board takes a fragment, matched FOLDED (`fold` — Arabic-Indic digits, Latin case)
+ * and with its separators ignored: «rc 20418», «RC20418» and «٢٠٤١٨» all find «RC-20418» (fold drops
+ * the hyphen and the slash, and the spaces go here). An empty box narrows nothing; a row with no
+ * number yet (awaiting its ✓) is not found by one.
+ */
+export const matchesReceiptNumber = (number: string | null, term: string): boolean => {
+  const wanted = receiptKey(term);
+  return wanted === '' || (number !== null && receiptKey(number).includes(wanted));
+};
 
 export const legacyRowNumber = (index: number, total: number): number => total - index;
 

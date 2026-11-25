@@ -660,6 +660,17 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'operationsShipment.view',
       },
       {
+        // Round 33 B — «وعاوز اعمل شاشة جديدة زى شاشةاليوم التشغيلى بس يظهر بس اللى اتسلمت»: the
+        // shipments that reached their bank, by the day of the delivery, and the ✓ with the paper
+        // receipt. Right beneath the day board it is cut from, on the day board's own read grant
+        // (the ✓ is `operationsShipment.complete`, the day board's ✓'s, on the server).
+        en: 'Delivered Shipments',
+        ar: 'الشحنات المسلَّمة',
+        route: '/operations/shipments/delivered',
+        icon: 'receipt',
+        permission: 'operationsShipment.view',
+      },
+      {
         // «عاوز اعمل dublicat للشاشة دى بس التاريخ هيكون من الى … عشان اقدر امسك الhistory بتاع
         // الشحنات»: the same board over a range of days, right beneath the day it extends.
         en: 'Shipments History',
@@ -1284,6 +1295,60 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         route: '/atm/settings',
         icon: 'cog',
         permission: 'atmSettings.manage',
+      },
+    ],
+  },
+  {
+    // Administrative Affairs — the company's department «الشئون الإدارية»: its warehouses and, from
+    // P1b, its procurement (docs/12-planning/administration-module-design-integration.md §13.1–
+    // §13.3). Never named 'Administration': categories are found by their English name, and that
+    // one is System Administration's, below. Placed after ATM, outside the spans the HR-sections and
+    // Operations specs read; sortOrder 29 puts it between ATM (28) and System Administration (30).
+    // One row per screen and no sections yet (OD-62 A). Every `permission` is the key the client
+    // route guard checks in apps/web/src/modules/administration/routes.tsx — the home row's is the
+    // one exception: the index carries no guard and decides what to show from the reader's grants.
+    en: 'Administrative Affairs',
+    ar: 'الشئون الإدارية',
+    // A box — the stores the department keeps (OD-62.1 A); the Items row wears it too.
+    icon: 'box',
+    sortOrder: 29,
+    apps: [
+      {
+        en: 'Administrative Affairs Home',
+        ar: 'الرئيسية',
+        route: '/administration',
+        icon: 'home',
+        permission: 'administrationItem.view',
+      },
+      {
+        en: 'Warehouses',
+        ar: 'المخازن',
+        route: '/administration/warehouses',
+        icon: 'warehouse',
+        permission: 'administrationWarehouse.view',
+      },
+      {
+        en: 'Items',
+        ar: 'الأصناف',
+        route: '/administration/items',
+        icon: 'box',
+        permission: 'administrationItem.view',
+      },
+      {
+        en: 'Units and categories',
+        ar: 'وحدات القياس والتصنيفات',
+        route: '/administration/catalogs',
+        icon: 'tag',
+        permission: 'administrationCatalog.manage',
+      },
+      // The supplier register (P1b.W) — the parties the company buys from, opened organization-wide
+      // to its readers; each supplier's record is opened from it and has no row.
+      {
+        en: 'Suppliers',
+        ar: 'الموردون',
+        route: '/administration/suppliers',
+        icon: 'company',
+        permission: 'administrationSupplier.view',
       },
     ],
   },

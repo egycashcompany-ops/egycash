@@ -116,6 +116,18 @@ export const ErrorCodes = {
   OPERATIONS_UNKNOWN_BRANCH: 'OPERATIONS_UNKNOWN_BRANCH',
   OPERATIONS_UNKNOWN_CURRENCY: 'OPERATIONS_UNKNOWN_CURRENCY',
   /**
+   * 422 (Round 29, «استيراد فروع من شيت») — the bank's branch sheet cannot be compared: no header row
+   * naming «اسم الفرع» in its first rows, no visible sheet, or over a cap. `details` name the missing
+   * column or the cap (`TOO_LARGE`), never a cell's content.
+   */
+  OPERATIONS_BRANCH_IMPORT_LAYOUT: 'OPERATIONS_BRANCH_IMPORT_LAYOUT',
+  /**
+   * 409 (Round 29) — «تأكيد الاستيراد» after the comparison went out of date: the file is not the one
+   * compared (`details[0].code` 'FILE_CHANGED'), or the bank's branches or the areas changed so the
+   * plan is no longer the one shown ('PLAN_CHANGED'). Nothing was written; compare again.
+   */
+  OPERATIONS_BRANCH_IMPORT_CHANGED: 'OPERATIONS_BRANCH_IMPORT_CHANGED',
+  /**
    * The destination branch is not a branch of the destination bank (`secondaryBankId ?? mainBankId`)
    * — legacy's client-side to-branch filter (main_ops.ejs:501-503), made a domain rule. The ORIGIN
    * carries no bank rule: it may belong to any bank, the main bank being the billed one.
@@ -146,10 +158,13 @@ export const ErrorCodes = {
    */
   OPERATIONS_UNKNOWN_SHIFT_TYPE: 'OPERATIONS_UNKNOWN_SHIFT_TYPE',
   /**
-   * 422 — Round 20: a crew-board save gave a row a NEW or CHANGED «الاتجاه» that is not the name of
-   * an active operations area («لازم اختار من الاتجاهات اللى موجوده»). A direction the row already
-   * holds stays while it is sent unchanged. Details: one per part refused (`field` 'direction',
-   * `message` the part as typed), then `field` 'rows' (`code` 'ROW_INDEX', `message` the row's index).
+   * @deprecated UNUSED since Round 28 — no server sends it. Round 20 refused a crew-board save that
+   * gave a row a NEW or CHANGED «الاتجاه» that was not the name of an active operations area («لازم
+   * اختار من الاتجاهات اللى موجوده»); Round 28 reverses that («عاوز الاتجاه اقدر اكتبه بايدى لو مش
+   * موجود فى الليست»): a hand-typed direction is stored as typed. Kept so a client built before the
+   * change still reads the code, and so no other refusal reuses its name. Its details were: one per
+   * part refused (`field` 'direction', `message` the part as typed), then `field` 'rows' (`code`
+   * 'ROW_INDEX', `message` the row's index).
    */
   OPERATIONS_DIRECTION_NOT_AN_AREA: 'OPERATIONS_DIRECTION_NOT_AN_AREA',
   /**
@@ -204,6 +219,14 @@ export const ErrorCodes = {
    * 'removeCrewAssignmentIds' (`code` 'REMOVAL_INDEX', `message` the removal's index in the save).
    */
   OPERATIONS_CREW_ROW_HAS_SHIPMENTS: 'OPERATIONS_CREW_ROW_HAS_SHIPMENTS',
+  /**
+   * 422 — Round 32: a crew-board save (`POST /operations/crew-board`) named a day before today on
+   * the Cairo calendar. The owner: «لما بجيب السجل فى لوحة التشغيل بيخلى اعدل وانا عاوزها اظهار
+   * فقط» — a past day opens on «لوحة التشغيلة» as its RECORD, view only (the read answers it with
+   * `past: true`), and this keeps it so whatever a client sends: nothing of it is written, checked
+   * before any row. One detail: `field` 'date', `code` 'MIN_DATE', `message` = today ('YYYY-MM-DD').
+   */
+  OPERATIONS_CREW_DAY_IN_PAST: 'OPERATIONS_CREW_DAY_IN_PAST',
   OPERATIONS_CUSTODY_NOT_HELD: 'OPERATIONS_CUSTODY_NOT_HELD',
   OPERATIONS_NOT_A_SECURED_SHIPMENT: 'OPERATIONS_NOT_A_SECURED_SHIPMENT',
   /** The crew row must sit on the shipment's own delivery day. */
@@ -269,6 +292,41 @@ export const ErrorCodes = {
    * already dispatched or completed.
    */
   OPERATIONS_SECURED_NOT_IN_VAULT: 'OPERATIONS_SECURED_NOT_IN_VAULT',
+
+  // ── «الشحنات المسلَّمة» — the delivery confirmed with its receipt (Round 33 B) ───────────────
+  /**
+   * 409 — the ✓ of «الشحنات المسلَّمة» on a shipment that has not reached its bank
+   * (`isOperationsShipmentDeliveredToBank`): its captain has not confirmed delivering it to the
+   * destination in the app, or — a محصنة — it has not left the vault for it.
+   */
+  OPERATIONS_SHIPMENT_NOT_DELIVERED: 'OPERATIONS_SHIPMENT_NOT_DELIVERED',
+  /** 409 — the ✓ on a delivery already confirmed (a colleague pressed it first). */
+  OPERATIONS_DELIVERY_ALREADY_CONFIRMED: 'OPERATIONS_DELIVERY_ALREADY_CONFIRMED',
+  /** 409 — «إلغاء التأكيد» on a delivery that is not confirmed (taken back already). */
+  OPERATIONS_DELIVERY_NOT_CONFIRMED: 'OPERATIONS_DELIVERY_NOT_CONFIRMED',
+  /**
+   * 422 — the ✓ with no receipt number («لازم يكون فيه رقم الايصال»): empty once trimmed. One
+   * detail: `field` 'receiptNumber', `code` 'REQUIRED'.
+   */
+  OPERATIONS_DELIVERY_RECEIPT_NUMBER_REQUIRED: 'OPERATIONS_DELIVERY_RECEIPT_NUMBER_REQUIRED',
+  /**
+   * 422 — a receipt number longer than `OPERATIONS_DELIVERY_RECEIPT_NUMBER_MAX` once trimmed. One
+   * detail: `field` 'receiptNumber', `code` 'MAX_LENGTH', `message` the most allowed.
+   */
+  OPERATIONS_DELIVERY_RECEIPT_NUMBER_TOO_LONG: 'OPERATIONS_DELIVERY_RECEIPT_NUMBER_TOO_LONG',
+  /**
+   * 422 — the ✓ without choosing whose bank is billed («يحدد البنك من او الى»). One detail: `field`
+   * 'billedSide', `code` 'REQUIRED'.
+   */
+  OPERATIONS_DELIVERY_BILLED_SIDE_REQUIRED: 'OPERATIONS_DELIVERY_BILLED_SIDE_REQUIRED',
+  /**
+   * 409 — Round 33 critic: an edit that moves the shipment's «من فرع» or «إلى فرع» while its
+   * delivery is CONFIRMED with its receipt. The bank billed for moving it was chosen between those
+   * two branches' banks at the ✓ (`deliveryConfirmation.billedBranchId` / `billedBankId`); moving
+   * either one would leave that record naming a branch the shipment no longer has. «إلغاء التأكيد»
+   * first, then the edit, then the ✓ again. Every other field still edits as before.
+   */
+  OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED: 'OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED',
   /**
    * 409 — Round 21b: the vault's receipt (`POST /operations/secured/:id/receive`) names a seal the
    * vault STILL HOLDS on another محصنة. The owner: «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت
@@ -285,9 +343,12 @@ export const ErrorCodes = {
 
   // ── «توزيع المحصنات» (Round 12) ─────────────────────────────────────────────────────────────
   /**
-   * 422 — the distribution screen (`GET`/`POST /operations/secured/distribution`) asked for a day
-   * before today on the Cairo calendar: a past day's vans have left. One detail: `field` 'date',
-   * `code` 'MIN_DATE', `message` = today ('YYYY-MM-DD').
+   * 422 — the distribution save (`POST /operations/secured/distribution`) named a day before today
+   * on the Cairo calendar: a past day's vans have left. One detail: `field` 'date', `code`
+   * 'MIN_DATE', `message` = today ('YYYY-MM-DD'). Round 30: the read (`GET`) answers such a day as
+   * its record, read only — this is what keeps it so. R30 critic: `POST
+   * /operations/secured/:id/assign-delivery` onto a crew row of such a day answers it too (the same
+   * delivery leg), with the same detail.
    */
   OPERATIONS_DISTRIBUTION_DAY_IN_PAST: 'OPERATIONS_DISTRIBUTION_DAY_IN_PAST',
   /**
@@ -613,6 +674,67 @@ export const ErrorCodes = {
    * `{ code: 'NEXT_READING', message: <that reading> }` and `{ code: 'NEXT_AT', message: <its time> }`.
    */
   IT_CONSUMABLE_COUNTER_ABOVE_NEXT: 'IT_CONSUMABLE_COUNTER_ABOVE_NEXT',
+
+  // ── Administrative Affairs: master data (docs/12-planning/administration-module-design-flows.md §5.15)
+  /**
+   * 422 — an item category's parent is refused; nothing was written. One detail, `field`
+   * 'parentId', `code` one of `ADMINISTRATION_CATEGORY_PARENT_PROBLEMS`: 'self' (the category
+   * itself), 'cycle' (one of its own subcategories), 'tooDeep' (a subcategory: two levels, OD-06),
+   * 'inactive' (a retired parent) or 'hasChildren' (a category that has subcategories never moves
+   * under another).
+   */
+  ADMINISTRATION_CATEGORY_PARENT_INVALID: 'ADMINISTRATION_CATEGORY_PARENT_INVALID',
+  /**
+   * 409 — a live master row already holds this name, code or barcode; nothing was written. One
+   * detail whose `field` names what clashed: 'name' (compared folded, «قطعه» = «قطعة»: the
+   * `nameKey` of the Arabic name), 'code' or 'barcode' (an item's; its unique index is its only
+   * check). Retired rows still hold theirs: reactivate, never recreate. The answer to the
+   * service's own check and to a unique index that refused a racing write alike.
+   */
+  ADMINISTRATION_DUPLICATE: 'ADMINISTRATION_DUPLICATE',
+  /**
+   * 422 — an item's stock levels are out of order: where set, min ≤ reorder point ≤ max (OD-09),
+   * judged on the row the write would leave; nothing was written. One detail per field out of
+   * order, `field` one of `ADMINISTRATION_STOCK_LEVEL_FIELDS` and `code` 'outOfOrder': both ends
+   * of each comparison that fails.
+   */
+  ADMINISTRATION_STOCK_LEVELS_ORDER: 'ADMINISTRATION_STOCK_LEVELS_ORDER',
+  /**
+   * 422 — an item names a retired unit or category, or a supplier a retired item category, on a
+   * create or by changing it; nothing was written. A row that already names one keeps it. One
+   * detail per retired reference, `code` 'inactive': an item's `field` is 'unitId' or
+   * 'categoryId'; a supplier's is 'categoryIds', its `message` the retired category's id.
+   */
+  ADMINISTRATION_REFERENCE_INACTIVE: 'ADMINISTRATION_REFERENCE_INACTIVE',
+  /**
+   * 422 — an item names a category that has active subcategories: it names one of those instead
+   * (OD-06 (i)), on a create or by changing its category; nothing was written. An item whose
+   * category gained its first subcategory later keeps it. One detail, `field` 'categoryId', `code`
+   * 'subcategoryRequired'.
+   */
+  ADMINISTRATION_SUBCATEGORY_REQUIRED: 'ADMINISTRATION_SUBCATEGORY_REQUIRED',
+  /**
+   * 422 — a warehouse is given a keeper whom HR answers as having left (IT's rule: a positive
+   * `exited` only; an id the directory cannot read passes); nothing was written. A warehouse whose
+   * keeper left later keeps them until the keeper is changed. One detail, `field`
+   * 'responsibleEmployeeId', `code` 'exited'.
+   */
+  ADMINISTRATION_EMPLOYEE_EXITED: 'ADMINISTRATION_EMPLOYEE_EXITED',
+  /**
+   * 422 — a warehouse is retired while something still holds it (OD-70 B): stock on hand or in
+   * transit, or a document not yet ended that names it; nothing was written. One detail per hold,
+   * `field` 'isActive', `code` one of `ADMINISTRATION_DEACTIVATION_PROBLEMS`: 'holdsStock' or
+   * 'openDocument'. Nothing can hold a warehouse before stock and documents exist (P5), so the
+   * code is first met then.
+   */
+  ADMINISTRATION_DEACTIVATION_BLOCKED: 'ADMINISTRATION_DEACTIVATION_BLOCKED',
+  /**
+   * 422 — a typed attachment list already holds `ADMINISTRATION_MAX_LIST_ATTACHMENTS` (20) entries
+   * (a supplier's papers, design §11.4); the file was not linked and nothing of it is kept (an
+   * upload that raced past the check is withdrawn). One detail, `field` 'attachments', `code`
+   * 'limit'. Remove a paper first.
+   */
+  ADMINISTRATION_ATTACHMENT_LIMIT: 'ADMINISTRATION_ATTACHMENT_LIMIT',
 
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */

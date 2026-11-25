@@ -278,7 +278,9 @@ export const FuelCardImageDialog = ({
             {t('fleet.vehicles.licenseImage.loadFailed')}
           </p>
         )}
-        {url !== null && <ZoomableImage src={url} alt={t('fleet.fuelCards.image.title')} />}
+        {url !== null && (
+          <ZoomableImage src={url} alt={t('fleet.fuelCards.image.title')} latinFigures />
+        )}
       </Dialog>
       <Dialog
         open={confirming}

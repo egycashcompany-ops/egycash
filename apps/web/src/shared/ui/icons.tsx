@@ -586,6 +586,31 @@ export const GoldIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+/**
+ * A packed carton, its flaps closed and its seam down the middle — an item the stores keep. The
+ * Administrative Affairs module tile (OD-62.1 A) and its Items row.
+ */
+export const BoxIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M21 7.5 12 3 3 7.5v9L12 21l9-4.5z" />
+    <path d="M3 7.5 12 12l9-4.5" />
+    <path d="M12 12v9" />
+    <path d="m7.5 5.25 9 4.5" />
+  </Base>
+);
+
+/**
+ * A store shed: a wide pitched roof over a roller door — a warehouse, not a home (no door of a
+ * house, and the roof runs the whole width). The Warehouses row of Administrative Affairs.
+ */
+export const WarehouseIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M2 21V8.5L12 3l10 5.5V21" />
+    <path d="M6 21V11h12v10" />
+    <path d="M6 14.5h12M6 18h12" />
+  </Base>
+);
+
 /** A cake with a candle — a birthday. */
 export const CakeIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>

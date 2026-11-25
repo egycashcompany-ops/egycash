@@ -10,16 +10,30 @@
 // Two sources, and both of them, because the owner named both: «المرجع الأساسي يكون Department +
 // Branch + Role/Scope + Delegated Permissions». A role assignment can put somebody on any of the
 // four rungs; a delegation on the three its own shapes can express (ADR-032, Gap 1).
+//
+// Who counts is the same at both ends: a grant in force now, held by an account that can sign in.
+// A grant before its `validFrom` or past its `validTo` gives no authority anywhere else in the
+// platform, and a suspended or archived account opens no session, so neither stands on a rung
+// (ADR-041 decisions 5 and 8). The reader's own end checks only the first: authentication refuses
+// every request from an account that is not active, so none reaches it.
 import { Types } from 'mongoose';
 import { type ApprovalLevel } from '@ecms/contracts';
 import { roleAssignmentRepository, roleRepository } from '../rbac/rbac.repository';
 import { delegatedGrantRepository } from '../rbac/delegation.repository';
 import { type DelegatedGrantDoc } from '../rbac/delegation.model';
+import { userRepository } from '../users/user.repository';
 import { delegationMeetsLevel, grantMeetsLevel, type Unit } from './approver-level';
 
 export type { Unit } from './approver-level';
 
-/** The accounts standing on one rung, in no particular order and without duplicates. */
+/**
+ * The accounts standing on one rung, in no particular order and without duplicates.
+ *
+ * Only `active` accounts, read through `activeIdsAmong`, the predicate the last-Super-Admin guard
+ * and sign-in share (ADR-026 SA-6). An archived or suspended account keeps its role assignments and
+ * delegations by design, so the grants alone would keep it on the rung: the chain would wait on it,
+ * notify it and never step over it, although nobody can sign in as it to decide.
+ */
 export const approversFor = async (
   permissionKey: string,
   level: ApprovalLevel,
@@ -71,7 +85,9 @@ export const approversFor = async (
     if (delegationMeetsLevel(shape, level, unit)) found.add(String(g.userId));
   }
 
-  return [...found];
+  // One id-only read for every holder found, by assignment or delegation alike: the account's
+  // status is the same question whichever grant put it here.
+  return userRepository.activeIdsAmong([...found]);
 };
 
 /**
@@ -104,7 +120,14 @@ export const ownStepsOf = async (
   unit: Unit,
 ): Promise<number[]> => {
   if (steps.length === 0) return [];
-  const assignments = await roleAssignmentRepository.findActiveForUser(userId);
+  // Grants in force only: the window RBAC's effective permissions apply, and the one staffing
+  // already reads (`findActiveForRoles`). `findActiveForUser` also returns a grant that has ended
+  // or not yet started, which SA-4's screen lists to explain it; read here, such a grant would still
+  // decide, on its own rung or early over the rungs below it. Delegations carry no validity window,
+  // so their read is unchanged.
+  const assignments = await roleAssignmentRepository.findInForceForUsers([
+    new Types.ObjectId(userId),
+  ]);
   const roles = await roleRepository.findByIds(
     assignments.map((a) => new Types.ObjectId(String(a.roleId))),
   );
@@ -139,7 +162,5 @@ export const ownStepsOf = async (
     return false;
   };
 
-  return steps.flatMap((step, index) =>
-    standsOn(step.permissionKey, step.level) ? [index] : [],
-  );
+  return steps.flatMap((step, index) => (standsOn(step.permissionKey, step.level) ? [index] : []));
 };

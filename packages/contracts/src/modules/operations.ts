@@ -18,10 +18,12 @@ import {
   PaginationQuerySchema,
   asciiDigits,
   booleanQuery,
+  isYmd,
   listQuery,
   objectId,
 } from '../common/index.js';
 import { MoneyAmountSchema } from './hr-payroll-money.js';
+import { type OperationsUncodedVehicleDto } from './operations-vehicle-codes.js';
 
 // ── Shipment type ───────────────────────────────────────────────────────────────────────────────
 
@@ -1010,6 +1012,175 @@ export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
   pickedUpAt: string | null;
 }
 
+// ── «الشحنات المسلَّمة» — what reached its bank, and its receipt (Round 33 B) ─────────────────────
+//
+// The owner: «وعاوز اعمل شاشة جديدة زى شاشةاليوم التشغيلى بس يظهر بس اللى اتسلمت سواء يومى او كانت
+// محصنة ف الخونة واسلمت ل بنك هتظهرلى لما تكون تم التسليم بس الاجراءات هيكون فيه علامة صح لما ادوس
+// عليها لازم يكون فيه رقم الايصال ويفضل الصورة تكون مرفوعه و يحدد البنك من او الى اللى هيتحسب عليه
+// تكلفة نقل الشحنة». Asked about the day board's own ✓: «الشاشة الجديدة حاجاتها لوحدها» — its act is
+// its OWN record; and about the photo at ✓: «اختيارية مع تنبيه».
+//
+//   · `GET /operations/shipments/delivered?date=YYYY-MM-DD` (`operationsShipment.view`, the day
+//     board's read) — the shipments DELIVERED TO THEIR BANK on that Cairo day
+//     (`isOperationsShipmentDeliveredToBank`, by the Cairo day of `captainDeliveredAt`), with their
+//     delivery confirmation. Today in Cairo when no day is given; any real day may be asked (a
+//     receipt often comes back days later). The day board's rows and crews, the same reader rules.
+//     It echoes the day answered and the server's own Cairo `today` (Round 33 critic).
+//   · `POST /operations/shipments/:id/delivery-confirmation` (`operationsShipment.complete`, the day
+//     board's ✓ grant) `{receiptNumber, billedSide, version}` — the ✓: writes the shipment's
+//     `deliveryConfirmation` and NOTHING ELSE (not `status`, not the day board's ✓, not
+//     `mainBankId`, `secondaryBankId`, `receiptNumber` or `vaultReceiptNumber`). The billed bank is
+//     the SERVER's: the bank of the branch on the side chosen, read at that moment; who confirmed is
+//     the token's user. Refused: 404 a deleted or unknown shipment; 409
+//     `OPERATIONS_SHIPMENT_NOT_DELIVERED` (not delivered to its bank yet),
+//     `OPERATIONS_DELIVERY_ALREADY_CONFIRMED`, `STALE_DOCUMENT` (the version moved); 422
+//     `OPERATIONS_DELIVERY_RECEIPT_NUMBER_REQUIRED` / `…_TOO_LONG` (`deliveryReceiptNumberProblem`),
+//     `OPERATIONS_DELIVERY_BILLED_SIDE_REQUIRED`. Each 422 carries one detail naming its field.
+//   · `DELETE /operations/shipments/:id/delivery-confirmation` (same grant) `{version}` — «إلغاء
+//     التأكيد»: the record cleared to null. 409 `OPERATIONS_DELIVERY_NOT_CONFIRMED` when there is none.
+//   · Round 33 critic — while a delivery is confirmed, `PATCH /operations/shipments/:id` may not
+//     move its «من فرع» or «إلى فرع» (409 `OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED`): the bank
+//     billed was chosen between those two. «إلغاء التأكيد» first; every other field edits as before.
+//   · The receipt photo is the shipment's own «صورة الإيصال» (`POST /operations/shipments/:id/
+//     receipt-image`), optional at ✓ — a confirmed row without one is shown «بدون صورة».
+//
+// Both acts are audited on the shipment (`deliveryConfirmed` / `deliveryUnconfirmed` in «السجل», with
+// the receipt number and the billed bank) and emit `operations.shipment.deliveryConfirmed` /
+// `operations.shipment.deliveryUnconfirmed`.
+
+/**
+ * Which branch's bank the cost of moving the shipment is billed to — «يحدد البنك من او الى اللى
+ * هيتحسب عليه تكلفة نقل الشحنة»: `origin` («من» — the bank of the branch it was collected from) or
+ * `destination` («إلى» — the bank of the branch it was delivered to). When the two branches are of
+ * ONE bank the side is still recorded, and the bank is the same either way.
+ */
+export const OPERATIONS_DELIVERY_BILLED_SIDES = ['origin', 'destination'] as const;
+export const OperationsDeliveryBilledSideSchema = z.enum(OPERATIONS_DELIVERY_BILLED_SIDES);
+export type OperationsDeliveryBilledSide = (typeof OPERATIONS_DELIVERY_BILLED_SIDES)[number];
+
+/** The longest receipt number taken, after trimming — a paper receipt's number, never a note. */
+export const OPERATIONS_DELIVERY_RECEIPT_NUMBER_MAX = 40;
+
+/**
+ * Why a receipt number cannot be taken — `required` (empty once trimmed) or `tooLong` (past
+ * `OPERATIONS_DELIVERY_RECEIPT_NUMBER_MAX`) — or null when it can. ONE rule for the dialog and the
+ * server (`OPERATIONS_DELIVERY_RECEIPT_NUMBER_REQUIRED` / `…_TOO_LONG`).
+ */
+export const deliveryReceiptNumberProblem = (
+  value: string | null | undefined,
+): 'required' | 'tooLong' | null => {
+  const trimmed = (value ?? '').trim();
+  if (trimmed === '') return 'required';
+  return trimmed.length > OPERATIONS_DELIVERY_RECEIPT_NUMBER_MAX ? 'tooLong' : null;
+};
+
+/**
+ * HAS THIS SHIPMENT REACHED ITS BANK? — the one rule the screen lists by and the ✓ is refused by.
+ * «هتظهرلى لما تكون تم التسليم بس»: the day board's own «تم التسليم» — its crew captain confirmed
+ * delivering it to the DESTINATION in the mobile app (`captainDeliveredAt`: the pickup leg of a
+ * daily shipment, the delivery leg of a secured one). A secured shipment counts only once it has
+ * LEFT THE VAULT for it — `dispatched` or `completed` («كانت محصنة ف الخزنة واسلمت ل بنك»): one still
+ * in the vault, or never in it, has not gone to the bank whatever its delivery leg says.
+ */
+export const isOperationsShipmentDeliveredToBank = (row: {
+  shipmentType: OperationsShipmentType;
+  status: OperationsShipmentStatus;
+  captainDeliveredAt: string | Date | null;
+}): boolean =>
+  row.captainDeliveredAt != null &&
+  (row.shipmentType === 'daily' || row.status === 'dispatched' || row.status === 'completed');
+
+/**
+ * May a FIRST receipt photo be added to this shipment? Round 10 locks a محصنة's photo from the
+ * vault's ✓ on («ميقدر حد … يعدل عليها»), and Round 33 B opens it ONCE, narrowly: a locked محصنة
+ * that has REACHED ITS BANK (`isOperationsShipmentDeliveredToBank`) and has NO photo yet may take one
+ * — the bank's paper receipt, which only exists after the delivery («ويفضل الصورة تكون مرفوعه»,
+ * «اختيارية مع تنبيه»: a row confirmed without it keeps «بدون صورة» until one is uploaded). Nothing
+ * the vault signed for is changed: a photo already there is never replaced or deleted on a locked
+ * row. An unlocked shipment (every daily one, a محصنة before the vault) takes one as always.
+ */
+export const isOperationsReceiptPhotoAddable = (row: {
+  shipmentType: OperationsShipmentType;
+  status: OperationsShipmentStatus;
+  captainDeliveredAt: string | Date | null;
+  hasReceiptImage: boolean;
+}): boolean =>
+  !row.hasReceiptImage &&
+  (!isOperationsShipmentLocked(row) || isOperationsShipmentDeliveredToBank(row));
+
+/** `GET /operations/shipments/delivered` — one Cairo day of deliveries; today when left out. */
+export const OperationsDeliveredBoardQuerySchema = z
+  .object({
+    date: z.string().refine(isYmd, { message: 'a real day, YYYY-MM-DD' }).optional(),
+  })
+  .strict();
+export type OperationsDeliveredBoardQuery = z.infer<typeof OperationsDeliveredBoardQuerySchema>;
+
+/**
+ * The ✓ («تأكيد التسليم»). `receiptNumber` and `billedSide` are typed loosely ON PURPOSE: a number
+ * left empty or too long, or no side, is the SERVER's coded 422 (`deliveryReceiptNumberProblem`,
+ * `OPERATIONS_DELIVERY_BILLED_SIDE_REQUIRED`), so a screen can name the box — not a bare
+ * validation failure. The number is stored trimmed. `version` is the shipment's, as on «complete».
+ */
+export const ConfirmOperationsDeliverySchema = z
+  .object({
+    receiptNumber: z.string().nullable().optional(),
+    billedSide: OperationsDeliveryBilledSideSchema.nullable().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type ConfirmOperationsDelivery = z.infer<typeof ConfirmOperationsDeliverySchema>;
+
+/** «إلغاء التأكيد» — the shipment's version, as on «reopen». */
+export const UndoOperationsDeliverySchema = z.object({ version: z.number().int().min(0) }).strict();
+export type UndoOperationsDelivery = z.infer<typeof UndoOperationsDeliverySchema>;
+
+/** A shipment's delivery confirmation, as the screen prints it — every name resolved. */
+export interface OperationsDeliveryConfirmationDto {
+  /** As typed, trimmed. */
+  receiptNumber: string;
+  billedSide: OperationsDeliveryBilledSide;
+  /** The branch on that side, and its bank AT THE MOMENT OF THE ✓ — the bank billed. */
+  billedBranchId: string;
+  billedBankId: string;
+  /** The bank's operational name (`opsName`); '' when the bank record is gone. */
+  billedBankName: string;
+  /** The USER who pressed ✓ (from the token), and their display name (null when unknown). */
+  confirmedById: string;
+  confirmedByName: string | null;
+  confirmedAt: string;
+}
+
+/** A row of «الشحنات المسلَّمة»: the day board's row, delivered, and its confirmation. */
+export interface OperationsDeliveredShipmentDto extends OperationsDayBoardShipmentDto {
+  /** Always set on this screen — a row is listed only once delivered. */
+  captainDeliveredAt: string;
+  /** Null until the ✓; null again after «إلغاء التأكيد». */
+  deliveryConfirmation: OperationsDeliveryConfirmationDto | null;
+}
+
+export interface OperationsDeliveredBoardDto {
+  /** The Cairo day answered, 'YYYY-MM-DD'. */
+  date: string;
+  /**
+   * Round 33 critic — TODAY in Cairo on the SERVER's clock, 'YYYY-MM-DD', read with `date` (so the
+   * two never disagree across a midnight): the latest day «يوم التسليم» offers, and the day the
+   * screen opens on when it asks for none. A desk PC's clock never overrides it.
+   */
+  today: string;
+  /** Delivered first-come first: by `captainDeliveredAt`, oldest first. */
+  shipments: OperationsDeliveredShipmentDto[];
+  /** As `OperationsDayBoardDto.crews` — empty without `operationsCrew.view`. */
+  crews: OperationsDayBoardVehicleCrewDto[];
+}
+
+/** What the ✓ and its undo answer: the shipment's new version and its confirmation now. */
+export interface OperationsDeliveryConfirmationResultDto {
+  shipmentId: string;
+  version: number;
+  deliveryConfirmation: OperationsDeliveryConfirmationDto | null;
+}
+
 // ── The dates a person may give a shipment ──────────────────────────────────────────────────────
 //
 // «مينفعش لما يجى يضيف شحنه يختار تاريخ فات» and «ميقدرش يحدد يوم قبل يوم اللى كانت عليه الشحنة».
@@ -1116,6 +1287,12 @@ export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
  *                        The one change a received (locked) محصنة may take: a FLOW act — it goes out
  *                        on a later day than planned — not an edit of what the vault signed for. The
  *                        screen says so in the entry's sentence.
+ *   deliveryConfirmed    (Round 33 B) «الشحنات المسلَّمة»'s ✓ — the delivery confirmed with its paper
+ *                        receipt (`POST /operations/shipments/:id/delivery-confirmation`). `changes`
+ *                        carry `deliveryReceiptNumber` and `billedBank` (old = null → new). Its OWN
+ *                        act, never the desk's `received` («الشاشة الجديدة حاجاتها لوحدها»).
+ *   deliveryUnconfirmed  (Round 33 B) «إلغاء التأكيد» — that confirmation taken back; `changes` carry
+ *                        the two values it had (old → null).
  *   other                an audited act this list does not name yet — shown plainly, never hidden.
  */
 export const OPERATIONS_SHIPMENT_LOG_KINDS = [
@@ -1142,6 +1319,8 @@ export const OPERATIONS_SHIPMENT_LOG_KINDS = [
   'receiptCancelled',
   'crewRemoved',
   'deliveryRescheduled',
+  'deliveryConfirmed',
+  'deliveryUnconfirmed',
   'other',
 ] as const;
 export type OperationsShipmentLogKind = (typeof OPERATIONS_SHIPMENT_LOG_KINDS)[number];
@@ -1184,6 +1363,9 @@ export type OperationsShipmentLogKind = (typeof OPERATIONS_SHIPMENT_LOG_KINDS)[n
  *                                (see OPERATIONS_SHIPMENT_LOG_PICKED_UP_BY_FIELDS)
  * A cancelled vault receipt (on `receiptCancelled`, Round 10) — for every reader:
  *   reason                       the reason typed when the receipt was cancelled, as typed
+ * The delivery confirmation (on `deliveryConfirmed` / `deliveryUnconfirmed`, Round 33 B):
+ *   deliveryReceiptNumber        the paper receipt's number, as typed
+ *   billedBank                   the bank billed for moving it — its operational name
  */
 export const OPERATIONS_SHIPMENT_LOG_FIELDS = [
   'mainBank',
@@ -1211,6 +1393,8 @@ export const OPERATIONS_SHIPMENT_LOG_FIELDS = [
   'reason',
   'bagSealsPerBag',
   'denominations',
+  'deliveryReceiptNumber',
+  'billedBank',
 ] as const;
 export type OperationsShipmentLogField = (typeof OPERATIONS_SHIPMENT_LOG_FIELDS)[number];
 
@@ -2010,8 +2194,11 @@ export interface OperationsCrewBoardCrewDto {
   specialist1EmployeeIds: string[];
   specialist2EmployeeIds: string[];
   /**
-   * «الاتجاه». Saved since Round 20 as the names of ACTIVE operations areas (see
-   * `canonicalOperationsDirection`); a value saved before that may be any text, and is kept.
+   * «الاتجاه». A direction that names ACTIVE operations areas is saved in their own spelling (see
+   * `canonicalOperationsDirection`); since Round 28 anything else is saved as the desk typed it
+   * (`normalizeOperationsDirection`) — and a value saved before Round 20 may be any text, kept.
+   * The distribution's proposals read the areas a direction names (`operationsDirectionAreas`),
+   * so a hand-typed one proposes nothing unless it names an area.
    */
   direction: string | null;
   plannedTime: string | null;
@@ -2019,6 +2206,12 @@ export interface OperationsCrewBoardCrewDto {
   /** «النوع» — a type of the `أنواع التشغيل` catalog (`GET /operations/shift-types`), or null. */
   shiftTypeId: string | null;
   rowColour: OperationsCrewRowColour | null;
+  /**
+   * Round 32 critic — how many محصنات «توزيع المحصنات» placed on this crew row (its LIVE legs). They
+   * ride the row, so they stay with its van whatever crosses in «تبديل بين سيارتين»; the board's
+   * window says how many before a captain or a direction leaves a row that holds some.
+   */
+  shipments: number;
 }
 
 /**
@@ -2053,6 +2246,12 @@ export interface OperationsCrewBoardRowDto {
   drivers: OperationsDayBoardDriverDto[];
   missionTypeId: string | null;
   crew: OperationsCrewBoardCrewDto | null;
+  /**
+   * Round 32 critic — set when the van's Fleet code names nothing (`vehicleCodeNamesNothing` —
+   * «0», «00», «0000» …): the board names the van by its plate and its make, as its «بدون سيارة»
+   * list did when it was picked, never by the bare zeros. Null for every van with a code.
+   */
+  uncoded: OperationsUncodedVehicleDto | null;
 }
 
 /** Round 20 — a van Fleet's workshop holds on the board's day («صيانة» on the legacy strip). */
@@ -2068,14 +2267,17 @@ export interface OperationsCrewBoardWorkshopVehicleDto {
  *   · `cashTransfer` — a vehicle of the Fleet operations the setting
  *                      `OperationsSettingKeys.CashTransferOperationIds` names (none when unset);
  *   · `standing`     — a vehicle of «الطاقم الثابت» (the standing crew);
- *   · `other`        — every other active vehicle of the fleet.
- * A vehicle in more than one is listed once, in the first.
+ *   · `other`        — every other active vehicle of the fleet;
+ *   · `uncoded`      — Round 32: a vehicle OFF the roster whose Fleet code names nothing («0», «00»,
+ *                      «0000» — `vehicleCodeNamesNothing`), listed last, by its plate (`uncoded`).
+ * A vehicle in more than one is listed once, in the first (an uncoded one only in `uncoded`).
  */
 export const OPERATIONS_CREW_FREE_VEHICLE_GROUPS = [
   'roster',
   'cashTransfer',
   'standing',
   'other',
+  'uncoded',
 ] as const;
 export type OperationsCrewFreeVehicleGroup = (typeof OPERATIONS_CREW_FREE_VEHICLE_GROUPS)[number];
 
@@ -2098,11 +2300,25 @@ export interface OperationsCrewBoardFreeVehicleDto {
   inWorkshop: boolean;
   /** Its drivers by name when the roster has it (`onRoster`), else empty — Fleet's round-5 rule. */
   drivers: OperationsDayBoardDriverDto[];
+  /**
+   * Round 32 — «دى مشكلة بيظهر عربيات ايه الاصفار دى»: set when its Fleet code names nothing
+   * (`vehicleCodeNamesNothing` — «0», «00», «0000» …), so the list names it by its plate and its make
+   * instead of a bare «0000». Null for every car with a code.
+   */
+  uncoded: OperationsUncodedVehicleDto | null;
 }
 
 export interface OperationsCrewBoardDto {
   /** The resolved board date — tomorrow when the caller sent none (legacy parity, :2239-2247). */
   date: string;
+  /** Round 32 — TODAY on the Cairo calendar when the server answered (ISO, midnight UTC). */
+  today: string;
+  /**
+   * Round 32 — «لما بجيب السجل فى لوحة التشغيل بيخلى اعدل وانا عاوزها اظهار فقط»: the board's day is
+   * before `today` — the day's RECORD, view only. Its save is refused (422
+   * `OPERATIONS_CREW_DAY_IN_PAST`) whatever a client sends.
+   */
+  past: boolean;
   day: OperationsDayDto | null;
   /**
    * The VANS of the day — Fleet's duty rows, each with its crew row or null, in the roster's order;
@@ -2138,8 +2354,19 @@ export interface OperationsCrewBoardDto {
    * Order: the four `group`s in `OPERATIONS_CREW_FREE_VEHICLE_GROUPS` order (on the roster, then the
    * cash-transfer operations' vehicles, then the standing crew's, then the rest), each by code with
    * numbers in number order («9» before «150»).
+   *
+   * Round 32 — a car off the roster whose code names nothing is in `uncoded`, last, named by its
+   * plate; one whose plate names nothing either is LEFT OUT (nothing would tell it from the next) and
+   * counted in `unidentifiedVehicles`. A roster van is never left out. Codes are compared naturally,
+   * a code that names nothing after every one that does, two of those by their plate
+   * (`compareVehiclesForPicker`).
    */
   freeVehicles: OperationsCrewBoardFreeVehicleDto[];
+  /**
+   * Round 32 — how many active cars with no crew that day `freeVehicles` leaves out: their code and
+   * their plate both name nothing. They are put right in «الحركة» → «السيارات».
+   */
+  unidentifiedVehicles: number;
 }
 
 const crewEmployeeSlots = [
@@ -2160,6 +2387,46 @@ const crewEmployeeSlots = [
  */
 const crewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
   z.array(objectId()).max(CREW_SLOT_CAPACITY).optional();
+
+/**
+ * Round 28 — the longest «الاتجاه» a desk may type BY HAND, counted once its spaces are tidied. The
+ * save holds the text it stores as typed to it (400 `VALIDATION_FAILED` on the row's `direction`);
+ * a direction of areas, stored in their spelling, and one a row already holds are not held to it —
+ * ten areas typed in 78 characters are 120 stored, and a direction of many areas saved since Round
+ * 20 must stay savable. The board's box takes no more than this as it is typed.
+ */
+export const OPERATIONS_DIRECTION_MAX_LENGTH = 80;
+
+/**
+ * Round 28 — a direction as typed, tidied: the invisible format marks dropped (a zero-width space,
+ * the bidi marks a paste brings — `\p{Cf}`), then trimmed, and every run of spaces inside it (a tab,
+ * a line break, a non-breaking space) made one space. Nothing else is touched — the letters stay as
+ * typed. The save stores a hand-typed direction in this form, and the board's box sends it so.
+ */
+export const normalizeOperationsDirection = (value: string): string =>
+  value
+    .replace(/\p{Cf}/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+
+/**
+ * Round 28 critic — does a direction name anything: a letter or a digit? «-», «!!!» or a zero-width
+ * space name nothing — the board's filters already count such a row «بدون اتجاه». The save stores
+ * no NEW such direction (400 on the row's `direction`), and the board's box never offers one.
+ */
+export const operationsDirectionNamesSomething = (value: string): boolean =>
+  /[\p{L}\p{N}]/u.test(value);
+
+/**
+ * «الاتجاه» as a save carries it (the day's row and the standing crew's alike): any text but the
+ * empty string, tidied (`normalizeOperationsDirection`); `null` clears it. What the tidied text may
+ * be is NOT the shape's to judge, only the save's — it alone knows whether the text is the row's own
+ * (kept exactly, Round 28 critic: a blank or long one saved before the box existed included, or the
+ * row could never be saved again), names areas (respelled, however long), or is typed by hand
+ * (named something, at most `OPERATIONS_DIRECTION_MAX_LENGTH` characters).
+ */
+const crewDirection = () =>
+  z.string().min(1).transform(normalizeOperationsDirection).nullable().optional();
 
 /**
  * One row of the save. Four shapes, by its two addresses:
@@ -2204,10 +2471,16 @@ const crewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
  * WHAT THE SERVER CHECKS BEYOND THE SHAPE (each refused with nothing written):
  *   · `shiftTypeId`, when NEWLY chosen for the row, must be an ACTIVE type → else 422
  *     `OPERATIONS_UNKNOWN_SHIFT_TYPE`. A type the row already holds stays, archived or not.
- *   · `direction`, when NEW or CHANGED, must name ACTIVE operations areas
- *     (`canonicalOperationsDirection`) and is STORED as their own names → else 422
- *     `OPERATIONS_DIRECTION_NOT_AN_AREA`. A direction the row already holds — legacy free text
- *     included — stays as written while it is sent unchanged.
+ *   · `direction` is NOT REFUSED for what it names (Round 28 — «عاوز الاتجاه اقدر اكتبه بايدى لو مش
+ *     موجود فى الليست», reversing Round 20's «لازم اختار من الاتجاهات اللى موجوده بتاعت البنوك»). When
+ *     NEW or CHANGED, a direction that names ACTIVE operations areas (`canonicalOperationsDirection`)
+ *     is STORED as their own names, however long; anything else is stored AS TYPED, tidied
+ *     (`normalizeOperationsDirection`): it must name something (`operationsDirectionNamesSomething`
+ *     — not blank, not «-») and be at most `OPERATIONS_DIRECTION_MAX_LENGTH` characters → else 400
+ *     `VALIDATION_FAILED` on `body.rows.<index>.direction` (`TOO_SMALL` / `TOO_BIG`). A direction
+ *     the row already holds — hand-typed or legacy, blank or however long — stays exactly as
+ *     written while it is sent unchanged (spaces and invisible marks aside).
+ *     `OPERATIONS_DIRECTION_NOT_AN_AREA` is no longer sent.
  *   · A person NEWLY put on the row must not be away that day (the pool's `availability`: HR has
  *     them absent, or on leave) → else 422 `OPERATIONS_CREW_MEMBER_ABSENT`. Somebody already on the
  *     row stays, so a planner can still save the row's other changes.
@@ -2225,7 +2498,7 @@ export const PlanOperationsCrewRowSchema = z
     captainEmployeeIds: crewSlot(),
     specialist1EmployeeIds: crewSlot(),
     specialist2EmployeeIds: crewSlot(),
-    direction: z.string().min(1).nullable().optional(),
+    direction: crewDirection(),
     plannedTime: z.string().min(1).nullable().optional(),
     notes: z.string().nullable().optional(),
     shiftTypeId: objectId().nullable().optional(),
@@ -2448,6 +2721,11 @@ export interface OperationsStandingCrewRowDto {
   id: string;
   vehicleId: string;
   vehicleCode: string;
+  /**
+   * Round 32 critic — set when the van's Fleet code names nothing («0», «00» …): the row is named by
+   * its plate and its make, as «إضافة سيارة» named it — see `OperationsCrewBoardFreeVehicleDto`.
+   */
+  uncoded: OperationsUncodedVehicleDto | null;
   /** Same shape and same ceiling as a day's crew — this is the template that day is seeded from. */
   captainEmployeeIds: string[];
   specialist1EmployeeIds: string[];
@@ -2459,7 +2737,20 @@ export interface OperationsStandingCrewRowDto {
   updatedAt: string;
 }
 
+/**
+ * One vehicle «إضافة سيارة» offers on «الطاقم الثابت». Round 32: in natural code order, a vehicle
+ * whose code names nothing last and named by its plate (`uncoded`); one whose plate names nothing
+ * either is left out and counted (`unidentifiedVehicles`).
+ */
+export interface OperationsStandingAvailableVehicleDto {
+  vehicleId: string;
+  vehicleCode: string;
+  /** Set when its Fleet code names nothing («0», «00» …) — see `OperationsCrewBoardFreeVehicleDto`. */
+  uncoded: OperationsUncodedVehicleDto | null;
+}
+
 export interface OperationsStandingCrewBoardDto {
+  /** Round 32 — by code, NATURALLY (61, 101, 150 …), a code that names nothing last. */
   rows: OperationsStandingCrewRowDto[];
   /**
    * Fleet vehicles that are NOT in the standing crew yet — what the "add a vehicle" picker offers.
@@ -2468,7 +2759,12 @@ export interface OperationsStandingCrewBoardDto {
    * app forbids cross-module imports and the §9.4 boundary puts every Fleet read on the server
    * side of `fleet-boundary.ts`. One request, one boundary, no second module on the client.
    */
-  available: { vehicleId: string; vehicleCode: string }[];
+  available: OperationsStandingAvailableVehicleDto[];
+  /**
+   * Round 32 — how many vehicles `available` leaves out because neither their code nor their plate
+   * names them (`vehicleCodeNamesNothing`); put right in «الحركة» → «السيارات».
+   */
+  unidentifiedVehicles: number;
   /**
    * Whether `available` was narrowed to the Fleet-designated cash-transfer vehicles.
    *
@@ -2487,6 +2783,14 @@ const standingCrewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
  * (Round 23): a person NEWLY put in a slot must fit it (`fitsCrewSlot`) → else 422
  * `OPERATIONS_CREW_MEMBER_WRONG_SLOT`; somebody already in that slot of that vehicle's row stays.
  * The day is seeded from this row, so a seat the day would refuse must not be written here either.
+ *
+ * «الاتجاه» follows the day's rule (Round 28, see `PlanOperationsCrewRowSchema`): a NEW or CHANGED
+ * direction that names active areas is stored in their spelling, anything else as typed (tidied);
+ * one the row already holds stays as written while it is sent unchanged. One rule so the two boxes
+ * behave alike — and, since Round 28b, because the day reads it: «تحميل الطاقم الثابت» copies the
+ * people AND the direction, never the time (`standing-load.ts` on the board) — the direction onto a
+ * van it fills whose day row has none, and never one the day's save would refuse (blank, «-», or
+ * typed by hand past `OPERATIONS_DIRECTION_MAX_LENGTH`, as a row's own legacy one may be).
  */
 export const SetOperationsStandingCrewRowSchema = z
   .object({
@@ -2494,7 +2798,7 @@ export const SetOperationsStandingCrewRowSchema = z
     captainEmployeeIds: standingCrewSlot(),
     specialist1EmployeeIds: standingCrewSlot(),
     specialist2EmployeeIds: standingCrewSlot(),
-    direction: z.string().min(1).nullable().optional(),
+    direction: crewDirection(),
     plannedTime: z.string().min(1).nullable().optional(),
   })
   .strict()
@@ -2986,6 +3290,9 @@ export interface OperationsShipmentAssignmentDto {
  * Round 25: and both keep the «محصنة» rule — a row not of that type takes no محصنة unless its
  * delivery leg is already on that row: 422 `OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED`, checked after
  * the day and before the captain, naming the shipment and the row.
+ * R30 critic: and never a day that has PASSED (Cairo's calendar) — its vans are «توزيع المحصنات»'s
+ * record, read only: 422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`, the save's own refusal and detail,
+ * checked right after the day. An overdue one reaches today's vans through the distribution save.
  */
 export const AssignSecuredDeliveryLegSchema = z
   .object({
@@ -3275,10 +3582,13 @@ export const OPERATIONS_DISTRIBUTION_MAX_CHANGES = 500;
  * `GET /operations/secured/distribution?date=` — `operationsShipment.view` OR `operationsVault.view`
  * (Operations distributes, the vault hands over: one read for both screens).
  *
- *   · `date` — OPTIONAL, a whole day; left out → TODAY on the Cairo calendar. A day before today is
- *     refused with 422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST` (detail: `field` 'date', `code`
- *     'MIN_DATE', `message` = today as 'YYYY-MM-DD') — the boards' «no past day» rule: a past day's
- *     vans have left. An empty `date=` is a 400 (omit the key).
+ *   · `date` — OPTIONAL, a whole day; left out → TODAY on the Cairo calendar. An empty `date=` is a
+ *     400 (omit the key). Round 30 — «عاوز هنا يقدر يجيب اليوم اللى قبله ك رؤيى بس ميقدرش يعدل عليه
+ *     او يعمل حاجه ك سجل يعنى»: a day BEFORE today is no longer refused — it answers as that day's
+ *     RECORD (`past` true, see `OperationsSecuredDistributionDto`), read only: the save refuses it
+ *     (422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`). Round 33 — «تسليم المحصنات» opens a past day too,
+ *     as the same record (with `recordHandovers` for the vault's readers); its «تسليم» stays today's
+ *     (422 `OPERATIONS_DISPATCH_NOT_TODAY` on a past day's van).
  */
 export const OperationsSecuredDistributionQuerySchema = z
   .object({ date: z.coerce.date().optional() })
@@ -3368,11 +3678,78 @@ export interface OperationsSecuredDistributionCrewDto extends OperationsDayBoard
   looseNumber: number | null;
 }
 
+/** Round 30 — one shipment's packages as the vault counted them at its receipt (`recordPackages`). */
+export interface OperationsSecuredDistributionPackagesDto {
+  shipmentId: string;
+  bags: number;
+  cartons: number;
+  boxes: number;
+}
+
+/**
+ * Round 33 — «انا عاوزك تفتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط»: one shipment of a
+ * RECORD the vault HANDED OVER (`recordHandovers`) — when it left the vault and who pressed «تسليم»:
+ * its custody's release, written by `POST /operations/secured/dispatch` with the signed-in user the
+ * TOKEN names (a request never says who).
+ */
+export interface OperationsSecuredDistributionHandoverDto {
+  shipmentId: string;
+  /** When it left the vault (the custody's `releasedAt`, ISO instant). */
+  handedOverAt: string;
+  /**
+   * Who handed it over — the user's Arabic display name, the English one when there is none (the
+   * receipt's rule, `receivedByName`); null when the directory cannot name them.
+   */
+  handedOverByName: string | null;
+}
+
 export interface OperationsSecuredDistributionDto {
   /** The day distributed (its UTC midnight, ISO) — today in Cairo when none was asked for. */
   date: string;
-  /** TODAY on the Cairo calendar (UTC midnight, ISO) — the earliest day the screen may pick. */
+  /**
+   * TODAY on the Cairo calendar (UTC midnight, ISO) — the earliest day that can be distributed
+   * (Round 30: an earlier one is read as its record, `past`).
+   */
   today: string;
+  /**
+   * Round 30 — `date` is BEFORE `today`: the answer is that day's RECORD, READ ONLY. Nothing of it
+   * can be written — the save refuses the day (422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`, before any
+   * shipment), and the screen offers no drag, «نقل إلى…», «توزيع تلقائي», «تراجع» or «حفظ».
+   *
+   * WHAT A RECORD SHOWS — what is STORED NOW about the day, not a photograph taken on it:
+   *   · `crews`: the day's saved crew rows, by the same rule as a day to come (the «محصنة» rows, and
+   *     a row of another type that carries one of `shipments`), as they were last saved;
+   *   · `shipments`: every secured shipment (not deleted) DUE on the day, WHATEVER its status now —
+   *     handed over, delivered, still in the vault (then `overdue`), never received — and every one
+   *     whose LIVE delivery leg rides one of the day's crew rows; each at its CURRENT stage, on the
+   *     van its live leg rides (`placedCrewAssignmentId`), or on none;
+   *   · every `directionCrewAssignmentIds` is EMPTY: a record proposes nothing.
+   * WHAT IT CANNOT SHOW: a shipment taken off its van since (its leg retired — the story is in its
+   * «السجل»), or moved to another day since (its delivery date, or its leg, now another day's — it is
+   * on that day's screen); and the OVERDUE ones that waited in the vault that day without being placed
+   * on one of its vans (which shipments were overdue on a past day is not kept).
+   * False on today and on every day after it.
+   */
+  past: boolean;
+  /**
+   * Round 30 — on a RECORD (`past`), for a reader of the vault (`operationsVault.view`, the grant
+   * the screen's packaging read already rides): each listed shipment's packages as the vault counted
+   * them at its receipt — held now OR SINCE HANDED OVER (the vault's holdings no longer carry what
+   * left on the day's vans). A shipment the vault never took in (or whose receipt was cancelled) is
+   * absent. NULL on today and every later day (the screen reads the vault's holdings, as before) and
+   * for a reader without the vault's grant.
+   */
+  recordPackages: OperationsSecuredDistributionPackagesDto[] | null;
+  /**
+   * Round 33 — on a RECORD (`past`), for a reader of the vault (`operationsVault.view`, the grant of
+   * «تسليم المحصنات» and of `recordPackages`): each listed shipment the vault HANDED OVER — when, and
+   * by whom (`OperationsSecuredDistributionHandoverDto`), in the order `shipments` lists them. A
+   * shipment still in the vault, never received, or whose receipt was cancelled is absent. The
+   * vault's «تسليم» writes it whatever screen sent it; the record only reads it. NULL on today and on
+   * every later day (their screens list only what has not left yet) and for a reader without the
+   * vault's grant.
+   */
+  recordHandovers: OperationsSecuredDistributionHandoverDto[] | null;
   /**
    * Whether the reader holds `operationsCrew.view` — the crew plan's grant. Without it every van is
    * still listed (the vans ARE this screen: number, captains, direction, time — what every board
@@ -3462,6 +3839,9 @@ export type SecuredDistributionChange = z.infer<typeof SecuredDistributionChange
  *     this day's;
  *   · the version: 409 `STALE_DOCUMENT` unless `version` is its delivery leg's current version
  *     (null ⇔ no leg);
+ *   · a take-off (`crewAssignmentId` null): 422 `OPERATIONS_CREW_DAY_MISMATCH` when its leg rides a
+ *     crew row of ANOTHER day — an overdue one's leg left on a past day's van is that day's record
+ *     (Round 30), which no save changes;
  *   · the leg: 409 `OPERATIONS_DISTRIBUTION_LEG_STARTED` when the captain has started it in the app
  *     (its `executionStatus` is not `pending`) and the change would move or clear it;
  *   · the van: 404 when the crew row does not exist (or was removed); 422
@@ -3554,14 +3934,18 @@ export interface OperationsSecuredDistributionSaveDto {
 //      that word («وسط البلد» stays whole).
 //   2. Each area, and the shipment's area, is FOLDED: Arabic-Indic digits to Latin; lower case;
 //      tashkeel, tatweel and invisible marks dropped; «أ إ آ ٱ» → «ا», «ى» → «ي», «ة» → «ه»; every
-//      other character that is not a letter, a digit or a space dropped; a leading «ال» taken off
-//      each word longer than three letters («المعادي» = «معادي», «ال» alone stays); spaces made one.
-//   3. The shipment matches the van when its folded area EQUALS one folded area of the direction —
-//      equal, never "contains": «مصر» does not match «مصر الجديدة».
+//      punctuation mark or symbol made a SPACE (Round 28 critic — «شبرا/الخيمة» is «شبرا الخيمة», as
+//      a desk types it; dropped, it was «شبراالخيمه», which no typing reached), any other character
+//      that is not a letter, a digit or a space dropped; a leading «ال» taken off each word longer
+//      than three letters («المعادي» = «معادي», «ال» alone stays); spaces made one.
+//   3. The shipment matches the van when its folded area EQUALS the WHOLE folded direction (an area
+//      whose own name holds a separator, «شبرا/الخيمة», is never split — Round 28 critic), or one
+//      folded area of the direction — equal, never "contains": «مصر» does not match «مصر الجديدة».
 //   4. No area, or no direction, or either folding to nothing → no match.
 
-/** Where a direction is split into its areas (rule 1). */
-const DIRECTION_SEPARATOR = /\s*[-–—/\\|،,؛;+&]\s*|\s+و\s+/u;
+/** Where a direction is split into its areas (rule 1) — shared with the board's direction box. */
+export const OPERATIONS_DIRECTION_SEPARATOR = /\s*[-–—/\\|،,؛;+&]\s*|\s+و\s+/u;
+const DIRECTION_SEPARATOR = OPERATIONS_DIRECTION_SEPARATOR;
 
 /** One area name, folded (rule 2) — exported so a screen can show what was compared. */
 export const foldOperationsAreaName = (value: string): string =>
@@ -3572,6 +3956,7 @@ export const foldOperationsAreaName = (value: string): string =>
     .replace(/[أإآٱ]/gu, 'ا')
     .replace(/ى/gu, 'ي')
     .replace(/ة/gu, 'ه')
+    .replace(/[\p{P}\p{S}]/gu, ' ')
     .replace(/[^\p{L}\p{N}\s]/gu, '')
     .trim()
     .split(/\s+/u)
@@ -3592,16 +3977,28 @@ export const operationsDirectionAreas = (direction: string | null | undefined): 
 };
 
 /**
- * Round 20 — a direction as the crew board SAVES it: «الاتجاه اقدر اكتب بس فى الاخر لازم اختار من
- * الاتجاهات اللى موجوده بتاعت البنوك». Every area it names must be one of `areaNames` (the ACTIVE
- * operations areas — the names the branches' «المنطقة» uses), compared FOLDED (rule 2), and the
- * direction is returned in the areas' OWN spelling: one area → its name; several (rule 1's
- * separators — a direction may still name «المعادي - حلوان», the distribution reads both) → their
- * names joined by « - », each once. The WHOLE text is tried as one area first, so an area whose
- * name holds a separator («شبرا/الخيمة») is never split.
+ * A direction read against the areas: does it name ACTIVE operations areas only? Every area it
+ * names is looked up in `areaNames` (the ACTIVE operations areas — the names the branches'
+ * «المنطقة» uses), compared FOLDED (rule 2), and the direction is returned in the areas' OWN
+ * spelling: one area → its name; several (rule 1's separators — a direction may still name
+ * «المعادي - حلوان», the distribution reads both) → their names joined by « - », each once. The
+ * WHOLE text is tried as one area first, so an area whose name holds a separator («شبرا/الخيمة»)
+ * is never split.
  *
- * `{ unknown }` lists the parts no area answers, as typed — the save refuses those. Shared by the
- * server's save and the board's picker, so the two cannot disagree about what is an area.
+ * Round 28b critic — and so is a RUN of parts inside a longer direction: «شبرا/الخيمة - المعادي»,
+ * split at «/» too, was «شبرا» and «الخيمة» — no areas — so the answer read again was no answer.
+ * The save judged this function's own respelling hand-typed text, held it to
+ * `OPERATIONS_DIRECTION_MAX_LENGTH`, and refused «تحميل الطاقم الثابت»'s copy of a standing
+ * direction of eight areas (400 `TOO_BIG`), as it refused the picker's. Consecutive parts are now
+ * read as ONE area wherever the text between them folds to its name, the longest run first (as the
+ * whole text is), so this function's answer, read again, is an answer too — and stays savable
+ * however long.
+ *
+ * `{ unknown }` lists the parts no area answers, as typed. Round 20 refused those («لازم اختار من
+ * الاتجاهات اللى موجوده بتاعت البنوك»); Round 28 reverses it («عاوز الاتجاه اقدر اكتبه بايدى لو مش
+ * موجود فى الليست»): the save then stores the text as typed (`normalizeOperationsDirection`), and
+ * only a direction this function answers is respelled. Shared by the server's save and the board's
+ * picker, so the two cannot disagree about what is an area.
  */
 export const canonicalOperationsDirection = (
   direction: string,
@@ -3614,15 +4011,80 @@ export const canonicalOperationsDirection = (
   }
   const whole = byFold.get(foldOperationsAreaName(direction));
   if (whole !== undefined) return { direction: whole };
-  const parts = direction
-    .split(DIRECTION_SEPARATOR)
-    .map((part) => part.trim())
-    .filter((part) => foldOperationsAreaName(part) !== '');
-  const unknown = parts.filter((part) => !byFold.has(foldOperationsAreaName(part)));
-  if (parts.length === 0) return { unknown: [direction] };
+  const parts = directionPartSpans(direction);
+  const count = parts.length;
+  if (count === 0) return { unknown: [direction] };
+  // Each part folds to a word at least, so no run of more parts than the widest name has words is
+  // an area: the runs tried stay a few per part, however long the text.
+  let widest = 0;
+  for (const folded of byFold.keys()) widest = Math.max(widest, folded.split(' ').length);
+  const areaOf = (from: number, to: number): string | undefined =>
+    byFold.get(
+      foldOperationsAreaName(
+        direction.slice((parts[from] as PartSpan).start, (parts[to - 1] as PartSpan).end),
+      ),
+    );
+  // From the last part back: how the parts from `from` on read as areas, the longest run first.
+  const read: ({ to: number; name: string } | null)[] = new Array(count + 1).fill(null);
+  const reads: boolean[] = new Array(count + 1).fill(false);
+  reads[count] = true;
+  for (let from = count - 1; from >= 0; from -= 1) {
+    for (let to = Math.min(count, from + widest); to > from; to -= 1) {
+      if (!reads[to]) continue;
+      const name = areaOf(from, to);
+      if (name === undefined) continue;
+      read[from] = { to, name };
+      reads[from] = true;
+      break;
+    }
+  }
+  if (reads[0]) {
+    const names: string[] = [];
+    for (let at = read[0] ?? null; at !== null; at = read[at.to] ?? null) names.push(at.name);
+    return { direction: [...new Set(names)].join(' - ') };
+  }
+  // The parts no run answers, as typed.
+  const answered = new Set<number>();
+  for (let from = 0; from < count; from += 1) {
+    for (let to = from + 1; to <= Math.min(count, from + widest); to += 1) {
+      if (areaOf(from, to) === undefined) continue;
+      for (let at = from; at < to; at += 1) answered.add(at);
+    }
+  }
+  const text = (span: PartSpan): string => direction.slice(span.start, span.end);
+  const unknown = parts.filter((_, at) => !answered.has(at)).map(text);
   if (unknown.length > 0) return { unknown };
-  const names = [...new Set(parts.map((part) => byFold.get(foldOperationsAreaName(part)) as string))];
-  return { direction: names.join(' - ') };
+  // Every part is in some area's run, but no runs read the whole text: those not areas alone.
+  const alone = parts.filter((_, at) => areaOf(at, at + 1) === undefined).map(text);
+  return { unknown: alone.length > 0 ? alone : [direction] };
+};
+
+interface PartSpan {
+  start: number;
+  end: number;
+}
+
+const DIRECTION_SEPARATORS = new RegExp(DIRECTION_SEPARATOR.source, 'gu');
+
+/**
+ * The parts of a direction between its separators (rule 1), where each sits in the text — trimmed,
+ * and a part that folds to nothing («- -») left out.
+ */
+const directionPartSpans = (direction: string): PartSpan[] => {
+  const spans: PartSpan[] = [];
+  const cut = (start: number, end: number): void => {
+    const raw = direction.slice(start, end);
+    const from = start + (raw.length - raw.trimStart().length);
+    const trimmed = raw.trim();
+    if (foldOperationsAreaName(trimmed) !== '') spans.push({ start: from, end: from + trimmed.length });
+  };
+  let from = 0;
+  for (const match of direction.matchAll(DIRECTION_SEPARATORS)) {
+    cut(from, match.index);
+    from = match.index + match[0].length;
+  }
+  cut(from, direction.length);
+  return spans;
 };
 
 /** Does this van's direction name this shipment's area (rules 3-4)? */
@@ -3630,9 +4092,14 @@ export const operationsDirectionMatchesArea = (
   direction: string | null | undefined,
   areaName: string | null | undefined,
 ): boolean => {
-  if (areaName == null) return false;
+  if (areaName == null || direction == null) return false;
   const area = foldOperationsAreaName(areaName);
-  return area !== '' && operationsDirectionAreas(direction).includes(area);
+  if (area === '') return false;
+  // The WHOLE direction first, as `canonicalOperationsDirection` reads it: split at «/», the van
+  // picked as «شبرا/الخيمة» was never proposed for its own area's محصنات.
+  return (
+    foldOperationsAreaName(direction) === area || operationsDirectionAreas(direction).includes(area)
+  );
 };
 
 /**
@@ -4093,6 +4560,14 @@ export const OperationsEvents = {
    * the shipment. `OperationsShipmentPickupPayloadV1.by` is whose ✓ was removed.
    */
   ShipmentPickupUndone: 'operations.shipment.pickupUndone',
+  /**
+   * Round 33 B — «الشحنات المسلَّمة»'s ✓: a delivered shipment confirmed with its receipt number and
+   * the bank billed for moving it (`OperationsShipmentDeliveryPayloadV1`). Not `completed`: the
+   * day board's ✓ is another act («الشاشة الجديدة حاجاتها لوحدها»).
+   */
+  ShipmentDeliveryConfirmed: 'operations.shipment.deliveryConfirmed',
+  /** Round 33 B — that confirmation taken back («إلغاء التأكيد»); the payload names what it was. */
+  ShipmentDeliveryUnconfirmed: 'operations.shipment.deliveryUnconfirmed',
   SecuredLegAssigned: 'operations.shipmentAssignment.assigned',
   /**
    * Round 12 — a secured shipment taken OFF its van on «توزيع المحصنات», or by an edit that moves its
@@ -4173,6 +4648,16 @@ export const OperationsCustodyEventPayloadV1 = z.object({
  */
 export const OperationsShipmentPickupPayloadV1 = OperationsShipmentEventPayloadV1.extend({
   by: OperationsSecuredPickedUpBySchema,
+});
+
+/**
+ * Round 33 B — a delivery confirmed on «الشحنات المسلَّمة», or that confirmation taken back: the
+ * receipt number, the side chosen and the bank it resolved to (on the undo, what was cleared).
+ */
+export const OperationsShipmentDeliveryPayloadV1 = OperationsShipmentEventPayloadV1.extend({
+  receiptNumber: z.string(),
+  billedSide: OperationsDeliveryBilledSideSchema,
+  billedBankId: objectId(),
 });
 
 /** Round 10 — a cancelled vault receipt: the voided custody, its shipment, and why. */

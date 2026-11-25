@@ -77,7 +77,11 @@ describe('the seeded navigation catalog', () => {
     // 138 → 138: «تجميع الخزينة» left Operations — its content is «تقرير البنوك» now, and the row is
     //   RETIRED on live installations — and «إدارات العمليات» joined it beneath the roster (−1 +1).
     // 138 → 139: «شجرة الهيكل التنظيمي» joined Organization, after «الوظائف» (org-chart-design.md).
-    expect(rows).toHaveLength(139);
+    // 139 → 140: «الشحنات المسلَّمة» joined Operations, right beneath the day board (Round 33 B).
+    // 140 → 144: Administrative Affairs' first four rows — its home, the warehouses, the items, and
+    //   the units and categories (administration-module-decisions-and-phases.md §19.5, P1a.W).
+    // 144 → 145: its supplier register, «الموردون» (P1b.W), closing Phase 1.
+    expect(rows).toHaveLength(145);
   });
 
   /**

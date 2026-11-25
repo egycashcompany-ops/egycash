@@ -401,10 +401,13 @@ describe('the dashboard’s papers figure — `paper=insurance|tax`, that paper�
     expect(
       shown(render({ rows: fleet, path: '/fleet/licensing?paper=insurance&vehicleCodes=214' })),
     ).toEqual(['214']);
-    // The count beside the filters is the narrowed board's (written as the registry writes it).
+    // The count beside the filters is the narrowed board's (written as the registry writes it —
+    // Latin digits, owner 2026-11-23: «اى ارقام خليها بالانجلش حتى لو عربى»).
     const html = render({ rows: fleet, path: '/fleet/licensing?paper=insurance' });
     const at = html.indexOf('data-licensing-count');
-    expect(html.slice(html.indexOf('>', at) + 1, html.indexOf('</span>', at))).toContain('٢');
+    expect(html.slice(html.indexOf('>', at) + 1, html.indexOf('</span>', at))).toBe(
+      translate('ar', 'fleet.licensing.count', { count: '2' }),
+    );
   });
 
   it('shows ONE removable chip naming the paper, and none without the parameter', () => {
@@ -561,7 +564,9 @@ describe('the count beside the filters', () => {
     // by recognition, so the count here has to be the same object as the count there — not a pair
     // of labelled figures no other Fleet screen has.
     const html = render({ rows: fleet });
-    expect(counter(html)).toContain('٣');
+    // Latin digits, as every figure in Fleet (owner, 2026-11-23) — «3 سيارة», never «٣ سيارة».
+    expect(counter(html)).toBe(translate('ar', 'fleet.licensing.count', { count: '3' }));
+    expect(counter(html)).toBe('3 سيارة');
     expect(html, 'the vehicles screen’s own phrasing').toContain('سيارة');
     expect(html, 'and its own weight — the boards’ toolbar count').toContain(
       'text-sm font-bold text-slate-600',
@@ -573,15 +578,17 @@ describe('the count beside the filters', () => {
   it('counts what the FILTER matched, which is what that number means everywhere else', () => {
     // On the vehicles screen it is the server's `totalItems` for the filtered query. Same
     // question, same answer, whichever screen asked it.
-    expect(counter(render({ rows: fleet, path: '/fleet/licensing?ins=handover' }))).toContain('١');
-    expect(
-      counter(render({ rows: fleet, path: '/fleet/licensing?vehicleCodes=150,151' })),
-    ).toContain('٢');
+    expect(counter(render({ rows: fleet, path: '/fleet/licensing?ins=handover' }))).toBe(
+      translate('ar', 'fleet.licensing.count', { count: '1' }),
+    );
+    expect(counter(render({ rows: fleet, path: '/fleet/licensing?vehicleCodes=150,151' }))).toBe(
+      translate('ar', 'fleet.licensing.count', { count: '2' }),
+    );
   });
 
   it('says nought when a filter matched nothing', () => {
-    expect(counter(render({ rows: fleet, path: '/fleet/licensing?vehicleCodes=zzz' }))).toContain(
-      '٠',
+    expect(counter(render({ rows: fleet, path: '/fleet/licensing?vehicleCodes=zzz' }))).toBe(
+      translate('ar', 'fleet.licensing.count', { count: '0' }),
     );
   });
 });

@@ -22,7 +22,8 @@ import { Input } from '../../../shared/ui/form';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
-import { formatDate, formatMoneyParts } from '../../../shared/lib/format';
+import { formatMoneyParts } from '../../../shared/lib/format';
+import { latinDate } from '../lib/fleet-figures';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { getActiveBranch } from '../../../shared/lib/api-client';
@@ -297,7 +298,7 @@ export const FuelCardsPage = (): JSX.Element => {
       t(`fleet.fuelCards.company.${card.company}`),
       card.name,
       card.number,
-      formatDate(card.expiresAt, locale),
+      latinDate(card.expiresAt, locale),
       card.balance,
     ]);
   const exportSheet = async (): Promise<void> => {

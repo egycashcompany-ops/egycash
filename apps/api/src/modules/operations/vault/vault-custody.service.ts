@@ -66,6 +66,7 @@ export const toCustodyView = (doc: OperationsVaultCustodyDoc): VaultCustodyView 
   receiptNumber: doc.receiptNumber ?? null,
   receivedAt: doc.receivedAt,
   releasedAt: doc.releasedAt,
+  releasedById: idOrNull(doc.releasedById),
   bagCount: doc.bagCount,
   cartonCount: doc.cartonCount,
   boxCount: doc.boxCount,

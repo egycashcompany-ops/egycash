@@ -36,7 +36,7 @@ in §17; the decisions themselves in §16, the single source for them.
 **Rollout** carries no gate (D-19): a pilot runs by role assignment, and OD-80 asks whether it starts in a pilot
 branch or in all branches; its answer is needed before the module's roles are assigned in production, not before code.
 Its inputs: a page ships with its navigation row and keys ("only SHIPPED pages appear in
-navigation", `apps/api/src/seed-navigation.ts:889-892`), and the boot sync gives super-admin every new key but
+navigation", `apps/api/src/seed-navigation.ts:900-903`), and the boot sync gives super-admin every new key but
 platform-admin only the platform's own (`apps/api/src/platform/rbac/rbac.service.ts:599-605`). A phase is therefore
 visible to super-admin holders the day it deploys, and to other roles once their keys are granted, by hand or through
 the managed role bundles (D-20; OD-78 asks which ready-made roles exist). An environment gate or a feature flag, D-19's
@@ -85,10 +85,10 @@ screen concern (§13); R11, engine refusals as untranslated keys, joins RK-23.
 |---|---|---|---|---|---|
 | PC-1 | Mark an outbox delivery handled only after its handler succeeds, and set the `failed` status the model declares but nothing sets | `platform/kernel/event-bus.ts:100-109, 115-137`; `outbox.model.ts:14, 27` | recommended | the first reliable event with a cross-module consumer: P5 if OD-02 C or OD-65 B gives IT a consumer of `administration.goodsReceipt.posted`; the Finance handoff event only with its first consumer (§12.11) | the dedup row is written before the handler, so a handler that throws is skipped on every retry; `relayOutbox` marks a row `dispatched` once it is enqueued, before any handler runs |
 | PC-2 | An employee's cost center on a date, through the directory | `platform/directory/index.ts` + `modules/hr/directory-seams.ts` | only if OD-41 C | P6 | `DirectoryEmployee` has no cost center (`apps/api/src/platform/directory/index.ts:16`) |
-| PC-3 | Supplier lookup seam for IT and Fleet | new platform seam in the directory pattern (`apps/api/src/platform/directory/index.ts:147-460`) | only under OD-01 B, or C's second stage | when IT and Fleet switch to the registry; under C it may come before any merge (§15.3.5 a) | IT and Fleet may not import Administration |
+| PC-3 | Supplier lookup seam for IT and Fleet | new platform seam in the directory pattern (`apps/api/src/platform/directory/index.ts:147-462`) | only under OD-01 B, or C's second stage | when IT and Fleet switch to the registry; under C it may come before any merge (§15.3.5 a) | IT and Fleet may not import Administration |
 | PC-4 (= PX-2) | Extract the sweep-mark idiom into a platform helper; `administration_sweep_marks` uses it | platform, from `it/shared/sweep-mark.model.ts` and `fleet/sweeps/sweep-mark.model.ts` | conditional: only if an announcement needs marks | the first such announcement (§18.1 A10; likely P9's digests or the integrity announcement, OD-61) | ADR-025 (`:47-50`) forbids a third copy; a fact stamped on its document, or a notification idempotency key, needs no mark |
-| PC-5 | Send `X-Active-Branch` on binary downloads, and parse the JSON error envelope of a refused one | `apps/web/src/shared/lib/api-client.ts:490-514` | recommended | the first server export: P3's quotation comparison under OD-60 A | `fetchBlob` omits the header ADR-028 expects on every request (§11.7) |
-| PC-6 | Align the web's friendly error keys with emitted codes | `apps/web/src/shared/lib/errors.ts:8-218` | recommended | any time | `BUSINESS_RULE`/`CONFLICT` never match `BUSINESS_RULE_VIOLATION`/`DUPLICATE` (`packages/contracts/src/errors/index.ts:47-49`) |
+| PC-5 | Send `X-Active-Branch` on binary downloads, and parse the JSON error envelope of a refused one | `apps/web/src/shared/lib/api-client.ts:514-537` | recommended | the first server export: P3's quotation comparison under OD-60 A | `fetchBlob` omits the header ADR-028 expects on every request (§11.7) |
+| PC-6 | Align the web's friendly error keys with emitted codes | `apps/web/src/shared/lib/errors.ts:8-266` | recommended | any time | `BUSINESS_RULE`/`CONFLICT` never match `BUSINESS_RULE_VIOLATION`/`DUPLICATE` (`packages/contracts/src/errors/index.ts:47-49`) |
 | PC-7 | Requester liveness: on `notification:new`, derive the topic from the notification's `entityRef` and invalidate it; a generic platform-web rule, with an administration-only allow-list as the fallback (§9.5) | web realtime client | ADR only if made a platform convention (§20) | P2, soft: P2 ships with `staleTime` and navigation refresh for requesters, and PC-7 lands when platform review accepts it | own scope joins no room (`platform/realtime/realtime-rooms.ts:29-35`) |
 | PC-8 | A notification category | `packages/contracts/src/platform/notifications.ts:8-19` + labels | only under OD-61 B (an `administration` category); `approval`, `workflow` and the unused `finance` already exist | P2 | closed enum |
 | PC-9 (= PX-3) | Split the CI job (its ceiling already went from 30 to 45 minutes) | `.github/workflows/ci.yml:16` (a CODEOWNERS path) | D-18: split in PX-3 | before P5 | RK-01 |
@@ -123,23 +123,23 @@ files as per-pull-request coupling rules.
 |---|---|---|---|
 | `apps/api/src/modules/index.ts` | import + `moduleManifests` entry | P1 | nothing mounts; registry specs cannot see the keys |
 | `scripts/check-page-registry.mjs:65` | add `'administration'` to `MODULES`. The script reads source, and only `<id>.module.ts` (`:21-63`): pages in the parsed shape (`export const administrationPages: PageDef[] = [`, with literal module and page ids), and `declarePermissions(...)` calls by bracket matching, so every call sits in `administration.module.ts` (calls in other files are invisible to it) and no permission name contains a parenthesis, which breaks its count (copy ATM's guard, `atm.module.spec.ts:170-174`). `page-registry.spec.ts:16` (hr, fleet, it only) is optional; a module-local manifest spec (`atm.module.spec.ts`) is preferred | P1 | the CI step does not see the module. Boot still validates the assembled registry and throws (`platform/kernel/bootstrap.ts:94-100`; `rbac.service.ts:648-654`), and 148 of the 167 integration files boot every manifest (RK-01), so a broken registry still fails CI, through the suites rather than this script |
-| `apps/api/src/seed-navigation.ts` (+ `seed-application-sections.ts`) | a category whose English name is not `'Administration'` (`seed-navigation.ts:1291`), placed after ATM: both OD-62 (recommended default: A, "Administrative Affairs" / «الشئون الإدارية», after ATM). Categories match on `name.en` (`:1403-1405`), so the English name is permanent once seeded (RK-16) | P1 | rows merge into System Administration |
-| `seed-navigation.spec.ts:80`; `tests/integration/auth-seed-login.spec.ts:36, :141-150, :289-296, :314` | 139 + n rows; the category order; the per-category breakdown; 8 → 9 groups | each phase adding rows | pinned counts |
+| `apps/api/src/seed-navigation.ts` (+ `seed-application-sections.ts`) | a category whose English name is not `'Administration'` (`seed-navigation.ts:1302`), placed after ATM: both OD-62 (recommended default: A, "Administrative Affairs" / «الشئون الإدارية», after ATM). Categories match on `name.en` (`:1414-1416`), so the English name is permanent once seeded (RK-16) | P1 | rows merge into System Administration |
+| `seed-navigation.spec.ts:81`; `tests/integration/auth-seed-login.spec.ts:37, :142-151, :291-298, :315` | 140 + n rows; the category order; the per-category breakdown; 8 → 9 groups | each phase adding rows | pinned counts |
 | `apps/web/src/platform/navigation/app-icon.tsx:44-104`; `shared/ui/icons.tsx` | the new glyphs and keys `box` (the category) and `warehouse` in P1a.W, later `cart` (§13.1, §13.3); none exists today. The tile glyph is OD-62.1 (recommended default: A, a box); the `warehouse` row glyph is the design's. OD-62 also covers the names and labels and when nav sections arrive | P1 | an unknown row icon falls back silently (`resolveNavIcon`, `app-icon.tsx:106-109`); a module tile's is pinned by `apps/web/src/platform/navigation/module-icons.spec.ts:44-81`, which fails |
-| `platform/realtime/realtime-registry.ts`; web `platform/realtime/invalidation-registry.ts` | one topic per audited entity type, with its view key, plus the signal-only `administration.stock` (`administrationStock.view`); on the web, each mapped to its key prefixes. The spec finds entities only as literal `{ moduleId, entityType }` pairs, so each `<entity>-audit.ts` writes its pair as a literal, as IT's `signalConsumable` does (`modules/it/consumables/consumable-history.ts:100-107`). A shared helper that takes the entity type as a variable (`posting-lifecycle.ts`, say) is a dynamic site: pinned by value in `DYNAMIC_ENTITY_KEYS` and counted in `EXPECTED_DYNAMIC_SITES`, 16 today and 10 at `b03522f` (`realtime-registry.spec.ts:18-65`) | every phase | `realtime-registry.spec.ts:100-129`; `realtime.spec.ts:166-215` |
-| `packages/contracts/src/platform/audit.ts` + `systemAdmin.users.audit.<verb>` (en, ar) | none in P1: master data uses `create`, `update`, `activate` and `deactivate`, which exist (`audit.ts:111-112`); the last two are not broadcast (`packages/contracts/src/platform/realtime.ts:19-31`), so (de)activation also sends an explicit `update` signal. Later only verbs §10.2 justifies (`submit`, `approve`, `post`, `adjust` and `count` do not exist today). The module's print verb `administrationPrint` (en "Printed a paper of record", ar طباعة مستند رسمي) is appended after ATM's `atmSettlementPrint` (`audit.ts:189-194`) with the first paper of record (OD-59), shipped like OD-82's verb (RK-29). `accept`/`reject` (ATM's «قبول/رفض رسالة صيانة», `audit.ts:164-165`), `deliver` and `checkOut` are never reused (§10.3). The approval-decision verb is OD-82 (recommended default: A, a new `approvalDecision`), shipped a release ahead of its first writer or with api and worker deployed together (RK-29) | P2 (OD-82), then per phase | `system-admin-i18n.spec.ts:113-127`, `audit-screens.spec.tsx:361-368` |
-| `packages/contracts/src/errors/index.ts` | module-prefixed codes (precedents `OPERATIONS_CUSTODY_NOT_HELD` `:207`, `ATM_PLAN_LINE_STATE` `:432`), each shipped with the first rule or transition that raises it and its web i18n text under `administration.module.errors.<code>` in en and ar, mapped by `lib/administration-errors.ts` (the ATM `settlement-view.ts` precedent), whose spec checks that every P1 code has both: from P1, the six master-data refusals of §5.15 (`ADMINISTRATION_CATEGORY_PARENT_INVALID`, `…_STOCK_LEVELS_ORDER`, `…_REFERENCE_INACTIVE`, `…_DEACTIVATION_BLOCKED` and `…_EMPLOYEE_EXITED`, 422, and `…_DUPLICATE`, 409; a code with details is thrown as `new AppError(code, status, message, { details })`, `apps/api/src/shared/errors/index.ts:5-24`); from P2, the eight general codes (`ADMINISTRATION_INVALID_TRANSITION`, `…_TRANSITION_BLOCKED`, `…_REASON_REQUIRED`; the approval codes `…_APPROVAL_CHAIN_MISSING`, `…_APPROVAL_CHAIN_CHANGED` (OD-20 B only, §15.2.1), `…_APPROVAL_NOT_PENDING`, `…_APPROVAL_NOT_YOUR_STEP` and `…_SEPARATION_OF_DUTIES`); and from P5 §2.4.4's stock codes (`…_INSUFFICIENT_STOCK`, `…_OPENING_BALANCE_NOT_FIRST`, `…_ITEM_INACTIVE`, `…_ITEM_UNIT_CHANGED`, `…_WAREHOUSE_INACTIVE`, `…_STOCK_ROW_NOT_READY`; `…_STOCK_FROZEN` with counts, P7) | P1, then with each rule or transition | Arabic users read English refusals (RK-23) |
+| `platform/realtime/realtime-registry.ts`; web `platform/realtime/invalidation-registry.ts` | one topic per audited entity type, with its view key, plus the signal-only `administration.stock` (`administrationStock.view`); on the web, each mapped to its key prefixes. The spec finds entities only as literal `{ moduleId, entityType }` pairs, so each `<entity>-audit.ts` writes its pair as a literal, as IT's `signalConsumable` does (`modules/it/consumables/consumable-history.ts:104-111`). A shared helper that takes the entity type as a variable (`posting-lifecycle.ts`, say) is a dynamic site: pinned by value in `DYNAMIC_ENTITY_KEYS` and counted in `EXPECTED_DYNAMIC_SITES`, 16 today and 10 at `b03522f` (`realtime-registry.spec.ts:18-65`) | every phase | `realtime-registry.spec.ts:100-129`; `realtime.spec.ts:166-215` |
+| `packages/contracts/src/platform/audit.ts` + `systemAdmin.users.audit.<verb>` (en, ar) | none in P1: master data uses `create`, `update`, `activate` and `deactivate`, which exist (`audit.ts:111-112`); the last two are not broadcast (`packages/contracts/src/platform/realtime.ts:19-31`), so (de)activation also sends an explicit `update` signal. Later only verbs §10.2 justifies (`submit`, `approve`, `post`, `adjust` and `count` do not exist today). The module's print verb `administrationPrint` (en "Printed a paper of record", ar طباعة مستند رسمي) is appended after ATM's `atmSettlementPrint` (`audit.ts:193-198`) with the first paper of record (OD-59), shipped like OD-82's verb (RK-29). `accept`/`reject` (ATM's «قبول/رفض رسالة صيانة», `audit.ts:168-169`), `deliver` and `checkOut` are never reused (§10.3). The approval-decision verb is OD-82 (recommended default: A, a new `approvalDecision`), shipped a release ahead of its first writer or with api and worker deployed together (RK-29) | P2 (OD-82), then per phase | `system-admin-i18n.spec.ts:113-127`, `audit-screens.spec.tsx:361-368` |
+| `packages/contracts/src/errors/index.ts` | module-prefixed codes (precedents `OPERATIONS_CUSTODY_NOT_HELD` `:230`, `ATM_PLAN_LINE_STATE` `:493`), each shipped with the first rule or transition that raises it and its en and ar text in the shared web `FRIENDLY` table (`apps/web/src/shared/lib/errors.ts`, IT's and Organization's precedent), with a case in `errors.spec.ts`: from P1, the six master-data refusals of §5.15 (`ADMINISTRATION_CATEGORY_PARENT_INVALID`, `…_STOCK_LEVELS_ORDER`, `…_REFERENCE_INACTIVE`, `…_DEACTIVATION_BLOCKED` and `…_EMPLOYEE_EXITED`, 422, and `…_DUPLICATE`, 409; a code with details is thrown as `new AppError(code, status, message, { details })`, `apps/api/src/shared/errors/index.ts:5-24`); from P2, the eight general codes (`ADMINISTRATION_INVALID_TRANSITION`, `…_TRANSITION_BLOCKED`, `…_REASON_REQUIRED`; the approval codes `…_APPROVAL_CHAIN_MISSING`, `…_APPROVAL_CHAIN_CHANGED` (OD-20 B only, §15.2.1), `…_APPROVAL_NOT_PENDING`, `…_APPROVAL_NOT_YOUR_STEP` and `…_SEPARATION_OF_DUTIES`); and from P5 §2.4.4's stock codes (`…_INSUFFICIENT_STOCK`, `…_OPENING_BALANCE_NOT_FIRST`, `…_ITEM_INACTIVE`, `…_ITEM_UNIT_CHANGED`, `…_WAREHOUSE_INACTIVE`, `…_STOCK_ROW_NOT_READY`; `…_STOCK_FROZEN` with counts, P7) | P1, then with each rule or transition | Arabic users read English refusals (RK-23) |
 | `packages/contracts/src/events/catalog.ts`; `catalog.spec.ts:181-195`; `platform/kernel/event-publishers.spec.ts` | event source, `EVENT_MODULE_NAMES.administration`, lexicon words; constants in the "invents nothing" hand list (`catalog.spec.ts:181-195`); every emitted name cataloged (`event-publishers.spec.ts:165-170`) and a reliable event's payload keys within its catalog fields, `EVENT_MULTI_PUBLISHER` being the hand-written exception list (`:198-216`) | first emitting phase (P2) | compile error; spec |
 | `apps/api/src/workforce-reset/targets.ts:133`; `targets.spec.ts:50-52`; `tests/integration/workforce-reset.spec.ts:223-243, :361` | classify each collection holding an employee path (§15.3.3) | P1a if warehouses keep a keeper (OD-10), then the phase adding each path | the unit spec fails CI on an unclassified path; the reset refuses to start; the exact `keep` list and its count fail |
 | `apps/api/src/modules/hr/employee-management/employees/employee-name-copies.ts` (`CLASSIFICATION`); `employee-name-copies.spec.ts:43-60` | classify each path ending in `name` on a `keep` collection, subdocument arrays included: `scrub` with its `by`, or `leave`; a `scrub` also joins the spec's pinned list. Edited in the module's own pull request that adds the path, the exception §15.3.3 states | P2 (`requesterName`), then the phase adding each path; none in P1 | the spec fails CI on an unclassified path (`employee-name-copies.spec.ts:30-33`; `employee-name-copies.ts:268-275`) |
 | `apps/web/src/platform/localization/i18n.ts` | `systemAdmin.roles.module.administration` (en, ar) | P1 | the role matrix shows the raw key |
-| `apps/web/src/shared/lib/remembered-filters-coverage.spec.ts` | classify every `*Page.tsx`, Phase 1's `ItemDetailPage` and `SupplierDetailPage` included | each page | partition spec (`:487-491`) |
+| `apps/web/src/shared/lib/remembered-filters-coverage.spec.ts` | classify every `*Page.tsx`, Phase 1's `ItemDetailPage` and `SupplierDetailPage` included | each page | partition spec (`:502-506`) |
 | `apps/web/src/shared/lib/print-window.spec.ts:138-155` | each paper composer | the first paper (P2 if OD-59 has PRs printed, else P3) | one-door list; a convention: only the global no-script rule fails CI (`:128-136`) |
-| `apps/api/src/shared/utils/stream-rows.spec.ts:103-107` | each server export | the first server export (OD-60) | a convention, as for papers |
+| `apps/api/src/shared/utils/stream-rows.spec.ts:110-123` | each server export | the first server export (OD-60) | a convention, as for papers |
 | `packages/contracts/src/platform/notification-target.ts:36-42` | `ENTITY_ROUTES` per entity type with a detail route; a notification about a quotation or a line carries its parent's `entityRef` (§8.6) | P2 | links open the inbox instead |
-| `settings-inventory.spec.ts:89-100` (58), `SettingsPage.spec.tsx:270-275` (67), `settings-catalog.ts` `SETTING_DEPARTMENTS`, `SETTING_SECTIONS` and `PLACEMENTS` (`apps/web/src/modules/system-admin/settings/lib/settings-catalog.ts:12-32, 43-110`) | module settings; the screen groups keys by department and section, and a key whose first segment names no department it knows is filed under "Other" (`:98-110`) | the first signatory paper (P3; P2 if OD-59 prints PRs, §11.6.5), and again with the policy settings (P4, or P3 under OD-23 A) | counts; rows filed under "Other" |
+| `settings-inventory.spec.ts:89-103` (64), `SettingsPage.spec.tsx:279-284` (73), `settings-catalog.ts` `SETTING_DEPARTMENTS`, `SETTING_SECTIONS` and `PLACEMENTS` (`apps/web/src/modules/system-admin/settings/lib/settings-catalog.ts:12-32, 43-110`) | module settings; the screen groups keys by department and section, and a key whose first segment names no department it knows is filed under "Other" (`:98-110`) | the first signatory paper (P3; P2 if OD-59 prints PRs, §11.6.5), and again with the policy settings (P4, or P3 under OD-23 A) | counts; rows filed under "Other" |
 | `apps/web/src/platform/app/App.tsx` | lazy `/administration/*` mounted above the `/*` catch-all | P1 | routes swallowed by the catch-all |
-| `apps/api/src/sync-indexes.models.ts:10-13`; `server.ts`, `worker.ts`; `tsup.config.ts` entries and `package.json` scripts; `operator-cli-safety.spec.ts` (`BOOTING_CLIS`, `:16-22`), `operator-cli-build.spec.ts`, `runtime-import-safety.spec.ts` | `server.ts` and `worker.ts` start a go-live step (IT's precedent, §15.3.7); the module's run model is in `administrationModels`, which `./modules` loads, so `sync-indexes.models.ts` gains no line, unlike IT's (`:12-13`). The other files only for operator CLIs. `BOOTING_CLIS` is a hand list whose completeness test only checks that its five entries are wired to npm scripts (`operator-cli-safety.spec.ts:39-47`): four platform-booting CLIs are already missing from it, and `migrate:org-catalog` is guarded but unlisted. A new CLI is added by hand, as a pull-request checklist item (or the list is derived from `*.cli.ts`, a small platform change) | under OD-68 A, P1a.2 (units, categories, items) and P1b.1 (suppliers), the pull requests that load OD-68's files (§19.8); else P5 under OD-63 B; any migration CLI | `sync-indexes.models.spec.ts:60-73`; nothing fails if a CLI is left off the lists |
+| `apps/api/src/sync-indexes.models.ts:10-13`; `server.ts`, `worker.ts`; `tsup.config.ts` entries and `package.json` scripts; `operator-cli-safety.spec.ts` (`BOOTING_CLIS`, `:16-22`), `operator-cli-build.spec.ts`, `runtime-import-safety.spec.ts` | `server.ts` and `worker.ts` start a go-live step (IT's precedent, §15.3.7); the module's run model is in `administrationModels`, which `./modules` loads, so `sync-indexes.models.ts` gains no line, unlike IT's (`:12-13`). The other files only for operator CLIs. `BOOTING_CLIS` is a hand list whose completeness test only checks that its five entries are wired to npm scripts (`operator-cli-safety.spec.ts:39-47`): four platform-booting CLIs are already missing from it, and `migrate:org-catalog` is guarded but unlisted. A new CLI is added by hand, as a pull-request checklist item (or the list is derived from `*.cli.ts`, a small platform change) | under OD-68 A, P1a.2 (units, categories, items) and P1b.1 (suppliers), the pull requests that load OD-68's files (§19.8); else P5 under OD-63 B; any migration CLI | `sync-indexes.models.spec.ts:61-74`; nothing fails if a CLI is left off the lists |
 | `apps/api/src/org-catalog-migration/references.spec.ts:188-200` | see §15.3.4 | P5 (`inspection.members`, under OD-35 B only), P7 (`team`, OD-50) | the exact `documentArray` list |
 
 `gen-permission-matrix --check` reads platform keys only; module keys need no regeneration.
@@ -155,7 +155,7 @@ no row of another module, rewrites nothing and deletes nothing: `it_vendors`, Fl
 stay untouched (OD-01 and OD-02 at their recommended defaults, C and A). Boot writes are class 1 (§15.3.7): the
 module seed's create-if-missing rows (counter documents with a `$max` floor, outside any transaction, the Fleet/ATM
 idiom; later, file categories and templates), beside the platform's own additive sync — permission-registry upserts and the super-admin key set (`platform/rbac/rbac.service.ts:569-605`), navigation rows and
-sections (`apps/api/src/server.ts:57-61`). Two boot writes are not create-if-missing: the permission sync deletes keys no
+sections (`apps/api/src/server.ts:60-64`). Two boot writes are not create-if-missing: the permission sync deletes keys no
 longer declared (`rbac.service.ts:591`; RK-30), and the module's managed role bundles (D-20) are re-asserted on
 every boot, so a key an administrator added to one by hand is removed (`rbac.service.ts:1625-1656`). Master data enters
 through the screens, or through an OD-68 load (§15.3.5 d). **Phase 1 needs no data migration.**
@@ -165,7 +165,7 @@ through the screens, or through an OD-68 load (§15.3.5 d). **Phase 1 needs no d
 `autoIndex` is off in production (`apps/api/src/infrastructure/database/mongo.ts:143`). The deploy's
 pre-step, `db:sync-indexes` (`railway.json`, `deploy.preDeployCommand`), loads every model, the module's included through
 `import './modules'` (`apps/api/src/sync-indexes.models.ts:10-11`), and builds what is missing — but only once an operator
-sets `INDEX_SYNC_MODE=apply`: it defaults to `report` and builds nothing (`infrastructure/config/env.ts:204`;
+sets `INDEX_SYNC_MODE=apply`: it defaults to `report` and builds nothing (`infrastructure/config/env.ts:194`;
 `docs/09-guides/railway-deployment.md:164-167`). Whether production has been switched is for Ops to confirm; platform
 code says it has not ("the pre-deploy index sync (sync-indexes.cli.ts) runs in REPORT mode there",
 `apps/api/src/platform/audit/audit-indexes.ts:4-9`) and builds the audit log's two new indexes at boot for that
@@ -194,7 +194,7 @@ name. ECMS code refuses writes until such an index exists (IT's `collectionReady
   models, which have no repository, hold one in their own functions, §2.1 note 10), from
   `shared/collection-ready.ts` (P1a.1), a copy of IT's (`apps/api/src/modules/it/mobile-lines/ensure-collection.ts:18-30`),
   and awaits it before its first write and before any transaction that writes the collection, as IT's store does
-  (`apps/api/src/modules/it/consumables/consumable-history.ts:221-234`). The build runs once per process. A failed build
+  (`apps/api/src/modules/it/consumables/consumable-history.ts:265-278`). The build runs once per process. A failed build
   throws, which refuses that write, and is forgotten, so the next write tries again; reads keep working and boot does
   not fail. The rule covers, each from the pull request that brings it (§19.8): units and categories (P1a.1), items
   and the counter (P1a.2), warehouses (P1a.3), suppliers (P1b.1), and the ledger and balances (P5). The ledger carries
@@ -214,7 +214,7 @@ name. ECMS code refuses writes until such an index exists (IT's `collectionReady
   fails on `null`; a typed master code partial on `{ isDeleted: false }`.
 - A module spec (`administration-indexes.spec.ts`, §19) checks that `administrationModels` equals the collections the
   module's `*.model.ts` files declare; that every declared option reaches `createIndex` is already checked
-  platform-wide (`sync-indexes.models.spec.ts:76-90`). An after-boot check in the tests would always pass: they
+  platform-wide (`sync-indexes.models.spec.ts:77-91`). An after-boot check in the tests would always pass: they
   run with `autoIndex` on (`mongo.ts:143`).
 
 #### 15.3.3 Workforce-reset classification (OD-64)
@@ -230,7 +230,7 @@ for all seven collections below (§2.1). Names omit the `administration_` prefix
 | `warehouses` (P1a) | `responsibleEmployeeId` (OD-10) | keep | a warehouse is a record in its own right and outlives its keeper (`targets.ts:30-38`). After a reset the keeper id resolves to nobody; the screen flags it until a keeper is named again (OD-64, recommended default: keeper (i); §2.1) |
 | `purchase_requests` (P2), `material_requests` (P6) | `requesterEmployeeId` | keep | a need and a spending decision that POs and issues refer to |
 | `goods_receipts` (P5) | `inspection.members.employeeId`, under OD-35 B only | keep | a financial record (the gold receipts precedent) |
-| `stock_issues` (P6) | `recipientEmployeeId` | keep | movements name the issue in `source.docId`; IT keeps its ledger for that reason (`targets.ts:226-233`). Purging, IT's memo choice (`:183-188`), would orphan ledger sources and add a delete path for posted documents (§15.3.6), so OD-64 B is not the recommendation |
+| `stock_issues` (P6) | `recipientEmployeeId` | keep | movements name the issue in `source.docId`; IT keeps its ledger for that reason (`targets.ts:236-243`). Purging, IT's memo choice (`:193-198`), would orphan ledger sources and add a delete path for posted documents (§15.3.6), so OD-64 B is not the recommendation |
 | `stock_returns` (P6) | `returnedByEmployeeId` | keep | as for issues |
 | `stock_counts` (P7) | `team.employeeId` (OD-50) | keep | a record about stock |
 
@@ -275,7 +275,7 @@ alternative, a `PersonSnap` held in an array without `departmentId`, is §2's ch
 #### 15.3.5 Future migrations and loads — each one separately approved
 
 Migrations follow ADR-031's discipline (`docs/03-decisions/ADR-031-org-units-defined-once-declared-per-branch.md:62-73`;
-`apps/api/src/migrate-org-catalog.cli.ts:1-30`): an operator-run CLI; a **dry run by default** printing the whole plan;
+`apps/api/src/migrate-org-catalog.cli.ts:1-50`): an operator-run CLI; a **dry run by default** printing the whole plan;
 `--write` applies exactly that plan; rows merge only where a human names them (`--merge LOSER=WINNER`); refusal rather
 than half-application; **never at boot** (class 3, §15.3.7). The CLI calls `assertLoginProvisioningDisabled()` before
 `bootPlatform` and is added by hand to the operator-CLI lists (§15.2.3), where nothing fails if it is forgotten.
@@ -284,7 +284,7 @@ deleted, nothing invented, re-running changes nothing (`modules/fleet/fleet.migr
 
 **a. Supplier registry merge (OD-01 B, or the second stage of C).** IT's design records the debt as "merge rows into a
 platform registry, re-point `workshopId`/`vendorId`, alias module endpoints through a deprecation window"
-(`docs/12-planning/it-module-design.md:1171`, §16 P4: "the only one needing a data migration", two to three slices).
+(`docs/12-planning/it-module-design.md:1510`, §16 P4: "the only one needing a data migration", two to three slices).
 This design departs from it in two flagged places: the target follows OD-01 (B: a platform registry; C's second stage:
 `administration_suppliers` behind the PC-3 seam), and a distinct row keeps its ObjectId instead of being re-pointed
 (OD-01's recommendation). It is two operations:
@@ -315,13 +315,13 @@ This design departs from it in two flagged places: the target follows OD-01 (B: 
 the boundary for spare parts: receipts become Procurement's output, "the movement shape does not change, only who writes
 it", and on-hand may become Warehouses' number while IT keeps its ledger
 (`docs/03-decisions/ADR-024-minimal-spare-parts-ledger.md:40-52`). Consumables (IT's requirement FR-20,
-`docs/12-planning/it-module-design.md:872`) are a separate ledger with no such clause (`it/consumables/consumable.model.ts:1-12`). A move must carry: per-branch `CON-` rows
+`docs/12-planning/it-module-design.md:1142`) are a separate ledger with no such clause (`it/consumables/consumable.model.ts:1-12`). A move must carry: per-branch `CON-` rows
 (`it/consumables/consumable.model.ts:4-9`) becoming one item master through a human-named merge; «بدل تالف» moving
 three counters in one row, so `scrappedQty` ≠ Σ scrap rows (`consumable-stock.ts:45-62`); memo lines'
 `consumableId`/`movementId` still resolving; also each transfer pair's `transferId`, `counterpartBranchId`
 and `counterpartConsumableId`, and the same-name `CON-` rows a transfer creates in the receiving store
-(`apps/api/src/modules/it/consumables/consumable-movement.model.ts:39-48`; `apps/api/src/modules/it/consumables/consumable-transfer.service.ts:161-196`); a warehouse for spare parts; IT's FR-5 asset-delete guard
-(`docs/12-planning/it-module-design.md:800`; `it/assets/asset.service.ts:370-372`) and the `it.sparePart.belowMin` trigger intact. The recommended OD-02 (A now; C
+(`apps/api/src/modules/it/consumables/consumable-movement.model.ts:91-100`; `apps/api/src/modules/it/consumables/consumable-transfer.service.ts:161-196`); a warehouse for spare parts; IT's FR-5 asset-delete guard
+(`docs/12-planning/it-module-design.md:1059`; `it/assets/asset.service.ts:387-393`, which now also refuses an asset that a corrected issue once named, through the movement's `installedOnBefore`) and the `it.sparePart.belowMin` trigger intact. The recommended OD-02 (A now; C
 when Procurement buys for IT, OD-65) needs no migration: under C a GRN reaches IT as a reliable event (§15.4).
 
 **c. Opening balances at go-live (OD-63).** A load through the ledger, not a migration (class 2, §15.3.7). Recommended
@@ -381,7 +381,7 @@ preferably before P3 (§11.2).
 | Kind | What | When it runs | Approved by | Rules |
 |---|---|---|---|---|
 | 1. Boot-safe | index builds (§15.3.2); create-if-missing seeds (counters with a `$max` floor, file categories, templates); the platform's own syncs; managed roles (D-20); repairs that only add | every boot (§15.1) | the pull request's review | Fleet's three rules: nothing deleted, nothing invented, re-running changes nothing (`modules/fleet/fleet.migration.ts:1-12`); duplicate-key tolerant, because seeds run concurrently (RK-28) |
-| 2. Go-live loads | OD-63 B's counted opening file; OD-68's master-data load when it comes as a file | once per versioned run key, started by the deploy (IT's precedent: `server.ts:142` and `worker.ts:110` start `startItConsumablesOpeningGoLive`) | the owner, on the file itself, reviewed with him in its pull request ("reviewed with the owner", `it/go-live/consumables-opening.ts:4`) | rows validated with the screens' schemas; refusal rather than a partial load; the run row written last; audit after commit. Recommended for OD-63 B's counted opening file, where a wrong quantity is the costly mistake (OD-68's master-data load follows IT's steps, which have no such mode): the first deploy only reports what it would load, behind an environment switch, as `INDEX_SYNC_MODE` does for indexes (`infrastructure/config/env.ts:204`), standing in for class 3's dry run |
+| 2. Go-live loads | OD-63 B's counted opening file; OD-68's master-data load when it comes as a file | once per versioned run key, started by the deploy (IT's precedent: `server.ts:149` and `worker.ts:115` start `startItConsumablesOpeningGoLive`) | the owner, on the file itself, reviewed jointly in its pull request ("reviewed with the owner", `it/go-live/consumables-opening.ts:4`) | rows validated with the screens' schemas; refusal rather than a partial load; the run row written last; audit after commit. Recommended for OD-63 B's counted opening file, where a wrong quantity is the costly mistake (OD-68's master-data load follows IT's steps, which have no such mode): the first deploy only reports what it would load, behind an environment switch, as `INDEX_SYNC_MODE` does for indexes (`infrastructure/config/env.ts:194`), standing in for class 3's dry run |
 | 3. Migrations and merges | the supplier merge (§15.3.5 a), IT stores (b), a change to the name fold (e), any backfill or destructive operation | operator CLI only; never at boot, never as a side effect of a feature slice (D-17) | the owner, on the production dry run's output | ADR-031's discipline (§15.3.5) |
 
 No class-3 operation runs against production without the owner's explicit approval of its dry-run output (D-17). The
@@ -394,9 +394,9 @@ output attached, before `--write`, and the pull request links to it. Recommended
 
 | Module | What changes | Trigger | Done by |
 |---|---|---|---|
-| IT | Nothing in P1–P4 beyond PC-13's move of `foldName` (below) (OD-02, recommended default: A now). ADR-024's boundary is the precedent for OD-02 C: a received purchase order writes the receipt movement, whose shape does not change, and on-hand may become Warehouses' number while IT keeps its ledger (`docs/03-decisions/ADR-024-minimal-spare-parts-ledger.md:40-52`); the clause covers spare parts only, not consumables (FR-20). Under OD-02 C or OD-65 B a GRN reaches IT through the reliable `administration.goodsReceipt.posted` event (§8.2), which IT turns into its own receipt movement or asset; PC-1 lands first. IT movements carry internal references (consumables `memoId`, `assetId`; spare parts `orderId`) but no external GRN or PO source (`it/consumables/consumable-movement.model.ts:30-37`, `it/spare-parts/movement.model.ts:9-16`), and IT's receive services rely on route guards, so IT adds both. Vendor validators (`asset.service.ts:115-133`, `license.service.ts:100-104`, `maintenance/order.service.ts:92-103`) switch only with the §15.3.5 a merge. Whether a received device becomes an IT asset is OD-65 (recommended default: A in P5, IT registers devices by hand; B, the event, as a later IT slice). | OD-01, OD-02, OD-65 | IT slices |
-| Fleet | Workshop references re-point only with the merge (`fleet/maintenance/maintenance.service.ts:137, 270, 430`, `fleet/maintenance/maintenance.repository.ts:509-532`, go-live imports, `FleetMaintenancePayloadV1.workshopId`). The custody fund, and the parts it buys outside any stock record, stay as they are until OD-66 (recommended default: A for v1, B, planned buys through PR and PO, as the target; never a second petty-cash system). | OD-01, OD-66 | Fleet slices |
-| HR | No HR code in P1 (directory reads only). From P2 the module's own pull requests classify each `*name` path they add on a `keep` collection in HR's `employee-name-copies.ts`, reviewed by HR's owner (§15.3.3). P6, under OD-44 (recommended default: A, cancel the leaver's drafts and flag holdings only under OD-15 B; per act (i)): an `hr.employee.exited` subscription that only flags, the IT precedent (`it/it.module.ts:577-603`). The event is in-process and emitted before the employee is saved, carrying `effectiveDate` (`hr/employee-management/employee-actions/employee-action.service.ts:771-780`), so a draft cancellation runs from a daily sweep that reads the directory (status `exited`, effective date on or before the Cairo date), never from the event (RK-05). The cost-center seam (PC-2) if OD-41 C; self-service keys if OD-16 or OD-38 chooses ESS (recommended defaults: A, department focal points, no ESS), in an HR slice that keeps the four ESS declarations in agreement (`modules/hr/ess-grants.spec.ts`). HR notification rules see every cataloged `administration.*` event automatically. | OD-16, OD-38, OD-41, OD-44 | HR + platform |
+| IT | Nothing in P1–P4 beyond PC-13's move of `foldName` (below) (OD-02, recommended default: A now). ADR-024's boundary is the precedent for OD-02 C: a received purchase order writes the receipt movement, whose shape does not change, and on-hand may become Warehouses' number while IT keeps its ledger (`docs/03-decisions/ADR-024-minimal-spare-parts-ledger.md:40-52`); the clause covers spare parts only, not consumables (FR-20). Under OD-02 C or OD-65 B a GRN reaches IT through the reliable `administration.goodsReceipt.posted` event (§8.2), which IT turns into its own receipt movement or asset; PC-1 lands first. IT movements carry internal references (consumables `memoId`, `assetId`; spare parts `orderId`) but no external GRN or PO source (`it/consumables/consumable-movement.model.ts:59-100`, `it/spare-parts/movement.model.ts:9-16`), and IT's receive services rely on route guards, so IT adds both. Vendor validators (`asset.service.ts:116-134`, `license.service.ts:100-104`, `maintenance/order.service.ts:92-103`) switch only with the §15.3.5 a merge. Whether a received device becomes an IT asset is OD-65 (recommended default: A in P5, IT registers devices by hand; B, the event, as a later IT slice). | OD-01, OD-02, OD-65 | IT slices |
+| Fleet | Workshop references re-point only with the merge (`fleet/maintenance/maintenance.service.ts:138, 271, 431`, `fleet/maintenance/maintenance.repository.ts:535-558`, go-live imports, `FleetMaintenancePayloadV1.workshopId`). The custody fund, and the parts it buys outside any stock record, stay as they are until OD-66 (recommended default: A for v1, B, planned buys through PR and PO, as the target; never a second petty-cash system). | OD-01, OD-66 | Fleet slices |
+| HR | No HR code in P1 (directory reads only). From P2 the module's own pull requests classify each `*name` path they add on a `keep` collection in HR's `employee-name-copies.ts`, reviewed by HR's owner (§15.3.3). P6, under OD-44 (recommended default: A, cancel the leaver's drafts and flag holdings only under OD-15 B; per act (i)): an `hr.employee.exited` subscription that only flags, the IT precedent (`it/it.module.ts:582-608`). The event is in-process and emitted before the employee is saved, carrying `effectiveDate` (`hr/employee-management/employee-actions/employee-action.service.ts:771-780`), so a draft cancellation runs from a daily sweep that reads the directory (status `exited`, effective date on or before the Cairo date), never from the event (RK-05). The cost-center seam (PC-2) if OD-41 C; self-service keys if OD-16 or OD-38 chooses ESS (recommended defaults: A, department focal points, no ESS), in an HR slice that keeps the four ESS declarations in agreement (`modules/hr/ess-grants.spec.ts`). HR notification rules see every cataloged `administration.*` event automatically. | OD-16, OD-38, OD-41, OD-44 | HR + platform |
 | Gold, Fleet, IT (web) | Shared web pieces move to `apps/web/src/shared/` in their own pull requests, outside the module, before their first use (§18.1): PC-10 is done (`EGYCASH_LOGO` lives in `@ecms/contracts/egycash-logo`, §11.6.3); PC-11, the export walk and buttons and the company report form (`fleet-report-print.ts`, `fleet-sheet.ts`, `whole-catalog.ts`, `RegisterExportButtons.tsx`), of which the module is the next consumer, before the first client export (§11.7). The `xlsx-writer.ts` and `paper-fonts.ts` moves are the precedent. | the first paper (P2 or P3); the first client export (P2, or P1 on request) | web refactor pull requests |
 | Operations, ATM, Automation | Operations and Automation: none. ATM: PC-12 writes its branch-scope rule and its organization-scope check once in `apps/api/src/shared/base/` (§15.2.2); ATM keeps its exported names as thin wrappers over them, and its active-branch loader, so ATM's callers do not change. The Finance seam is not a module-local port in the shape of `operations/treasury-boundary.ts`, whose weaknesses §12.6 lists, but a platform seam, `apps/api/src/platform/finance-handoff/` (directory-seam pattern, conformance spec), built with its first consumer (OD-55; §12.11). ATM seal stock waits for ATM's S-8 (c), seal-stock issuing on its Control & Supplies page, not requested (`docs/12-planning/atm-settlements-phase1.md:146`) (OD-03). Cataloged events become automation triggers once `AUTOMATION_ENABLED` is on. | PC-12, one pull request before P1a.1 | a platform pull request (PC-12) |
 | IT, Fleet, ATM (PC-13) | IT's `foldName` moves to `packages/contracts/src/common/`, and IT's three importers and its spec read it from there (§15.2.2); its behavior does not change. Fleet's and ATM's counters keep their copies; moving them onto PC-13's factory is listed with the cross-module findings (`docs/10-reviews/2026-11-administration-design-cross-module-findings.md`, §21), not this design's work. | PC-13, one pull request before P1a.1 | a platform pull request (PC-13) |
@@ -411,7 +411,8 @@ output attached, before `--write`, and the pull request links to it. Recommended
 ## 16. Open business decisions
 
 This register holds every business decision the design waits on, with the questions the other sections raise. **A
-recommended default is a proposal, not a rule**: nothing here is settled until the owner answers.
+recommended default is a proposal, not a rule**. On 2026-11-24 the owner took every recommended default as the working
+answer and answered OD-68 B (§16.12); a later answer replaces a default by revision (§22).
 
 ### 16.1 How to read the register
 
@@ -455,11 +456,11 @@ it names (§19.2).
 | OD-62 | names and menu | A: «الشئون الإدارية» / Administrative Affairs; tile picture OD-62.1 A, a box | navigation seed, pins, the launcher tile's glyph | P1a |
 | OD-64 | workforce reset | A: `keep`; a keeper who no longer resolves is flagged | reset classification (a CI gate, §2.1) | P1a |
 | OD-67 | vocabulary | B: the owner's words | labels; the titles of the roles OD-78 seeds, written once, when each role is created (§6.5) | P1a, P1b |
-| OD-68 | legacy sources | A: port the owner's files | field set, data load | P1a, P1b |
+| OD-68 | legacy sources | answered B, typed by hand for now (§16.12; the recommendation was A, port the owner's files) | field set, data load | P1a, P1b |
 | OD-76 | file formats, if OD-11 keeps supplier papers | A, formats (i): PDF and images | the supplier-papers category | P1b |
 | OD-77 | retention, likewise | A: keep everything (`retentionDays: null`) | the same category | P1b |
 | OD-78 | ready-made roles | A: §6.5's bundles as ready-made roles | module seed | P1a, P1b |
-| OD-83 | page frame | B: board frame on registers, applied unless the owner objects (his frame in Fleet, ATM, IT, System Administration) | the P1a.W and P1b.W pages | P1a, P1b |
+| OD-83 | page frame | B: board frame on registers, applied unless the owner objects (the owner's frame in Fleet, ATM, IT, System Administration) | the P1a.W and P1b.W pages | P1a, P1b |
 
 A file category's rules are fixed when `ensure()` first creates it, so a later answer to OD-76 or OD-77 reaches the
 supplier-papers category only through an operator `PATCH` (§11.1).
@@ -491,7 +492,7 @@ questions. The two below also follow a precedent; the owner may overturn either:
 | Question | Settled as | Precedent |
 |---|---|---|
 | What `own` means on requests | the requester sees their own PRs and MRs (§7.3) | IT tickets: "a requester always sees their own tickets" (`apps/api/src/modules/it/tickets/ticket.repository.ts:13-15`) |
-| Filing a stock document with «الشركة كلها» selected | the user picks the warehouse; the warehouse's branch files the document (§7.5) | Gold: "The key follows the DRAWER's branch, not the operator's" (`apps/api/src/modules/gold/keys/key-handover.service.ts:94-95`). IT: a movement copies its item's store branch (`apps/api/src/modules/it/consumables/consumable-history.ts:197-209`), and a memo is filed in its items' store, with items from two stores refused (`apps/api/src/modules/it/consumables/consumable-issue.service.ts:105-111, 201`). Gold's switcher-based `resolveCreateBranchId` (`apps/api/src/modules/gold/shared/ecms-refs.ts:82-95`) is not used |
+| Filing a stock document with «الشركة كلها» selected | the user picks the warehouse; the warehouse's branch files the document (§7.5) | Gold: "The key follows the DRAWER's branch, not the operator's" (`apps/api/src/modules/gold/keys/key-handover.service.ts:94-95`). IT: a movement copies its item's store branch (`apps/api/src/modules/it/consumables/consumable-history.ts:231-246`), and a memo is filed in its items' store, with items from two stores refused (`apps/api/src/modules/it/consumables/consumable-issue.service.ts:205-211, 412`). Gold's switcher-based `resolveCreateBranchId` (`apps/api/src/modules/gold/shared/ecms-refs.ts:82-95`) is not used |
 
 Fleet's own cash fund raises further questions. This design keeps that fund unchanged until OD-66 (§0.2), so these
 questions belong to their owners and are recorded here so that none is lost. Two others map to entries:
@@ -513,11 +514,11 @@ Administrative Affairs is OD-66.
   belong in it? Arabic: من يملك سجل الموردين؟ وهل يُضم إليه موردو التقنية وورش الحركة الآن؟ وهل تدخل فيه شركات التأمين
   وشركات الوقود؟
 - **Evidence** IT's plan: "Procurement owns the concept; extracting earlier buys nothing"
-  (`docs/12-planning/it-module-design.md:1171`). Fleet workshops are name-only catalog rows
-  (`apps/api/src/modules/fleet/catalogs/catalog-item.model.ts:1-3, 18-39`; `packages/contracts/src/modules/fleet.ts:54-55`),
+  (`docs/12-planning/it-module-design.md:1510`). Fleet workshops are name-only catalog rows
+  (`apps/api/src/modules/fleet/catalogs/catalog-item.model.ts:1-3, 18-39`; `packages/contracts/src/modules/fleet.ts:55-56`),
   which maintenance visits cite by `workshopId` (`apps/api/src/modules/fleet/maintenance/maintenance.model.ts:15, 50`).
-  Fleet also keeps insurers as a catalog kind (`fleet.ts:67`) and its two fuel companies as a code constant
-  (`fleet.ts:3601`); whether they, and the traffic authority, are suppliers is asked below. Fleet's vehicle supply
+  Fleet also keeps insurers as a catalog kind (`fleet.ts:68`) and its two fuel companies as a code constant
+  (`fleet.ts:3637`); whether they, and the traffic authority, are suppliers is asked below. Fleet's vehicle supply
   contracts «عقود توريد السيارات» name their car suppliers as free text, filtered by distinct name
   (`apps/api/src/modules/fleet/vehicle-contracts/vehicle-contract.model.ts:65, 118`; `vehicle-contract.routes.ts:51-52`).
 - **Options** **A** module-owned; IT and Fleet untouched (S; a third copy persists). **B** a platform registry now, with a
@@ -551,7 +552,7 @@ Administrative Affairs is OD-66.
 - **Q** Which kinds of goods will the warehouses hold? Arabic: ما أنواع الأصناف التي تديرها المخازن (مكتبية، نظافة،
   ضيافة، أثاث، زي، مطبوعات)؟
 - **Evidence** No non-IT stock exists. Fleet keeps a name-only spare-parts catalog (`sparePart`,
-  `packages/contracts/src/modules/fleet.ts:57`), recorded on maintenance visits (`sparePartIds`,
+  `packages/contracts/src/modules/fleet.ts:58`), recorded on maintenance visits (`sparePartIds`,
   `apps/api/src/modules/fleet/maintenance/maintenance.model.ts:27, 53`), outside any stock. ATM: "Seal stock (c) is not
   requested" (`docs/12-planning/atm-settlements-phase1.md:146`).
 - **Options** **A** the owner lists families; categories follow (no code). **B** an open list (S; sprawl). **C** office
@@ -577,8 +578,8 @@ Administrative Affairs is OD-66.
 #### OD-65: IT goods bought through Procurement (P5)
 - **Q** Which IT purchases become stock, and does a received device become an IT asset? Arabic: ما الذي يدخل المخازن
   من مشتريات التقنية؟ وهل يُسجَّل الجهاز أصلًا عند استلامه؟
-- **Evidence** RAM and disks are IT consumable types (`apps/api/src/modules/it/go-live/consumable-type-defaults.ts:27-39`);
-  a device is one `it_assets` row with custody intervals (`apps/api/src/modules/it/assets/assignment.model.ts:52-60`).
+- **Evidence** RAM and disks are IT consumable types (`apps/api/src/modules/it/go-live/consumable-type-defaults.ts:36-48`);
+  a device is one `it_assets` row with custody intervals (`apps/api/src/modules/it/assets/assignment.model.ts:87-95`).
 - **Options** **A** IT's GRN lines post no stock; IT registers devices by hand (S; double entry). **B** a reliable GRN
   event IT turns into assets or receipts (M; IT-side, idempotent by GRN line). **C** devices stocked until issued
   (rejected: a second count of registered devices).
@@ -589,9 +590,9 @@ Administrative Affairs is OD-66.
 - **Q** Which Fleet purchases go through Procurement, are vehicle parts stock, who owns Fleet's cash fund, and do
   licensing fees move to Administrative Affairs? Arabic: ما مشتريات الحركة التي تمر بالمشتريات؟ وهل قطع الغيار أصناف
   مخزنية؟ ومن يملك عهدتها النقدية؟ وهل تنتقل رسوم الترخيص إلى الشئون الإدارية؟
-- **Evidence** Fleet runs one imprest fund (`apps/api/src/modules/fleet/custody/custody-fund.service.ts:88`); tires and
+- **Evidence** Fleet runs one imprest fund (`apps/api/src/modules/fleet/custody/custody-fund.service.ts:93`); tires and
   «صيانة» are receipts from it (`apps/api/src/modules/fleet/custody/custody-dashboard.spec.ts:3-5`), outside any stock or
-  purchase record. Fleet's parts are a name-only catalog (`packages/contracts/src/modules/fleet.ts:57`) recorded on visits
+  purchase record. Fleet's parts are a name-only catalog (`packages/contracts/src/modules/fleet.ts:58`) recorded on visits
   (`apps/api/src/modules/fleet/maintenance/maintenance.model.ts:27`). Fleet also records the cars it buys as vehicle
   supply contracts «عقود توريد السيارات», outside any request, approval or PO: a free-text supplier, makes and
   counts with unit prices, a deadline and deliveries
@@ -645,7 +646,7 @@ Administrative Affairs is OD-66.
   (رئيسي وفرعي) أم شجرة مفتوحة؟ وبأي مستوى يرتبط الصنف؟
 - **Evidence** The owner's request lists «Category / Subcategory» among an item's fields. No open tree exists in ECMS:
   org units are a fixed three-level hierarchy (`apps/api/src/platform/organization/shared/org-unit.ts:1-3`); IT asset
-  categories are flat by owner decision (`docs/12-planning/it-module-design.md:1099`); cost centers forbid a parent (D-CC-4,
+  categories are flat by owner decision (`docs/12-planning/it-module-design.md:1438`); cost centers forbid a parent (D-CC-4,
   `apps/api/src/platform/organization/cost-centers/cost-center-guards.spec.ts:69-74`); Fleet catalogs are flat kind and
   name rows (`apps/api/src/modules/fleet/catalogs/catalog-item.model.ts:18-39`).
 - **Options** **A** two levels (S). **B** n levels with a path (M; subtree filters; the org-unit `path` shape,
@@ -668,7 +669,7 @@ Administrative Affairs is OD-66.
 - **Q** Whole numbers of the base unit, or fractions for kg, m and L? Arabic: هل الكميات أعداد صحيحة فقط، أم يُسمح
   بالكسور للكيلو والمتر واللتر؟
 - **Evidence** Every counted stock quantity in ECMS is an integer
-  (`packages/contracts/src/modules/it.ts:1781, 1860, 2601`). The one decimal measure, Gold's gram weights, is an
+  (`packages/contracts/src/modules/it.ts:2100, 2179, 2926`). The one decimal measure, Gold's gram weights, is an
   unconstrained float
   (`apps/api/src/modules/gold/bars/bar.model.ts:74`; `packages/contracts/src/modules/gold.ts:409`), printed to two
   decimals (`apps/web/src/modules/gold/lib/gold-print.ts:253-254`). Mongo `$round` rounds half to even
@@ -771,13 +772,13 @@ Administrative Affairs is OD-66.
 #### OD-67: Business vocabulary (P1a, P1b)
 - **Q** Which words does the company use for the supplier, the papers and the roles? Arabic: ما المسميات المعتمدة:
   المورد، إذن الاستلام أو الإضافة، إذن الصرف، محضر الجرد، أمين المخزن؟
-- **Evidence** IT's consumables words exist (`apps/web/src/platform/localization/i18n.ts:24889-24977`), and so does
-  «جرد»: Gold's «جرد الدرج» and «محضر جرد درج» (`i18n.ts:27455`; `apps/web/src/modules/gold/lib/gold-print.ts:236, 306`)
+- **Evidence** IT's consumables words exist (`apps/web/src/platform/localization/i18n.ts:26468-26556`), and so does
+  «جرد»: Gold's «جرد الدرج» and «محضر جرد درج» (`i18n.ts:29568`; `apps/web/src/modules/gold/lib/gold-print.ts:236, 306`)
   and ATM's «محضر جرد ماكينة الصراف الآلى» (`apps/web/src/modules/atm/lib/papers/settlement-paper-wording.ts:11, 47`).
   «جرد» is reused (§0.4); only the count document's name is open. "Vendor" is the word of IT's code and
-  English UI ("IT Vendors", `apps/api/src/seed-navigation.ts:997`; "Add vendor", `i18n.ts:9150`); "supplier" appears
-  in Fleet's fuel label (`i18n.ts:5438`) and an IT page subtitle (`:9148`); Arabic uses «مورد» for both
-  (`i18n.ts:20354, 23733`). The business validates terms (`docs/01-domain/ubiquitous-language.md:11-22`).
+  English UI ("IT Vendors", `apps/api/src/seed-navigation.ts:1008`; "Add vendor", `i18n.ts:9596`); "supplier" appears
+  in Fleet's fuel label (`i18n.ts:5712`) and an IT page subtitle (`:9594`); Arabic uses «مورد» for both
+  (`i18n.ts:21750, 25213`). The business validates terms (`docs/01-domain/ubiquitous-language.md:11-22`).
 - **Options** **A** §0.4's candidates (S). **B** the company's words, from its forms (S; OD-68). **C** IT's words where
   they overlap (S; «توريد» for a receipt).
 - **Recommendation** B, A as fallback; identifiers unchanged.
@@ -794,13 +795,15 @@ Administrative Affairs is OD-66.
   with preview (M; ATM's register import keeps a run collection, one more collection here; IT's asset upload and ATM's
   machine sync keep none: a hash-checked apply of the previewed file, §4.3.1).
 - **Recommendation** A.
+- **Answer** B for now (2026-11-24, §16.12): master data is typed in on the screens; a load from files later is its own
+  change (A or C).
 
 #### OD-70: Retiring an item or warehouse that holds stock (P5)
 - **Q** What does retiring an item or warehouse mean while stock remains, and which acts does a retired row refuse?
   Arabic: ماذا يعني إيقاف صنف أو مخزن ما زال به رصيد؟
 - **Evidence** IT's retired item refuses receipts and issues (`REFUSED_WHEN_INACTIVE`,
   `apps/api/src/modules/it/consumables/consumable.repository.ts:21-25`) but may still be scrapped, and returns are taken
-  back into it (`apps/api/src/modules/it/consumables/consumable.service.ts:331-355`).
+  back into it (`apps/api/src/modules/it/consumables/consumable.service.ts:333-357`).
 - **Options** **A** a per-kind refusal map (`REFUSED_WHEN_INACTIVE`, §2.4.4): a retired item takes no new purchase or
   receipt lines and refuses only `goodsReceipt` and `openingBalance` legs; outflows, returns, write-offs, count postings
   and the legs of a transfer already dispatched pass, so its stock leaves until zero (S). **B** retirement refused while
@@ -863,7 +866,7 @@ Administrative Affairs is OD-66.
     the owning key, a platform change; §6.7).
     **(ii)** accepted: the declaration's Zod schema carries every domain check, the generic settings screen shows the keys
     with no field and a link to the policy page (`MANAGED_ELSEWHERE`, a System Administration web list,
-    `apps/web/src/modules/system-admin/settings/lib/settings-catalog.ts:131-153`), and the audit shows only
+    `apps/web/src/modules/system-admin/settings/lib/settings-catalog.ts:131-161`), and the audit shows only
     `platform/setting` (S; §6.7's mitigations; the `PATCH` stays open). The risk is RK-32 (§17).
 - **Recommendation** A; basis 1; tolerance (i); thresholds organization-wide; the bypass (i), a module-owned
   policy record or an owning key. The band is stamped at submission, so a threshold edit never re-routes an in-flight
@@ -909,7 +912,7 @@ Administrative Affairs is OD-66.
 
 #### OD-21: Separation of duties (P2)
 - **Q** Which acts must different people do? Arabic: ما المهام التي يجب أن يقوم بها أشخاص مختلفون؟
-- **Evidence** "One key held by one person is not a two-person rule" (`apps/api/src/modules/hr/hr.module.ts:917-918`);
+- **Evidence** "One key held by one person is not a two-person rule" (`apps/api/src/modules/hr/hr.module.ts:955-956`);
   the engine has no requester or two-rung rule (`apps/api/src/platform/approvals/approval.service.ts:150-224`). A run's
   freezer may not approve it (`apps/api/src/modules/hr/payroll/runs/payroll-run.service.ts:207-209`).
 - **Options** **A** §6.6's A pairs: A1, the requester, creator and submitter never decide any rung of any
@@ -936,7 +939,7 @@ Administrative Affairs is OD-66.
   buys as vehicle supply contracts, organization-wide (no branch on the contract): a free-text supplier, lines of make ×
   count × unit price, a deadline and deliveries per line, entered after the fact with no request or approval
   (`apps/api/src/modules/fleet/vehicle-contracts/vehicle-contract.model.ts:1-11, 57-69`). Fleet's one fund, which pays
-  for every vehicle (`apps/api/src/modules/fleet/custody/custody-fund.service.ts:88`), is the nearest analogy for
+  for every vehicle (`apps/api/src/modules/fleet/custody/custody-fund.service.ts:93`), is the nearest analogy for
   central buying. §7.1
   assumes RFQs and POs are scoped by the purchasing branch.
 - **Options** **A** central, organization-scope buyers; PO lines name delivery warehouses (S). **B** per branch (S; no
@@ -1097,7 +1100,7 @@ Administrative Affairs is OD-66.
   `apps/api/src/modules/hr/contracts/contracts/contract-pdf.ts:1-5`). Stored PDFs exist for HR contracts, with a SHA-256
   line and a verification QR (`contract-pdf.ts:57-66`, stored at `:78-95`), and for HR evaluation-batch packages,
   without a hash (`apps/api/src/modules/hr/recruitment/evaluation-batches/evaluation-batch-package.ts:402, 437-442`);
-  IT label sheets are rendered and not stored (`apps/api/src/modules/it/assets/asset.service.ts:387-406`).
+  IT label sheets are rendered and not stored (`apps/api/src/modules/it/assets/asset.service.ts:408-427`).
 - **Options** **A** printed and sent by hand; channel recorded; signed acknowledgment filed (S). **B** ECMS e-mails
   suppliers (L; a path to non-users; outside this design: it reopens §0.2's non-goal). **C** a stored PDF with hash and
   QR, printed or handed over, never sent (M; the `platform/pdf` seam and the contract precedent exist; Chromium on the
@@ -1130,8 +1133,8 @@ Administrative Affairs is OD-66.
   اطلاع؟
 - **Evidence** `auditLog.view` reads every audit value; masking covers `nationalId` only
   (`apps/api/src/platform/audit/audit.masking.ts:17-30`); only download tickets audit file reads
-  (`apps/api/src/platform/files/file.service.ts:768`). HR keeps pay behind its own key, `employee.viewCompensation`
-  (`apps/api/src/modules/hr/hr.module.ts:570`); payroll's run events carry no amount
+  (`apps/api/src/platform/files/file.service.ts:777`). HR keeps pay behind its own key, `employee.viewCompensation`
+  (`apps/api/src/modules/hr/hr.module.ts:575`); payroll's run events carry no amount
   (`packages/contracts/src/modules/hr-payroll.ts:1386-1389`).
 - **Options** **A** quantities only on stock surfaces, prices only to PO, RFQ and invoice viewers: stock screens carry
   quantities only; the RFQ, quotation, PO and invoice DTOs carry prices; GRN DTOs, the receivable-lines read and
@@ -1147,7 +1150,7 @@ Administrative Affairs is OD-66.
     the evidence).
   - *A document's action log* (`auditService.trailOf` reads several entities' rows of one module in one read,
     `apps/api/src/platform/audit/audit.service.ts:346-375`; Operations serves its shipment log with it under the
-    module's own read grant, `apps/api/src/modules/operations/shipments/shipment.routes.ts:128-136`): **(i)** none: a
+    module's own read grant, `apps/api/src/modules/operations/shipments/shipment.routes.ts:160-168`): **(i)** none: a
     document's history is its approval trail, its stamped acts and, for stock, the ledger (S; §10.5). **(ii)** a module
     read of the document's own rows and its linked documents' under the document's read key (S–M; the rows' `changes`,
     prices included under audit rows (i), reach every viewer of the document, not only `auditLog.view` holders).
@@ -1178,7 +1181,7 @@ Administrative Affairs is OD-66.
   outside; `adjustmentIn` and `countGain` are governed by OD-52 and the count; `issueReturn`, `transferReceipt` and
   `transferReturn` move goods already counted. ADR-024: once Procurement exists, "a received purchase order is what
   creates" a receipt (`docs/03-decisions/ADR-024-minimal-spare-parts-ledger.md:44-46`); IT receives with no order today
-  (`apps/api/src/modules/it/consumables/consumable.service.ts:316-330`).
+  (`apps/api/src/modules/it/consumables/consumable.service.ts:318-332`).
 - **Options** **A** never; an approved `adjustmentIn` instead (S; needs adjustments outside counts, OD-52 A, from P5
   under §18.1 A11). **B** an approved GRN without PO (M; a second path; `purchaseOrderId` null). **C** free for keepers
   (S; unapproved stock).
@@ -1200,9 +1203,9 @@ Administrative Affairs is OD-66.
   people"? Arabic: هل يعتمد أمين المخزن إذن الاستلام وحده أم مع لجنة فحص واستلام؟
 - **Evidence** Operations refused two equal treasurer ids, checking neither logins nor the actor, until Round 18, when
   the owner dropped the names («انا مش عاوز اى اسماء»): a vault receipt now records one receiver, the signed-in user
-  (`apps/api/src/modules/operations/vault/vault-custody.service.ts:98-102`;
-  `packages/contracts/src/modules/operations.ts:2653-2666`).
-  The question to the owner says so: A is the shape he chose for the vault's cash receipt. His request lists one
+  (`apps/api/src/modules/operations/vault/vault-custody.service.ts:99-103`;
+  `packages/contracts/src/modules/operations.ts:2957-2970`).
+  The question to the owner says so: A is the shape the owner chose for the vault's cash receipt. The owner's request lists one
   «Receiving user» among a goods receipt's fields.
 - **Options** **A** the keeper alone (S). **B** named, distinct, current employees, the poster among them (S–M; a
   directory check; `inspection.members`, §2.6, under B only). **C** two sign-ins (M; a status and a rule).
@@ -1246,7 +1249,7 @@ Administrative Affairs is OD-66.
 - **Evidence** Nothing posted is edited; an opposing document corrects it (D-2): ADR-024's movements are "positive on
   receipt, negative on consumption" (`docs/03-decisions/ADR-024-minimal-spare-parts-ledger.md:26-28`), and attendance
   corrections "flow forward as adjustments, never as restatements"
-  (`apps/api/src/modules/hr/attendance/day-records/day-record.repository.ts:22-28`). A posted GRN is final (§5.7). An
+  (`apps/api/src/modules/hr/attendance/day-records/day-record.repository.ts:23-29`). A posted GRN is final (§5.7). An
   `adjustmentOut` of 90 fixes the stock but leaves PO `receivedQty` at 100 and the PO auto-closed, so the §12.4 match
   passes a 100-unit invoice and the §2.4.8 check stays green; a plain SRN records a return that never happened and,
   under OD-36, a debit-note claim (§4.3.2).
@@ -1287,7 +1290,7 @@ Administrative Affairs is OD-66.
 #### OD-40: Issue without a request (P6)
 - **Q** May a keeper issue without an approved MR? Arabic: هل يجوز الصرف بدون طلب صرف معتمد؟
 - **Evidence** IT issues directly on a signed memo, with no request
-  (`apps/api/src/modules/it/consumables/consumable-issue.service.ts:79-229`); here the approved MR is the control on
+  (`apps/api/src/modules/it/consumables/consumable-issue.service.ts:178-442`); here the approved MR is the control on
   consumption (OD-39).
 - **Options** **A** never (S; every issue claims an approved MR line in `MR_ISSUABLE`). **B** with a reason, reviewed
   later (S; `materialRequestId: null` issues, an unclaimed outflow, and a review report). **C** for categories the owner
@@ -1328,7 +1331,7 @@ Administrative Affairs is OD-66.
 - **Q** Do returned items go back to stock, or are damaged ones written off, and how is an issue posted against the
   wrong MR corrected? Arabic: هل يعود المرتجع إلى الرصيد أم يُعدم التالف؟ وكيف يُصحَّح صرفٌ سُجِّل على طلب صرف غير
   صحيح؟
-- **Evidence** IT returns carry no issue link (`apps/api/src/modules/it/consumables/consumable.service.ts:356-376`); here
+- **Evidence** IT returns carry no issue link (`apps/api/src/modules/it/consumables/consumable.service.ts:358-378`); here
   a return claims its issue line (§2.6).
 - **Options** **A** every return posts `issueReturn`; damaged lines are then written off (S; an adjustment per damaged
   return, so adjustments outside counts, OD-52 A). **B** damaged lines never enter stock (S; the line's `condition`
@@ -1344,8 +1347,8 @@ Administrative Affairs is OD-66.
 #### OD-44: Leavers and movers (P6)
 - **Q** When an employee leaves or moves, what happens to their open requests and issued items, and which acts refuse a
   leaver? Arabic: ما مصير طلبات الموظف وما صُرف له عند انتهاء خدمته أو نقله؟
-- **Evidence** IT flags, never auto-returns (`apps/api/src/modules/it/it.module.ts:577-603`). IT's `refuseLeaver` refuses
-  only a positive `exited` answer (`apps/api/src/modules/it/assets/custody.service.ts:76-95`); Gold's resolver also
+- **Evidence** IT flags, never auto-returns (`apps/api/src/modules/it/it.module.ts:582-608`). IT's `refuseLeaver` refuses
+  only a positive `exited` answer (`apps/api/src/modules/it/assets/custody.service.ts:95-114`); Gold's resolver also
   refuses an id HR cannot read (`apps/api/src/modules/gold/shared/ecms-refs.ts:46-55`).
 - **Options** **A** cancel their drafts; flag holdings under OD-15 B (S). **B** cancel all (S). **C** nothing (S;
   orphans).
@@ -1357,8 +1360,8 @@ Administrative Affairs is OD-66.
 - **Q** May a movement carry a date before its posting, and are closed months locked? Arabic: هل يجوز تسجيل حركة
   بتاريخ سابق؟ وهل يُقفل الشهر بعد إقفاله؟
 - **Evidence** IT accepts any client date: `at` is an optional date with no bound on receive, scrap and return
-  (`packages/contracts/src/modules/it.ts:2647, 2658, 2668`), defaulting to now
-  (`apps/api/src/modules/it/consumables/consumable.service.ts:325, 344, 368`). HR freezes correct forward
+  (`packages/contracts/src/modules/it.ts:2972, 2983, 2993`), defaulting to now
+  (`apps/api/src/modules/it/consumables/consumable.service.ts:327, 346, 370`). HR freezes correct forward
   (`docs/12-planning/retro-post-freeze-corrections.md:8-47`).
 - **Options** **A** `at` is the posting instant for every movement, opening balances included; an opening balance
   also stores its `asOfDate`, the counted date, a Cairo date no later than today, printed and never used as the
@@ -1371,7 +1374,7 @@ Administrative Affairs is OD-66.
 - **Q** Who picks the warehouse serving an MR, may it sit in another branch, and may one request draw on several?
   Arabic: من يحدد المخزن الذي يصرف الطلب؟ وهل يُصرف من مخزن في فرع آخر أو من أكثر من مخزن؟
 - **Evidence** §2.6 assumes A's schema: an MR names one `warehouseId`, which feeds that keeper's queue. IT's store is the
-  branch, and a memo lists one store's items (`apps/api/src/modules/it/consumables/consumable-issue.service.ts:105-111`).
+  branch, and a memo lists one store's items (`apps/api/src/modules/it/consumables/consumable-issue.service.ts:205-211`).
 - **Options** **A** the requester picks one warehouse in their branch; supply from another branch first moves the stock
   by a transfer (S). **B** any warehouse, a central store included: the MR and its issues become two-branch documents,
   the keeper reads through a second-anchor read (§7.4), and the MR stores the warehouse's branch (M; a §2 addition).
@@ -1384,7 +1387,7 @@ Administrative Affairs is OD-66.
 - **Q** Do transfers need approval, and does the sender (push) or the receiver (pull) start them? Arabic: هل يحتاج
   التحويل إلى اعتماد؟ ومن يبدؤه: المخزن المُرسِل أم المستلم؟
 - **Evidence** A document filed in two branches has no ECMS precedent (§7.4). A stock paper is filed where its stock
-  is: IT's memo, in its items' store (`apps/api/src/modules/it/consumables/consumable-issue.service.ts:105-111`). IT's
+  is: IT's memo, in its items' store (`apps/api/src/modules/it/consumables/consumable-issue.service.ts:205-211`). IT's
   own transfers between branches need no approval and start at the sending side: one act under `itConsumable.assign`,
   which must reach the destination, moves the stock at once
   (`apps/api/src/modules/it/consumables/consumable-transfer.service.ts:57, 107-118`).
@@ -1405,12 +1408,12 @@ Administrative Affairs is OD-66.
   `docs/03-decisions/ADR-024-minimal-spare-parts-ledger.md:36-38`; Gold transfers move ownership only,
   `apps/api/src/modules/gold/transfers/transfer.service.ts:1-5`). The nearest precedent is Operations' secured
   shipment: `dispatched` between vault release and delivery, with the carrier recorded as crew legs
-  (`packages/contracts/src/modules/operations.ts:44-54, 86-94`) and vault custody held, then released (`:2591`;
-  `apps/api/src/modules/operations/vault/vault-custody.service.ts:103-139, 160-182`).
+  (`packages/contracts/src/modules/operations.ts:46-56, 88-96`) and vault custody held, then released (`:2895`;
+  `apps/api/src/modules/operations/vault/vault-custody.service.ts:104-140, 161-183`).
 - **Options** **A** the destination's in-transit balance; the carrier as text; overdue after N days (S; the overdue
   reminder rides a notification idempotency key, or PX-2's marks, §18.1 A10). **B** the source's (M; a ledger change).
   One step is not offered: the owner's request asks for Dispatch, Receipt, Partial receipt and Difference handling, and
-  says «ولا تعتبر الكمية انتقلت نهائيًا بمجرد الضغط على "Transfer"» (D-3). IT's one-step transfer, «فوراً», was his
+  says «ولا تعتبر الكمية انتقلت نهائيًا بمجرد الضغط على "Transfer"» (D-3). IT's one-step transfer, «فوراً», was the owner's
   choice for IT consumables (`apps/api/src/modules/it/consumables/consumable-transfer.service.ts:5-11`), not for these
   warehouses.
 - **Recommendation** A.
@@ -1460,7 +1463,7 @@ Administrative Affairs is OD-66.
 - **Evidence** From P7, balance rows carry `frozenByCountId` (§2.4.3); the freeze guards on-hand legs only, so a
   dispatch to the warehouse waits in its `inTransit` and its receipt is refused with 422 `ADMINISTRATION_STOCK_FROZEN`
   until the count posts (§2.4.6). The stamp in the write's filter is the attendance freeze's idea
-  (`apps/api/src/modules/hr/attendance/day-records/day-record.repository.ts:13-28`), released here, which is new
+  (`apps/api/src/modules/hr/attendance/day-records/day-record.repository.ts:14-29`), released here, which is new
   (§5.13); every "is it locked?" check must widen with new states (§5.14).
 - **Options** **A** freeze the counted items until posting (S). **B** a snapshot (M; the variance nets out the movements
   made during the count). **C** the whole warehouse (S; stops the store).
@@ -1510,8 +1513,8 @@ Administrative Affairs is OD-66.
 #### OD-52: Adjustments and write-offs (P7; P5 under §18.1 A11)
 - **Q** Are adjustments allowed outside counts, with what evidence, approved by whom? Arabic: هل تجوز التسوية المخزنية
   خارج الجرد؟ وما مستندات الإعدام؟ ومن يعتمدها؟
-- **Evidence** IT scraps unapproved (`apps/api/src/modules/it/consumables/consumable.service.ts:336-349`), deferring
-  disposal approval (`docs/12-planning/it-module-design.md:1105`). §18.1 A11 recommends shipping adjustments in P5, the
+- **Evidence** IT scraps unapproved (`apps/api/src/modules/it/consumables/consumable.service.ts:338-351`), deferring
+  disposal approval (`docs/12-planning/it-module-design.md:1444`). §18.1 A11 recommends shipping adjustments in P5, the
   only correction for an opening balance keyed wrongly, and the only way to give opening stock to a (warehouse, item)
   row that moved before its opening balance (an approved `adjustmentIn`, §15.3.5 c).
 - **Options** **A** reason code, evidence, chain; write-offs on `organization` rungs (S–M). **B** counts only (S; no
@@ -1568,7 +1571,7 @@ Administrative Affairs is OD-66.
     the supplier sends the paper; §12.5). **(iii)** nothing in ECMS (S; the live handoff overstates the payable until
     a person notices).
 - **Recommendation** B (§12.3): the owner's own example chain puts the invoice in Procurement, before Finance
-  («Procurement → PO → Receiving → Invoice → Finance»), and his request lists «Invoices» among procurement's
+  («Procurement → PO → Receiving → Invoice → Finance»), and the owner's request lists «Invoices» among procurement's
   documents; so whoever ordered and received checks the bill. Choose A if the rule that Operations never compute money
   owed is to hold. Under B: match (i); a difference (i); GRNs (i); billing (i); non-stock lines (i); one PO per
   registration (i); duplicates refused; the post-hand-over notice (i) (§12.4, §12.5).
@@ -1577,7 +1580,7 @@ Administrative Affairs is OD-66.
 - **Q** Until Finance has a module, how does it receive the handoff, and does it need the files? Arabic: كيف تتسلم
   المالية ما تحيله المشتريات؟ وهل تحتاج صور المستندات؟
 - **Evidence** Today's handoff is paper: Fleet's custody letters carry a Finance signature block (`LETTER_SIGN_ROLES`,
-  `packages/contracts/src/modules/fleet.ts:5503-5508`). P-HR-14, HR's payroll-to-GL design: "a read plus an event"
+  `packages/contracts/src/modules/fleet.ts:5545-5550`). P-HR-14, HR's payroll-to-GL design: "a read plus an event"
   (`docs/12-planning/payroll-to-gl-discovery.md:36-57`). No software can receive a handoff yet (§12.1).
 - **Options** (§12.5) **A** paper (S; nothing to read later). **B** event only (S; no consumer). **C** export file (S;
   no idempotency). **D** a record and a signed memo, which Finance staff read and sign today (M); the reliable event,
@@ -1642,7 +1645,7 @@ Administrative Affairs is OD-66.
   its report signatories as organization-scope settings, edited on the generic screen
   (`apps/api/src/modules/fleet/fleet.settings.ts:57-103`); ATM writes its settings through a module key at organization
   scope (`apps/api/src/modules/atm/shared/settings-authority.ts:21-32`). Verbatim owner wording needs a fifth exempt
-  file: `VERBATIM_PAPERS` lists four, HR's hiring papers the latest (`scripts/check-formal-arabic.mjs:151-156`; OD-68).
+  file: `VERBATIM_PAPERS` lists four, HR's hiring papers the latest (`scripts/check-formal-arabic.mjs:153-158`; OD-68).
 - **Options** **A** PO, GRN and issue papers are records (`print` keys; counted; each print audited under the module's
   own verb `administrationPrint` with `paper` and `printNumber`, which the `exportSpike` signal does not count, since it
   counts only `export`, `apps/api/src/platform/audit/audit.signals.ts:129-142`; §10.2, §11.6.6); other papers, the
@@ -1652,8 +1655,8 @@ Administrative Affairs is OD-66.
     same bypass OD-18 notes). **(ii)** a module key at organization scope through the module's own card, as in ATM
     (S–M; this design's only settings key, `administrationProcurementPolicy.manage`, arrives at P4, or P3 under
     OD-23 A). **(iii)** a module screen whose row and route ride the platform's `setting.edit` itself, as Operations'
-    «إدارات العمليات» does (`apps/api/src/seed-navigation.ts:694-708`;
-    `apps/web/src/modules/operations/routes.tsx:110-118`) (S; no module key and nothing to bypass, but every `setting.edit`
+    «إدارات العمليات» does (`apps/api/src/seed-navigation.ts:705-719`;
+    `apps/web/src/modules/operations/routes.tsx:123-131`) (S; no module key and nothing to bypass, but every `setting.edit`
     holder maintains the names, and the route gates on a platform key, which §13.4 rule 3's module-keys-only check would
     have to allow).
   - *Approval lines:* **(i)** decided rungs print as electronic lines (rung, decider, date); wet signatures only for
@@ -1684,7 +1687,7 @@ Administrative Affairs is OD-66.
   is the only kind that is audited" (`apps/api/src/modules/atm/register/register-export.ts:1-3`). The first register
   with an export is P2's purchase requests (§14.5); Phase 1 has none unless the owner asks (OD-60.1). Two client
   exports already carry money: Fleet's vehicle supply contracts
-  (`apps/web/src/modules/fleet/components/VehicleContractsExport.tsx:52, 96, 111-117`) and Operations' captain and bank
+  (`apps/web/src/modules/fleet/components/VehicleContractsExport.tsx:53, 97, 112-118`) and Operations' captain and bank
   reports, which export exactly the table on screen
   (`apps/web/src/modules/operations/lib/report-export.ts:1-16`).
 - **Options** **A** server CSV under `.export` keys for registers with money or stock (RFQ P3, PO P4, stock and GRN P5,
@@ -1723,9 +1726,9 @@ Administrative Affairs is OD-66.
   arrive, and which picture does its launcher tile wear? Arabic: ما اسم القسم ومسميات صفحاته في القائمة؟ وأي إملاء
   نعتمد: «الشئون» أم «الشؤون»؟ ومتى تُقسَّم صفحاته إلى مجموعات؟ وما الصورة التي تظهر على مربع القسم؟
 - **Evidence** An `Administration` / «الإدارة» category holds System Administration, matched by English name
-  (`apps/api/src/seed-navigation.ts:1290-1297, 1403-1420`). The product writes «الشؤون الطبية»
-  (`apps/web/src/platform/localization/i18n.ts:17538`). «الشئون الإدارية» is the owner's own spelling; the repository
-  holds the department only in test fixtures, once so (`apps/api/tests/integration/org-catalog.spec.ts:274`) and once
+  (`apps/api/src/seed-navigation.ts:1301-1308, 1414-1431`). The product writes «الشؤون الطبية»
+  (`apps/web/src/platform/localization/i18n.ts:18855`). «الشئون الإدارية» is the owner's own spelling; the repository
+  holds the department only in test fixtures, once so (`apps/api/tests/integration/org-catalog.spec.ts:276`) and once
   without the hamza, «الشئون الادارية» (`apps/api/src/org-catalog-migration/plan.spec.ts:236`). The platform size
   snapshot lists the module as still to come, «الشؤون الإدارية» — «المشتريات والمخازن والخدمات»
   (`docs/12-planning/platform-size-snapshot-2026-09.html:681`).
@@ -1737,8 +1740,8 @@ Administrative Affairs is OD-66.
     section entry goes before `HR: [`, §13.2).
   - *Labels:* the row labels belong here, with their terms from OD-67 (§13.3). The launcher tile's glyph is OD-62.1;
     the row glyphs (`box` for Items, `warehouse` for Warehouses) are the design's (§13.3).
-  - *OD-62.1, the launcher tile's picture:* the owner chose the tiles of Operations, Organization, Gold Vault and ATM
-    himself and asked that each say its department, «عايز كل أيقونة تكون بتعبر عن اسم الإدارة»
+  - *OD-62.1, the launcher tile's picture:* the owner personally chose the tiles of Operations, Organization, Gold Vault and ATM
+    and asked that each say its department, «عايز كل أيقونة تكون بتعبر عن اسم الإدارة»
     (`apps/web/src/platform/navigation/module-icons.spec.ts:3-4, 68-72`); a box shows the stores, while the department
     later takes on facilities and office services (§13.1). **A** a box, for the stores (S; a new `BoxIcon`, §13.1).
     **B** another picture the owner names (S; one new glyph, worn by no other tile).
@@ -1752,7 +1755,7 @@ Administrative Affairs is OD-66.
     rows ship, or their rows are `retired` and their addresses redirected, §13.3). **(iii)** a «التقارير» hub over the
     report pages, each tab on its §14.5 key (M; the same pieces). **(iv)** the home row as a shared row, shown to a holder
     of any of the module's register keys (S; one contracts entry, grown each phase).
-- **Recommendation** A; sections (i); one row per screen (i), a hub only if the owner asks for one, as he did for HR;
+- **Recommendation** A; sections (i); one row per screen (i), a hub only on the owner's request, as HR's was;
   the tile picture OD-62.1 A, a box.
 
 #### OD-63: Opening balances (P5)
@@ -1774,7 +1777,7 @@ Administrative Affairs is OD-66.
   may their name stay on the module's records? Arabic: عند إعادة تهيئة بيانات العاملين: نحتفظ بالسجلات التي تذكرهم أم
   نحذفها؟ وعند المسح النهائي لموظف: هل يبقى اسمه على طلبات الشراء وأذون الصرف ومحاضر الجرد وسجل الاعتمادات؟
 - **Evidence** Unclassified employee paths stop the reset (`apps/api/src/workforce-reset/targets.ts:15-25`), and `keep`
-  writes nothing, not even to clear a reference (`targets.ts:28-38`); IT purges its memos (`targets.ts:185`).
+  writes nothing, not even to clear a reference (`targets.ts:28-38`); IT purges its memos (`targets.ts:195`).
 - **Options** **A** `keep` all seven (§2.1) (S). **B** purge person papers (S; orphans ledger sources). **C** purge all
   (S; it would delete the warehouse rows the ledger cites).
   - *The warehouse keeper after `keep`:* **(i)** the screen flags a keeper id that resolves to nobody until one is named
@@ -1853,7 +1856,7 @@ Administrative Affairs is OD-66.
   `docs/12-planning/atm-settlements-phase1.md:1, 148`): a pilot by bank, an analogy for a pilot by branch. A pilot needs
   no code: the module's pages show only to holders of their keys, so roles given in one branch make that branch the
   pilot. How unfinished work is hidden (no gate, an environment gate or a feature flag) is D-19: "only SHIPPED pages
-  appear in navigation" (`apps/api/src/seed-navigation.ts:889-892`), and the flag machinery exists
+  appear in navigation" (`apps/api/src/seed-navigation.ts:900-903`), and the flag machinery exists
   (`apps/api/src/platform/settings/settings.registry.ts:34`; `apps/api/src/platform/settings/settings.service.ts:284-292`;
   `scripts/check-flag-expiry.mjs:3-18`), but the catalog is empty (`packages/contracts/src/flags/index.ts:19-23`), so
   no feature evaluates a flag.
@@ -1883,7 +1886,7 @@ Administrative Affairs is OD-66.
 - **Evidence** Leave has its own `leaveDecision` verb (`packages/contracts/src/platform/audit.ts:38`), and HR attendance
   has three decision verbs, `attendanceDecision`, `attendanceDecisionApproval` and `attendanceDecisionRevoke`, a
   manager's decision being "a different act from an employee requesting a correction and [one that] must be filterable
-  on its own" (`:144-150`); "a dispute … is settled by filtering the trail on the act"
+  on its own" (`:148-154`); "a dispute … is settled by filtering the trail on the act"
   (`packages/contracts/src/platform/audit.ts:80-83`). `accept`, `reject`, `deliver` and `checkOut` carry other
   modules' labels and are never reused (§10.3).
 - **Options** **A** a new `approvalDecision` verb with en/ar labels (S; §10.2; a contracts append that ships ahead of
@@ -1900,13 +1903,13 @@ Administrative Affairs is OD-66.
   of 71 list pages are plain (54 of 69 at `b03522f`, §13.6); IT's registers, this module's references (§13.5), now
   wear it. Whether `Fact`, `Tabs` and `ReferencePicker` move to `shared/ui` or are rebuilt in the module from IT's
   pattern is D-21, not this entry: `Fact` is declared separately in 13 module files (for example
-  `apps/web/src/modules/it/pages/AssetDetailPage.tsx:66`), and Phase 1's `ItemDetailPage` and `SupplierDetailPage`
+  `apps/web/src/modules/it/pages/AssetDetailPage.tsx:74`), and Phase 1's `ItemDetailPage` and `SupplierDetailPage`
   (§19.5) are this module's first consumers of `Fact`, and `CatalogsPage` of the tablist.
 - **Options** **A** plain `PageContainer` (S; as 37 of 71 list pages are). **B** the board frame on registers (S;
   `BOARD_FRAME`, `stickyHead`).
-- **Recommendation** B, applied as the default unless the owner objects: he has asked for this frame module by module,
+- **Recommendation** B, applied as the default unless the owner objects: the owner has asked for this frame module by module,
   in Fleet, ATM, IT and System Administration, and the IT pages this module follows wear it (§13.5, §13.6); A only if
-  he wants this module's registers to scroll as one page.
+  the owner wants this module's registers to scroll as one page.
 
 #### OD-85: Volumes and success measures (P5)
 - **Q** How many warehouses, items and stock documents a month are expected, how many keepers post at the same time,
@@ -1918,19 +1921,25 @@ Administrative Affairs is OD-66.
   P5 and a count's start and posting in P7, against the thresholds of §18.3.2 (P5) and §18.3.3 (P7), which the phase's
   re-detail re-sets if this entry's figures differ. Phase 1's exit criteria are CI, scope and the owner's acceptance on
   staging (§19.10).
-- **Options** **A** the owner gives the figures and his measures of success now (S; the assumptions are checked
+- **Options** **A** the owner gives the figures and the measures of success now (S; the assumptions are checked
   against them before P5). **B** the design's stated assumptions stand until P5 measures them (S; success is judged
   only at each phase's acceptance).
-- **Recommendation** A, with B's assumptions as the defaults until he answers.
+- **Recommendation** A, with B's assumptions as the defaults until the owner answers.
 
 ### 16.12 Decision log
 
 Each answer is recorded here when it is given: the entry or sub-question, the option chosen, the date and the owner's
-words in «». An answer that changes this design is applied as a revision (§22). No answer is recorded yet.
+words in «». An answer that changes this design is applied as a revision (§22).
 
 | OD | Answer | Date | Owner's words |
 |---|---|---|---|
-| — | — | — | — |
+| OD-01…OD-85, every entry and sub-question | its recommended default, as each entry states it (conditional defaults as stated), as the working answer | 2026-11-24 | «بص اعمل انت الـ Recommendations من عندك دلوقتى وبعدين نبقى نعدل» |
+| OD-68 | B: typed by hand through the screens; no go-live file load in Phase 1 | 2026-11-24 | «لأ خلينا من غير شيتات او بيانات دلوقتى» |
+| Delivery (Status, §18) | one phase at a time; each phase is closed, its exit criteria met and the owner told, before the next starts | 2026-11-24 | «وامشى Phase واحده وبعد ما نقفل كل واحده ندخل على اللى بعدها» |
+| RK-09, the zod waiver | renewed for 30 days, to 2026-12-26; the zod 4 migration stays its own change | 2026-11-24 | «موافق على Zod» |
+| Phase 1's readings (the close report of 2026-11-25; §22, "P1a.2 built" to "Phase 1 closed") | kept as built: a retire or bring-back re-files no item; stock levels whole numbers 0 to 1,000,000 in order; the item unit editable until P2 or P5; no new warehouse in a closed branch; a warehouse names an active department of its own branch; a keeper from another branch allowed; top-bar filing (ADR-028); tax numbers compared as typed and a repeat only warned; VAT status hidden until OD-29; a retired supplier's papers list open; role titles §6.5's candidates (OD-67) | 2026-11-25 | «موافق على كل التوصيات، كمّل» |
+| PXQ-1 (PX-1 re-detail §2), a leave request nobody can approve | (1): it goes to HR, down leave's manager and HR path at submission and to HR for the remaining steps after earlier approvals; applied in an HR slice of its own after PX-1.6, option 3 holding until then | 2026-11-25 | «موافق على كل التوصيات، كمّل» |
+| PRQ-1 to PRQ-4 (P2 re-detail §2) | each its recommendation: PRQ-1 (1), a returned PR keeps the lowered quantities and a line cut to nothing is removed; PRQ-2 (a) 1 and (b) 1, the procurement manager hears of approvals and the override holders who reach every rung left and can open the PR hear of a stuck one; PRQ-3 (1), no PR roles in production before P4; PRQ-4 (1), a different person settles each empty level | 2026-11-25 | «موافق على كل التوصيات، كمّل» |
 
 ---
 
@@ -1950,7 +1959,7 @@ slices; **Platform** — a platform slice; **Owner** — a §16 decision; **Repo
 | RK-04 | **Index options wrong for late-numbered documents.** A non-partial unique number breaks the second draft, and Mongoose never repairs it — the job-offers production incident (`code-index-migration.ts:1-12`). | M | H | Partial `{$type}` filters for numbers given after draft (OD-58); options reviewed once before P2. | Module |
 | RK-05 | **Reliable delivery is at most once per failing handler.** The dedup row precedes the handler (`event-bus.ts:100-109`); a `failed` status is declared but never set (`outbox.model.ts:14, 27`), and `relayOutbox` marks a row `dispatched` once it is enqueued (`event-bus.ts:115-137`). HR's exit event is in-process and emitted before the employee is saved, carrying `effectiveDate` (`employee-action.service.ts:771-780`). | M | H | The Finance handoff is a persisted module record with a signed memo (OD-55, recommended default: D); its reliable event, only a nudge, is built with its first consumer (§12.11); idempotent, non-throwing handlers; PC-1 before the first reliable event with a cross-module consumer (P5 under OD-02 C or OD-65 B; otherwise the handoff event's first consumer); exit flags (OD-44) re-derivable by a report; a destructive effect of an exit, such as OD-44 A's draft cancellation, runs from a daily sweep that reads the directory, never from the event, which fires before the save. | Platform, Module |
 | RK-06 | **Live updates miss branch keepers and requesters.** `record()` never passes `branchId` (`audit.service.ts:181-185`); named verbs, `activate` and `deactivate` included, do not broadcast (`packages/contracts/src/platform/realtime.ts:19-31`); own scope joins no room. | H | M | An `update` signal with `branchId` after commit on every audited act of a branch-scoped entity, whatever its verb (IT `signalConsumable`); transfers signal both branches; postings also signal `administration.stock` once per touched branch; a spec pinning pairs and signals (`consumable-history.spec.ts`); requester refresh on `staleTime` and navigation, then from notifications once PC-7 lands (D-11). | Module |
-| RK-07 | **Formal-Arabic false positives.** The repository's own `offendersIn` (`scripts/check-formal-arabic.mjs:181`) flags «مفارش», «مفرش», «بيضاء», «هيدروليك», «بيبسي», «مشمش» as dialect morphology, «اتلاف» by the passive اتـ rule (`:55-58`), and «ارصدة», «ادارة», «إجمالى» as misspellings (`:104-112`); `VERBATIM_PAPERS` is pinned to four files (`formal-arabic.spec.ts:101-109`). | H | L | Spelling only, where these words are used: «إتلاف», «أرصدة», «إدارة», «إجمالي» pass (the stock-adjustment term itself is §0.4's candidate, OD-67); item names are data (the database, `*.seed.ts` and `assets/` are not scanned, though seeded templates still get review); add a genuinely formal word to `FORMAL` one at a time; verbatim papers via OD-59 and a spec change. | Module |
+| RK-07 | **Formal-Arabic false positives.** The repository's own `offendersIn` (`scripts/check-formal-arabic.mjs:183`) flags «مفارش», «مفرش», «بيضاء», «هيدروليك», «بيبسي», «مشمش» as dialect morphology, «اتلاف» by the passive اتـ rule (`:55-58`), and «ارصدة», «ادارة», «إجمالى» as misspellings (`:106-114`); `VERBATIM_PAPERS` is pinned to four files (`formal-arabic.spec.ts:101-109`). | H | L | Spelling only, where these words are used: «إتلاف», «أرصدة», «إدارة», «إجمالي» pass (the stock-adjustment term itself is §0.4's candidate, OD-67); item names are data (the database, `*.seed.ts` and `assets/` are not scanned, though seeded templates still get review); add a genuinely formal word to `FORMAL` one at a time; verbatim papers via OD-59 and a spec change. | Module |
 | RK-08 | **Signed money cannot be typed.** `MoneyInput` never accepts a minus (`shared/lib/money-input.ts:25`) and `money-input.spec.ts` bans `type="number"` amount inputs, while `MoneyAmountSchema` accepts signed values (`hr-payroll-money.ts:134-141`). | H | M | Direction is always its own field (gain/loss, in/out, credit/debit) over a non-negative amount; values computed server-side (quantity × unit cost, OD-37) and shown with `formatMoney`; quantities likewise positive with a derived direction. | Module |
 | RK-09 | **The zod waiver expires 2026-11-26.** `scripts/dependency-audit.waivers.json` (`GHSA-mrhx-c7xc-m3w5`, "Owner-approved (2026-10-27) temporary waiver") is valid through that date; CI compares it with the UTC date (`scripts/dependency-audit.mjs:31, 102`), so from 2026-11-27 the dependency audit (`.github/workflows/ci.yml:78-79`) fails every pull request, documentation ones and this design's own included. The remedy is the monorepo zod 4 migration (the fix starts at zod 4.6.6). | H | H | Act now, separately from this module: the owner renews the waiver under review, or schedules the zod 4 migration to land before the date; §18.1 makes it the first prerequisite of any pull request after 2026-11-26. Module contracts use only the contracts' existing idioms, so they add nothing to the migration. | Repo, Owner |
 | RK-10 | **Approval-engine defects** R1–R5 (§15.2.1), R8 and R9, and the engine's two defaults, "no chain ⇒ approved" and "no staffed rung ⇒ approved". | M | H | PX-1 and its ADR before P2 (OD-20, recommended default: A), the host keeping the per-request pin (`approvalWorkflowId`, `approvalChainShape`); under OD-20 B only, §15.2.1's stopgaps: the R1 refusal comparing the pin with the live chain, and §6.4 item 4's level and override checks (R3, R4); OD-19 (recommended default: A, refuse submission); §6.4's staffing and key checks (R8, R9); OD-21's pairs host-side. | Platform, Owner |
@@ -1959,23 +1968,23 @@ slices; **Platform** — a platform slice; **Owner** — a §16 decision; **Repo
 | RK-13 | **Cairo versus UTC boundaries.** HR yearly series take the UTC year (`applicant-sequence.ts:31`); cron runs without `tz` (`infrastructure/queue/jobs.ts:207-218`); Operations' days and Fleet's roster cut days in UTC; IT, ATM, HR, Fleet's dashboard and Operations' reports in Cairo. The UTC date lags for the first two hours of each Cairo day (three in summer time), so a 1 January document can take last year's number. | H | M | The module's `shared/cairo-day.ts` over `@ecms/contracts`' shared Cairo calendar (`cairo-date.ts`); the year from the Cairo business date (D-6); movements carry `at` and `createdAt`; reports and sweeps compute days in Cairo; boundary tests around 22:00 UTC on 31 December. | Module |
 | RK-14 | **Print tabs inherit the app's CSP.** `script-src 'self'` and `script-src-attr 'none'`: no script or inline handler runs in a paper (`shared/lib/print-window.ts:1-14`); server PDFs need Chromium, installed on the worker only (`docs/09-guides/railway-deployment.md:90-100`). | M | M | Every paper goes through `print-window.ts` with `data-print`/`data-close`, inline CSS, fonts and logo, and joins its spec list; browser print by default; a stored supplier-facing PDF only if OD-31/OD-59 asks, on the worker (HR contracts pipeline). | Module |
 | RK-15 | **Scope widens when fields are undeclared** (ADR-026's open item G-2). An undeclared `departmentField` reads organization-wide (`docs/03-decisions/ADR-026-role-administration-guards.md:160-178`; `org-scope-match.ts:79-86`); a delegated department copy reads the whole branch on branch-only collections (ADR-032); `scopeSelector` on an unheld key yields `own`. The defect shipped twice before (`docs/12-planning/cross-module-dependency-audit.md:156-161`). | M | H | D-10 explicit fields on every repository; the shared fail-closed `branchScopeMatch` (PC-12); scoped reads behind `authorize` of the same key; a scope-field guard spec (payroll `department-scope-guards.spec.ts`); integration cases for department-scoped and delegated users. | Module |
-| RK-16 | **Navigation name collision.** `'Administration'`/«الإدارة» is System Administration (`seed-navigation.ts:1291`). Categories match on `name.en` (`:1403-1420`), so renaming the module's category after P1 would create a second one: OD-62's English name is effectively permanent. | L | M | OD-62 (recommended default: A, "Administrative Affairs" / «الشئون الإدارية», after ATM) answered before P1a.W; the category outside the spans other specs parse; a nav ↔ route ↔ key spec (Operations precedent). | Module, Owner |
+| RK-16 | **Navigation name collision.** `'Administration'`/«الإدارة» is System Administration (`seed-navigation.ts:1302`). Categories match on `name.en` (`:1414-1431`), so renaming the module's category after P1 would create a second one: OD-62's English name is effectively permanent. | L | M | OD-62 (recommended default: A, "Administrative Affairs" / «الشئون الإدارية», after ATM) answered before P1a.W; the category outside the spans other specs parse; a nav ↔ route ↔ key spec (Operations precedent). | Module, Owner |
 | RK-17 | **Central census specs break on additions** (§15.2.3). | H | L | Each phase's pull request carries an "existing tests and counts that change" table (`docs/12-planning/atm-efficiency-register.md` §10.1 precedent); `check-page-registry.mjs` updated in P1; §18.4's coupling rules. | Module |
 | RK-18 | **A fourth supplier list.** `it_vendors`, Fleet's `workshop` and `insuranceCompany` catalog rows, the hard-coded `FLEET_FUEL_CARD_COMPANIES` (`packages/contracts/src/modules/fleet.ts:67, :3601`) and the free-text `supplier` of Fleet's vehicle supply contracts (`apps/api/src/modules/fleet/vehicle-contracts/vehicle-contract.model.ts:65`) already exist. | H | M | OD-01 (recommended default: C): one module registry now, a seam later (PC-3), a merge only through §15.3.5 a; the supplier-registry ADR. | Owner |
 | RK-19 | **Fleet spend bypasses stock.** Fleet's custody fund (`modules/fleet/custody/custody-fund.ts:1-12`) pays for parts and tires by receipt, outside any stock record; a second petty-cash book would split cash further. | M | M | OD-66 before P4 (recommended default: A for v1, B as the target); no petty-cash feature in this design. | Owner |
 | RK-20 | **Cost centers on issues reverse D-CC-3.** | M | M | OD-41 (recommended default: A, which keeps D-CC-3); B or C amends the record, and who may read cost-center names comes with it (§15.2.2); the read path stays module-gated. | Owner |
 | RK-21 | **Event names are permanent; the lexicon is global.** `issued` already means «إصدار», `custody` vault custody (`packages/contracts/src/events/catalog.ts:826, :778`); every cataloged event feeds HR rules and automation. | M | M | §8.2's catalog (`administration.stockIssue.posted`); events declared only with their emitter (`cross-module-dependency-audit.md:99-118`); no per-line or high-frequency events; no sensitive payload fields. | Module |
 | RK-22 | **Notifications silently not sent.** `notify()` throws on an unseeded or deactivated template (`platform/notifications/notification.service.ts:112-116`) and callers swallow it (`leave-request.service.ts:710`); the category choice is stored on every notification. | M | M | Every template ensured in the seed; a copy of HR's "every sent template is seeded" spec (`modules/hr/hr.seed.spec.ts`); OD-61. | Module |
-| RK-23 | **English refusals in the Arabic UI** (PC-6; services answer in English; the engine's own refusals are untranslated keys, R11). | H | L | Module error codes mapped to i18n (ATM `atm/lib/settlement-view.ts` precedent); PC-6. | Module |
+| RK-23 | **English refusals in the Arabic UI** (PC-6; services answer in English; the engine's own refusals are untranslated keys, R11). The shared error panel already shows the general Arabic line in place of a message with no Arabic letter (`apps/web/src/shared/ui/states/ErrorState.tsx:35-38`); toasts and form messages still show the English text. | H | L | Module error codes worded in the shared web `FRIENDLY` table, en and ar (IT's and Organization's precedent, `apps/web/src/shared/lib/errors.ts:148-153`, `:10-18`), which the shared error panel and the toasts both read; PC-6. | Module |
 | RK-24 | **Exports not branch-narrowed or not audited.** `fetchBlob` omits `X-Active-Branch`; client-side Excel leaves no trail. | M | M | OD-60 (recommended default: A, server CSV under `<resource>.export` for registers with money or stock, with an explicit branch filter); PC-5 before the first server export. | Module, Platform |
 | RK-25 | **The audit trail exposes commercial data.** `auditLog.view` reads every module's `changes` with no row scope; masking covers `nationalId` only (`platform/audit/audit.masking.ts:17-18`). | M | M | No bank data (OD-11, recommended default: A). Prices in audit rows are OD-73's audit sub-question (recommended default: (i), prices in clear, because a price trail without prices settles nothing): under it the exposure is accepted, and the holders of `auditLog.view` are the control; (ii) masks them at write time, at the cost of the evidence. | Owner, Module |
 | RK-26 | **Approval keys can be delegated per site.** Every key a manager holds is delegable within its reach, and no key is marked non-delegable (`platform/rbac/delegation.service.ts:71-72, 219-240`). | M | H | Acts that must stay organization-wide check organization scope in the service, through PC-12's shared check (written from `atm/shared/settings-authority.ts:12-20`), which a delegated grant never passes; which acts is OD-69 (recommended default: A, §6.7's organization-scope list, top PO bands and write-offs on `organization` rungs; override (i)); key splits only under OD-69 C. | Owner, Module |
 | RK-27 | **Lock predicates not widened when states are added.** Payroll added states after `frozen`, but `frozenPeriods()` still matches `frozen` only (`hr/payroll/runs/payroll-run.service.ts:431-432`); counts (P7) and any period lock OD-74 adopts (recommended default: A, no back-dating and no lock; C, a monthly close, with Finance) have the same shape. | M | H | One pure "is locked" predicate per lock, used by every write path, with a spec over all statuses; the count freeze sits in the `$inc` filter of onHand legs (`frozenByCountId: null`), and inTransit legs are not frozen (§2.4.6). | Module |
 | RK-28 | **Seeds run concurrently** in the api, the worker, every CLI that boots the platform and all integration suites (`bootstrap.ts:143-145`). | M | M | Create-if-missing only; indexes before counters; duplicate-key-tolerant ensures; no long work in the seed (go-live pattern). | Module |
 | RK-29 | **Rolling deploy with a new audit verb.** The audit enum is enforced by the writer (`platform/audit/audit.model.ts:46`), so a worker not yet upgraded rejects jobs carrying a new verb; they wait in the failed set (`infrastructure/queue/jobs.ts:111`). | L | L | Ship a verb in contracts a release ahead of its first writer (OD-82 A's `approvalDecision` first; the print verb `administrationPrint` before the first print of record), or deploy api and worker together. | Ops |
-| RK-30 | **Rolling a phase back leaves rows behind.** Redeploying an earlier release re-runs the boot sync, which deletes permissions no longer declared (`platform/rbac/rbac.service.ts:591`) and rewrites super-admin's keys (`:599`), while navigation rows are additive and never removed (`seed-navigation.ts:891`): rows whose keys have vanished stay, and so do the phase's collections, counters, indexes, file categories and templates. | L | M | Each phase's pull request carries a short rollback note: what stays, and what an operator may clean and how; roll forward by preference; any cleanup of data is class 3 (§15.3.7), never a side effect of the rollback. | Ops, Module |
+| RK-30 | **Rolling a phase back leaves rows behind.** Redeploying an earlier release re-runs the boot sync, which deletes permissions no longer declared (`platform/rbac/rbac.service.ts:591`) and rewrites super-admin's keys (`:599`), while navigation rows are additive and never removed (`seed-navigation.ts:902`): rows whose keys have vanished stay, and so do the phase's collections, counters, indexes, file categories and templates. | L | M | Each phase's pull request carries a short rollback note: what stays, and what an operator may clean and how; roll forward by preference; any cleanup of data is class 3 (§15.3.7), never a side effect of the rollback. | Ops, Module |
 | RK-31 | **A department reference the org-catalog merge cannot see.** `migrate:org-catalog --merge` repoints only paths named exactly `departmentId` or ending in `DepartmentIds` (`apps/api/src/org-catalog-migration/references.ts:51-54`), and reads `Mixed` only in two named carriers (`:10-16, 178-201`); a reference named otherwise, or held in `Mixed`, silently keeps pointing at a retired department. | M | M | §15.3.4's naming rule (§2.1, §7.7), checked in review; `references.spec.ts:188-200`'s exact list catches a new array path, but nothing catches a misnamed scalar, so the rule is a pull-request checklist item. | Module |
-| RK-32 | **Procurement policy changed outside the module key (the settings bypass).** The value bands and tolerances are organization-scope platform settings (§15.1), and the settings service authorizes every write by the platform key `setting.edit` and its scope (`apps/api/src/platform/settings/settings.service.ts:179-200`). Any `setting.edit` holder at organization scope can therefore change them through the generic `PATCH /api/v1/platform/settings/values` (`apps/api/src/platform/settings/settings.routes.ts:19-25`) without `administrationProcurementPolicy.manage`, and the audit records only `platform/setting` (`settings.service.ts:249-259`); `platform-admin` holds every platform key (`platform/rbac/rbac.service.ts:602-604`). | M | H | The declaration's Zod schema carries every domain check; an object value is read-only on the generic screen (`apps/web/src/modules/system-admin/settings/lib/settings-view.ts:69-81`), and the screen can show a key with no field and a link to its owning screen instead (`MANAGED_ELSEWHERE`, `apps/web/src/modules/system-admin/settings/lib/settings-catalog.ts:131-153`), which leaves the `PATCH` open; a band is stamped at submission, so an edit never re-routes an in-flight PO (§6.4 item 2). Closing the bypass is a sub-question of OD-18 (recommended default: a module-owned policy record or an owning key; §6.7). | Owner, Module, Platform |
+| RK-32 | **Procurement policy changed outside the module key (the settings bypass).** The value bands and tolerances are organization-scope platform settings (§15.1), and the settings service authorizes every write by the platform key `setting.edit` and its scope (`apps/api/src/platform/settings/settings.service.ts:179-200`). Any `setting.edit` holder at organization scope can therefore change them through the generic `PATCH /api/v1/platform/settings/values` (`apps/api/src/platform/settings/settings.routes.ts:19-25`) without `administrationProcurementPolicy.manage`, and the audit records only `platform/setting` (`settings.service.ts:249-259`); `platform-admin` holds every platform key (`platform/rbac/rbac.service.ts:602-604`). | M | H | The declaration's Zod schema carries every domain check; an object value is read-only on the generic screen (`apps/web/src/modules/system-admin/settings/lib/settings-view.ts:69-81`), and the screen can show a key with no field and a link to its owning screen instead (`MANAGED_ELSEWHERE`, `apps/web/src/modules/system-admin/settings/lib/settings-catalog.ts:131-161`), which leaves the `PATCH` open; a band is stamped at submission, so an edit never re-routes an in-flight PO (§6.4 item 2). Closing the bypass is a sub-question of OD-18 (recommended default: a module-owned policy record or an owning key; §6.7). | Owner, Module, Platform |
 | RK-33 | **Series contention and long posting transactions.** A posting's first write is its series counter's `$inc` (§2.4.4), held until commit, so every other posting of that series meets a write conflict and retries for as long as the holder's transaction runs. `unitOfWork` is a plain `session.withTransaction` (`apps/api/src/platform/kernel/unit-of-work.ts:5-17`), whose driver retry stops after 120 s (MongoDB driver 6.21.0, `package-lock.json:9827-9829`). No length is measured for a 100-line posting or for a count start that claims every row of a warehouse, and in-transit legs write the same balance rows as a count's posting (§2.4.6). | M | M | §2.4's capacity assumptions until OD-85 is answered (≤ 30 warehouses, ≤ 5,000 items, ≤ 3,000 stock documents a month, ≤ 100 lines a document, ≤ 5 postings a minute per series). Gates, each on staging before its phase ships, against the thresholds of §18.3.2 (P5: the slowest of 5 concurrent 100-line postings in one series commits within 5 s) and §18.3.3 (P7: a count's start and its posting on the largest warehouse each commit within 10 s alongside a concurrent posting). If the P5 measurement misses its threshold, per-branch series (OD-58 B) are adopted before P5 ships; if the P7 measurement misses its threshold, counts are split by category scope (OD-48). | Module, Owner |
 | RK-34 | **A permanently deleted employee's name on kept records.** HR's permanent delete rewrites a purged person's name copies on `keep` collections, so that the person is removed everywhere, but refuses any path inside a subdocument or array (`apps/api/src/modules/hr/employee-management/employees/employee-name-copies.ts:9-12, 250-261`). Names inside arrays (approval trails, count teams) therefore stay on posted documents. | M | M | D-22 from P2: a single person on a document carries a top-level name the purge scrubs; names inside arrays are classified `leave`, a recorded gap (§15.3.3). OD-64 asks whether a name may stay at all. Changing the shape after P2 is a class-3 backfill of posted documents (§15.3.7). | Owner, Module |
 
@@ -1987,19 +1996,21 @@ Delivery follows the HR / Fleet / IT method: one manifest, extended slice by sli
 adding a second one", `apps/api/src/modules/it/it.module.ts:1-15`). A slice is one pull request (under OD-81 B, one
 step of the phase's one pull request, §18.4); the owner's brief asks for one pull request per phase, and OD-81 asks
 whether a phase may ship as several. The business order is the owner's. ECMS changes it where its own code forces a change; §18.1
-lists those, and separately the moves this design only recommends, which wait for the owner's approval. This document
-schedules nothing: a phase starts on the owner's GO, once the decisions §16.3 lists for it are answered.
+lists those, and separately the moves this design only recommends, which wait for the owner's approval. The owner's
+recommended defaults are the working answers (§16.12), and delivery goes one phase at a time: a phase starts once the
+previous one is closed (its exit criteria met and the owner told) and its own re-detail has passed its design review.
 
-Once the owner approves, the freeze covers, inside §2–§14: D-1…D-22; the §2.4.4 posting invariant and the §2.4.5–§2.4.6
+Since the owner's approval (2026-11-24), the freeze covers, inside §2–§14: D-1…D-22; the §2.4.4 posting invariant and the §2.4.5–§2.4.6
 arithmetic; the §3.6 dependency graph; the states and edges of §5; the scope rules of §7; the realtime rules of §9; and
 every name §2 fixes (§16.1). Everything else this design gives for P2–P9 (fields beyond names, routes, DTOs, tiles, exit
 criteria) is the plan of record (Status). Before a phase's first pull request its plan of record is re-checked against
 the code (a drift check) and re-detailed as a §19-shaped section — scope and pull requests, the owner's answers
 applied, endpoints with gates and bodies, contracts, pages and keys, realtime and audit, tests and pins, file list, exit
 criteria with thresholds — written to a sibling file `docs/12-planning/administration-module-phase-<n>.md`. Its design
-review is the gate before that phase's first pull request, and §22 records it. No owner approval is added («لا تتوقف
-بعد كل مرحلة لطلب موافقتي»), unless a business decision or an architectural change outside the plan arises. Once the
-owner approves, Phase 1 (§19) is frozen in full (Status).
+review is the gate before that phase's first pull request, and §22 records it. A re-detail adds no owner approval of its own («لا تتوقف
+بعد كل مرحلة لطلب موافقتي»), unless a business decision or an architectural change outside the plan arises; closing a
+phase before the next is the owner's rule of 2026-11-24 (§16.12). Since that approval, Phase 1 (§19) is frozen in
+full (Status).
 
 ### 18.1 Where ECMS changes the order, and what is only recommended
 
@@ -2015,9 +2026,9 @@ ending "(note A1)" and so on is explained in the numbered notes at the end of §
 | A4 | Recommended | Approvals-engine hardening | outside the plan | **platform slice PX-1, before P2** (OD-20, recommended default: A) | The engine has defects money approvals must not carry (R1–R5, R8, R9, §15.2.1), and PRs are its first consumer whose approval leads to spending (note A4). |
 | A5 | Forced | Opening balances | master data (P1) | **P5, with the ledger** | Opening stock is a movement; there is no "set on hand to N" (ADR-024; `apps/api/src/modules/it/go-live/consumables-opening.ts` header). |
 | A6 | Forced | Item card, running balance | reports (P8) | **P5** | They are the ledger's read view, computed at read time (§2.4.7, §14.6); §14.5 lists the item and warehouse cards among the P5 reports. |
-| A7 | Gated by a decision | Suppliers | P1 with the rest | **P1b, gated separately** | OD-01 decides the registry's shape, and its ADR is written with it (§20). IT §16 P4 names this design as its trigger (`docs/12-planning/it-module-design.md:1171`). |
-| A8 | Forced | Navigation rows | the API slice (IT-1, the IT module's first slice, `docs/12-planning/it-module-design.md:1142`, seeded an empty category) | **each phase's web slice** | A screen is routed and joins navigation in the same slice (`apps/web/src/modules/it/routes.tsx:4-6`; `apps/api/src/seed-navigation.ts:889-892`). `syncNavigationCatalog` creates a category only with its first row (`seed-navigation.ts:1694-1718`), and an empty category is not returned (`apps/api/tests/integration/auth-seed-login.spec.ts:134`). |
-| A9 | Recommended | CI time | — | **PX-3, before P5** (D-18) | One job, 45-minute limit (`.github/workflows/ci.yml:16`), raised from 30 after a green run took 29m41s on 2026-11-07 and the next was cancelled at 30m13s (`:11-15`). API tests take about 17 minutes of a run, and 148 of the 167 integration files boot every manifest (RK-01). P5–P7 will bring the heaviest suites (an estimate: the ledger, two-branch and count races). |
+| A7 | Gated by a decision | Suppliers | P1 with the rest | **P1b, gated separately** | OD-01 decides the registry's shape, and its ADR is written with it (§20). IT §16 P4 names this design as its trigger (`docs/12-planning/it-module-design.md:1510`). |
+| A8 | Forced | Navigation rows | the API slice (IT-1, the IT module's first slice, `docs/12-planning/it-module-design.md:1481`, seeded an empty category) | **each phase's web slice** | A screen is routed and joins navigation in the same slice (`apps/web/src/modules/it/routes.tsx:4-6`; `apps/api/src/seed-navigation.ts:900-903`). `syncNavigationCatalog` creates a category only with its first row (`seed-navigation.ts:1705-1729`), and an empty category is not returned (`apps/api/tests/integration/auth-seed-login.spec.ts:135`). |
+| A9 | Recommended | CI time | — | **PX-3, before P5** (D-18) | One job, 45-minute limit (`.github/workflows/ci.yml:16`), raised from 30 after a green run took 29m41s on 2026-11-07 and the next was cancelled at 30m13s (`:11-15`). API tests take about 17 minutes of a run, and 167 of the 186 integration files boot every manifest (RK-01). P5–P7 will bring the heaviest suites (an estimate: the ledger, two-branch and count races). |
 | A10 | Conditional | Date-keyed announcements | — | **PX-2, before the first phase that needs one** | ADR-025 asks for the sweep-mark seam with the next module that needs marks, and only an announcement made once per date needs them (note A10). |
 | A11 | Recommended | Corrections of postings | after the postings: counts and adjustments (P7) | **a correcting document from the first posting phase**: recommended, stock adjustments (OD-52) ship in P5 | The ledger has no update path, so a posted document is corrected only by an opposing one (D-2; §4.1, Correct) (note A11). |
 
@@ -2040,11 +2051,11 @@ pull request outside the module, never mixed with module code.
 | PC-7, requester liveness: on `notification:new`, invalidate the topic of the notification's `entityRef` (§9.5) | P2, soft: it lands when platform review accepts it, and P2 ships without it if platform review has not accepted it when P2 is ready | until it lands, a requester's reads refresh on navigation and after `staleTime` (30 s, `apps/web/src/shared/lib/query-client.ts:18`), and P2's exit criterion says so (§18.3). It is platform web code, with an ADR only if it becomes a convention (§20) |
 | The `ApprovalChainPanel` fixes: it shows `label.ar` in both locales and a raw `permissionKey · level` (§13.5). The same platform fix covers the chain screen, which shows request types and places by `name.ar` in both locales (`apps/web/src/modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx:91-92`, `:97-101`; §13.4 rule 6) | P2 | the panel is the trail every approval page shows, and the chain screen is where the module's six types are configured: unfixed, they read Arabic on the English screen |
 | Under OD-82 A, the `approvalDecision` verb in contracts a release ahead of its first writer, or api and worker deployed together (RK-29) | P2 | an old worker refuses an audit job with an unknown verb (`apps/api/src/platform/audit/audit.model.ts:46`) |
-| The module's print verb `administrationPrint` (§11.6.6) in contracts a release ahead of its first writer, or api and worker deployed together (RK-29) | the first paper of record: P4's PO under OD-59 A, earlier if OD-59 makes an earlier paper a record | the same unknown-verb refusal; prints are audited under their own verb, as ATM's `atmSettlementPrint` (`packages/contracts/src/platform/audit.ts:189-194`), so they never count toward `exportSpike`, which counts only `export` (`apps/api/src/platform/audit/audit.signals.ts:129-142`) |
+| The module's print verb `administrationPrint` (§11.6.6) in contracts a release ahead of its first writer, or api and worker deployed together (RK-29) | the first paper of record: P4's PO under OD-59 A, earlier if OD-59 makes an earlier paper a record | the same unknown-verb refusal; prints are audited under their own verb, as ATM's `atmSettlementPrint` (`packages/contracts/src/platform/audit.ts:193-198`), so they never count toward `exportSpike`, which counts only `export` (`apps/api/src/platform/audit/audit.signals.ts:129-142`) |
 | PC-8, a notification category | P2, only under OD-61 B | `NOTIFICATION_CATEGORIES` is a closed enum (`packages/contracts/src/platform/notifications.ts:8-19`) |
 | `EGYCASH_LOGO` shared: done, in `@ecms/contracts/egycash-logo` (§11.6.3) | — | nothing to move; the first paper imports the subpath |
 | PC-11: the export walk and buttons, and the company report form, moved to `apps/web/src/shared/` behind re-exports (§11.7, §15.4) | the first client export: P2's PR register (§14.5), or P1 under OD-60.1 (ii); none under OD-60 C | the module would otherwise be their next cross-module importer |
-| PC-5: `fetchBlob` sends `X-Active-Branch` and parses the JSON error envelope (§11.5, §11.7) | the first server export: P3 under OD-60 A (the RFQ comparison; P5's exports if the warehouse half comes first), P2 under C, none under B | server exports and byte reads otherwise ignore the branch switcher (`apps/web/src/shared/lib/api-client.ts:490-514`) |
+| PC-5: `fetchBlob` sends `X-Active-Branch` and parses the JSON error envelope (§11.5, §11.7) | the first server export: P3 under OD-60 A (the RFQ comparison; P5's exports if the warehouse half comes first), P2 under C, none under B | server exports and byte reads otherwise ignore the branch switcher (`apps/web/src/shared/lib/api-client.ts:514-537`) |
 | PX-3, CI capacity (D-18) | P5 | A9 |
 | PC-2, an employee's cost center through the directory | P6, only under OD-41 C | §7.9 |
 | An HR slice for ESS keys, keeping the four declarations `apps/api/src/modules/hr/ess-grants.spec.ts` compares in agreement | P2 under OD-16 B; P6 under OD-38 B | the ESS role is HR's, and modules do not edit each other (§6.5) |
@@ -2053,7 +2064,7 @@ pull request outside the module, never mixed with module code.
 
 **Notes to §18.1.**
 
-1. **Note A1.** A key ships with its operation (`apps/api/src/modules/it/it.module.ts:68-70`), so
+1. **Note A1.** A key ships with its operation (`apps/api/src/modules/it/it.module.ts:69-71`), so
    `administrationPurchaseRequest.approve` and `administration.purchaseRequest` exist only where PRs are decided. The
    engine picks, among the type's chains, the one that matches the request's **Unit** (the branch copy of a department,
    §7.6; a chain with no department and no branch matches every Unit): a request whose Unit no active chain of its type
@@ -2100,7 +2111,7 @@ pull request outside the module, never mixed with module code.
    donations of OD-33 (recommended default: A, an approved `adjustmentIn`) have no way in. A GRN keyed in error is
    OD-84 (recommended default: B, a supplier return with the reason code `entryError` that gives back PO
    `receivedQty`, which P5 already ships; §4.3.2). Adjustments need only the ledger and PX-1; P7 keeps transfers and
-   counts. The owner decides when he approves the plan: if adjustments stay in P7, he accepts those gaps in writing.
+   counts. The owner decides when approving the plan: if adjustments stay in P7, the owner accepts those gaps in writing.
    Under OD-52 B (counts only) there are no standalone adjustments, and the gaps last until P7's counts.
 5. **Note PC-12.** `apps/api/src/shared/base/branch-scope.ts`, beside `org-scope-match.ts`, holds ATM's fail-closed
    branch-scope rule (`apps/api/src/modules/atm/shared/branch-scope.ts:36-126`): `branchScopeMatch`,
@@ -2306,10 +2317,10 @@ re-sets them if OD-85's volumes differ.
 ### 18.4 The slicing rule per pull request
 
 - **The unit.** "Each slice = contracts + api + tests, PR-reviewed; web follows"
-  (`docs/12-planning/it-module-design.md:1138`). IT-1 was contracts, scaffold and manifest, nav category, catalogs,
-  vendors and the asset register (`:1142`). ITW-1 shipped its screens: home, assets, scan, asset detail, catalogs and
-  vendors (`apps/web/src/modules/it/routes.tsx:6-14`; `CHANGELOG.md:4251`), although the plan's ITW-1 was scaffold
-  and navigation (`it-module-design.md:1148`). Phase 1 here is the same pair, cut finer (§19.1).
+  (`docs/12-planning/it-module-design.md:1477`). IT-1 was contracts, scaffold and manifest, nav category, catalogs,
+  vendors and the asset register (`:1481`). ITW-1 shipped its screens: home, assets, scan, asset detail, catalogs and
+  vendors (`apps/web/src/modules/it/routes.tsx:6-14`; `CHANGELOG.md:6307`), although the plan's ITW-1 was scaffold
+  and navigation (`it-module-design.md:1487`). Phase 1 here is the same pair, cut finer (§19.1).
 - **Inside a phase.** If OD-81 lets a phase ship as several pull requests (recommended default: A), one pull request
   per feature (a feature folder, §3; e.g. P1a.1–P1a.3, §19.1), the API pull request before its web pull request;
   otherwise these are the steps of the phase's one pull request. A platform slice (PX-*) or a cross-cutting
@@ -2333,16 +2344,16 @@ re-sets them if OD-85's volumes differ.
 | an audit verb (OD-82's `approvalDecision`; `administrationPrint`, §11.6.6) | `AUDIT_ACTIONS` + `systemAdmin.users.audit.<verb>` in en and ar; RK-29's deploy order | `system-admin-i18n.spec.ts:113-127`; `audit-screens.spec.tsx:361-368` |
 | a `notify()` call | the seeded template and the module's seed-coverage spec (the `hr.seed.spec.ts` shape); an `ENTITY_ROUTES` link (`packages/contracts/src/platform/notification-target.ts:36-42`) | the module's spec only. A missing template makes `notify()` throw (`notification.service.ts:112-117`); a caller that swallows the error, as leave does (`leave-request.service.ts:710`), sends nothing and reports nothing (A3). A missing route opens the inbox instead (`notification-target.ts:51-57`) |
 | a notification category (OD-61 B) | `NOTIFICATION_CATEGORIES` (`packages/contracts/src/platform/notifications.ts:8-19`) + `systemAdmin.templates.category.<c>` in en and ar | `system-admin-i18n.spec.ts:56-60, :116-127` |
-| a nav row | its route, `seed-navigation.spec.ts:80`, `auth-seed-login.spec.ts:36` (+ `:141-150`, `:290-297`, `:314` for a category; and `apps/web/src/platform/navigation/module-icons.spec.ts:49-58`, `:65-74` for its module tile) | two specs pin 139 rows (136 at `b03522f`) |
+| a nav row | its route, `seed-navigation.spec.ts:81`, `auth-seed-login.spec.ts:37` (+ `:142-151`, `:291-298`, `:315` for a category; and `apps/web/src/platform/navigation/module-icons.spec.ts:49-58`, `:65-74` for its module tile) | two specs pin 140 rows (136 at `b03522f`) |
 | a nav icon key | the registry in `apps/web/src/platform/navigation/app-icon.tsx` and, for a new glyph, `apps/web/src/shared/ui/icons.tsx` | the module nav spec (Operations precedent); otherwise an unknown key falls back silently (`app-icon.tsx:106-109`) |
-| a `*Page.tsx` | its class in `apps/web/src/shared/lib/remembered-filters-coverage.spec.ts` | the partition, `:487-491` |
-| a module error code | `packages/contracts/src/errors/index.ts`, module-prefixed (`ATM_WORK_BRANCH_REQUIRED`, `:414`), and its i18n mapping in `lib/administration-errors.ts` | the module's errors spec; nothing global (RK-23) |
+| a `*Page.tsx` | its class in `apps/web/src/shared/lib/remembered-filters-coverage.spec.ts` | the partition, `:502-506` |
+| a module error code | `packages/contracts/src/errors/index.ts`, module-prefixed (`ATM_WORK_BRANCH_REQUIRED`, `:475`), and its en and ar text in the shared `FRIENDLY` table (`apps/web/src/shared/lib/errors.ts`) | the module's case in `apps/web/src/shared/lib/errors.spec.ts` (Operations' precedent, `:87-127`) |
 | a printed paper | the list in `apps/web/src/shared/lib/print-window.spec.ts:138-155` | convention (`c97667f` added its paper); only the global no-script rule (`:128-136`) fails CI |
-| a server export | the list in `apps/api/src/shared/utils/stream-rows.spec.ts:103-107` | convention, as for papers |
-| a module setting | `registerAdministrationSettings()` at module import; `settings-inventory.spec.ts` (its registrations, `:41-50`, and the count of 58, `:89-100`), `SettingsPage.spec.tsx` (its `DECLARED_KEYS` and the count of 67, `:270-275`; a title and a description in both languages for every declared key, `:278-282`), an `administration` department, its sections and placement rules (`apps/web/src/modules/system-admin/settings/lib/settings-catalog.ts:12-32, 43-110`) and labels | the two count pins; without the department, rows fall under "Other" |
+| a server export | the list in `apps/api/src/shared/utils/stream-rows.spec.ts:110-123` | convention, as for papers |
+| a module setting | `registerAdministrationSettings()` at module import; `settings-inventory.spec.ts` (its registrations, `:41-50`, and the count of 64, `:89-103`), `SettingsPage.spec.tsx` (its `DECLARED_KEYS` and the count of 73, `:279-287`; a title and a description in both languages for every declared key, `:290-294`), an `administration` department, its sections and placement rules (`apps/web/src/modules/system-admin/settings/lib/settings-catalog.ts:12-32, 43-110`) and labels | the two count pins; without the department, rows fall under "Other" |
 | the stock ledger (P5) | the `no-restricted-imports` rule that keeps `warehouses/stock/*.model` and `*.repository` behind `stock/index.ts` (`eslint.config.js`, payroll's two-ports precedent `:109-140`; §3.7) | lint |
 | ESS keys (OD-16 B, OD-38 B) | the four ESS declarations in `modules/hr`, in an HR slice | `apps/api/src/modules/hr/ess-grants.spec.ts` |
-| a go-live model, an operator CLI, or `departmentId` inside a sub-document array | `sync-indexes.models.ts` for a model reached only from `server.ts` and `worker.ts` (not one in `administrationModels`, which loads through `./modules`, `sync-indexes.models.ts:4-11`); `tsup.config.ts` and the CLI lists; the exact list in `references.spec.ts:188-200` | `sync-indexes.models.spec.ts:60-73`; the CLI lists are convention (`operator-cli-safety.spec.ts:16-22` checks only the CLIs it names); `references.spec.ts`; §7.7 |
+| a go-live model, an operator CLI, or `departmentId` inside a sub-document array | `sync-indexes.models.ts` for a model reached only from `server.ts` and `worker.ts` (not one in `administrationModels`, which loads through `./modules`, `sync-indexes.models.ts:4-11`); `tsup.config.ts` and the CLI lists; the exact list in `references.spec.ts:188-200` | `sync-indexes.models.spec.ts:61-74`; the CLI lists are convention (`operator-cli-safety.spec.ts:16-22` checks only the CLIs it names); `references.spec.ts`; §7.7 |
 
 ### 18.5 Gates every slice passes
 
@@ -2356,7 +2367,7 @@ All steps run in one CI job, and the first failure skips the rest (`.github/work
 | Lint | `npm run lint` | P1 | no `console`, floating promises or `any`. The boundary rule allows `modules → modules` (`eslint.config.js:73`) and its element typing does not stop the imports it disallows: 120 module files import `infrastructure/` (RK-02). So the module isolation spec (§19.7) and review keep out imports of `modules/it`, `fleet`, `hr` and `atm`. From P5, the ledger-door rule (§18.4). |
 | Typecheck | `npm run typecheck --workspaces --if-present` | P1 | strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`; integration specs included |
 | Permission matrix | `node scripts/gen-permission-matrix.mjs --check` | PX-1, only if a platform key changes | module keys never appear. A hand-written Administrative Affairs section in `docs/06-security/permission-matrix.md` would revive governance rule 2 (`:105`), which no module since Recruitment has followed (§6.1): new practice, settled at approval (§19.2) |
-| Flag expiry | `node scripts/check-flag-expiry.mjs` | only if a feature flag ships (none: D-19) | owner + `expiresAt`; `settings-inventory.spec.ts:143-149` changes |
+| Flag expiry | `node scripts/check-flag-expiry.mjs` | only if a feature flag ships (none: D-19) | owner + `expiresAt`; `settings-inventory.spec.ts:160-166` changes |
 | Page registry | `node scripts/check-page-registry.mjs` | P1 | literal module and page ids in every `declarePermissions` call; the parsed `administrationPages` shape |
 | Automation templates | `node scripts/automation-templates.mjs` | only if a template ships | none planned (engine off) |
 | Formal Arabic | `node scripts/check-formal-arabic.mjs` + web spec | P1 | labels, i18n, server messages and papers formal: «إدارة», never «ادارة». A verbatim owner paper also changes the four-file pin (`formal-arabic.spec.ts:101-109`, OD-59). |
@@ -2397,10 +2408,10 @@ The architecture guards start checking in this order:
 ### 19.1 Scope and pull requests
 
 Phase 1 ships master data and nothing that moves stock or money. It is the IT-1 + ITW-1 equivalent, in six pull
-requests if OD-81 lets a phase ship as several (else six steps of one). Its first pull request opens with a drift check
-of §19 against the code it starts from: this design cites `4c0fa1b0`, and `main` has moved since (the pins, counts and
-line numbers of files such as `apps/web/src/platform/localization/i18n.ts`, the settings pins and the remembered-filter
-list). Whatever moved is re-pinned and recorded in §22; only a change of behavior would be a design question.
+requests if OD-81 lets a phase ship as several (else six steps of one). The design was drift-checked against `main` at
+`9efdcbd9` before its first pull request (§22). Each Phase 1 pull request still uses the pins, counts and line numbers
+the code holds when it is written, since other modules keep merging; a moved pin is re-pinned in that pull request,
+and only a change of behavior is a design question.
 
 | Pull request | Content | Depends on |
 |---|---|---|
@@ -2431,7 +2442,7 @@ list). Whatever moved is re-pinned and recorded in §22; only a change of behavi
 | Screen terms | OD-67, the role titles before P1a.1 seeds the roles | i18n edits only; a role title changed after seeding is renamed by hand or by a run-keyed step (§19.8) |
 | Page frame, shared pieces | OD-83: default B (the board frame on registers) applied unless the owner objects; `Fact` and the catalogs tablist rebuilt page-local after IT's pattern (D-21; §19.8), `ReferencePicker` with `ItemPicker` in P2 | A: plain `PageContainer` |
 | Rollout | OD-80 answered before the module's roles are assigned in production: a pilot branch or all branches. It gates no code: the build carries no gate either way, and a pilot runs by role assignment (D-19) | — |
-| Data load | OD-03; OD-68 (recommended default: A): the owner's files, reviewed with him, loaded once by a versioned go-live step (IT `go-live/`): units, categories and items in P1a.2, suppliers in P1b.1 (§19.8) | hand entry (OD-68 B), or an in-app import with preview (OD-68 C) |
+| Data load | OD-03; OD-68 answered B (§16.12): master data is typed in on the screens, so no go-live step ships in Phase 1 and the §19.8 rows marked "if OD-68 A" do not apply | a later load from files (OD-68 A, a versioned go-live step, IT `go-live/`) or an in-app import with preview (OD-68 C), each its own change |
 | Permission-matrix section | adopted at approval by the owner or reviewers: an Administrative Affairs section in `docs/06-security/permission-matrix.md` under governance rule 2 (`:105`), per phase | not adopted: §6.2 is the module's matrix, as the owner's brief item 5 asks |
 
 A non-recommended answer to any row above re-opens Phase 1 for the parts it names: the §19.1 rows, §19.3
@@ -2451,7 +2462,7 @@ Under `/api/v1/administration`; each route is `authenticate → authorize → va
 | `POST /items`, `PATCH /items/:id` | `administrationItem.create` / `.edit` + org authority | under OD-05 A the `ITM-` code is taken inside the create transaction |
 | `GET /warehouses`, `GET /warehouses/:id` | `administrationWarehouse.view` | fail-closed (§7.2); a `branchId` filter only narrows, else 400 `OUT_OF_REACH` (`apps/api/src/modules/atm/shared/branch-scope.ts:60-76`); 404 outside reach |
 | `POST /warehouses` | `administrationWarehouse.create` | `keyReachesBranch` on the body's branch (OD-10 A, §19.2) |
-| `PATCH /warehouses/:id` | `administrationWarehouse.edit` | scoped load, then reach. `branchId` is not editable: the P5 ledger copies it onto every row, as in IT ("an item never changes branch", `apps/api/src/modules/it/consumables/consumable-history.ts:199`). Re-homing is OD-10's question. |
+| `PATCH /warehouses/:id` | `administrationWarehouse.edit` | scoped load, then reach. `branchId` is not editable: the P5 ledger copies it onto every row, as in IT ("an item never changes branch", `apps/api/src/modules/it/consumables/consumable-history.ts:233`). Re-homing is OD-10's question. |
 | `GET /warehouses/branch-options` | `administrationWarehouse.view` | declared before `/:id`. Every active branch, named and ordered as the branch switcher names and orders them (§13.4), each with `canView` (the reach of `administrationWarehouse.view` under the top bar's choice) and `canCreate` (`keyReachesBranch` on `administrationWarehouse.create`); a branch outside both reaches carries both false, as in the ATM register meta (`apps/api/src/modules/atm/register/register.service.ts:1297-1323`). The register's branch filter offers `canView` and the create dialog's branch `Select` `canCreate`; a filter outside reach still answers 400 `OUT_OF_REACH` |
 | `GET /people`, `GET /people/:employeeId` | `authorizeAny('administrationWarehouse.create', 'administrationWarehouse.edit')` | the keeper picker (§7.8), only with a keeper |
 | `GET /suppliers`, `GET /suppliers/:id` | `administrationSupplier.view` | P1b; as for items |
@@ -2491,7 +2502,7 @@ through `getDirectoryEmployees` (§19.8, the mappers).
 
 | List | Query fields | Sortable fields | Labels on the DTO |
 |---|---|---|---|
-| `GET /catalog-items` | `kind` (required), `search` (code, name), `isActive` | `sortOrder`, `name.ar`, `createdAt` (IT's set less `kind`, which this list requires, `apps/api/src/modules/it/catalog-items/catalog-item.service.ts:64`) | — |
+| `GET /catalog-items` | `kind` (required), `search` (code, name), `isActive` | `sortOrder`, `name.ar`, `createdAt` (IT's set less `kind`, which this list requires, `apps/api/src/modules/it/catalog-items/catalog-item.service.ts:68`) | — |
 | `GET /item-categories` | `parentId`, `search` (code, name), `isActive` | `sortOrder`, `name.ar`, `createdAt` | the parent's name |
 | `GET /items` | `search` (code, name, barcode), `categoryId`, `unitId`, `isActive` | `code`, `name.ar`, `createdAt` | the category's name and its parent's, the unit's name |
 | `GET /warehouses` | `search` (code, name), `branchId` (narrows only, §19.3), `type`, `isActive` | `code`, `name.ar`, `createdAt` | the branch name, the keeper summary, `canEdit` |
@@ -2506,7 +2517,7 @@ without a key fails boot too (`empty-page`, `:211-215`). Screens, routes and row
 
 | Route | Screen | Guard | Nav row (en / candidate ar) |
 |---|---|---|---|
-| `/administration` | `AdministrationHomePage`: tiles per grant, counts via `pageSize: 1` (IT's help-desk counts, `apps/web/src/modules/it/pages/ItHomePage.tsx:920-929`) | none (the page decides) | Administrative Affairs Home / الرئيسية → `administrationItem.view` |
+| `/administration` | `AdministrationHomePage`: tiles per grant, counts via `pageSize: 1` (IT's help-desk counts, `apps/web/src/modules/it/pages/ItHomePage.tsx:933-942`) | none (the page decides) | Administrative Affairs Home / الرئيسية → `administrationItem.view` |
 | `/administration/items` | `ItemsPage` + `ItemFormDialog` | `administrationItem.view` | Items / الأصناف |
 | `/administration/items/:id` | `ItemDetailPage` (§13.6 B) | `administrationItem.view` | — (opened from the list) |
 | `/administration/warehouses` | `WarehousesPage` + `WarehouseFormDialog` | `administrationWarehouse.view` | Warehouses / المخازن |
@@ -2517,7 +2528,7 @@ without a key fails boot too (`empty-page`, `:211-215`). Screens, routes and row
 - **Dialogs, not routes.** Create and edit are dialogs (`apps/web/src/modules/it/it-routes.spec.ts`); the detail pages
   edit through the list's dialog (§13.6 B).
 - **The category.** Its English name must not be `'Administration'`, because `ensureCategory` matches `name.en`
-  (`apps/api/src/seed-navigation.ts:1403-1420`). It sits after the ATM block, outside the parsed spans
+  (`apps/api/src/seed-navigation.ts:1414-1431`). It sits after the ATM block, outside the parsed spans
   (`seed-application-sections.spec.ts:20-28`; `seed-navigation-operations.spec.ts:39-47`).
 - **Sections.** None under OD-62's recommended default (A: sections later). §13.2's two sections ship only if the owner
   asks for them now (§19.2).
@@ -2534,7 +2545,7 @@ without a key fails boot too (`empty-page`, `:211-215`). Screens, routes and row
 | `administration.catalogItem` | `administrationCatalog.manage` in P1a.1, `administrationItem.view` from P1a.2 (§9.2) | `catalogs`, `items` | the audit's `create` / `update`; an explicit `update` after a (de)activation |
 | `administration.itemCategory` | the same | `catalogs`, `items` | the same |
 | `administration.item` | `administrationItem.view` | `items` (+ `stock` from P5) | the same |
-| `administration.warehouse` | `administrationWarehouse.view` | `warehouses` (+ `stock` from P5) | the audit, plus `publishAuditedChange({ action: 'update', branchId })` after every act (`apps/api/src/modules/it/consumables/consumable-history.ts:100-107`) |
+| `administration.warehouse` | `administrationWarehouse.view` | `warehouses` (+ `stock` from P5) | the audit, plus `publishAuditedChange({ action: 'update', branchId })` after every act (`apps/api/src/modules/it/consumables/consumable-history.ts:104-111`) |
 | `administration.supplier` (P1b) | `administrationSupplier.view` | `suppliers` (+ `rfqs` from P3, `purchaseOrders` from P4) | as for items; a paper link writes one `update` row (§11.4) |
 
 - **The topic key.** A topic's key must be one a manifest declares (`realtime-registry.spec.ts:117-129`). In P1a.1 only
@@ -2576,13 +2587,13 @@ without a key fails boot too (`empty-page`, `:211-215`). Screens, routes and row
 | `item-category-rules.spec.ts` | depth (OD-06); no self-parent, no cycle; the parent is active; a category with children never moves; each refusal carries its `ADMINISTRATION_CATEGORY_PARENT_INVALID` detail code |
 | `item-rules.spec.ts` | `minQty` ≤ `reorderPointQty` ≤ `maxQty` (OD-09); integers ≥ 0 (OD-08); inactive unit or category refused |
 | `warehouse-rules.spec.ts`, `supplier-rules.spec.ts` | the type list (OD-10) and fixed branch; a warehouse's `deactivationProblem` under OD-70 (§5.3), which answers none in Phase 1, because nothing holds stock and no document names a warehouse; the OD-11 shape |
-| `*-audit.spec.ts` | literal refs; `create`, `update`, `activate`, `deactivate`; the explicit `update` signal after a (de)activation, and the warehouse signal's `branchId` after every act (`consumable-history.spec.ts:100-163` precedent) |
+| `*-audit.spec.ts` | literal refs; `create`, `update`, `activate`, `deactivate`; the explicit `update` signal after a (de)activation, and the warehouse signal's `branchId` after every act (`consumable-history.spec.ts:152-264` precedent) |
 | `people.service.spec.ts` | §7.8 fields only; new references search `employed` |
 | `go-live/<list>-import.spec.ts` (OD-68 A) | the file's shape; every row passes the screen's Create schema; a row whose folded name matches a live row is that row, never a second one |
-| contracts `administration-*.spec.ts` | strict schemas; unknown keys and any on-hand field refused (`packages/contracts/src/modules/it.spec.ts:371-393`); a supplier with 21 contacts is refused |
-| `administration.module.spec.ts`, `administration-scope-guards.spec.ts`, `administration-indexes.spec.ts`, `administration-isolation.spec.ts` | the manifest validates and its surface is pinned (`apps/api/src/modules/atm/atm.module.spec.ts:26-80`); no permission name contains a parenthesis, which `scripts/check-page-registry.mjs` counts (ATM's guard, `atm.module.spec.ts:170-174`; §15.2.3); every repository declares its scope with a reason (the `apps/api/src/modules/hr/payroll/department-scope-guards.spec.ts` shape; `docs/12-planning/cross-module-dependency-audit.md:163-167`); the model list the seed passes to `syncDeclaredIndexes` covers every collection the module's `*.model.ts` files declare (the `apps/api/src/modules/fleet/fleet-indexes.spec.ts` shape; §15.3.2); a repository's first write awaits `ensureCollection`, so a failed build refuses the write and the next write retries (RK-03; the mock shape of `apps/api/src/modules/it/consumables/consumable-issue.spec.ts:44-51`); no file imports another module's folder (Fleet's `apps/api/src/modules/fleet/driver-profiles/drivers-are-derived.spec.ts:108-116`, widened; §3.7, RK-02) |
+| contracts `administration-*.spec.ts` | strict schemas; unknown keys and any on-hand field refused (`packages/contracts/src/modules/it.spec.ts:390-412`); a supplier with 21 contacts is refused |
+| `administration.module.spec.ts`, `administration-scope-guards.spec.ts`, `administration-indexes.spec.ts`, `administration-isolation.spec.ts` | the manifest validates and its surface is pinned (`apps/api/src/modules/atm/atm.module.spec.ts:26-80`); no permission name contains a parenthesis, which `scripts/check-page-registry.mjs` counts (ATM's guard, `atm.module.spec.ts:170-174`; §15.2.3); every repository declares its scope with a reason (the `apps/api/src/modules/hr/payroll/department-scope-guards.spec.ts` shape; `docs/12-planning/cross-module-dependency-audit.md:163-167`); the model list the seed passes to `syncDeclaredIndexes` covers every collection the module's `*.model.ts` files declare (the `apps/api/src/modules/fleet/fleet-indexes.spec.ts` shape; §15.3.2); a repository's first write awaits `ensureCollection`, so a failed build refuses the write and the next write retries (RK-03; the mock shape of `apps/api/src/modules/it/consumables/consumable-issue.spec.ts:51-67`); no file imports another module's folder (Fleet's `apps/api/src/modules/fleet/driver-profiles/drivers-are-derived.spec.ts:108-116`, widened; §3.7, RK-02) |
 | web `lib/*-form.spec.ts`, `administration-{routes,i18n,api-contract}.spec.ts`, `administration-employee-picker.spec.ts` | the IT web guard trio, and IT's fourth guard: the keeper picker offers current staff only (`apps/web/src/modules/it/it-employee-picker.spec.ts`) |
-| web `lib/administration-errors.spec.ts`, `pages/{items,warehouses,suppliers}-screen.spec.tsx` | every Phase 1 code (§5.15) has text under `administration.module.errors.<code>` in en and ar; the screens render (`renderToStaticMarkup`, IT's `apps/web/src/modules/it/pages/assets-screen.spec.tsx`) |
+| web `shared/lib/errors.spec.ts` (the module's case), `pages/{items,warehouses,suppliers}-screen.spec.tsx` | every Phase 1 code (§5.15) has en and ar text in `FRIENDLY`; the screens render (`renderToStaticMarkup`, IT's `apps/web/src/modules/it/pages/assets-screen.spec.tsx`) |
 
 **Integration, three files (one more per loaded list under OD-68 A).** They follow the
 `apps/api/tests/integration/it-consumables.spec.ts:59-270` harness, with shared module fixtures. Each refusal asserts
@@ -2642,16 +2653,18 @@ its code (§5.15) as well as its status; codes with details are thrown as
 **Existing pins** (numbered #1–#26; each one either changes or stays).
 
 - **These change:**
-  - #1 `seed-navigation.spec.ts:80`: 139 → 143 (P1a.W) → 144 (P1b.W) (136 at `b03522f`).
-  - #2 `auth-seed-login.spec.ts`: `:36` (the same numbers), the order list `:141-150`, the breakdown comment and its
-    sum before the length assertion (`:290-297`), the category comments `:132-140` and `:312-313`, and `:314` (8 → 9).
+  - #1 `seed-navigation.spec.ts:81`: 140 → 144 (P1a.W) → 145 (P1b.W) (136 at `b03522f`).
+  - #2 `auth-seed-login.spec.ts`: `:37` (the same numbers; the breakdown comment still adds up to 139, with Operations at 18, one row behind the constant), the order list `:142-151`, the breakdown comment and its
+    sum before the length assertion (`:291-298`; the comment still reads 18 Operations rows and 139, one behind the seed's
+    19 and 140, so it is re-counted from `seed-navigation.ts`), the category comments `:133-141` and `:313-314`, and
+    `:315` (8 → 9).
   - #2b `apps/web/src/platform/navigation/module-icons.spec.ts`: the tile list (`:49-58`) and the glyph map
     (`:65-74`) gain `'Administrative Affairs'` and `BoxIcon` (§13.1, §13.3).
   - #7 `check-page-registry.mjs:65`.
   - #8 remembered filters: seven pages. Items, Warehouses and Suppliers are COVERED; Catalogs is COVERED as
     `ItCatalogsPage` is, with `['kind']` (`apps/web/src/shared/lib/remembered-filters-coverage.spec.ts:153`); Home,
     ItemDetail and SupplierDetail are NOT_FILTER_CAPABLE (the `AtmOverviewPage` and `AssetDetailPage` precedent,
-    `:279`, `:386`; `ItHomePage` became COVERED with the IT dashboard's filters, `:156`).
+    `:285`, `:401`; `ItHomePage` became COVERED with the IT dashboard's filters, `:156`).
   - #15 `targets.ts`.
   - #16: if `keep`, `administration_warehouses` sorts first in `untouched`, which grows 13 → 14
     (`apps/api/tests/integration/workforce-reset.spec.ts:223-243`), and the `includeRecruitment` count goes 12 → 13
@@ -2670,8 +2683,8 @@ its code (§5.15) as well as its status; codes with details are thrown as
   - #9 (`apps/api/src/platform/realtime/realtime-registry.spec.ts:100-129`) and #10
     (`apps/web/src/platform/realtime/realtime.spec.ts:166-215`): the registries they read (`realtime-registry.ts`,
     `invalidation-registry.ts`) gain five topics; the specs themselves do not change.
-  - #11 (`apps/api/src/platform/settings/settings-inventory.spec.ts:89-100`) and #12
-    (`apps/web/src/modules/system-admin/settings/pages/SettingsPage.spec.tsx:270-275`): no settings. #13
+  - #11 (`apps/api/src/platform/settings/settings-inventory.spec.ts:89-103`) and #12
+    (`apps/web/src/modules/system-admin/settings/pages/SettingsPage.spec.tsx:279-287`): no settings. #13
     (`packages/contracts/src/events/catalog.spec.ts:181-195`) and #14
     (`apps/api/src/platform/kernel/event-publishers.spec.ts:165-170`): no events.
   - #17 (`apps/api/src/org-catalog-migration/references.spec.ts:188-200`): no `departmentId` in arrays.
@@ -2680,7 +2693,7 @@ its code (§5.15) as well as its status; codes with details are thrown as
   - #19–#24: no printed papers, operator CLIs, server exports, audit verbs, notification categories or notification
     templates (OD-11 A's supplier file category is not a notification category): #19
     `apps/web/src/shared/lib/print-window.spec.ts:138-155`, #20 `apps/api/src/operator-cli-safety.spec.ts:16-22`, #21
-    `apps/api/src/shared/utils/stream-rows.spec.ts:103-107`, #22
+    `apps/api/src/shared/utils/stream-rows.spec.ts:110-123`, #22
     `apps/web/src/modules/system-admin/system-admin-i18n.spec.ts:113-127`, #23 `system-admin-i18n.spec.ts:56-60`, #24
     `apps/api/src/platform/notifications/notification.builtin-templates.spec.ts:36-37`.
   - #25 (`apps/api/src/platform/platform-routes-exist.spec.ts:150-170`): only existing `/platform/*/options` calls.
@@ -2699,8 +2712,8 @@ C = create, M = modify; "C, M" = created in the first pull request listed and mo
 | `packages/contracts/src/modules/administration-warehouses.ts` + `.spec.ts` | C | P1a.3 | warehouses, and the branch-option DTO (§19.3) |
 | `packages/contracts/src/modules/administration.ts` + `.spec.ts` | C, M | P1a.2; P1a.3 | the master-code formatter and parser (OD-05 A, P1a.2) and the people shapes (P1a.3); no fold of its own: names fold through the shared `foldName` (PC-13), so the file is created in P1a.3 if OD-05 picks typed codes |
 | `packages/contracts/src/modules/administration-procurement.ts` + `.spec.ts` | C | P1b.1 | suppliers |
-| `packages/contracts/src/index.ts` | M | each | `export * from './modules/administration….js'` (`:65-79`) |
-| `packages/contracts/src/errors/index.ts` | M | P1a.1–3 | the Phase 1 refusal codes of §5.15, module-prefixed like `ATM_WORK_BRANCH_REQUIRED` (`:414`): `ADMINISTRATION_CATEGORY_PARENT_INVALID` and `ADMINISTRATION_DUPLICATE` (P1a.1); `ADMINISTRATION_STOCK_LEVELS_ORDER` and `ADMINISTRATION_REFERENCE_INACTIVE` (P1a.2); `ADMINISTRATION_EMPLOYEE_EXITED` and `ADMINISTRATION_DEACTIVATION_BLOCKED`, with the warehouse rule that raises it, first met once stock or documents exist (P1a.3). The transition codes of §5.15 arrive from P2 |
+| `packages/contracts/src/index.ts` | M | each | `export * from './modules/administration….js'` (`:65-81`) |
+| `packages/contracts/src/errors/index.ts` | M | P1a.1–3 | the Phase 1 refusal codes of §5.15, module-prefixed like `ATM_WORK_BRANCH_REQUIRED` (`:475`): `ADMINISTRATION_CATEGORY_PARENT_INVALID` and `ADMINISTRATION_DUPLICATE` (P1a.1); `ADMINISTRATION_STOCK_LEVELS_ORDER` and `ADMINISTRATION_REFERENCE_INACTIVE` (P1a.2); `ADMINISTRATION_EMPLOYEE_EXITED` and `ADMINISTRATION_DEACTIVATION_BLOCKED`, with the warehouse rule that raises it, first met once stock or documents exist (P1a.3). The transition codes of §5.15 arrive from P2 |
 
 **API module**
 
@@ -2713,7 +2726,7 @@ C = create, M = modify; "C, M" = created in the first pull request listed and mo
 | `administration.mappers.ts` | C, M | P1a.1; P1a.2, P1a.3, P1b.1 | doc → DTO; the labels of §19.4's list table via `findByIdsSystem`, the keeper via `getDirectoryEmployees` |
 | `administration-scope-guards.spec.ts` | C, M | P1a.1; P1a.3, P1b.1 | scope options declared everywhere (the payroll `department-scope-guards.spec.ts` shape) |
 | `administration-isolation.spec.ts` | C | P1a.1 | no import from another module's folder (§3.7) |
-| `shared/collection-ready.ts` + `.spec.ts` | C | P1a.1 | `collectionReady(model)`, a copy of `apps/api/src/modules/it/mobile-lines/ensure-collection.ts:18-30`: built once per process, a failure forgotten so the next write retries. Every module repository declares `readonly ensureCollection = collectionReady(Model)`, and the bookkeeping models (counter, balances, go-live runs) hold one in their own functions (§2.1 note 10); each awaits it before its first write, and before any transaction that writes it (`apps/api/src/modules/it/consumables/consumable-history.ts:221-234`): units and categories (P1a.1), items and the counter (P1a.2), warehouses (P1a.3), suppliers (P1b.1), the balances and the ledger (P5; the ledger has no `ux_*` index but is first written inside the posting transaction) |
+| `shared/collection-ready.ts` + `.spec.ts` | C | P1a.1 | `collectionReady(model)`, a copy of `apps/api/src/modules/it/mobile-lines/ensure-collection.ts:18-30`: built once per process, a failure forgotten so the next write retries. Every module repository declares `readonly ensureCollection = collectionReady(Model)`, and the bookkeeping models (counter, balances, go-live runs) hold one in their own functions (§2.1 note 10); each awaits it before its first write, and before any transaction that writes it (`apps/api/src/modules/it/consumables/consumable-history.ts:265-278`): units and categories (P1a.1), items and the counter (P1a.2), warehouses (P1a.3), suppliers (P1b.1), the balances and the ledger (P5; the ledger has no `ux_*` index but is first written inside the posting transaction) |
 | `shared/org-authority.ts` + `.spec.ts` | C | P1a.1 | `assertAdministrationOrgAuthority` (§6.7), naming the module's keys over `assertOrganizationScope` (`apps/api/src/shared/base/org-authority.ts`, PC-12), which ATM's `assertAtmSettingsManager` (`apps/api/src/modules/atm/shared/settings-authority.ts:12-20`) and its bank rule ("a bank is company-wide", `apps/api/src/modules/atm/catalogs/bank.service.ts:131-138`) call |
 | `shared/counter.model.ts` | C | P1a.2 under OD-05 A (P1a.1 under B, P2 under C) | `administration_counters`, the module's counter model built with the shared counter factory (`apps/api/src/shared/base/counter.ts`, PC-13): ensured outside the transaction, moved inside it |
 | `shared/document-number.ts` + `.spec.ts` | C | with the counter | series keys and floors: the master codes now, document series from P2; the formatters live in contracts (§2.8) |
@@ -2728,7 +2741,7 @@ C = create, M = modify; "C, M" = created in the first pull request listed and mo
 | `go-live/<list>-import.ts` + spec | C if OD-68 A | P1a.2 (units, categories, items); P1b.1 (suppliers) | pure: the file's shape and rows, validated with the screens' Create schemas, and the folded-name match that makes a row naming a live record that record (IT's `apps/api/src/modules/it/go-live/consumables-opening-import.ts` shape) |
 | `go-live/<list>.ts` | C if OD-68 A | the same | the boot step: it creates each row through the owning feature's exported create function with its session (§3.4), so `catalog/*` and `procurement/suppliers` stay the sole writers of their collections (§3.3); every collection the transaction writes awaits its `ensureCollection` before it (`apps/api/src/modules/it/go-live/consumables-opening.ts:161-163`); a versioned run key in IT's shape (`go-live:administration-<list>-<yyyy-mm>:v1`, as `apps/api/src/modules/it/go-live/consumables-opening.ts:77-78`); the run row written last, in the same transaction; an audit `create` per row after commit |
 | `shared/go-live-run.model.ts` | C if OD-68 A | the first of those pull requests | the run marker (`it/go-live/go-live-run.model.ts`), in `administrationModels`, so `sync-indexes.models.ts` does not change; otherwise it arrives in P5 under OD-63 B |
-| `apps/api/assets/administration-go-live/<list>-<yyyy-mm>.json` | C if OD-68 A | the same as its step | the owner's file, reviewed with him before it is committed, as IT's are (`apps/api/assets/it-go-live/`; `tsup.config.ts:47` copies `assets/` into the build); no supplier contact data: contacts are typed in the app after the load (§15.3.5 d) |
+| `apps/api/assets/administration-go-live/<list>-<yyyy-mm>.json` | C if OD-68 A | the same as its step | the owner's file, reviewed with the owner before it is committed, as IT's are (`apps/api/assets/it-go-live/`; `tsup.config.ts:47` copies `assets/` into the build); no supplier contact data: contacts are typed in the app after the load (§15.3.5 d) |
 
 **Platform registries and global specs**
 
@@ -2738,19 +2751,19 @@ C = create, M = modify; "C, M" = created in the first pull request listed and mo
 | `scripts/check-page-registry.mjs` | M | P1a.1 | `'administration'` in `MODULES` (`:65`) |
 | `apps/api/src/platform/realtime/realtime-registry.ts` | M | P1a.1–3, P1b.1 | the §19.6 topics; P1a.2 changes the two catalog rows' key |
 | `apps/web/src/platform/realtime/invalidation-registry.ts` | M | same | their rows |
-| `apps/web/src/platform/localization/i18n.ts` | M | P1a.1 | `systemAdmin.roles.module.administration` in en (`:10692-10700`) and ar (`:25479-25487`) |
+| `apps/web/src/platform/localization/i18n.ts` | M | P1a.1 | `systemAdmin.roles.module.administration` in en (`:11257-11265`) and ar (`:27147-27155`) |
 | `apps/api/src/workforce-reset/targets.ts` | M | P1a.3 | classify `administration_warehouses` (OD-64) |
 | `apps/api/src/workforce-reset/targets.spec.ts` | M if `keep` (optional) | P1a.3 | the keep spot list (`:76-91`), by the `c97667f` precedent |
 | `apps/api/tests/integration/workforce-reset.spec.ts` | M if `keep` | P1a.3 | the `untouched` list (`:223-243`, 13 → 14) and the `includeRecruitment` count (`:361`, 12 → 13) |
-| `apps/api/src/server.ts`, `apps/api/src/worker.ts` | M if OD-68 A | P1a.2; P1b.1 | each go-live step's start call, beside IT's (`server.ts:142`, `worker.ts:110`) |
+| `apps/api/src/server.ts`, `apps/api/src/worker.ts` | M if OD-68 A | P1a.2; P1b.1 | each go-live step's start call, beside IT's (`server.ts:149`, `worker.ts:115`) |
 
 **Seeds and navigation**
 
 | File | C/M | Pull request | Purpose |
 |---|---|---|---|
 | `apps/api/src/seed-navigation.ts` | M | P1a.W, P1b.W | `CategoryDef` after ATM; four rows, then suppliers |
-| `apps/api/src/seed-navigation.spec.ts` | M | P1a.W, P1b.W | 139 → 143 → 144 (`:80`) |
-| `apps/api/tests/integration/auth-seed-login.spec.ts` | M | P1a.W, P1b.W | `:36`, `:141-150`, `:290-297`, `:314`, and the category comments `:132-140`, `:312-313` |
+| `apps/api/src/seed-navigation.spec.ts` | M | P1a.W, P1b.W | 140 → 144 → 145 (`:81`) |
+| `apps/api/tests/integration/auth-seed-login.spec.ts` | M | P1a.W, P1b.W | `:37`, `:142-151`, `:291-298`, `:315`, and the category comments `:133-141`, `:313-314` |
 | `apps/api/src/seed-navigation-administration.spec.ts` | C, M | P1a.W, P1b.W | rows ⇄ routes ⇄ guard keys ⇄ icons; block placement (Operations precedent) |
 | `apps/api/src/seed-application-sections.ts` | M if OD-62 wants sections now | P1a.W, P1b.W | `APPLICATION_SECTION_DEFAULTS['Administrative Affairs']`, placed before `HR: [` (`seed-application-sections.spec.ts:43-45`, `:72`); the Procurement section only with the supplier row, because a section route must be a seeded row (`seed-navigation.spec.ts:48-57`) |
 
@@ -2770,18 +2783,18 @@ C = create, M = modify; "C, M" = created in the first pull request listed and mo
 |---|---|---|---|
 | `platform/app/App.tsx` | M | P1a.W | lazy `AdministrationRoutes`; `/administration/*` above the `/*` catch-all (`:433-447`, `:538`) |
 | `routes.tsx` | C, M | P1a.W, P1b.W | `AppShell`, `RequirePermission` per route, `NotFoundPage`, route → key table |
-| `api/administration-keys.ts` | C | P1a.W | the module's key subtrees (`catalogs`, `items`, `warehouses`, `people`, later `suppliers`), built with `featureKey`, `listKey` and `detailKey` (`shared/lib/query-keys.ts`, ADR-013). One file because several `*-queries.ts` share them (ATM re-declares the register's keys in `apps/web/src/modules/atm/api/atm-queries.ts:53-56` to match `register-queries.ts`); the invalidation rows repeat them as literal prefixes (`apps/web/src/platform/realtime/invalidation-registry.ts` imports nothing). A departure from ATM and IT, which keep their keys inside `*-queries.ts` (`atm/api/atm-queries.ts:46-60`, `it/api/it-queries.ts:73`) |
-| `api/{catalog,warehouses,people}-{api,queries}.ts` | C | P1a.W | calls and hooks; module-own branch options, and department options if OD-10 gives warehouses a department, over `/platform/branches/options` and `/platform/departments/options` (IT `it/api/it-api.ts:134-150`; §13.6 A); the warehouses branch filter and the create dialog's branch `Select` over `/administration/warehouses/branch-options` (§19.3); people only with a keeper |
+| `api/administration-keys.ts` | C | P1a.W | the module's key subtrees (`catalogs`, `items`, `warehouses`, `people`, later `suppliers`), built with `featureKey`, `listKey` and `detailKey` (`shared/lib/query-keys.ts`, ADR-013). One file because several `*-queries.ts` share them (ATM re-declares the register's keys in `apps/web/src/modules/atm/api/atm-queries.ts:53-56` to match `register-queries.ts`); the invalidation rows repeat them as literal prefixes (`apps/web/src/platform/realtime/invalidation-registry.ts` imports nothing). A departure from ATM and IT, which keep their keys inside `*-queries.ts` (`atm/api/atm-queries.ts:46-60`, `it/api/it-queries.ts:76`) |
+| `api/{catalog,warehouses,people}-{api,queries}.ts` | C | P1a.W | calls and hooks; module-own branch options, and department options if OD-10 gives warehouses a department, over `/platform/branches/options` and `/platform/departments/options` (IT `it/api/it-api.ts:142-158`; §13.6 A); the warehouses branch filter and the create dialog's branch `Select` over `/administration/warehouses/branch-options` (§19.3); people only with a keeper |
 | `api/suppliers-{api,queries}.ts` | C | P1b.W | suppliers |
 | `pages/{AdministrationHomePage,ItemsPage,ItemDetailPage,WarehousesPage,CatalogsPage}.tsx` | C | P1a.W | §19.5 |
 | `pages/{SuppliersPage,SupplierDetailPage}.tsx` | C | P1b.W | the supplier register and record |
 | `components/{ItemFormDialog,WarehouseFormDialog,UnitDialog,ItemCategoryDialog,CatalogSelect,EmployeePicker}.tsx` | C | P1a.W | dialogs and selects (IT `CatalogItemDialog`, `ItCatalogSelect`, `EmployeePicker`) |
-| `components/AdministrationDialogFrame.tsx` | C | P1a.W | the Cancel / Save frame with `dismissOnOutsideClick={false}` that the four P1a.W dialogs and, in P1b.W, the supplier dialog share (§13.6 E; IT's file-local `Shell`, `apps/web/src/modules/it/components/ConsumableDialogs.tsx:98`) |
+| `components/AdministrationDialogFrame.tsx` | C | P1a.W | the Cancel / Save frame with `dismissOnOutsideClick={false}` that the four P1a.W dialogs and, in P1b.W, the supplier dialog share (§13.6 E; IT's file-local `Shell`, `apps/web/src/modules/it/components/ConsumableDialogs.tsx:137`) |
 | `components/SupplierFormDialog.tsx` | C | P1b.W | |
 | `components/SupplierDocuments.tsx` | C if OD-11 | P1b.W | the documents card over the module's paper routes (rebuilt from IT's `CustodyReceipt.tsx` pattern; §11.5) |
 | `lib/{item-form,warehouse-form}.ts` + specs | C | P1a.W | form state mirroring the contracts |
 | `lib/supplier-form.ts` + spec | C | P1b.W | |
-| `lib/administration-errors.ts` + spec | C, M | P1a.W; P1b.W | code → i18n; its spec checks that every Phase 1 code (§5.15) has en and ar text under `administration.module.errors.<code>`; the `FRIENDLY` keys miss emitted codes (`shared/lib/errors.ts:8-218`; ATM `lib/settlement-view.ts:218-233`) |
+| `shared/lib/errors.ts` + `errors.spec.ts` (shared web) | M | P1a.W; P1b.W | the module's codes in `FRIENDLY`, en and ar, and its case in the spec (IT's and Organization's precedent, `:148-153`, `:10-18`); the shared error panel words them too (`shared/ui/states/ErrorState.tsx:35-38`) |
 | `administration-{routes,i18n,api-contract}.spec.ts` | C, M | P1a.W, P1b.W | the IT guard trio |
 | `administration-employee-picker.spec.ts` | C if keeper | P1a.W | current staff only (`it-employee-picker.spec.ts`) |
 | `pages/{items,warehouses}-screen.spec.tsx` | C | P1a.W | `renderToStaticMarkup` checks (IT `assets-screen.spec.tsx`) |
@@ -2790,8 +2803,8 @@ C = create, M = modify; "C, M" = created in the first pull request listed and mo
 | `platform/navigation/app-icon.tsx`, `shared/ui/icons.tsx`, `platform/navigation/module-icons.spec.ts` | M | P1a.W | the glyphs and keys `box` and `warehouse` (§13.1, §13.3); the launcher spec's tile list and glyph map gain `'Administrative Affairs'` → `BoxIcon` |
 | `shared/lib/remembered-filters-coverage.spec.ts` | M | P1a.W, P1b.W | Items, Warehouses, Suppliers COVERED; Catalogs as `ItCatalogsPage` (`:153`); Home, ItemDetail and SupplierDetail NOT_FILTER_CAPABLE; `TAB_SCOPED` stays 7 |
 
-`Fact` and the catalogs tablist are page-local, as in IT (`apps/web/src/modules/it/pages/AssetDetailPage.tsx:66`,
-`apps/web/src/modules/it/pages/ItCatalogsPage.tsx:175`), inside `ItemDetailPage.tsx`, `SupplierDetailPage.tsx` and
+`Fact` and the catalogs tablist are page-local, as in IT (`apps/web/src/modules/it/pages/AssetDetailPage.tsx:74`,
+`apps/web/src/modules/it/pages/ItCatalogsPage.tsx:201`), inside `ItemDetailPage.tsx`, `SupplierDetailPage.tsx` and
 `CatalogsPage.tsx`; `ReferencePicker` ships with `ItemPicker` in P2 (§13.6 D).
 
 **Docs**
@@ -2801,7 +2814,7 @@ C = create, M = modify; "C, M" = created in the first pull request listed and mo
 | the four design files (`docs/12-planning/administration-module-design.md`, `-design-flows.md`, `-design-integration.md`, `-decisions-and-phases.md`) | M | each | a §22 revision per deviation; §22 is in `administration-module-decisions-and-phases.md` |
 | `CHANGELOG.md` | M | each | `[Unreleased]` entry: owner quote, keys, design link |
 | `docs/06-security/permission-matrix.md` | M if adopted (§19.2) | P1a.1, P1b.1 | an Administrative Affairs section under governance rule 2 (`:105`). New practice: no module since Recruitment has added one (§6.1) |
-| `docs/03-decisions/ADR-0NN-…supplier-registry.md`, and its row in `README.md` | C (the ADR), M (`README.md`) | a docs pull request before P1b.1 | numbered when taken (next free ADR-039); accepted before P1b.1's first code (§20) |
+| `docs/03-decisions/ADR-0NN-…supplier-registry.md`, and its row in `README.md` | C (the ADR), M (`README.md`) | a docs pull request before P1b.1 | numbered when taken (next free ADR-040; ADR-039, the inactivity-window setting, was taken after `4c0fa1b0`, `docs/03-decisions/README.md:50`); accepted before P1b.1's first code (§20) |
 | `docs/12-planning/it-module-design.md` §16 P4, §17 | M | P1b.1 | the registry trigger has fired (OD-01) |
 | `docs/01-business/module-hierarchy.md` | M | at freeze (§21); P1a.1 checks it | the reserved `administration` row (`:75`): display name (OD-62), sub-modules, a link to this design |
 
@@ -2829,7 +2842,7 @@ C = create, M = modify; "C, M" = created in the first pull request listed and mo
 - **Platform code.** No platform behavior changes. Under `apps/api/src/platform/`, only the realtime registry gains
   rows (`platform/realtime/realtime-registry.ts`); on the web, the platform files §19.8 lists gain the module's entries
   (`platform/app/App.tsx`, `platform/realtime/invalidation-registry.ts`, `platform/localization/i18n.ts`,
-  `platform/navigation/app-icon.tsx`). Nothing under `platform/auth`, `platform/rbac` or
+  `platform/navigation/app-icon.tsx`), and the shared `shared/lib/errors.ts` gains the module's codes (§19.8). Nothing under `platform/auth`, `platform/rbac` or
   `packages/contracts/src/permissions/` changes, so the generated matrix, `pages.spec.ts` and the CODEOWNERS
   second-reviewer paths (`.github/CODEOWNERS:9-13`) are not touched.
 - **Org, entrypoints, environment.** No `departmentId` in arrays and no cost center (D-CC-3).
@@ -2862,8 +2875,8 @@ C = create, M = modify; "C, M" = created in the first pull request listed and mo
    matrix.
 8. **Docs.** CHANGELOG entries, the permission-matrix section if adopted (§19.2), the supplier-registry ADR (accepted
    before P1b.1), and §22 entries for any deviation are written.
-9. **Owner acceptance.** The owner accepts the result on staging with real item families (OD-03), entered by hand or
-   imported (OD-68).
+9. **Owner acceptance.** The owner accepts the result on staging with real item families (OD-03), entered by hand
+   (OD-68 B, §16.12).
 
 ---
 
@@ -3015,6 +3028,396 @@ Repository-wide findings outside this module are listed for the owner in
     `docs/10-reviews/2026-11-administration-design-cross-module-findings.md` (eleven items).
   - *For the owner*, new from this stage: the launcher tile's picture (OD-62.1); a receiving committee or the signed-in
     receiver (OD-35); goods sent back on a new transfer (OD-47.3 D); whether Procurement checks supplier bills (OD-54).
+- **FROZEN v1.0** (2026-11-24). The owner approved the design. The owner took every recommended default in §16 as the working
+  answer, to be changed later by revision, answered OD-68 B (no data files for now: master data is typed in on the
+  screens) and asked for one phase at a time, each closed before the next; the owner also renewed the zod waiver to 2026-12-26
+  (§16.12). OD-68 B removes the go-live rows from Phase 1: the §19.8 rows marked "if OD-68 A" do not apply, and nothing
+  else changes.
+- **Drift check against `9efdcbd9`** (2026-11-24, the repository's `drift-check` skill). `main` had moved 59 commits
+  past this design's merge. Of 2,561 citations, 1,927 were untouched, 429 had only shifted and were re-pinned
+  mechanically, 115 sat in changed files on unchanged lines, and 90 sat on changed lines; four read-only reviewers
+  re-read those 90, a fifth compared the shared and platform code that changed, and a sixth re-counted Phase 1's pins.
+  Their 190 edits (139 re-pins, 25 counts, 21 changed facts, 5 new capabilities) were applied after 37 overlaps were
+  merged by hand. What changed:
+  - *A design change.* The module's error codes go into the shared web `FRIENDLY` table, in en and ar, as IT and
+    Organization now do, instead of a module-local map: the shared error panel reads only that table and replaces a
+    message with no Arabic letter by the general Arabic line (§5.15, §13.6, §19.8, RK-23).
+  - *Facts.* Phase 1's pins moved (140 navigation rows, the settings pins at 64 and 73, the realtime and audit lines);
+    IT's movement ledger now corrects one fact of an issued row in place; IT's catalog keeps one boolean field on one
+    kind. PC-5 is still open upstream; RK-23 is partly mitigated by the shared error panel.
+  - *Noted for their phases' re-details:* IT's unscoped recipients read for hand-over boxes (P6's issue recipient; Phase
+    1's keeper picker stays scoped, §7.8); Fleet's dashboard asks a read only for a fully permitted section (P9); HR's
+    working-hours page as a second precedent for a module-owned setting (P4's policy); attendance sizes an export window
+    by its shape (P5's reports); organization unit groups for department filters (P2, P6); the shared streaming sheet
+    readers for any in-app import (OD-68 C); `MultiSelect` filters (P1a.W's pattern pass).
+- **P1a.1 built** (2026-11-24). Phase 1's first pull request ships as §19.1 says, under the owner's answers (§16.12).
+  OD-67's recommendation, B (the company's own words), had no words to apply, so the master-data administrator is seeded
+  with §6.5's candidate title, A, the fallback; once seeded, a title changes only by hand or by a run-keyed step (§6.5).
+  Three fresh reviewers (design conformance, correctness and tests, ECMS conventions) raised 15 findings, all fixed
+  before the pull request; the largest, a category stored as its own parent through an upper-case id, is closed by
+  canonical ids in the rule. Where the code had to choose what the design leaves open:
+  - *One shared file more.* `shared/master-data.ts` holds what all five master registers do alike: the
+    `ADMINISTRATION_DUPLICATE` answer, §10.2's verb table for master data (`create`, `update`, `activate`,
+    `deactivate`) and the server-side search. Each feature's `<entity>-audit.ts` keeps its literal ref, snapshot and
+    signal. The role titles sit in `administration-roles.ts`, the non-seed file §6.1 asks for.
+  - *Refusal details.* `ADMINISTRATION_DUPLICATE`'s detail carries `code: 'duplicate'` beside its `field`, since a
+    detail must have a code; both detail vocabularies are contract constants
+    (`ADMINISTRATION_DUPLICATE_FIELDS`, `ADMINISTRATION_CATEGORY_PARENT_PROBLEMS`) for P1a.W to word. A `parentId` that
+    names no category answers 404 `NOT_FOUND` (the attendance-enrollment precedent): §5.15 names no answer for it.
+  - *Which index refused.* `BaseRepository.create` keeps only the field names of a duplicate key, so after a write a
+    unique index refused, the service re-runs its own check against the row that won and names that field.
+  - *Search.* Besides code and name, `search` matches the folded `nameKey`, so «قطعه» finds «قطعة».
+  - *One more query field.* `GET /item-categories` takes `topLevel` beside §19.4's `parentId`, one of the two:
+    `topLevel=true` is the level a parent is picked from, which the categories tab's parent `Select` (§13.6 C) and
+    P1a.2's item form (category, then subcategory, OD-06) both read; `false` is every subcategory.
+  - *An Arabic name must survive its fold.* A name of tatweel or harakat alone folds to an empty `nameKey`, so the
+    contract refuses it (400 `VALIDATION_FAILED`) rather than letting the database refuse it as a 500 on a create and
+    store it on an edit.
+  - *A second accepted race.* Beside §19.7's move racing a child create (three levels), two crossing moves of two
+    childless top-level categories, A under B and B under A, both pass their checks and leave each the other's parent,
+    with no root. It needs the same two organization-scope managers at one moment, and is accepted for Phase 1 on the
+    same terms; moving either category to the top level, which no rule refuses, repairs it.
+  - *Deferred to P1a.2,* with the item keys: the read gate `authorizeAny('administrationItem.view', …)`, the topics'
+    move to that key, and the §19.7 case "an item viewer reads units and categories".
+- **P1a.2 built** (2026-11-24). Phase 1's second pull request ships as §19.1 says, under the owner's answers
+  (§16.12): items, the `ITM-` code on `administration_counters`, the widened catalog read gate and the topics' move,
+  and the five bundles §6.5 opens with `administrationItem.view`, titled with §6.5's candidates (OD-67's fallback, as
+  in P1a.1). OD-68 B: no go-live step, no run model, no entrypoint change. Three fresh reviewers (design conformance,
+  correctness, ECMS conventions) raised 10 findings, all fixed before the pull request; the largest, an edit that kept
+  a category its first subcategory had left above the level, now re-files the item as §2.3.3 says. Where the code had
+  to choose what the design leaves open:
+  - *The item's level (OD-06 (i)) has a code of its own.* §5.15 lists none for it, so an item a write leaves in a
+    category with active subcategories answers 422 `ADMINISTRATION_SUBCATEGORY_REQUIRED`
+    (`[{ field: 'categoryId', code: 'subcategoryRequired' }]`), on a create and on every edit. "Has any" reads "has an
+    active one": a category whose subcategories all retired takes items again, or nothing under it could be filed. An
+    item filed before its category gained its first subcategory keeps it until it is next edited (§2.3.3), and that
+    edit, whatever it changes, must move it to a subcategory. A PATCH that only retires the item or brings it back
+    (`isActive` and `version`, nothing else) is not that edit (`isStatusChangeOnly`, `item-rules.ts`): §2.3.4's
+    "retiring is an edit" says a retirement is a versioned PATCH and not a delete, and holding it to the level would
+    make a new level the thing that stops an item from being retired, against "adding a level invalidates no item".
+    Adopted as the recommended reading under the owner's 2026-11-24 instruction, and listed for the owner at Phase 1's
+    close. A subcategory is judged on its own `isActive`, not its parent's.
+  - *A stale edit is answered first.* Every register's edit compares its `version` with the row it read before any
+    rule judges the body merged with that row (`assertCurrentVersion`, `shared/master-data.ts`), so a body written
+    against an older row is 409 `STALE_DOCUMENT` (§19.3, §19.10.5), never a 422 over a field its sender did not see;
+    P1a.1's units and categories take it too. `updateById`'s version filter still catches a write that lands after
+    the read.
+  - *References.* An item asks the unit's and the category's own `activeFor` (§5.3), exported from their feature
+    indexes; one it already names is not read. A `unitId` or `categoryId` that names nothing is 404 `NOT_FOUND`, as a
+    category's missing parent is (P1a.1).
+  - *Levels.* "One detail per field out of order" names both ends of every comparison that fails, each field once,
+    detail code `outOfOrder`; they are judged on the row every write leaves. Whole numbers from 0 are the contract's
+    (400), bounded at a line quantity's 1,000,000 (§2.1; `ADMINISTRATION_STOCK_LEVEL_MAX`).
+  - *Barcode.* Trimmed, 1–64 characters, no space inside (what a keyboard wedge types), case kept, `null` clears it.
+    `ADMINISTRATION_DUPLICATE_FIELDS` gains `barcode`; after an index refusal the name is asked first, then the
+    barcode.
+  - *The code's contract.* `formatAdministrationMasterCode(kind, seq)` and `parseAdministrationMasterCode(code)` in
+    `administration.ts`, over `ADMINISTRATION_MASTER_KINDS` and a prefix table keyed by it (`ITM` now, `SUP` in
+    P1b.1); the formatter throws on a number no counter hands out, and the parser reads only the formatter's own
+    spelling, so «ITM-000001» is not «ITM-00001».
+  - *The floor* is read through `ux_code` by an anchored prefix, over the formatter's spelling only (five digits, or
+    more with no leading zero, so a hand-typed «ITM-000042» hides no real code), grouped by length, greatest of the
+    longest: the plain newest-first read breaks past five digits («ITM-99999» sorts after «ITM-100000»). `shared/`
+    imports no feature, so `document-number.ts` holds the key, the pipeline and the parse, and the items repository
+    runs it. The floor and the ensure run at every boot and before every create, outside its transaction (Fleet's
+    posture); the seed logs a failed ensure rather than failing the boot. The shared factory hands out one number per
+    call (`next`), so `counter.model.ts` exports `ensureCounter` and `nextNumber`; `peekNumber` waits for a caller.
+  - *Indexes.* `ux_code` and `ux_counter_key` are the module's only unique indexes not partial on live rows (the
+    indexes spec names them); `ix_unit_active` sits beside `ix_category_active` for the register's unit filter.
+  - *The register.* `search` adds the barcode, as typed, to P1a.1's code, names and `nameKey`; `?categoryId=` of a
+    top-level category reads its subcategories' items too. The DTO's labels are `categoryName`,
+    `categoryParentId`, `categoryParentName` and `unitName`.
+  - *The unit stays editable.* §2.3.4's immutability needs a line or a movement that names the item, which nothing
+    can before P2 and P5, so the checker registry of §3.6 ships with its first registrant.
+- **Supplier-registry ADR accepted** (2026-11-24). §20's "The supplier registry" is written as
+  [ADR-040](../03-decisions/ADR-040-supplier-registry-module-owned-with-a-seam.md), Accepted under the owner's
+  adoption of OD-01's recommended default (§16.12): C, with (i) for insurers, fuel companies and the traffic authority,
+  and (i) for Fleet's free-text vehicle-contract suppliers. It is the documentation pull request §20 and §19.8 ask for
+  before P1b.1's first code. §20's "the next free number is **ADR-039**" was overtaken meanwhile: ADR-039 was taken by
+  the inactivity window (`docs/03-decisions/ADR-039-inactivity-window-is-a-setting.md`), so this ADR is ADR-040, as
+  §19.8 already says. The IT design's §16 P4 and §17 carry the dated note §21 asks for. Its review found two facts
+  §15.3.5 a leaves out, and the ADR records them for the next stage's ADR to settle: Fleet's boot seed re-creates any
+  house-vocabulary workshop with no live row, so a retired or merged workshop row comes back with a new id
+  (`apps/api/src/modules/fleet/fleet.seed.ts:127-148`; `apps/api/src/modules/fleet/go-live/vocabulary.ts:52-62`); and
+  137 imported visits name the import's «غير محدد» placeholder row, not a workshop
+  (`apps/api/src/modules/fleet/go-live/maintenance-import.ts:25-27, 228-229`). Nothing else in this design changes.
+- **P1a.3 built** (2026-11-24). Phase 1's third pull request ships as §19.1 says, under the owner's answers
+  (§16.12): warehouses on the shared fail-closed branch rule, the branch-options read, the `people/` keeper picker,
+  the `administration.warehouse` topic with its branch signal, `keep` for `administration_warehouses` (OD-64 A), and
+  the warehouse keys in the six bundles §6.5 gives them. OD-68 B: nothing loaded, no entrypoint change. Four fresh
+  reviewers (design conformance, correctness and tests, ECMS conventions, scope and data) raised 13 findings, 10
+  distinct, all fixed or recorded before the pull request; the largest, a keeper any writer could name from outside
+  their reach, which the DTO then printed, is closed by holding the write to the picker's own reach. Where the code
+  had to choose what the design leaves open:
+  - *The branch list.* `shared/branch-scope.ts`'s `activeBranchIds` reads `platform/organization`'s
+    `branchService.options()`, the top bar's own `/platform/branches/options` read, paged to exhaustion, in place of
+    the `branchRepository` list §19.8 names: ATM's loader reads one page of 200, which the base repository clamps to
+    100. It is the branch-options list and the create's candidates; names come from `findByIdsSystem`, as the DTO's
+    `branchName` does.
+  - *What a write may name.* A create's branch must be one of those active branches, and a department named anew an
+    active copy in the warehouse's own branch, which §7.6's Unit pairs with it; anything else is 404 `NOT_FOUND`, the
+    P1a.1 precedent, since §5.15 names no answer. A department or keeper the row already names is kept by an edit
+    that leaves it, retired or gone. The answers come in the order 404 (the scoped load), 403 (the key's reach),
+    409 `STALE_DOCUMENT`, then the rules. A keeper named anew must be somebody the picker would offer the writer:
+    the people reads' own reach (`peopleScopesOf`, `people.service.ts`: one `scopeSelector` per held
+    `administrationWarehouse.create` or `.edit`, OR-ed, so the top bar narrows it as it narrows each register), checked
+    through the picker's by-id read, so a person outside it is 404 `NOT_FOUND` as `GET /people/:employeeId` answers.
+    It is asked before the leaver rule, so nobody's status is told outside the reach; an id the directory cannot read
+    still passes (OD-44). §7.8 keeps the picker scoped ("a warehouse's keeper works in its branch"), and a write that
+    could name anybody would print, on the DTO, a person that read hides. Adopted as the recommended reading under
+    the owner's 2026-11-24 instruction, and listed for the owner at Phase 1's close, with one question the design
+    leaves open: no rule refuses a keeper placed in another branch than the warehouse's, so a writer whose keys reach
+    both branches (organization-wide, or over several branches) may name one.
+  - *The keeper on the DTO.* `keeper` is `{ employeeId, code, fullNameAr, status }`, read through
+    `getDirectoryEmployees` at every read; it is null both with no keeper and with an id that resolves to nobody,
+    which the screen tells apart by `responsibleEmployeeId` (OD-64 keeper (i)). No name is stored, so HR's
+    `employee-name-copies.ts` gains no path. The DTO carries no department name: §19.4 lists none, and the web's
+    department options name it (§19.8).
+  - *Refusal details.* `ADMINISTRATION_EMPLOYEE_EXITED`'s detail carries `code: 'exited'` beside its `field`
+    `responsibleEmployeeId`, since a detail must have a code (the P1a.1 precedent for `duplicate`);
+    `ADMINISTRATION_DEACTIVATION_BLOCKED`'s details use the contract's `ADMINISTRATION_DEACTIVATION_PROBLEMS`. Both
+    codes get their en and ar FRIENDLY text in P1a.W.
+  - *`canEdit` is what the edit would do:* `.edit` reaches the warehouse's branch (`keyReachesBranch`) and its
+    selector, which the top bar narrows, loads the row (`branchScopeBranches`), so the screen never offers an edit
+    the server answers 404.
+  - *The top bar files a new store (ADR-028).* §19.3 gives `canCreate` as `keyReachesBranch`, after the ATM register
+    meta, which the top bar does not narrow, while §7.8 builds the picker's reach, and so the keeper check, from
+    `scopeSelector(ctx, key)`, which it does, and `canEdit` follows the edit's narrowed load. Read literally, an
+    organization-wide editor narrowed to A would be offered B in the create dialog, find none of B's people, get 404
+    on a B keeper, and see the new store answer `canEdit: false`. ADR-028 settles it: "the same value decides where a
+    new document is filed". So `canCreate` is `.create`'s reach AND the top bar's choice (`canCreateIn`), and the
+    create agrees: a branch outside the choice is 400 `OUT_OF_REACH` on `body.branchId`, as a register filter outside
+    it is. To open a store in B, the editor chooses B, or the whole company, in the top bar, where the picker, the
+    keeper check and `canEdit` then agree. An engineering reading of the platform rule, not a business rule.
+  - *The picker.* `GET /people` searches the employed only and takes no status, with `branchId` narrowing inside the
+    keys' reach and `sortBy` name or code; `GET /people/:employeeId` reads every status through the same scoped
+    search, so a stored keeper who left still shows, as one.
+  - *The retirement registry.* `warehouse-holds.ts` holds it, exported through the feature's index as
+    `registerWarehouseHoldChecker`; a checker answers `holdsStock`, `openDocument` or null, the contract's
+    `ADMINISTRATION_DEACTIVATION_PROBLEMS`, and the refusal names each hold once, in that order. It is asked on a
+    retirement only, never on a reactivation. The warehouse's `activeFor` (§5.16) waits for its first caller, the
+    first document that names a warehouse (P5).
+  - *Fields.* `location` is free text up to 200 characters, `notes` up to 2,000 as an item's; the code is required,
+    trimmed, in the org units' pattern. `GET /warehouses/branch-options` takes no query: a stray one is a 400.
+- **P1b.1 built** (2026-11-24). The supplier register ships as §19.1 says, under the owner's answers (§16.12) and
+  ADR-040 (OD-01 C: module-owned now, a platform seam later, IT vendors and Fleet workshops untouched): suppliers,
+  the `SUP-` code on `supplier:global`, the categories read widened for supplier editors, and supplier papers (OD-11
+  A) with their category, authorizer and three endpoints; every bundle §6.5 gives a supplier key gains it, titled as
+  before. OD-68 B: no go-live step, no run model, no entrypoint change. Built beside P1a.3 and rebased onto it, so
+  the shared lists (manifest, roles, errors, realtime registries, this section) hold both. Where the code had to
+  choose what the design leaves open:
+  - *The tax-number warning (OD-11 (i))* rides the record, after ATM's seal duplicates (`duplicates` on its DTO):
+    every single-supplier answer (`GET /:id`, the create, the edit and both paper writes) is the detail DTO, whose
+    `taxNumberMatches` names up to five other suppliers holding the same number, newest first, retired ones marked
+    `isActive: false`; the register's rows carry none. The number is compared as typed, trimmed; whether
+    «123-456-789» and «123456789» are one number is for the owner, so no normalisation is applied.
+  - *The VAT status* has no values until OD-29 gives them, so it ships holding null alone
+    (`ADMINISTRATION_SUPPLIER_VAT_STATUSES = []`), any value refused (400): the stored shape is final and the values
+    join without a migration. Listed for the owner with OD-29.
+  - *Categories.* Each must exist (404, as P1a's references) and one named anew must be active, by the category's
+    own `activeFor` ("stays out of every new choice"): 422 `ADMINISTRATION_REFERENCE_INACTIVE`, one detail per
+    retired category, field `categoryIds`, its `message` the id (IT's value-in-message precedent); a supplier keeps a
+    category that retired after it was named. Either level may be named; how an RFQ matches a top-level category to
+    its subcategories' items is P3's. Ids are canonical and named once, in the order first given, at most 100 (a
+    stored list's bound, not a business rule). `?categoryId=` reads a category with its subcategories, as the item
+    register does. Only `.create` and `.edit` join the categories read (§19.3), so `.view` alone fills no category
+    filter; every seeded bundle with the supplier view key also holds `administrationItem.view`.
+  - *A paper's link is versioned.* §11.4's "link writes are version-guarded" is read literally: the link takes the
+    multipart fields `label` (1–200, a file's display name) and `version` (the HR hiring-documents shape), the
+    removal `?version=` (ATM's `AtmVersionQuerySchema`), and both move the supplier's `__v`, so an edit decided before
+    a paper was linked is stale. The bound of 20 rides in the link write's filter and, since §5.15 names no code for
+    it, answers a new module-wide one, 422 `ADMINISTRATION_ATTACHMENT_LIMIT` (`ADMINISTRATION_MAX_LIST_ATTACHMENTS`);
+    a full list is refused before a byte is stored. The collection is made ready before the upload, so a failed
+    index build stores nothing, and a link write that misses or throws withdraws its upload (§11.4's "failed link
+    write", as IT's signed copy does on any throw). The endpoint takes an upload only, never a JSON link of an existing
+    file, so §19.7's "a link to a file of another category or entity" cannot be made: the strict schema refuses a
+    `fileId`, and a paper is never reached through another supplier (404).
+  - *OD-76 on a record with no draft.* No supplier paper is required (OD-76 A names none), so no gate reads the scan
+    states, which the detail shows per paper (`scanStatus`, null for a file gone or archived, «الملف غير متاح»; the
+    file id stays on the server). A writer holding `.edit` without `.view` (a custom role: every §6.5 bundle with a
+    write key holds `.view`) gets each write's detail with every `scanStatus` null and Files not asked, since the
+    authorizer would refuse each lookup and audit it as `permissionDenied` in their name. "After submission (i)" has
+    nothing to apply to, so the list is open at every status, retired included; whether a retired supplier's papers
+    freeze is for the owner.
+  - *The authorizer's write branch* takes `.edit` at organization scope, the paper endpoints' own OD-04 A rule, so a
+    branch holder of `.edit` with a `file.*` key cannot write the papers through `/platform/files` (§11.3's table
+    names only the key). The category resolver ensures the category once more when the cached one is no longer found.
+  - *The intake* is the module's `shared/file-upload.ts`: one helper, its cap `min(category + 5, MAX_UPLOAD_MB)`, with
+    the latin1 file-name decode Fleet's and ATM's uploads apply, written here because the module imports no other
+    (§3.7). A paper's display name in Files is its label.
+  - *Words and logs.* The keys' Arabic resource name is the genitive «الموردين», so the labels read «عرض الموردين»
+    as Fleet's read «عرض السائقين»; the page keeps «الموردون». §6.8's nested contact phones join the logger's
+    redaction list at three depths (`CONTACT_PHONE_PATHS`), the slice's one change outside the module's registries;
+    masking phones in the register is P1b.W's (§13.6 B). Registration numbers are trimmed, 1–50 characters, the
+    Organization's own bounds, with no format imposed.
+  - *Roles.* §6.5's "+ create/edit if OD-04 gives suppliers to procurement" is not met under OD-04 A, so only the
+    master-data administrator writes suppliers.
+  - *For P1b.W:* the supplier rows show category names, so the category topics' web rows gain `suppliers` with the
+    screen that shows them; the new refusal code needs its en and ar `FRIENDLY` text then.
+- **P1a.W built** (2026-11-25). Phase 1's fourth pull request ships as §19.1 says, under the owner's answers
+  (§16.12): the `/administration/*` mount, the home, the item register and record, the warehouse register, units and
+  categories, the category «الشئون الإدارية» with its four rows (140 → 144) and the `box` and `warehouse` glyphs, every
+  `ADMINISTRATION_*` refusal in the shared `FRIENDLY` table, and §19.7's sidebar case. Built from the UI checklist
+  re-run on 2026-11-24 (§13.6 asks for it), which settles what §13.6 left to the pattern pass: single-valued filters
+  (the list contracts take one value each), `SearchableSelect` for the category and unit, `BOARD_TABLE_FILL` (the
+  family's majority, not IT's `_LOW`), a row click that opens the item, and the detail's edit as a dialog. Where the
+  code had to choose what the design leaves open:
+  - *Files beyond §19.8.* `lib/catalog-form.ts` (the units' and categories' form state) and `lib/refusals.ts` (each
+    refusal detail worded beside its field), with specs; a screen spec for every page, not only items and warehouses;
+    `screen-fixtures.tsx`, the specs' shared reader and records.
+  - *The selects read whole.* One cached read of every unit and every category, both statuses and every page (the
+    server caps a page at 100), filtered in the browser, serves the item form, the register's filters and the parent
+    select — in place of separate `isActive=true` and `topLevel=true` reads — so a retired current value keeps its
+    name (IT's `ItCatalogSelect` rule) and a catalog write re-reads one list. A subcategory is offered on its own
+    `isActive`, under a retired parent too, as the server judges it.
+  - *Names from the reads that carry them.* The branch filter and the create dialog name branches from
+    `GET /warehouses/branch-options`, which carries them, so no `/platform/branches/options` hook is written. The
+    department is picked from `/platform/departments/options`, narrowed to the store's branch by `parentId`; the one
+    a store already names stays — when it has been retired since, the active list no longer holds it, so it is named
+    from the same read with `?includeInactive=true` (the platform's rule: for naming, never for choosing) and marked
+    «موقوف», and one no read names still holds the box as «—» rather than «بلا إدارة». The register shows no
+    department, since the DTO names none (§19.4).
+  - *The keeper picker searches the reach, not the dialog's branch:* no `branchId` is sent, so the box offers whom
+    the server would accept; whether a keeper must work in the store's branch is the question P1a.3 left open.
+  - *Defaults.* The registers open on the live rows with the server's own order, the catalogs on every status sorted
+    by sort order (each its reference's). A store's kind is chosen, never assumed; its code box upper-cases what is
+    typed, the only case the contract takes. Status words are «نشط» / «موقوف»: §0.4 lists none, so they are the
+    reference register's (IT's consumables, «الأصناف النشطة» / «الأصناف الموقوفة»), «نشط» also the product's
+    commonest.
+  - *Before the round trip.* The item's levels are checked as the server checks them — whole numbers to 1,000,000
+    as typed, the order on Save — and so is a barcode with a space inside, whose contract refusal is a plain 400
+    naming no box; the order, the barcode and a warehouse code in the wrong pattern are marked on the same press of
+    Save that names a missing value. The server still decides. A stale edit (409 `STALE_DOCUMENT`) re-reads the
+    register and the record, and the open dialog rebases on the record as it now is (the item and the warehouse by
+    id, a unit or category from its catalog read whole): the refusal stays in the alert box, the boxes show what was
+    saved meanwhile, and the next Save carries the new version. Keeping the reader's typing on the old version
+    would only meet the same refusal again — or, sent with the new version, silently undo the other person's save.
+    A re-read underneath with no refusal (a realtime signal) still leaves the typing alone.
+  - *A stray branch is never asked for.* While the branch options are on their way, a remembered branch is not
+    sent: one the reader no longer reaches would answer 400 before the page could drop it. If the options cannot
+    be read at all, the branch is sent as the URL says, so the page shows the server's answer — rows, or the error
+    panel with its retry — rather than loading for ever.
+  - *The home* counts the live warehouses and items, each under its read's key; the catalogs' key reads no
+    register, so it gets a tile and no count. Each count opens its register on the view it counts
+    (`?active=true`, as IT's help-desk counts carry theirs): a bare link would restore the reader's remembered
+    filters, and the list could disagree with the figure.
+  - *«Add warehouse»* shows only while some branch takes a new store (`canCreate` of the branch options): `can()` is
+    blind to scope, and with the top bar on a branch the create key does not reach — or the options unread — the
+    form's branch box would offer nothing.
+  - *Empty registers* pass the module's sentence as a plain string, as the reference does (the checklist's
+    default, item 6): a centred `EmptyState` panel in the table's cell spans the table's scroll width and leaves
+    the sentence off screen on a phone (the live check measured it). The catalogs' sentence claims no filter,
+    since they open on every status.
+  - *A stale save* (409 `STALE_DOCUMENT`) re-reads the record and lays the reader's own changes over it: a box
+    they did not touch takes the other person's value, one they changed keeps their typing, so the next Save
+    sends only their changes against the new version and never undoes the other save. Codes and names in the other script are isolated
+    in a `<span dir>` inside their cell or `<dd>`, never on the `<dd>` itself, so in Arabic they sit under their
+    label; the item's Arabic name keeps its order in the English screen.
+  - *Words.* The English says «warehouse» throughout (the glossary's term; «store» was a second name for it). A
+    keeper who has left is «منتهي الخدمة», HR's and IT's word. The duplicate refusal no longer says the holder is
+    active: a retired record holds its name, code and barcode too, and the registers open on active rows.
+  - *§19.7's case* runs the boot's `syncNavigationCatalog` in the warehouses suite: an `administrationWarehouse.view`
+    holder's whole sidebar is the Warehouses row, and the super-admin sees the four rows (five from P1b.W).
+- **P1b.W built** (2026-11-25). Phase 1's last pull request ships as §19.1 says, under the owner's answers
+  (§16.12), built on P1a.W and from the same UI checklist (its register, detail, documents-card and dialog lines):
+  the supplier register and record with the documents card (OD-11 A), the supplier form, the fifth row «الموردون»
+  on `administrationSupplier.view` with the existing `company` glyph (144 → 145), the home's supplier tile, the
+  `FRIENDLY` words for `ADMINISTRATION_ATTACHMENT_LIMIT`, `ADMINISTRATION_REFERENCE_INACTIVE` worded for any record
+  that names a unit or category, and §19.10.2's supplier sidebar case. With it every §19.10 criterion a pull request
+  can meet is met; §19.10.9, the owner's acceptance on staging, remains. Where the code had to choose what the design
+  leaves open:
+  - *Files beyond §19.8.* `lib/supplier-view.ts` (the phone mask, the papers' scan-state rules, the re-read backoff)
+    with its spec, `supplier-fixtures.ts`, and a screen spec for the record besides `suppliers-screen.spec.tsx`.
+  - *The phone mask* is the list shape `docs/06-security/security-architecture.md` writes (`298*******4567`): the
+    first three digits and the last four, every other digit a star, spaces, dashes and `+` kept; a number of seven
+    digits or fewer keeps only its last half, so no list shows a phone whole. A digit is a digit in any script: a
+    phone is stored as typed, so «٠١٠…» from an Arabic keyboard is masked as «010…» is, and shown in a `<bdo dir="ltr">`
+    so its two ends stay where they were typed (Arabic-Indic digits would otherwise swap round the stars). The record
+    shows it whole, and
+    the contact people's phones appear on the record only. The register's columns are the code, the name, the masked
+    phone, the e-mail, the categories and the status, after IT's vendor register less its contact count; the code
+    and the masked phone never break across lines, the table scrolling sideways on a phone instead.
+  - *The category filter* shows only to a reader the categories' read admits (`authorizeAny` over the item, catalog
+    and supplier write keys, §19.3); for a `.view`-only reader, a remembered `category` is not sent either, so the
+    rows never narrow by a filter the screen does not show. The form picks the categories with the shared
+    `MultiSelect` (the contract takes a list) over both levels, the live ones and any already picked, a retired one
+    kept as `ItCatalogSelect` keeps it; the register's filter stays single-valued.
+  - *The tax-number warning* appears three ways and blocks none: a status panel on the record, each holder a link,
+    a retired one marked; the `Field` warning beside the box in the edit opened from the record while it holds the
+    record's number (a register row carries no matches); and a warning toast after any save whose answer names
+    other holders, the create included.
+  - *No VAT status anywhere.* Its list is empty until OD-29, so a field or fact would always read «—» or offer
+    nothing: under the no-placeholder rule (§13) it joins the screens with its values.
+  - *The papers.* Filing is the module's dialog frame with two required values, the paper's label (1–200) and its
+    file through the shared `FileUpload` (the category's PDF and images, 10 MB); at 20 papers the card stops offering
+    the add and says why, and a raced 21st meets `ADMINISTRATION_ATTACHMENT_LIMIT`. The shared picker checks only a
+    dropped file's size, so the dialog refuses a file of another type itself, before it is sent; the server's
+    `FILE_TYPE_NOT_ALLOWED`, whose sentence names the category's internal key, gains its en and ar `FRIENDLY` words.
+    Removal is confirmed first and says the file stays in the system's records (the link alone goes). While a paper is
+    `pending` the record reads itself again after 5 s, then after about as long as the paper has waited (5, 5, 10, 20,
+    40 s, then each minute), measured in time from the read that first shows that paper pending, so a write's
+    realtime echo a moment later skips no step (a paper filed meanwhile starts the wait over), and stops when none
+    is; a 422 on the bytes
+    is read as the scan not yet answered (§11.5, until PC-5) and re-reads the record. Each act carries the version
+    the record was read at, and the record is mounted afresh for each `:id`, so a dialog left open across Back or
+    Forward never acts on another supplier.
+  - *The home* gives the supplier register its tile and a live count, P1a.W's rule: a key that reads a register gets
+    its count.
+  - *Realtime.* Only `administration.itemCategory` gains `['administration', 'suppliers']`: no supplier names a unit,
+    so the unit topic does not refetch the supplier screens. The category writes' own re-reads reach `suppliers` too
+    (`CATEGORY_SUBTREES` in P1a.W's `catalog-queries.ts`, the one change P1b.W makes there), so the row and the writes
+    say the same thing (§9.4) and a category's new name reaches the supplier screens with realtime down.
+  - *A stale save* (`STALE_DOCUMENT`) is handled as P1a.W's dialogs handle it: the supplier is read afresh and the
+    reader's own changes are laid over it (`carryEdits`, comparing a list by what it holds), so a box they did not
+    touch shows the other save and the next Save, carrying the new version, never undoes it; the dialog says so.
+    The paper acts read the live record, so their retry carries it.
+  - *Refusals beside the field.* A supplier's retired category (`categoryIds`) is worded beside the categories box,
+    in general words; the detail's id is not turned into a name, since the select offers only live categories and
+    only a race reaches it. An e-mail that is no address is marked on Save before a round trip (a loose check; the
+    server decides), and every contact person listed needs a name, as the missing-fields banner says.
+  - *§19.10.2's case* for suppliers runs in the suppliers suite: an `administrationSupplier.view` holder's whole
+    sidebar is the Suppliers row; the warehouses suite's super-admin case now reads five rows.
+- **PX-1 re-detailed** (2026-11-25). The platform slice is re-detailed in
+  [administration-module-phase-px1.md](administration-module-phase-px1.md), as §18 and §21 ask, under the owner's
+  adoption of OD-19 A, OD-20 A and OD-69 (i) (§16.12). §20's "Money approvals on the platform engine" is written as
+  [ADR-041](../03-decisions/ADR-041-money-approvals-on-the-platform-engine.md), Accepted in its documentation
+  pull request (PX-1.0). §20's "the next free number is **ADR-039**" was overtaken again: ADR-039 and ADR-040 are taken
+  (`docs/03-decisions/README.md`), so this ADR is ADR-041. The ADR settles the shape §15.2.1 proposed, with three
+  departures from the plan of record. The host keeps `approvalWorkflowId` and `approvalChainShape`, and the engine
+  stays stateless, but the shape holds the rungs as subdocuments in the chain row's own schema rather than
+  `string[]` of `permissionKey@level` (§2.1 left the type to the ADR): the strings served OD-20 B's compare, and under
+  OD-20 A they would need a parser and a second read for captions. R5's after-commit audit is opt-in per request
+  type rather than per host (§15.2.1, §18.3.1 item 5, §20), so one host may register types of both kinds. And
+  value bands are not added to the ADR later, as §20 planned: OD-18 A needs no engine change, an engine condition
+  (OD-18 B) would be a new ADR, and ADRs are immutable (`docs/README.md` rule 2). The ADR also drops the engine's closing of empty rungs above an approval, as
+  §15.2.1 R2's fix ("at every decision, never as 'approved'") asks. The re-detail plans seven pull requests, PX-1.0
+  (these documents, with platform core §11's rewrite) to PX-1.6, and records one question for the owner about HR
+  leave, PXQ-1, which PX-1 does not wait for. Their design review (Full preset, 2026-11-25) is recorded in the
+  re-detail's §13; it is the gate before PX-1.1, which also waits for Phase 1 to close.
+- **Phase 1 closed** (2026-11-25). Its seven pull requests are merged: P1a.1 (#780), P1a.2 (#781), the supplier-registry
+  ADR-040 (#782, accepted before P1b.1), P1a.3 (#783), P1b.1 (#785), P1a.W (#786) and P1b.W (#787), each green in CI.
+  §19.10's criteria 1 to 8 were checked on merged main (`4c6457d4`) by running the specs they name: the page registry
+  rose by 4 pages and 10 keys (117 → 121 pages, 431 → 441 keys), the super-admin sees the module's five rows, and the
+  scope, concurrency, realtime, language and docs criteria hold. Criterion 9, the owner's acceptance on staging with real
+  item families typed in by hand, is the one left; its date and the owner's words are recorded here when it is given.
+  - *The permission-matrix section* (§19.2) is not adopted: §6.2 is the module's matrix, as the owner's brief item 5
+    asks, and no module since Recruitment keeps a section in `docs/06-security/permission-matrix.md`.
+  - *Gaps the check found, none against a criterion:* a role holding only `administrationItem.view` or only
+    `administrationCatalog.manage` is checked by the seed spec's row-to-key mapping, not over
+    `GET /platform/me/applications`; the §7.2 rows for several listed branches and for section scope are covered by the
+    shared rule's unit specs, not by a warehouse integration case; and no spec pins the module's label in the role
+    matrix (§6.1 says nothing catches the omission; the label is present today).
+- **P2 re-detailed** (2026-11-25). Phase 2, purchase requests, is re-detailed in
+  [administration-module-phase-2.md](administration-module-phase-2.md), as §18 and §21 ask, under the owner's
+  adoption of every recommended default (§16.12). Its drift check, on `main` at `de38fd71`, found no change since
+  `9efdcbd9` in the platform code P2 relies on. P2 is written against the engine as ADR-041 leaves it, which PX-1's code
+  pull requests have yet to build, so P2's code waits for PX-1 to close (§18.2), and a second drift check reads the
+  merged engine, in a docs pull request of its own, before P2.0. ADR-041 supersedes five points of the P2 text, and the
+  code Phase 1 left differs from it in eight places; the re-detail's §1.2 details each, with the plan-of-record changes
+  it makes. It plans eleven code pull requests, P2.0 to P2.W2, and records four questions for the owner, PRQ-1 to
+  PRQ-4, which P2 does not wait for. Its design review, Full preset, ran on 2026-11-25 and is recorded in its §18: 148
+  findings over two rounds, 146 fixed, one escalated (PRQ-3) and one dropped, and a few parts dropped under (a) and
+  (d), one of which went to the owner as PRQ-4. It is the gate before P2.0.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.
@@ -3026,3 +3429,4 @@ Repository-wide findings outside this module are listed for the owner in
   §19.7; under OD-07 B or C, the item's unit sub-document and its pure spec (§2.3.4, §19.7); under OD-08 B,
   scaled-integer quantity types (§2.3.4), the integer rule of `item-rules.spec.ts` (§19.7) and the quantity inputs'
   `Input rule="integer"` (§13.6). Each of the last three re-opens Phase 1 for the part it names (§19.2).
+-

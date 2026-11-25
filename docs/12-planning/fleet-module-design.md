@@ -398,9 +398,10 @@ driver of the driving-seat registry with the vehicle he is fixed to) and writes 
 `POST /fleet/fixed-roster` — the same two functions, the same rules, the same data.
 
 - **No day, anywhere.** No date, no day stepper, no «يوم سابق», no availability word, no absence
-  or leave list, no licence block. The page header («الطقم الثابت» under «الحركة») stays on top
-  at every width and holds nothing else (answer 2 ج); the board's own Excel control is the screen's
-  only one.
+  or leave list, no licence block. **No page header at any width** — no breadcrumbs, no visible
+  title, no divider (owner, 2026-11-22: «الجزء اللى فوق دا شيله بتاع العنوان واللى فوقه», which
+  reverses answer 2 ج); the board's own first row is the top of the page, and a visually hidden h1
+  («الطقم الثابت») stays for screen readers. The board's own Excel control is the screen's only one.
 - **On a computer (≥ 1280 px):** a toolbar row (the cars the filters leave, in Arabic's five
   plural forms, and the boards' «تصدير Excel» pill: the rows on show, eight columns), the dark
   filter bar («كود السيارة», the counters «إجمالي · صيانة · بطقم · بلا طقم · one per active
@@ -722,6 +723,75 @@ Each FW slice appends its rows to the nav seed (the boot sync is additive).
 | **FW-9** | Violations in both backend shapes + the derived annual rollup view + the per-(vehicle, year) grievance dialog — zero client-side money math; violations link lit in the vehicle profile | ✅ |
 | **FW-10** | Catalogs (six kinds, archive-not-delete) + settings (vehicle-type rules + the five fleet platform settings via the platform resolver) + final integration review — **the Fleet web tier is COMPLETE** | ✅ |
 
+### Figures: Latin digits in both languages (2026-11-23)
+
+**The rule (owner, 2026-11-23):** «اى ارقام خليها بالانجلش حتى لو عربى», for his own papers «اى
+ارقام بالانجلش», and «انا عاوزك تعدل حاجات الحركة فقط». Every figure a Fleet reader sees — counts,
+dates and times, readings and kilometres, percentages, money, and the papers Fleet prints (the
+print sheets, the text cells of the Excel and PDF sheets, the custody Word letters) — is written
+in the digits 0-9, in Arabic as in English. English output is unchanged. It is Fleet's rule only:
+every other module keeps the shared helpers' digits.
+
+- **One source: `apps/web/src/modules/fleet/lib/fleet-figures.ts`.** `latinNumber(n)` groups as
+  `en-US` («1,234»); `latinDate(v, locale)` and `latinDateTime(v, locale)` use `ar-EG-u-nu-latn` /
+  `en-GB` with `dateStyle: 'medium'`, so an Arabic date keeps the shared order and its RLM marks
+  («07‏/11‏/2026») and only the digits change; a missing or unreadable value is «—». They are the
+  twins of `shared/lib/format`'s `formatNumber` / `formatDate` / `formatDateTime`, whose English
+  they equal byte for byte, and they carry distinct names so a file that also takes the shared
+  money helpers reads unambiguously. The shared helpers are not changed. Money keeps
+  `formatMoney*` (already Latin); `translate()` writes a raw number in Latin.
+- **The guard:** `modules/fleet/fleet-latin-figures.spec.ts` reads every non-spec Fleet source,
+  comments stripped, the Arabic catalogue and `shared/`, and refuses (a) a shared digit helper,
+  (b) any Arabic tag without `-u-nu-latn` (`ar-EG`, `ar-SA`, `ar-u-nu-arab`) or a numbering system
+  other than `latn`, (c) a digit-writing formatter (`Intl.NumberFormat`, `DateTimeFormat`,
+  `RelativeTimeFormat`, `DurationFormat`, `toLocale…String`) whose tag is not a quoted tag, a
+  choice between quoted tags or a constant the file binds to one — so never the reader's locale,
+  none, or plain `'ar'`, (d) a digit built from its code point, (e) an Arabic-Indic digit, «٫»,
+  «٬» or «٪» in an Arabic `fleet.*` word or in any other word a Fleet source names, (f) an image
+  viewer without `latinFigures`, (h) an Arabic-Indic digit or mark written into the code (a
+  literal, a `\u0660` escape, a `0x0660` code point, an HTML entity) outside the lines that read
+  typed input, and (i) a shared component that writes the reader's digits (`Pagination`,
+  `ListView`, `FileUploadList` and the barrel that re-exports them — found by reading `shared/`
+  with rules (a) and (b)); (g) proves each rule bites and that the shared helpers still write
+  Arabic-Indic digits for the other modules. The scans share one reader,
+  `modules/fleet/fleet-source-scan.ts`, with the image viewers' spec.
+- **The exceptions, each named in the guard:**
+  - `ZoomableImage`'s default readout — the shared `formatNumber` with
+    `fleet.licenseImage.zoomLevel` «{{value}}٪» — is Operations' shipment receipt viewer and stays
+    «١٠٠٪». Every Fleet viewer passes `latinFigures` and reads `fleet.licenseImage.zoomPercent`
+    «{{value}}%».
+  - The five `ar-EG` formatters that write only a month's or a weekday's name (`monthName` in the
+    dashboard blocks, the two dashboard charts, the roster's weekday, the custody memo's
+    `monthOfDay`): a name has no digit, and the year beside it is Latin.
+  - Identifiers (car codes, plates, employee codes, phones, card numbers) were Latin already, and
+    typed text shows as typed; only the custody letter's typed reason is folded (`asciiDigits`,
+    and «٫» / «٬» between two digits, so «١٢٫٥» prints «12.5»).
+  - The six code lines that READ a typed Arabic-Indic figure — the notice setup's fold, the plate's
+    own digits in the notice render, the letter's two typed marks — named word for word in rule (h).
+  - The fuel reconcile's file picker (`shared/ui/FileUpload`): its list of picked files writes
+    `ar-EG` sizes, but the card unmounts the picker the moment a file is picked and writes the
+    chosen file's size itself, in Latin.
+  - The numeric cells of every Excel file stay numbers; its date columns are text cells and follow
+    the screens.
+  - The browser's own date boxes (`<input type="date">`) show the digits of the browser's language.
+  - The insurer form's pre-printed «٢٠٢» year box (`lib/notice-templates.ts`) is the insurer's
+    image.
+- **The custody Word letters** (`lib/custody-paper-format.ts`, `lib/custody-paper-letters.ts`) no
+  longer build Word's Arabic-Indic numerals from code points: amounts are `grouped()` («81,908»,
+  «124,139.46»), serials `String(i + 1)`, dates their plain parts, and the period dates are still
+  joined by the tatweel («01ـ09ـ2026»). They never read the UI language, so an English-UI print is
+  the same Arabic paper, and a reprint re-formats the stored figure.
+- **Input stays forgiving:** the folds that read a pasted or typed Arabic-Indic digit as its Latin
+  twin (the vehicle-code match, the notice setup, the input rules) are unchanged. §10-H3 is about
+  input, not display, and stands as written.
+- **The car record's counts.** «المخالفات» is the sum of `totalCount` over
+  `GET /fleet/violations/rollup?vehicleCodes=<code>` — the two halves its link opens (`codes` +
+  `dcodes`), by code with the old-book rows, a statement counted by its count and a driver's fine
+  as one — as «العدادات», «الصيانة» and «الحوادث» already count by code. The four counts take
+  Arabic's five forms through `pluralKey` (`fleet.vehicle.count.<key>.<one|two|few|many|other>`,
+  zero read as `few`): «حادث واحد · حادثان · 3 حوادث · 11 حادثًا · 100 حادث». The odometer
+  screen's count beside its filters uses the same words, so the record and the screen agree.
+
 ## 13. Open Questions
 
 Answers refine defaults/labels; none reopen structure.
@@ -778,3 +848,5 @@ The ten questions from revision 0.1 are carried into §13 (renumbered) — none 
 | 2026-11-09 | 1.23 — **Accidents v2, the car card, and «الفرع» on the workshop register** (owner request, approved «موافق طبق PR ولما CI يخضر أدمج»; no new entity, no new permission, no migration, no data changed). **Accidents.** §2.8 now records the transfer fields the collection already carried (`transfersIn`, `transferredIn`, `transferredOut`) and the derived «إجمالي المتبقي»; §13-Q9 is marked answered with `remaining = amountCollected + companyCost − paidAmount + transferredIn − transferredOut`, derived on read and stored nowhere (H10's fate follows). §4.6 gains «Transfers between cars»: the owner-approved plan (`planTransfer`, replacing `coverDeficit`) — the amount typed, or left empty for the whole negative; his picks first in his order, then the system's from the smallest balance, each to zero, every row tagged «اختيار يدوي» / «اختيار تلقائي»; «تغطية السالب كله تلقائياً» kept («لا سيب الزرار»); all the cars short allowed with an amber note; a stop at 20 giving cars. It **partly reverses the 2026-10-01 rule «مش انا اللى هكتب المبلغ الماخوذ»**, under which the amount was never typed. The server now caps a take at the receiving file's negative (`FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT`), and the short refusal moved from an English `BUSINESS_RULE_VIOLATION` to `FLEET_ACCIDENT_TRANSFER_SHORT`, both 422 with their figures in `details`; `GET /fleet/accidents/car-balances` drops soft-deleted cars before matching codes and matches an old-book code by the save's rule (spaces as one, Latin case ignored), so the list never offers a car, or a figure, the save refuses. The board and the form take the approved samples' look («شكل تعديل الشاشه بتاعت الحوادث تمام»), and the board reads the whole car list only under `fleetVehicle.view`. **The car card.** «عاوز لما اماوس يقف على كود عربيه يجيب بيانات زى اما اقف على اسم السواق نفس الموضوع كدا»: on every Fleet register table and board chip that shows a car code, never inside a picker, a filter or a form dialog. It shows the code, the type, the status (or «في الورشة»), «اللوحة», the car's «الفرع», «نوع التشغيل», «السائقون اليوم», «انتهاء الترخيص» and «آخر قراءة عداد» («تمام وزود اخر عداد»). Only readers with `fleetVehicle.view` get it; the drivers' line also needs `fleetRoster.view` and `fleetDriver.view`, the reading's line `fleetMaintenance.view` or `fleetOdometer.view`, and a line its reader cannot see is left out. Nothing is fetched until a card first opens, and then only lists the pages already share, plus one small new read for the reading: `GET /fleet/odometer/latest-readings` (`fleetOdometer.view` or `fleetMaintenance.view`) gives every registry car's last reading whatever its status, the alarms' own figure, because the alarms list covers active cars only and a car out of service would have read «—». A row with no registry car gets no card. One card is open at a time across driver and car cards: the driver card's hover layer became a shared piece that places the card by the page's direction. The platform's org-unit `/options` takes `?includeInactive=true` so a closed branch can still be named; the pickers keep the active list. **«الفرع» on the workshop register.** «عاوز الفرع اللى العربيه متعينه عليه مش الفرع اللى فيه الصيانه»: the CAR's branch (`vehicle.branchId`), joined on read like the car's operation and never stored on the visit, so §2.6 is unchanged. `FleetMaintenanceVisitDto` gains a required `branchId: string | null` (null for an old-book visit with no registry car or a car with no branch; a soft-deleted car keeps its branch), on the list rows and on the check-in, check-out, reopen and update answers. The column sits right after «نوع التشغيل», named from a list that includes inactive branches, and the Excel export carries it in the same place. |
 | 2026-11-10 | 1.24 — **«سائق الخروج» correctable in the visit's edit** (owner request «دلوقتى عاوز ف الصيانة عاوز اقدر اعدل السواق التانى اللى هو سائق الخروج»; no new entity, no new endpoint, no new permission, no new event, no migration, no data changed). `PATCH /fleet/maintenance/:id` gains an optional `driverOutEmployeeId`: on a CLOSED visit only (an open visit answers 400 on `body.driverOutEmployeeId`, code `INVALID`; check-out sets it; a copy read before the visit was reopened answers 409 `STALE_DOCUMENT` instead), a correction and never a clear (`null` refused), checked against the HR directory only when it differs from the stored driver, behind the same `fleetMaintenance.edit`, version check and `update` audit as the rest of the edit (§2.6, §4.2). Before, a wrong exit driver could only be fixed by reopening the visit, which also clears the exit date, the exit reading and the custody, and checking it out again. The edit dialog shows «سائق الخروج» right after «سائق الدخول» on a closed visit, prefilled with the stored driver, and sends it only when the edit changed it. On an old visit with only the book's spelling, the chosen employee is recorded and shown; `driverOutName` is left as it was. Reopen still clears the exit driver, check-out still requires it, and `outDate` stays non-editable. |
 | 2026-11-18 | 1.25 — **«الطقم الثابت» in the look of «تعيين السيارات»** (owner request «واعمل ديزاين شاشة الطاقم الثابت زى التعيين اليومى», sample approved with «1 ب / 2 ج», then «انت لسه معملتش بيدج الطاقم الثابت»; no new entity, no new endpoint, no new permission, no new event, no new contract field, no migration, no data changed). §4.5b rewritten as built: the daily board without a day — on a computer the table with the drivers panel beside it, below 1280 px the cards and sheets in code order; a draft that survives a reload, «تراجع» (50 steps, in memory), the save bar with the edited codes, the swap of the two seats, the move promised under the seat; the page header on top at every width with no actions, the board's one Excel control (answer 2 ج); no availability flag for a standing member (answer 1 ب); the workshop car still editable. The fixed save's refusals gain `details` (`FIXED_CREW_DRIVER_HELD` + `FIXED_CREW_HOLDER` in scope, `FIXED_CREW_VEHICLE_NOT_ACTIVE`, `FIXED_CREW_PROFILE_INACTIVE`, `FIXED_CREW_NOT_A_DRIVER`, `FIXED_CREW_MISSION_INACTIVE`) — same status, code and message (an out-of-scope holder is no longer named by its id in it), no names — and the screen says each in Arabic, naming the driver and the holding car. A driver held on a car off the board is listed, never offered to a seat (the daily rule). The daily screen is unchanged: its shared pieces gained optional props whose defaults draw it as before. |
+| 2026-11-22 | 1.26 — **«الطقم الثابت» without a page header** (owner request, over a picture of the header: «الجزء اللى فوق دا شيله بتاع العنوان واللى فوقه»; no new entity, endpoint, permission, event, contract field or migration). §4.5b: the breadcrumbs, the title and the divider are gone at every width, reversing answer 2 ج; the board's first row (the car count and the Excel pill on a computer, the car search and the Excel button on a phone or a tablet) is the top of the page, and only a visually hidden h1 stays. The daily «تعيين السيارات» is unchanged. |
+| 2026-11-23 | 1.27 — **Figures: Latin digits in both languages, and the car record's «المخالفات» count** (owner request: «اى ارقام خليها بالانجلش حتى لو عربى», «اى ارقام بالانجلش», «انا عاوزك تعدل حاجات الحركة فقط»; on the car record «أيوه صلحها» and «اه»; no new entity, endpoint, permission, event, contract field or migration, no data changed). §12 gains «Figures: Latin digits in both languages (2026-11-23)»: every figure of the Fleet screens, their print and Excel sheets and the custody Word letters in 0-9 through the module's own `lib/fleet-figures` (the shared helpers untouched, every other module unchanged), the module-wide guard `fleet-latin-figures.spec.ts`, and its named exceptions (Operations' zoom readout, five name-only `ar-EG` formatters, identifiers, typed text, numeric Excel cells, native date inputs, the insurer's printed year box). The car record's «المخالفات» is the rollup of the two halves its link opens, by code, old-book rows included; its four counts take Arabic's five forms. §10-H3 (input normalization) is unchanged. |

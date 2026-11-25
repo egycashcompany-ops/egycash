@@ -60,13 +60,18 @@ describe('the assembled page registry', () => {
   // Stage 3's two day-decision keys then arrive WITH the screen that uses them — they route to
   // `hr.attendance-regularizations`, which gained a fourth tab for the queue — so both land in the
   // assigned count below and the unassigned one does not move.
-  it('declares 89 pages over 332 permissions', () => {
+  it('declares 90 pages over 333 permissions', () => {
     // The 89th is `hr.attendance-devices` (AT-D4), and it adds NO key: it is the screen the two
     // `attendanceDevice` keys were declared for in AT-D1 and left waiting on. A page arriving
     // without a permission is the healthy direction — a screen built for keys that already
     // existed, rather than a key invented to give a page something to guard.
-    expect(pages).toHaveLength(89);
-    expect(permissions).toHaveLength(332);
+    //
+    // The 90th is «ساعات العمل» (`hr.working-hours`, 22 November), and it arrives WITH its own key,
+    // `attendance.manageWorkingHours` — the `hiringRequirement` shape. Not the shift catalog's
+    // key: saving a department's hours re-derives its unfrozen days and payroll reads what that
+    // writes, which managing the catalog never does, so the matrix has to name them apart.
+    expect(pages).toHaveLength(90);
+    expect(permissions).toHaveLength(333);
   });
 
   /**
@@ -158,7 +163,7 @@ describe('the assembled page registry', () => {
    * receipt's national ID is its own sensitive-data grant there, as the device receipt's is on
    * `it.assets`), four on `it.consumables`. The unassigned count does not move.
    */
-  it('assigns 305 permissions to a page and leaves 27 deliberately unassigned', () => {
+  it('assigns 306 permissions to a page and leaves 27 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
     // `hiringRequirement.manage` arrives WITH its page, so it lands here and the unassigned count
     // below does not move — the same shape as `insuranceJobTitle.manage` before it.
@@ -168,7 +173,9 @@ describe('the assembled page registry', () => {
     // it built for them, so two keys moved from the unassigned list to this one and the total did
     // not change. This is the `employeeLoan` movement again — keys find a home when a screen is
     // built for them, never because a page was invented to collect them.
-    expect(assigned).toHaveLength(305);
+    // 306: «ساعات العمل» arrives WITH its screen, so `attendance.manageWorkingHours` lands here and
+    // the unassigned count below does not move — the `hiringRequirement.manage` shape again.
+    expect(assigned).toHaveLength(306);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.
@@ -201,7 +208,9 @@ describe('the assembled page registry', () => {
     // yet, counted because the authority over it is administered from today.
     // HR's 40th is «أجهزة البصمة» (`hr.attendance-devices`, AT-D4): the unmatched machine ids, the
     // link and ignore actions, and the backfill's progress.
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 18, hr: 40, fleet: 19, it: 12 });
+    // HR's 41st is «ساعات العمل» (`hr.working-hours`, 22 November) — a tab of «الإعدادات» that sets
+    // the hours each department owes for the employees with no shift assignment.
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 18, hr: 41, fleet: 19, it: 12 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer

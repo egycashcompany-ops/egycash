@@ -5,12 +5,15 @@ import { Router } from 'express';
 import { z } from 'zod';
 import {
   CompleteOperationsShipmentSchema,
+  ConfirmOperationsDeliverySchema,
   CreateOperationsShipmentSchema,
   ListOperationsShipmentsQuerySchema,
   OperationsDayBoardQuerySchema,
+  OperationsDeliveredBoardQuerySchema,
   OperationsDeletedShipmentsQuerySchema,
   OperationsShipmentHistoryQuerySchema,
   ReopenOperationsShipmentSchema,
+  UndoOperationsDeliverySchema,
   UpdateOperationsShipmentSchema,
   objectId,
 } from '@ecms/contracts';
@@ -19,11 +22,13 @@ import { authorize } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import {
   completeShipment,
+  confirmShipmentDelivery,
   createShipment,
   deleteShipment,
   deleteShipmentReceiptImage,
   getDayBoard,
   getDeletedShipments,
+  getDeliveredBoard,
   getShipment,
   getShipmentHistory,
   getShipmentLog,
@@ -31,6 +36,7 @@ import {
   listShipments,
   reopenShipment,
   restoreShipment,
+  undoShipmentDelivery,
   updateShipment,
   uploadShipmentReceiptImage,
 } from './shipment.controller';
@@ -74,6 +80,15 @@ export const buildOperationsShipmentsRouter = (): Router => {
     validate({ query: OperationsDeletedShipmentsQuerySchema }),
     asyncHandler(getDeletedShipments),
   );
+  // Round 33 B — «الشحنات المسلَّمة»: one Cairo day of deliveries. BEFORE `/:id` like its siblings,
+  // behind the day board's own read grant: it is the day board's rows, the delivered ones.
+  router.get(
+    '/delivered',
+    authenticate,
+    authorize('operationsShipment.view'),
+    validate({ query: OperationsDeliveredBoardQuerySchema }),
+    asyncHandler(getDeliveredBoard),
+  );
   router.get(
     '/:id',
     authenticate,
@@ -108,6 +123,23 @@ export const buildOperationsShipmentsRouter = (): Router => {
     authorize('operationsShipment.complete'),
     validate({ body: ReopenOperationsShipmentSchema, params: IdParamSchema }),
     asyncHandler(reopenShipment),
+  );
+  // Round 33 B — «الشحنات المسلَّمة»'s ✓ with the paper receipt, and «إلغاء التأكيد». Its OWN record
+  // («الشاشة الجديدة حاجاتها لوحدها»), on the grant that guards the day board's ✓ — both directions,
+  // the `complete` / `reopen` precedent. No new permission.
+  router.post(
+    '/:id/delivery-confirmation',
+    authenticate,
+    authorize('operationsShipment.complete'),
+    validate({ body: ConfirmOperationsDeliverySchema, params: IdParamSchema }),
+    asyncHandler(confirmShipmentDelivery),
+  );
+  router.delete(
+    '/:id/delivery-confirmation',
+    authenticate,
+    authorize('operationsShipment.complete'),
+    validate({ body: UndoOperationsDeliverySchema, params: IdParamSchema }),
+    asyncHandler(undoShipmentDelivery),
   );
   router.delete(
     '/:id',

@@ -15,7 +15,8 @@ import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer } from '../../../platform/layout/PageContainer';
 import { LoadingState } from '../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
-import { formatDate, formatDateTime, formatNumber, localized } from '../../../shared/lib/format';
+import { localized } from '../../../shared/lib/format';
+import { pluralKey } from '../../../shared/lib/plural';
 import { cn } from '../../../shared/lib/cn';
 import { useBranchNames } from '../../organization/shared/references';
 import {
@@ -29,7 +30,7 @@ import {
   useOdometerLogs,
   useVehicle,
   useVehicleTypes,
-  useViolations,
+  useViolationRollup,
 } from '../api/fleet-queries';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
@@ -54,6 +55,7 @@ import { VehicleFormDialog } from '../components/VehicleFormDialog';
 import { VehicleStatusDialog } from '../components/VehicleStatusDialog';
 import { LicenseImagePreviewDialog } from '../components/VehicleLicenseImage';
 import { WHOLE_HISTORY } from '../lib/odometer-range';
+import { latinDate, latinDateTime, latinNumber } from '../lib/fleet-figures';
 
 /**
  * The profile's history links, lit per slice as each page ships (owner navigation rule). Each
@@ -129,6 +131,16 @@ const LICENCE_TAG_TONE: Record<keyof typeof LICENCE_STATE_KEY, string> = {
   valid: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
 };
 
+// The page's figures and dates in Latin digits — the body AND its print sheet, consistently.
+//
+// Owner, 2026-11-22 («صلحهم») put the car page's body in Latin; 2026-11-23 («اى ارقام خليها
+// بالانجلش حتى لو عربى» / «انا عاوزك تعدل حاجات الحركة فقط») made it the rule for every figure in
+// Fleet, so «طباعة التقرير» (`printReport`) now writes its two dates in Latin too, and the history
+// rows' counts read «3 حوادث», «14 عملية». The helpers are Fleet's own (`lib/fleet-figures`): the
+// shared `formatNumber` / `formatDate` keep ar-EG for every other module. Dates keep the shared
+// styles and the browser's clock — only the digits change (`-u-nu-latn`); a missing or unreadable
+// date is «—», as the shared one is.
+
 export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -171,9 +183,9 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
         ? undefined
         : alarm.remainingKm < 0
           ? t('fleet.dashboard.overdueKm', {
-              km: formatNumber(Math.abs(alarm.remainingKm), locale),
+              km: latinNumber(Math.abs(alarm.remainingKm)),
             })
-          : t('fleet.dashboard.remainingKm', { km: formatNumber(alarm.remainingKm, locale) });
+          : t('fleet.dashboard.remainingKm', { km: latinNumber(alarm.remainingKm) });
   const visit = lastVisit.data?.items[0];
   /**
    * The service this tile names must be the one the countdown beside it is measured FROM.
@@ -202,12 +214,12 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
     alarm !== undefined
       ? alarm.lastServiceAt === null
         ? t('fleet.vehicle.noService')
-        : formatDate(alarm.lastServiceAt, locale)
+        : latinDate(alarm.lastServiceAt, locale)
       : alarms.data === undefined || lastVisit.data === undefined
         ? undefined
         : visit?.outDate == null
           ? t('fleet.vehicle.noService')
-          : formatDate(visit.outDate, locale);
+          : latinDate(visit.outDate, locale);
 
   // The caption under the alarm figure: amber when it names a reason or a coming service, red
   // once the service is overdue.
@@ -246,13 +258,13 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
               ? undefined
               : reading.kind !== 'reading'
                 ? t('fleet.vehicle.noReadings')
-                : formatNumber(reading.km, locale)
+                : latinNumber(reading.km)
           }
           unit={reading?.kind === 'reading' ? t('fleet.vehicle.km') : undefined}
           caption={
             reading?.kind === 'reading' && reading.highest !== null
               ? t('fleet.vehicle.highestReading', {
-                  km: formatNumber(reading.highest.km, locale),
+                  km: latinNumber(reading.highest.km),
                 })
               : t('fleet.vehicle.lastReadingHint')
           }
@@ -282,10 +294,7 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
                 // closed before that reading was collected carry `null` and fall back to the
                 // arrival reading, which is what those rows have always shown.
                 t('fleet.vehicle.lastServiceAt', {
-                  km: formatNumber(
-                    baselineVisit.exitOdometer ?? baselineVisit.odometerAtService,
-                    locale,
-                  ),
+                  km: latinNumber(baselineVisit.exitOdometer ?? baselineVisit.odometerAtService),
                 })
           }
         />
@@ -298,19 +307,25 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
  * How many records each history row leads to — the list's own total for this car, asked with a
  * one-row page so nothing but the count travels. Each is asked only under its own permission.
  *
- * The odometer's and the maintenance's counts ask with the very car filter their links send — the
- * CODE (`vehicleCodes`), not the id. Both screens match a code against the registry car AND
- * against rows kept from the old book under that code with no car attached
- * (`byVehicleOrBookCode`); counted by id, a car that joined the registry after the book import
- * would promise fewer readings, or visits, than «العدادات» or «الصيانة» then lists (2 beside the
- * screen's 3).
+ * The odometer's, the maintenance's and the accidents' counts ask with the very car filter their
+ * links send — the CODE (`vehicleCodes`), not the id. The three screens match a code against the
+ * registry car AND against rows kept from the old book under that code with no car attached
+ * (`byVehicleOrBookCode`; the accidents' `vehicleClause`); counted by id, a car that joined the
+ * registry after the book import would promise fewer readings, visits or accidents than
+ * «العدادات», «الصيانة» or «الحوادث» then lists (2 beside the screen's 3) — and a car whose only
+ * accident is an old-book file read «سجل نظيف» above a list holding it (owner, 2026-11-22).
+ *
+ * «المخالفات» (owner, 2026-11-22: «أيوه صلحها»): its link opens BOTH halves of the violations
+ * screen on the car's code (`codes` + `dcodes`), so the count is the rollup those halves draw —
+ * `GET /fleet/violations/rollup?vehicleCodes=<code>`, by CODE, old-book rows with no car included
+ * — summed as the boards count it: a statement «×5» is five, a driver's fine one
+ * (`totalCount = vehicleCount + driverCount`). The list's `totalItems` by id counted documents
+ * and missed the old book: one statement «×5» read 1 above a board whose «إجمالي السيارة» says 5.
  */
 const useHistoryCounts = (
-  vehicleId: string,
   vehicleCode: string,
   can: (permission: string) => boolean,
 ): Partial<Record<(typeof HISTORY_LINKS)[number]['key'], number>> => {
-  const one = { vehicleId, page: 1, pageSize: 1 };
   const odometer = useOdometerLogs(
     { vehicleCodes: [vehicleCode], page: 1, pageSize: 1 },
     can('fleetOdometer.view') && vehicleCode !== '',
@@ -319,13 +334,23 @@ const useHistoryCounts = (
     { vehicleCodes: [vehicleCode], page: 1, pageSize: 1 },
     can('fleetMaintenance.view') && vehicleCode !== '',
   );
-  const accidents = useAccidents(one, can('fleetAccident.view') && vehicleId !== '');
-  const violations = useViolations(one, can('fleetViolation.view') && vehicleId !== '');
+  const accidents = useAccidents(
+    { vehicleCodes: [vehicleCode], page: 1, pageSize: 1 },
+    can('fleetAccident.view') && vehicleCode !== '',
+  );
+  // The rollup's key is built from strings, so a fresh `[vehicleCode]` each render asks nothing new.
+  const violations = useViolationRollup(
+    undefined,
+    [vehicleCode],
+    can('fleetViolation.view') && vehicleCode !== '',
+  );
   return {
     ...(odometer.data === undefined ? {} : { odometer: odometer.data.meta.totalItems }),
     ...(maintenance.data === undefined ? {} : { maintenance: maintenance.data.meta.totalItems }),
     ...(accidents.data === undefined ? {} : { accidents: accidents.data.meta.totalItems }),
-    ...(violations.data === undefined ? {} : { violations: violations.data.meta.totalItems }),
+    ...(violations.data === undefined
+      ? {}
+      : { violations: violations.data.reduce((sum, row) => sum + row.totalCount, 0) }),
   };
 };
 
@@ -336,7 +361,7 @@ export const VehicleDetailPage = (): JSX.Element => {
   const { id = '' } = useParams();
 
   const { data: vehicle, isPending, isError, error, refetch } = useVehicle(id);
-  const counts = useHistoryCounts(vehicle?.id ?? '', vehicle?.code ?? '', can);
+  const counts = useHistoryCounts(vehicle?.code ?? '', can);
   // «تعيين السيارات — سائق نشط»: today's roster, when the reader may read it.
   const today = (() => {
     const now = new Date();
@@ -423,7 +448,12 @@ export const VehicleDetailPage = (): JSX.Element => {
           'border-emerald-500/20 bg-emerald-500/10 font-medium text-emerald-600 dark:text-emerald-400',
       };
     }
-    return { tag: t(`fleet.vehicle.count.${key}`, { count: String(n) }) };
+    // Grouped like every other figure on the page, in Latin digits, and in the form Arabic gives
+    // the noun for that count (owner, 2026-11-22: «اه») — «حادث واحد · حادثان · 3 حوادث · 11 حادثًا
+    // · 100 حادث», «1,234 قراءة». English keeps its one form.
+    return {
+      tag: t(pluralKey(`fleet.vehicle.count.${key}`, locale, n), { count: latinNumber(n) }),
+    };
   };
   const make = type === undefined ? '—' : localized(type.name, locale);
   /** «طباعة التقرير»: the car's whole file, the same sheet the registry's print button opens. */
@@ -441,11 +471,11 @@ export const VehicleDetailPage = (): JSX.Element => {
           { label: t('fleet.vehicles.columns.motor'), value: vehicle.motorNumber },
           {
             label: t('fleet.vehicles.columns.joinedAt'),
-            value: formatDate(vehicle.joinedAt, locale),
+            value: latinDate(vehicle.joinedAt, locale),
           },
           {
             label: t('fleet.vehicles.columns.license'),
-            value: formatDate(vehicle.licenseExpiresAt, locale),
+            value: latinDate(vehicle.licenseExpiresAt, locale),
           },
           { label: t('fleet.vehicles.columns.licenseClass'), value: licenseClassName ?? '—' },
           { label: t('fleet.vehicles.columns.operation'), value: operationName ?? '—' },
@@ -600,10 +630,10 @@ export const VehicleDetailPage = (): JSX.Element => {
             footer={
               <>
                 <span>
-                  {t('fleet.vehicle.createdAt')}: {formatDateTime(vehicle.createdAt, locale)}
+                  {t('fleet.vehicle.createdAt')}: {latinDateTime(vehicle.createdAt, locale)}
                 </span>
                 <span>
-                  {t('fleet.vehicle.updatedAt')}: {formatDateTime(vehicle.updatedAt, locale)}
+                  {t('fleet.vehicle.updatedAt')}: {latinDateTime(vehicle.updatedAt, locale)}
                 </span>
               </>
             }
@@ -616,12 +646,12 @@ export const VehicleDetailPage = (): JSX.Element => {
                 ? '—'
                 : type.maintenanceIntervalKm === 0
                   ? t('fleet.vehicle.noMaintenanceRule')
-                  : `${formatNumber(type.maintenanceIntervalKm, locale)} ${t('fleet.vehicle.km')}`}
+                  : `${latinNumber(type.maintenanceIntervalKm)} ${t('fleet.vehicle.km')}`}
             </VehicleItem>
             <VehicleItem label={t('fleet.vehicles.fields.licenseExpiresAt')}>
               <span className="flex items-center gap-2">
                 <span className={LICENCE_DATE_TONE[licenceTone]}>
-                  {formatDate(vehicle.licenseExpiresAt, locale)}
+                  {latinDate(vehicle.licenseExpiresAt, locale)}
                 </span>
                 <span
                   data-vehicle-licence-state={licenceTone}
@@ -646,7 +676,7 @@ export const VehicleDetailPage = (): JSX.Element => {
               {vehicle.insuranceCompanyId === null ? '—' : (insurerName ?? '—')}
             </VehicleItem>
             <VehicleItem label={t('fleet.vehicles.fields.joinedAt')}>
-              {formatDate(vehicle.joinedAt, locale)}
+              {latinDate(vehicle.joinedAt, locale)}
             </VehicleItem>
             <VehicleItem label={t('fleet.vehicles.fields.branch')}>
               {vehicle.branchId === null

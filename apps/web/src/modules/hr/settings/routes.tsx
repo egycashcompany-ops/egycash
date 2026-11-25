@@ -17,6 +17,7 @@ import { InterviewStagesPage } from '../recruitment/interviews/pages/InterviewSt
 import { EvaluationPhasesPage } from '../recruitment/evaluations/pages/EvaluationPhasesPage';
 import { ComposeAnnouncementPage } from '../announcements/pages/ComposeAnnouncementPage';
 import { NotificationRulesPage } from '../notification-rules/pages/NotificationRulesPage';
+import { WorkingHoursPage } from '../attendance/pages/WorkingHoursPage';
 import { HrSettingsLayout, useSettingsTabs } from './HrSettingsLayout';
 import { HiringRequirementsPage } from './HiringRequirementsPage';
 
@@ -24,6 +25,7 @@ type TabKey = (typeof HR_SETTINGS_HUB.tabs)[number]['key'];
 
 /** The screen behind each tab. Keyed by the hub's own type, so a tab without a screen is an error. */
 export const SETTINGS_SCREENS: Record<TabKey, ComponentType> = {
+  'working-hours': WorkingHoursPage,
   'recruitment-form': RecruitmentFormPage,
   'insurance-job-titles': InsuranceJobTitlesPage,
   'applicant-sources': ApplicantSourcesPage,

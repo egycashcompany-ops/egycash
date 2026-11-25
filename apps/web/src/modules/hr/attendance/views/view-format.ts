@@ -68,3 +68,18 @@ export const initials = (name: string | null | undefined): string =>
     .slice(0, 2)
     .map((w) => w.charAt(0))
     .join('');
+
+/**
+ * A DURATION IN WORDS — «8 س 18 د» / «8h 18m», «40 د», «1 س». Used where a duration sits next to
+ * clock times: «1:04» beside «9:40» reads as another time of day.
+ */
+export const hm = (minutes: number | null, locale: 'ar' | 'en'): string => {
+  if (minutes === null) return '—';
+  const total = Math.max(0, Math.round(minutes));
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  const [H, M] = locale === 'ar' ? [' س', ' د'] : ['h', 'm'];
+  if (h === 0) return `${m}${M}`;
+  if (m === 0) return `${h}${H}`;
+  return `${h}${H} ${m}${M}`;
+};

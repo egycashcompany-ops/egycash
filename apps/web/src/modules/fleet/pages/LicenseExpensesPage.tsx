@@ -36,7 +36,8 @@ import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
-import { formatDate, formatMoneyParts } from '../../../shared/lib/format';
+import { formatMoneyParts } from '../../../shared/lib/format';
+import { latinDate } from '../lib/fleet-figures';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import * as fleetApi from '../api/fleet-api';
 import {
@@ -618,7 +619,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
       serialHeader: t('fleet.violations.report.serial'),
       header,
       rows: all.map((row) => [
-        formatDate(row.date, locale),
+        latinDate(row.date, locale),
         kindsText(row),
         // The table's cells: the matched memos' cars and money under «النوع» / «التسوية».
         carsOf(row, halves).length,
@@ -652,7 +653,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
         subtitle: '',
         header,
         rows: all.map((row) => [
-          formatDate(row.date, locale),
+          latinDate(row.date, locale),
           kindsText(row),
           String(carsOf(row, halves).length),
           carsOf(row, halves).map(carName).join('، ') || '—',

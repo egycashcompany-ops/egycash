@@ -20,6 +20,7 @@
 // last suite plans van 4 on TODAY and TOMORROW (Cairo) — the real clock, both sides of the rule —
 // and then moves the clock to 00:30 Cairo on TOMORROW, where UTC still says TODAY.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
+import { type Types } from 'mongoose';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
@@ -61,6 +62,7 @@ import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { OperationsShipmentAssignmentModel } from '../../src/modules/operations/shipments/shipment-assignment.model';
+import { operationsShipmentAssignmentRepository } from '../../src/modules/operations/shipments/shipment-assignment.repository';
 import { OperationsShipmentModel } from '../../src/modules/operations/shipments/shipment.model';
 import { OperationsVaultCustodyModel } from '../../src/modules/operations/vault/vault-custody.model';
 import { type AuthContext } from '../../src/shared/types';
@@ -670,18 +672,26 @@ afterAll(async () => {
 });
 
 describe('«توزيع المحصنات» — GET /operations/secured/distribution', () => {
-  it('opens on TODAY in Cairo, and refuses a day that has passed', async () => {
+  // REWRITTEN in Round 30 — it was «opens on TODAY in Cairo, and refuses a day that has passed»
+  // (422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST` on the read). The owner: «عاوز هنا يقدر يجيب اليوم
+  // اللى قبله ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل يعنى» — a past day now OPENS, as its
+  // record (`past`); the save still refuses it (the «Round 30» suite at the end of this file).
+  it('opens on TODAY in Cairo — and a day that has passed as its record, not a refusal', async () => {
     const today = cairoYmd(new Date());
     const res = await distribution();
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const view = data<OperationsSecuredDistributionDto>(res);
     expect(view.date).toBe(iso(today));
     expect(view.today).toBe(iso(today));
+    expect(view.past).toBe(false);
+    expect((await viewOf()).past).toBe(false);
 
     const past = await distribution(`?date=${addDaysYmd(today, -1)}`);
-    expect(past.status).toBe(422);
-    expect(errorOf(past).code).toBe(ErrorCodes.OPERATIONS_DISTRIBUTION_DAY_IN_PAST);
-    expect(errorOf(past).details).toEqual([{ field: 'date', code: 'MIN_DATE', message: today }]);
+    expect(past.status, JSON.stringify(past.body)).toBe(200);
+    const record = data<OperationsSecuredDistributionDto>(past);
+    expect(record.date).toBe(iso(addDaysYmd(today, -1)));
+    expect(record.today).toBe(iso(today));
+    expect(record.past).toBe(true);
     for (const bad of ['?date=', '?date=not-a-day', '?from=2026-11-01']) {
       expect((await distribution(bad)).status, bad).toBe(400);
     }
@@ -2544,5 +2554,590 @@ describe('Round 25 — `assign-delivery` keeps the «محصنة» rule too', () 
     expect(back.status).toBe(422);
     expect(errorOf(back).code).toBe(ErrorCodes.OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED);
     expect(String((await deliveryLegOf(kept))?.crewAssignmentId)).toBe(crewS);
+  });
+});
+
+// ── Round 30 — «عاوز هنا يقدر يجيب اليوم اللى قبله ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل يعنى» ──
+//
+// A PAST day opens on «توزيع المحصنات» as its RECORD — the day's saved vans and what rides them,
+// whatever became of each shipment since — and nothing of it can be written: the save refuses the
+// day before it looks at any shipment, whatever a client sends. The API plans and books no past day,
+// so the day is planned, booked and distributed as a day to come (PLAN) and then played back to
+// RECORD in the database, as the overdue fixtures at the top of the file are.
+describe('Round 30 — a PAST day opens as its record: read only, every write refused', () => {
+  const PLAN = shift(62);
+  /** Three days ago on the Cairo calendar — a day that has passed. */
+  const RECORD = addDaysYmd(cairoYmd(new Date()), -3);
+  /** The day before it — where `stray`'s delivery date is moved, its leg left on RECORD's van. */
+  const BEFORE = addDaysYmd(RECORD, -1);
+  let crew5 = ''; // OPS-R30-A — captain A, «المعادي»
+  let crew6 = ''; // OPS-R30-B — captain C, «الهرم»
+  let outOnVan = ''; // on van 5, handed over on its day — gone from the vault
+  let doneOnVan = ''; // R30 critic — on van 5, handed over with it and since DELIVERED (`completed`)
+  let heldOnVan = ''; // on van 6, never handed over — still in the vault, now «متأخرة»
+  let draftOnVan = ''; // a draft (never received) on van 5
+  let neverPlaced = ''; // in the vault, due on the day, on no van
+  let takenOff = ''; // placed on van 6, then taken off — on no van; «الهرم» names van 6
+  let stray = ''; // its leg on van 6, its delivery date since moved to BEFORE (the leg left there)
+  let strayVersion = -1;
+
+  beforeAll(async () => {
+    const van5 = await mkVehicle('OPS-R30-A');
+    const van6 = await mkVehicle('OPS-R30-B');
+    const crews = await planDay(PLAN, [
+      { vehicleId: van5, captainEmployeeIds: [capA], direction: 'المعادي' },
+      { vehicleId: van6, captainEmployeeIds: [capC], direction: 'الهرم' },
+    ]);
+    crew5 = crews.get(van5) ?? '';
+    crew6 = crews.get(van6) ?? '';
+    expect([crew5, crew6].every((id) => id !== '')).toBe(true);
+
+    outOnVan = (await book(PLAN, 'الدقي')).id;
+    await intoVault(outOnVan);
+    doneOnVan = (await book(PLAN, 'الدقي')).id;
+    await intoVault(doneOnVan, 3);
+    heldOnVan = (await book(PLAN, 'الدقي')).id;
+    await intoVault(heldOnVan);
+    draftOnVan = (await book(PLAN, 'الدقي')).id;
+    neverPlaced = (await book(PLAN, 'الدقي')).id;
+    await intoVault(neverPlaced);
+    takenOff = (await book(PLAN, 'الهرم')).id;
+    await intoVault(takenOff);
+    stray = (await book(PLAN, 'الدقي')).id;
+    await intoVault(stray);
+
+    const placed = await save(
+      [
+        { shipmentId: outOnVan, crewAssignmentId: crew5, captainEmployeeId: capA, version: null },
+        { shipmentId: doneOnVan, crewAssignmentId: crew5, captainEmployeeId: capA, version: null },
+        { shipmentId: heldOnVan, crewAssignmentId: crew6, captainEmployeeId: capC, version: null },
+        { shipmentId: draftOnVan, crewAssignmentId: crew5, captainEmployeeId: capA, version: null },
+        { shipmentId: takenOff, crewAssignmentId: crew6, captainEmployeeId: capC, version: null },
+        { shipmentId: stray, crewAssignmentId: crew6, captainEmployeeId: capC, version: null },
+      ],
+      PLAN,
+    );
+    expect(placed.status, JSON.stringify(placed.body)).toBe(200);
+    const off = await save(
+      [
+        {
+          shipmentId: takenOff,
+          crewAssignmentId: null,
+          captainEmployeeId: null,
+          version: (await deliveryLegOf(takenOff))?.__v ?? null,
+        },
+      ],
+      PLAN,
+    );
+    expect(off.status, JSON.stringify(off.body)).toBe(200);
+    // On a day to come, «الهرم» proposes it onto van 6 — the record below proposes nothing.
+    const planned = await viewOf(PLAN);
+    expect(planned.past).toBe(false);
+    expect(planned.shipments.find((s) => s.id === takenOff)?.directionCrewAssignmentIds).toEqual([
+      crew6,
+    ]);
+    const out = await dispatchOn(PLAN, {
+      crewAssignmentId: crew5,
+      shipmentIds: [outOnVan, doneOnVan],
+    });
+    expect(out.status, JSON.stringify(out.body)).toBe(200);
+    // R30 critic — and one of them DELIVERED since: the shipment's own «تم الاستلام», as the desk
+    // records it (`POST /operations/shipments/:id/complete`).
+    const done = await request(app)
+      .post(`/api/v1/operations/shipments/${doneOnVan}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: (await read(doneOnVan)).version });
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+    expect(data<OperationsShipmentDto>(done).status).toBe('completed');
+
+    // …and the day passes: PLAN's shipments due on RECORD, PLAN's operating day RECORD's.
+    await OperationsShipmentModel.updateMany(
+      {
+        _id: {
+          $in: [outOnVan, doneOnVan, heldOnVan, draftOnVan, neverPlaced, takenOff, stray],
+        },
+      },
+      { $set: { collectionDate: new Date(iso(RECORD)), deliveryDate: new Date(iso(RECORD)) } },
+    ).exec();
+    await OperationsShipmentModel.db
+      .collection('operations_days')
+      .updateOne({ date: new Date(iso(PLAN)) }, { $set: { date: new Date(iso(RECORD)) } });
+    // A leg left on RECORD's van under a delivery date moved elsewhere — what an old or imported
+    // row can hold: the record still shows what rides its vans.
+    await OperationsShipmentModel.updateOne(
+      { _id: stray },
+      { $set: { collectionDate: new Date(iso(BEFORE)), deliveryDate: new Date(iso(BEFORE)) } },
+    ).exec();
+    strayVersion = (await deliveryLegOf(stray))?.__v ?? -1;
+    expect(strayVersion).toBeGreaterThanOrEqual(0);
+  });
+
+  it('opens the day as its record — its vans, and what rode them whatever became of it since', async () => {
+    const today = cairoYmd(new Date());
+    const view = await viewOf(RECORD);
+    expect(view).toMatchObject({ date: iso(RECORD), today: iso(today), past: true });
+    expect(view.crewPlanVisible).toBe(true);
+    // The day's saved «محصنة» rows, in van-code order, with their crews and directions.
+    expect(view.crews.map((c) => [c.crewAssignmentId, c.vehicleCode, c.direction])).toEqual([
+      [crew5, 'OPS-R30-A', 'المعادي'],
+      [crew6, 'OPS-R30-B', 'الهرم'],
+    ]);
+    expect(view.crews.map((c) => c.captains.map((p) => p.employeeId))).toEqual([[capA], [capC]]);
+
+    const byId = new Map(view.shipments.map((s) => [s.id, s]));
+    expect([...byId.keys()].sort()).toEqual(
+      [outOnVan, doneOnVan, heldOnVan, draftOnVan, neverPlaced, takenOff, stray].sort(),
+    );
+    // Handed over on its day: listed, on its van, at its stage now.
+    expect(byId.get(outOnVan)).toMatchObject({
+      status: 'dispatched',
+      securedStage: 'dispatched',
+      placedCrewAssignmentId: crew5,
+      overdue: false,
+    });
+    // R30 critic — handed over and DELIVERED since: listed, on the van that took it, at its stage.
+    expect(byId.get(doneOnVan)).toMatchObject({
+      status: 'completed',
+      securedStage: 'completed',
+      placedCrewAssignmentId: crew5,
+      delivery: { crewAssignmentId: crew5, captainEmployeeId: capA },
+      overdue: false,
+    });
+    // Never handed over: on its van, and «متأخرة» — it is still in the vault, its day passed.
+    expect(byId.get(heldOnVan)).toMatchObject({
+      status: 'inVault',
+      placedCrewAssignmentId: crew6,
+      overdue: true,
+    });
+    expect(byId.get(draftOnVan)).toMatchObject({ status: 'draft', placedCrewAssignmentId: crew5 });
+    // On no van — never placed, and taken off (its leg retired, its story in «السجل»).
+    expect(byId.get(neverPlaced)).toMatchObject({ placedCrewAssignmentId: null, delivery: null });
+    expect(byId.get(takenOff)).toMatchObject({ placedCrewAssignmentId: null, delivery: null });
+    // Due another day, its live leg on this day's van: the record shows what rides its vans.
+    expect(byId.get(stray)).toMatchObject({
+      deliveryDate: iso(BEFORE),
+      placedCrewAssignmentId: crew6,
+      deliveryLegVersion: strayVersion,
+    });
+    // A record proposes nothing — «الهرم» named van 6 for `takenOff` on the day to come.
+    for (const row of view.shipments) expect(row.directionCrewAssignmentIds, row.id).toEqual([]);
+    // Its packages as the vault counted them — the one handed over too, which the vault's holdings
+    // no longer carry; the draft it never took in is absent.
+    const counted = new Map((view.recordPackages ?? []).map((p) => [p.shipmentId, p]));
+    expect([...counted.keys()].sort()).toEqual(
+      [outOnVan, doneOnVan, heldOnVan, neverPlaced, takenOff, stray].sort(),
+    );
+    expect(counted.get(outOnVan)).toEqual({ shipmentId: outOnVan, bags: 2, cartons: 0, boxes: 0 });
+    // …and the one delivered since, as the vault counted it at its receipt.
+    expect(counted.get(doneOnVan)).toEqual({
+      shipmentId: doneOnVan,
+      bags: 3,
+      cartons: 0,
+      boxes: 0,
+    });
+    // On today's read the packages are the vault's holdings, read apart, as before.
+    expect((await viewOf(today)).recordPackages).toBeNull();
+  });
+
+  it('is the same read for every reader of the screen — the vault’s too, the crew plan withheld', async () => {
+    const viewer = await viewOf(RECORD, viewerToken);
+    expect(viewer.past).toBe(true);
+    expect(viewer.shipments).toHaveLength(7);
+    // The vault's packages are the vault's: a reader without its grant gets none.
+    expect(viewer.recordPackages).toBeNull();
+    const vault = await viewOf(RECORD, vaultToken);
+    expect(vault).toMatchObject({ past: true, crewPlanVisible: false });
+    expect(vault.crews.map((c) => c.crewAssignmentId)).toEqual([crew5, crew6]);
+    expect(vault.recordPackages).toHaveLength(6);
+    expect((await distribution(`?date=${RECORD}`, nobodyToken)).status).toBe(403);
+  });
+
+  it('refuses EVERY save of the day — 422 before any shipment is looked at — and writes nothing', async () => {
+    const today = cairoYmd(new Date());
+    const legBefore = await deliveryLegOf(heldOnVan);
+    const shipmentBefore = await read(heldOnVan);
+    const since = seenEvents.length;
+    const attempts: Change[][] = [
+      // Moved to the other van, with the version the record handed out — the screen's own change.
+      [
+        {
+          shipmentId: heldOnVan,
+          crewAssignmentId: crew5,
+          captainEmployeeId: capA,
+          version: legBefore?.__v ?? null,
+        },
+      ],
+      // Taken off its van.
+      [
+        {
+          shipmentId: heldOnVan,
+          crewAssignmentId: null,
+          captainEmployeeId: null,
+          version: legBefore?.__v ?? null,
+        },
+      ],
+      // A shipment on no van placed — the proposal the record does not make.
+      [{ shipmentId: takenOff, crewAssignmentId: crew6, captainEmployeeId: capC, version: null }],
+      // No such shipment: still the day's refusal, not a 404 — the day is checked first.
+      [
+        {
+          shipmentId: '0000000000000000000000ab',
+          crewAssignmentId: crew5,
+          captainEmployeeId: capA,
+          version: null,
+        },
+      ],
+    ];
+    for (const changes of attempts) {
+      const res = await save(changes, RECORD);
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(errorOf(res).code).toBe(ErrorCodes.OPERATIONS_DISTRIBUTION_DAY_IN_PAST);
+      expect(errorOf(res).details).toEqual([{ field: 'date', code: 'MIN_DATE', message: today }]);
+    }
+    // Without the grant it never reaches the day.
+    const viewer = await save(attempts[0] ?? [], RECORD, viewerToken);
+    expect(viewer.status).toBe(403);
+
+    // Nothing written: the leg, the shipment, the one on no van — exactly as they were.
+    const legAfter = await deliveryLegOf(heldOnVan);
+    expect(String(legAfter?._id)).toBe(String(legBefore?._id));
+    expect(legAfter?.__v).toBe(legBefore?.__v);
+    expect(String(legAfter?.crewAssignmentId)).toBe(crew6);
+    expect(await read(heldOnVan)).toEqual(shipmentBefore);
+    expect(await deliveryLegOf(takenOff)).toBeNull();
+    expect(
+      seenEvents
+        .slice(since)
+        .filter((e) => [heldOnVan, takenOff].some((id) => JSON.stringify(e.payload).includes(id))),
+    ).toEqual([]);
+    // …and the record reads as before.
+    const again = await viewOf(RECORD);
+    expect(again.shipments.find((s) => s.id === heldOnVan)?.placedCrewAssignmentId).toBe(crew6);
+    expect(again.shipments.find((s) => s.id === takenOff)?.placedCrewAssignmentId).toBeNull();
+  });
+
+  it('keeps «تسليم» off the record’s vans too — they have left', async () => {
+    const before = await read(heldOnVan);
+    const res = await dispatch({ crewAssignmentId: crew6, shipmentIds: [heldOnVan] }, vaultToken);
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(errorOf(res).code).toBe(ErrorCodes.OPERATIONS_DISPATCH_NOT_TODAY);
+    expect(await read(heldOnVan)).toEqual(before);
+  });
+
+  it('leaves the live day as it was: the one still in the vault is today’s «متأخرة», on no van of today', async () => {
+    const live = await viewOf(cairoYmd(new Date()));
+    expect(live.past).toBe(false);
+    const held = live.shipments.find((s) => s.id === heldOnVan);
+    expect(held).toMatchObject({ overdue: true, placedCrewAssignmentId: null });
+    // Its leg is where the record shows it — on the record's van, not on one of today's.
+    expect(held?.delivery?.crewAssignmentId).toBe(crew6);
+    // The record's own — handed over, a draft due on a past day — are not today's.
+    for (const gone of [outOnVan, doneOnVan, draftOnVan]) {
+      expect(live.shipments.some((s) => s.id === gone)).toBe(false);
+    }
+  });
+
+  it('answers a past day nobody planned as an empty record', async () => {
+    const view = await viewOf(addDaysYmd(cairoYmd(new Date()), -30));
+    expect(view).toMatchObject({ past: true, crews: [], shipments: [] });
+  });
+
+  // R30 verifier — a save dated TODAY reached the record all the same: `heldOnVan` (in the vault,
+  // due on RECORD, so «متأخرة» today) is listed on today's screen, its leg on RECORD's van 6, and a
+  // take-off of it (which today's screen never sends — the shipment is on none of TODAY's vans
+  // there) retired that leg: RECORD's van 6 lost it. A take-off now reaches only a van of the day
+  // saved. (Placing it on one of today's vans still moves it, re-dated — the overdue flow.)
+  it('refuses a TODAY-dated take-off of a leg on the record’s van — the record keeps it', async () => {
+    const today = cairoYmd(new Date());
+    const legBefore = await deliveryLegOf(heldOnVan);
+    expect(String(legBefore?.crewAssignmentId)).toBe(crew6);
+    const live = await viewOf(today);
+    const row = live.shipments.find((s) => s.id === heldOnVan);
+    expect(row).toMatchObject({ overdue: true, placedCrewAssignmentId: null });
+    const res = await save(
+      [
+        {
+          shipmentId: heldOnVan,
+          crewAssignmentId: null,
+          captainEmployeeId: null,
+          version: row?.deliveryLegVersion ?? null,
+        },
+      ],
+      today,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(errorOf(res).code).toBe(ErrorCodes.OPERATIONS_CREW_DAY_MISMATCH);
+    expect(errorOf(res).details).toEqual([
+      { field: 'shipmentId', code: 'SHIPMENT', message: heldOnVan },
+    ]);
+    const legAfter = await deliveryLegOf(heldOnVan);
+    expect(String(legAfter?._id)).toBe(String(legBefore?._id));
+    expect(legAfter?.__v).toBe(legBefore?.__v);
+    const record = await viewOf(RECORD);
+    expect(record.shipments.find((s) => s.id === heldOnVan)?.placedCrewAssignmentId).toBe(crew6);
+  });
+
+  // R30 critic — `assign-delivery` writes the very leg the record shows («صرف الخزينة»'s old door;
+  // `distributing is that act, for many at once`), and it only asked that the crew row be of the
+  // shipment's delivery day: `heldOnVan` (due on RECORD, still in the vault) moved from RECORD's van
+  // 6 to its van 5 with a 200, and the record changed. It refuses a past day as the save does.
+  it('refuses `assign-delivery` onto a van of the record — 422 DAY_IN_PAST, the leg untouched', async () => {
+    const today = cairoYmd(new Date());
+    const legBefore = await deliveryLegOf(heldOnVan);
+    expect(String(legBefore?.crewAssignmentId)).toBe(crew6);
+    const since = seenEvents.length;
+    for (const [crewAssignmentId, captainEmployeeId] of [
+      [crew5, capA], // the record's other van
+      [crew6, capC], // the van it is on — not even the same place again
+    ] as const) {
+      const res = await request(app)
+        .post(`/api/v1/operations/secured/${heldOnVan}/assign-delivery`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId, captainEmployeeId, version: legBefore?.__v ?? 0 });
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(errorOf(res).code).toBe(ErrorCodes.OPERATIONS_DISTRIBUTION_DAY_IN_PAST);
+      expect(errorOf(res).details).toEqual([{ field: 'date', code: 'MIN_DATE', message: today }]);
+    }
+    const legAfter = await deliveryLegOf(heldOnVan);
+    expect(String(legAfter?._id)).toBe(String(legBefore?._id));
+    expect(legAfter?.__v).toBe(legBefore?.__v);
+    expect(String(legAfter?.crewAssignmentId)).toBe(crew6);
+    expect(String(legAfter?.captainEmployeeId)).toBe(capC);
+    expect(
+      seenEvents
+        .slice(since)
+        .filter(
+          (e) =>
+            e.name === OperationsEvents.SecuredLegAssigned &&
+            JSON.stringify(e.payload).includes(heldOnVan),
+        ),
+    ).toEqual([]);
+    const record = await viewOf(RECORD);
+    expect(record.shipments.find((s) => s.id === heldOnVan)?.placedCrewAssignmentId).toBe(crew6);
+  });
+
+  // R30 critic — the record's riders were found by loading EVERY live leg of the day (pickup and
+  // delivery, daily and secured) and sending their ids back in two `$in`s. They are the day's
+  // delivery legs of SECURED shipments, ids only, joined on the server.
+  it('finds what rides the record’s vans without loading the day’s legs — secured delivery legs only', async () => {
+    const recordDay = await OperationsShipmentModel.db
+      .collection('operations_days')
+      .findOne({ date: new Date(iso(RECORD)) });
+    expect(recordDay).not.toBeNull();
+    const dayId = recordDay?._id as Types.ObjectId;
+    const riders = async (): Promise<string[]> =>
+      (await operationsShipmentAssignmentRepository.securedDeliveryShipmentIdsOfDay(dayId)).sort();
+    // Every live delivery leg on RECORD's vans — `stray` (due another day) among them.
+    expect(await riders()).toEqual([outOnVan, doneOnVan, heldOnVan, draftOnVan, stray].sort());
+    // A shipment that is not secured is never among them (its legs are the day board's).
+    await OperationsShipmentModel.updateOne({ _id: stray }, { $set: { shipmentType: 'daily' } });
+    try {
+      expect(await riders()).not.toContain(stray);
+    } finally {
+      await OperationsShipmentModel.updateOne(
+        { _id: stray },
+        { $set: { shipmentType: 'secured' } },
+      );
+    }
+    // The record's read asks for them — and never for the whole day's legs.
+    const whole = vi.spyOn(operationsShipmentAssignmentRepository, 'findForDay');
+    const ids = vi.spyOn(operationsShipmentAssignmentRepository, 'securedDeliveryShipmentIdsOfDay');
+    try {
+      const view = await viewOf(RECORD);
+      expect(view.shipments.find((s) => s.id === stray)?.placedCrewAssignmentId).toBe(crew6);
+      expect(whole).not.toHaveBeenCalled();
+      expect(ids).toHaveBeenCalledTimes(1);
+    } finally {
+      whole.mockRestore();
+      ids.mockRestore();
+    }
+  });
+});
+
+// ── Round 33 — «انا عاوزك تفتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط زى ما عملنا فى شاشة
+// توزيع المحصنات» ─────────────────────────────────────────────────────────────────────────────────
+//
+// «تسليم المحصنات» reads the day through the same `GET /operations/secured/distribution` as «توزيع
+// المحصنات», on the vault's own grant (`operationsVault.view`). A past day answers as its record
+// (Round 30) and now says, to a reader of the vault, what was handed over, when and by whom
+// (`recordHandovers` — the custody's release, its user the one whose token pressed «تسليم»). Its
+// «تسليم» stays today's: `POST /operations/secured/dispatch` refuses a past day's van (Round 17).
+describe('Round 33 — «تسليم المحصنات» on a PAST day: its record — what was handed over, when and by whom', () => {
+  const PLAN = shift(63);
+  /**
+   * Six days ago on the Cairo calendar — a day that has passed, and no other suite's: Round 30's
+   * record is three days ago, and its `stray` is due the day before that.
+   */
+  const RECORD = addDaysYmd(cairoYmd(new Date()), -6);
+  /** The treasurer who pressed «تسليم» — named apart from every other user of this file. */
+  const TREASURER = 'ops-r33-treasurer@ecms.local';
+  /** When the release is set to have happened: 10:15 Cairo on RECORD's morning. */
+  const HANDED_AT = new Date(cairoDayStart(RECORD).getTime() + (10 * 60 + 15) * 60_000);
+  let treasurerToken = '';
+  let crew7 = '';
+  let outFirst = ''; // on van 7, handed over by the treasurer
+  let outSecond = ''; // on van 7, handed over with it
+  let keptInVault = ''; // on van 7, never handed over — still in the vault
+  let neverReceived = ''; // on van 7, a draft the vault never took in
+  let onNoVan = ''; // in the vault, due on the day, on no van
+
+  beforeAll(async () => {
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'R33 treasurer', ar: 'أمين الخزينة R33' },
+        permissionKeys: ['operationsVault.view', 'operationsVault.dispatch'],
+      },
+      adminId,
+    );
+    const { user } = await userService.create(
+      {
+        email: TREASURER,
+        firstName: { ar: 'سامح', en: 'Sameh' },
+        lastName: { ar: 'الخزين', en: 'Vault' },
+        locale: 'ar',
+        organization: { branchId: null, departmentId: null, sectionId: null, jobTitleId: null },
+      },
+      null,
+    );
+    await userService.setPassword(String(user._id), PASSWORD, 'passwordReset');
+    await userService.forceActivate(String(user._id));
+    await rbacService.ensureAssignment(String(user._id), String(role._id), 'organization');
+    treasurerToken = await login(TREASURER);
+
+    const van7 = await mkVehicle('OPS-R33-H');
+    crew7 =
+      (
+        await planDay(PLAN, [{ vehicleId: van7, captainEmployeeIds: [capA], direction: 'المعادي' }])
+      ).get(van7) ?? '';
+    expect(crew7).not.toBe('');
+
+    outFirst = (await book(PLAN, 'المعادي')).id;
+    await intoVault(outFirst, 4);
+    outSecond = (await book(PLAN, 'المعادي')).id;
+    await intoVault(outSecond, 1);
+    keptInVault = (await book(PLAN, 'المعادي')).id;
+    await intoVault(keptInVault);
+    neverReceived = (await book(PLAN, 'المعادي')).id;
+    onNoVan = (await book(PLAN, 'الدقي')).id;
+    await intoVault(onNoVan);
+    const placed = await save(
+      [outFirst, outSecond, keptInVault, neverReceived].map((shipmentId) => ({
+        shipmentId,
+        crewAssignmentId: crew7,
+        captainEmployeeId: capA,
+        version: null,
+      })),
+      PLAN,
+    );
+    expect(placed.status, JSON.stringify(placed.body)).toBe(200);
+    // «تسليم» on the van's own day, by the treasurer — the only user who ever releases them.
+    const out = await dispatchOn(
+      PLAN,
+      { crewAssignmentId: crew7, shipmentIds: [outFirst, outSecond] },
+      TREASURER,
+    );
+    expect(out.status, JSON.stringify(out.body)).toBe(200);
+
+    // …and the day passes: PLAN's shipments due on RECORD, its operating day RECORD's, the release
+    // on RECORD's morning.
+    const ids = [outFirst, outSecond, keptInVault, neverReceived, onNoVan];
+    await OperationsShipmentModel.updateMany(
+      { _id: { $in: ids } },
+      { $set: { collectionDate: new Date(iso(RECORD)), deliveryDate: new Date(iso(RECORD)) } },
+    ).exec();
+    await OperationsShipmentModel.db
+      .collection('operations_days')
+      .updateOne({ date: new Date(iso(PLAN)) }, { $set: { date: new Date(iso(RECORD)) } });
+    await OperationsVaultCustodyModel.updateMany(
+      { shipmentId: { $in: [outFirst, outSecond] } },
+      { $set: { releasedAt: HANDED_AT } },
+    ).exec();
+  });
+
+  it('opens on the vault’s own grant as the record — the van, what rode it, and who handed what over and when', async () => {
+    const view = await viewOf(RECORD, treasurerToken);
+    expect(view).toMatchObject({ date: iso(RECORD), past: true, crewPlanVisible: false });
+    expect(view.crews.map((c) => [c.crewAssignmentId, c.vehicleCode])).toEqual([
+      [crew7, 'OPS-R33-H'],
+    ]);
+    const byId = new Map(view.shipments.map((s) => [s.id, s]));
+    expect([...byId.keys()].sort()).toEqual(
+      [outFirst, outSecond, keptInVault, neverReceived, onNoVan].sort(),
+    );
+    for (const id of [outFirst, outSecond]) {
+      expect(byId.get(id), id).toMatchObject({
+        status: 'dispatched',
+        securedStage: 'dispatched',
+        placedCrewAssignmentId: crew7,
+      });
+    }
+    expect(byId.get(keptInVault)).toMatchObject({
+      status: 'inVault',
+      placedCrewAssignmentId: crew7,
+      overdue: true,
+    });
+    expect(byId.get(neverReceived)).toMatchObject({
+      status: 'draft',
+      placedCrewAssignmentId: crew7,
+    });
+    expect(byId.get(onNoVan)).toMatchObject({ status: 'inVault', placedCrewAssignmentId: null });
+
+    // Who handed over and when: the two that left, in the record's order, named by the directory
+    // as the treasurer whose token pressed «تسليم» — never the admin who booked and placed them.
+    expect(view.recordHandovers).toEqual([
+      {
+        shipmentId: outFirst,
+        handedOverAt: HANDED_AT.toISOString(),
+        handedOverByName: 'سامح الخزين',
+      },
+      {
+        shipmentId: outSecond,
+        handedOverAt: HANDED_AT.toISOString(),
+        handedOverByName: 'سامح الخزين',
+      },
+    ]);
+    // …and the counts the vault took them in with, the handed-over ones too.
+    const counted = new Map((view.recordPackages ?? []).map((p) => [p.shipmentId, p.bags]));
+    expect(counted.get(outFirst)).toBe(4);
+    expect(counted.get(outSecond)).toBe(1);
+    expect(counted.has(neverReceived)).toBe(false);
+  });
+
+  it('says who handed over to a reader of the vault only — and on no day but a past one', async () => {
+    // The desk's reader sees the record, not the vault's release.
+    const viewer = await viewOf(RECORD, viewerToken);
+    expect(viewer.past).toBe(true);
+    expect(viewer.recordHandovers).toBeNull();
+    expect(viewer.recordPackages).toBeNull();
+    // The admin holds the vault's grant among the rest: the same two.
+    const admin = await viewOf(RECORD);
+    expect(admin.recordHandovers?.map((h) => h.shipmentId)).toEqual([outFirst, outSecond]);
+    // Today and a day to come list nothing that has left: no handovers to read.
+    expect((await viewOf(cairoYmd(new Date()), treasurerToken)).recordHandovers).toBeNull();
+    expect((await viewOf(DAY, treasurerToken)).recordHandovers).toBeNull();
+    expect((await distribution(`?date=${RECORD}`, nobodyToken)).status).toBe(403);
+  });
+
+  it('keeps «تسليم» refused on the record’s van — 422 TODAY_ONLY, nothing released, the record as it was', async () => {
+    const today = cairoYmd(new Date());
+    const before = await read(keptInVault);
+    const custodyBefore = await OperationsVaultCustodyModel.findOne({ shipmentId: keptInVault })
+      .lean()
+      .exec();
+    expect(custodyBefore?.state).toBe('held');
+    for (const token of [treasurerToken, adminToken]) {
+      const res = await dispatch({ crewAssignmentId: crew7, shipmentIds: [keptInVault] }, token);
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(errorOf(res).code).toBe(ErrorCodes.OPERATIONS_DISPATCH_NOT_TODAY);
+      expect(errorOf(res).details).toEqual([
+        { field: 'crewAssignmentId', code: 'TODAY_ONLY', message: today },
+      ]);
+    }
+    expect(await read(keptInVault)).toEqual(before);
+    expect(
+      await OperationsVaultCustodyModel.findOne({ shipmentId: keptInVault }).lean().exec(),
+    ).toEqual(custodyBefore);
+    const after = await viewOf(RECORD, treasurerToken);
+    expect(after.recordHandovers?.map((h) => h.shipmentId)).toEqual([outFirst, outSecond]);
   });
 });

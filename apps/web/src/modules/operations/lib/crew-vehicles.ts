@@ -23,11 +23,20 @@
 // them (the cash-transfer operations' cars, the standing crew's, the rest), each by code with the
 // numbers in number order. A search narrows by the code («١٥٠» finds 150, «150 - 151» both) or by a
 // roster van's driver.
+//
+// ROUND 32 — «دى مشكلة بيظهر عربيات ايه الاصفار دى»: the list opened on «00000», «0000», «000», «00»,
+// «0», then «61». A car whose Fleet code names nothing (`vehicleCodeNamesNothing`) is listed LAST, in
+// its own group («سيارات بلا كود في الأسطول»), by its plate and its make — never a bare «0000» — and
+// found by its plate too; one whose plate names nothing either is not listed at all (the server
+// counts it, and the list says how many and where they are put right). A van already the day's or
+// the standing crew's keeps its group, named by its plate. Codes naturally: 61, 101, 150 …
 import {
   OPERATIONS_CREW_FREE_VEHICLE_GROUPS,
+  compareVehiclesForPicker,
   type OperationsCrewBoardFreeVehicleDto,
   type OperationsCrewFreeVehicleGroup,
   type OperationsDayBoardDriverDto,
+  type OperationsUncodedVehicleDto,
 } from '@ecms/contracts';
 import { foldIncludes } from '../../../shared/lib/fold';
 import { matchesVehicleCode } from '../../fleet/lib/vehicle-code-match';
@@ -46,11 +55,42 @@ export interface VehicleChoice {
   vanKey: string | null;
   /** False for a car off the roster in the workshop that day: the save would refuse it. */
   pickable: boolean;
+  /**
+   * Round 32 — its code names nothing («0», «00» …): what names it instead, its plate and its make.
+   * Null for a car with a code.
+   */
+  uncoded: OperationsUncodedVehicleDto | null;
 }
 
-/** Codes in number order — «P9» before «P10», «9» before «150» — as the server orders its groups. */
-export const byVehicleCode = (a: { vehicleCode: string }, b: { vehicleCode: string }): number =>
-  a.vehicleCode.localeCompare(b.vehicleCode, 'ar', { numeric: true });
+/**
+ * Codes in number order — «P9» before «P10», «9» before «150», 61 before 101 — as the server orders
+ * its groups; Round 32: a code that names nothing («0», «00» …) after every one that does, those by
+ * their PLATE (`compareVehiclesForPicker` — the Round 32 critic: by their count of zeros, «0» before
+ * «00», before).
+ */
+export const byVehicleCode = (
+  a: { vehicleCode: string; uncoded?: OperationsUncodedVehicleDto | null },
+  b: { vehicleCode: string; uncoded?: OperationsUncodedVehicleDto | null },
+): number =>
+  compareVehiclesForPicker(
+    { vehicleCode: a.vehicleCode, plateNumber: a.uncoded?.plateNumber ?? null },
+    { vehicleCode: b.vehicleCode, plateNumber: b.uncoded?.plateNumber ?? null },
+  );
+
+/**
+ * Round 32 critic — the name a van goes by wherever the board draws or says it (its cell, its card,
+ * the van filter, Excel, «تراجع», the swap window): its Fleet code — or, a code that names nothing
+ * («0», «00» …), its PLATE, as the «بدون سيارة» list named it when it was picked. The owner's «ايه
+ * الاصفار دى» came back on the van's cell the moment such a car was given to a row. Null for a row
+ * without a van.
+ */
+export const vanName = (van: {
+  vehicleCode: string | null;
+  uncoded?: OperationsUncodedVehicleDto | null;
+}): string | null =>
+  van.uncoded != null && van.uncoded.plateNumber.trim() !== ''
+    ? van.uncoded.plateNumber
+    : van.vehicleCode;
 
 /**
  * What the «بدون سيارة» cell of row `forKey` offers, in the order it lists them (see the head of
@@ -89,6 +129,7 @@ export const vehicleChoices = (
       drivers: row.drivers,
       vanKey: row.key,
       pickable: true,
+      uncoded: row.uncoded ?? freeById.get(row.vehicleId as string)?.uncoded ?? null,
     }))
     .sort(byVehicleCode);
   const offRoster = (vehicle: OperationsCrewBoardFreeVehicleDto): VehicleChoice => ({
@@ -100,6 +141,7 @@ export const vehicleChoices = (
     drivers: [],
     vanKey: null,
     pickable: !vehicle.inWorkshop,
+    uncoded: vehicle.uncoded,
   });
   const others = free
     .filter((vehicle) => !vehicle.onRoster && !held.has(vehicle.vehicleId))
@@ -119,10 +161,13 @@ export const vehicleChoices = (
       offRoster({
         vehicleId: row.vehicleId as string,
         vehicleCode: row.vehicleCode ?? '…',
-        group: 'other',
         onRoster: false,
         inWorkshop: workshop.has(row.vehicleId as string),
         drivers: [],
+        // Round 32 critic — named as its saved row named it: by its plate when its code names
+        // nothing, in «سيارات بلا كود في الأسطول» (it was a bare «0000» at the end of «أخرى»).
+        group: row.uncoded != null ? 'uncoded' : 'other',
+        uncoded: row.uncoded ?? null,
       }),
     );
   const rank = (group: OperationsCrewFreeVehicleGroup): number =>
@@ -134,7 +179,11 @@ export const vehicleChoices = (
   return [...roster, ...rest];
 };
 
-/** The list narrowed by what was typed: the code (every vehicle box's rule), or a driver's name. */
+/**
+ * The list narrowed by what was typed: the code (every vehicle box's rule), or a driver's name —
+ * and (Round 32) a car with no code by its plate. A code that names nothing is never matched by its
+ * zeros: «0» typed is the start of «0061», not «0000».
+ */
 export const searchVehicleChoices = (
   choices: readonly VehicleChoice[],
   search: string,
@@ -143,7 +192,8 @@ export const searchVehicleChoices = (
     ? [...choices]
     : choices.filter(
         (choice) =>
-          matchesVehicleCode(choice.vehicleCode, search) ||
+          (choice.uncoded === null && matchesVehicleCode(choice.vehicleCode, search)) ||
+          (choice.uncoded !== null && foldIncludes(choice.uncoded.plateNumber, search)) ||
           choice.drivers.some((driver) => foldIncludes(driver.fullNameAr ?? '', search)),
       );
 
@@ -164,5 +214,7 @@ export const giveVehicle = (
     vehicleCode: choice.vehicleCode,
     onRoster: false,
     drivers: [],
+    // Round 32 critic — the row is named by the plate it was picked by, never by the bare zeros.
+    uncoded: choice.uncoded,
   });
 };

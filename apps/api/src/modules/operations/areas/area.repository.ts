@@ -1,3 +1,4 @@
+import { type ClientSession } from 'mongoose';
 import { BaseRepository } from '../../../shared/base/base.repository';
 import { OperationsAreaModel, type OperationsAreaDoc } from './area.model';
 
@@ -17,6 +18,19 @@ class OperationsAreaRepository extends BaseRepository<OperationsAreaDoc> {
       .lean<{ name: string }[]>()
       .exec();
     return rows.map((row) => row.name);
+  }
+
+  /**
+   * Every live area, stopped ones included — what a branch sheet's areas are matched against
+   * (Round 29): the unique name holds among all of them. Inside `session` when given (Round 29b).
+   */
+  async liveAll(session?: ClientSession): Promise<OperationsAreaDoc[]> {
+    return this.model
+      .find({ isDeleted: false })
+      .sort({ _id: 1 })
+      .session(session ?? null)
+      .lean<OperationsAreaDoc[]>()
+      .exec();
   }
 }
 

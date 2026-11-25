@@ -16,12 +16,13 @@
 // every row written before eleven now carries the old hours, so the sheet would decide «غائب» and
 // «لم يحضر بعد» from an expectation nobody holds any more.
 import { Types } from 'mongoose';
-import { HrAttendanceSettingKeys } from '@ecms/contracts';
+import { HrAttendanceSettingKeys, type DepartmentHoursMap } from '@ecms/contracts';
 import { settingsService } from '../../../../platform/settings';
 import { ShiftModel, type ShiftDoc } from '../shifts';
 import { pickAssignmentForDate, ShiftAssignmentModel, type ShiftAssignmentDoc } from '../assignments';
 import { shiftWindow, type EngineShift } from './derive-day';
 import { patternFrom } from './default-pattern';
+import { patternForDepartment } from './department-hours';
 
 export interface DayExpectation {
   /**
@@ -40,6 +41,8 @@ export interface DayExpectation {
 export interface ExpectationSubject {
   id: string;
   branchId: string;
+  /** The employee's department — its configured working hours win over the branch pattern. */
+  departmentId?: string | null;
 }
 
 /**
@@ -68,6 +71,35 @@ export const defaultPatternForBranch = async (branchId: string): Promise<EngineS
     settingsService.resolve<number>(HrAttendanceSettingKeys.DefaultPatternGraceOutMinutes, subject),
   ]);
   return patternFrom({ enabled, startTime, endTime, breakMinutes, graceInMinutes, graceOutMinutes });
+};
+
+/** The department-hours map (organization scope); `{}` when nobody configured any. */
+export const departmentHoursMap = async (): Promise<DepartmentHoursMap> =>
+  (await settingsService.resolve<DepartmentHoursMap | null>(HrAttendanceSettingKeys.DepartmentHours, {
+    userId: null,
+    branchId: null,
+  })) ?? {};
+
+/**
+ * The expectation for somebody with NO shift assignment: their department's working hours when HR
+ * configured them, else the branch's default pattern. A real assignment still wins over both —
+ * callers only reach here when there is none.
+ */
+export const defaultPatternFor = async (
+  branchId: string,
+  departmentId: string | null,
+  hoursMap?: DepartmentHoursMap,
+): Promise<EngineShift | null> => {
+  const base = await defaultPatternForBranch(branchId);
+  if (departmentId === null) return base;
+  const map = hoursMap ?? (await departmentHoursMap());
+  const rule = map[departmentId];
+  if (rule === undefined) return base;
+  const fallbackStart = await settingsService.resolve<string>(
+    HrAttendanceSettingKeys.DefaultPatternStartTime,
+    { userId: null, branchId },
+  );
+  return patternForDepartment(rule, base, fallbackStart);
 };
 
 /** The shift fields the engine derives against — a document narrowed to the expectation it states. */
@@ -137,12 +169,17 @@ export const expectationsForDate = async (
           .exec();
   const shiftById = new Map(shiftDocs.map((doc) => [String(doc._id), doc]));
 
-  // One settings resolution per distinct branch, and only for the employees who need it.
+  // One settings resolution per distinct (branch, department), only for those who need it.
+  const hoursMap = await departmentHoursMap();
+  const patternKey = (e: ExpectationSubject): string => `${e.branchId}:${e.departmentId ?? ''}`;
   const patterns = new Map<string, EngineShift | null>();
   for (const employee of employees) {
     if (winners.has(employee.id)) continue;
-    if (patterns.has(employee.branchId)) continue;
-    patterns.set(employee.branchId, await defaultPatternForBranch(employee.branchId));
+    if (patterns.has(patternKey(employee))) continue;
+    patterns.set(
+      patternKey(employee),
+      await defaultPatternFor(employee.branchId, employee.departmentId ?? null, hoursMap),
+    );
   }
 
   for (const employee of employees) {
@@ -153,7 +190,7 @@ export const expectationsForDate = async (
     const assigned = shiftId === null ? undefined : shiftById.get(shiftId);
     const shift =
       assigned === undefined
-        ? (patterns.get(employee.branchId) ?? null)
+        ? (patterns.get(patternKey(employee)) ?? null)
         : asEngineShift(assigned);
     if (shift === null) {
       out.set(employee.id, null);

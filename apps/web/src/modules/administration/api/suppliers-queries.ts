@@ -6,8 +6,9 @@
 //
 // A paper still being scanned is not signalled when the scanner answers (no audit row, so no
 // realtime signal, §11.5), so the record reads itself again with backoff while one is pending, and
-// stops once none is. The backoff counts the reads since a paper was first seen pending, not every
-// read the record has had, so a paper filed late in a session is first re-read after five seconds.
+// stops once none is. The backoff is measured from when a paper was first seen pending, in time
+// rather than in reads, so a paper filed late in a session is first re-read after five seconds and a
+// write's realtime echo does not skip a step.
 import { useQuery } from '@tanstack/react-query';
 import {
   type CreateAdministrationSupplier,
@@ -37,14 +38,14 @@ export const useAdministrationSupplier = (id: string) =>
     enabled: id !== '',
     retry: false,
     refetchInterval: (query) => {
-      const reads = query.state.dataUpdateCount;
-      const wait = nextScanWait(query.state.data?.attachments, reads, scanWaits.get(query));
+      const now = Date.now();
+      const wait = nextScanWait(query.state.data?.attachments, now, scanWaits.get(query));
       if (wait === undefined) {
         scanWaits.delete(query);
         return false;
       }
       scanWaits.set(query, wait);
-      return scanRecheckDelay(query.state.data?.attachments, reads - wait.from + 1);
+      return scanRecheckDelay(query.state.data?.attachments, now - wait.since);
     },
   });
 

@@ -40,7 +40,7 @@ import { useWholeCategories } from '../api/catalog-queries';
 import { getSupplier } from '../api/suppliers-api';
 import { useCreateSupplier, useUpdateSupplier } from '../api/suppliers-queries';
 import { NAME_MAX } from '../lib/catalog-form';
-import { fieldRefusal, refusalFieldKeys, type RefusalField } from '../lib/refusals';
+import { carryEdits, fieldRefusal, refusalFieldKeys, type RefusalField } from '../lib/refusals';
 import {
   ADDRESS_MAX,
   CONTACT_NAME_MAX,
@@ -181,14 +181,24 @@ export const SupplierFormDialog = ({
     tried && wrong === true ? t('administration.suppliers.errors.email') : undefined;
   const holders = taxNumberHolders(form, base);
 
-  /** Saved elsewhere meanwhile: read the supplier afresh and show it as it now is. */
-  const rereadAfterStale = async (id: string): Promise<void> => {
+  /**
+   * Saved elsewhere meanwhile: read the supplier afresh and lay the reader's own changes over it, as
+   * the module's other dialogs do (`carryEdits`) — a box they did not touch shows the other save.
+   */
+  const rereadAfterStale = async (
+    opened: AdministrationSupplierDto | AdministrationSupplierDetailDto,
+    typed: SupplierForm,
+  ): Promise<void> => {
     const fresh = await qc
-      .fetchQuery({ queryKey: supplierKey(id), queryFn: () => getSupplier(id), staleTime: 0 })
+      .fetchQuery({
+        queryKey: supplierKey(opened.id),
+        queryFn: () => getSupplier(opened.id),
+        staleTime: 0,
+      })
       .catch(() => null);
     if (fresh === null) return;
     setBase(fresh);
-    setForm(supplierFormFrom(fresh));
+    setForm(carryEdits(supplierFormFrom(opened), typed, supplierFormFrom(fresh)));
     setReread(true);
   };
 
@@ -219,7 +229,7 @@ export const SupplierFormDialog = ({
     } catch (error) {
       setFailure(error);
       if (base !== null && error instanceof ApiError && error.code === ErrorCodes.STALE_DOCUMENT) {
-        await rereadAfterStale(base.id);
+        await rereadAfterStale(base, form);
       }
     }
   };
@@ -245,7 +255,7 @@ export const SupplierFormDialog = ({
             : errorMessage(failure, locale)
       }
     >
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field
           label={t('administration.suppliers.fields.nameAr')}
           required
@@ -403,7 +413,7 @@ export const SupplierFormDialog = ({
                 className="rounded-lg border border-slate-200 p-3 dark:border-slate-800"
                 data-supplier-contact={index}
               >
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <Field
                     label={t('administration.suppliers.contacts.name')}
                     required

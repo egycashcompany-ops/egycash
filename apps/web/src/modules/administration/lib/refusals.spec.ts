@@ -164,6 +164,19 @@ describe('a stale save keeps what the reader changed', () => {
     expect(carryEdits(opened, { ...opened }, fresh)).toEqual(fresh);
   });
 
+  it('compares a list by what it holds, so an untouched list takes the other person’s', () => {
+    const openedLists = { categoryIds: ['c-1'], contacts: [{ name: 'أحمد' }], notes: '' };
+    const typed = { categoryIds: ['c-1'], contacts: [{ name: 'أحمد' }], notes: 'ملاحظتي' };
+    const fresh = { categoryIds: ['c-1', 'c-2'], contacts: [{ name: 'منى' }], notes: '' };
+    expect(carryEdits(openedLists, typed, fresh)).toEqual({
+      categoryIds: ['c-1', 'c-2'],
+      contacts: [{ name: 'منى' }],
+      notes: 'ملاحظتي',
+    });
+    const mine = { ...typed, categoryIds: ['c-3'] };
+    expect(carryEdits(openedLists, mine, fresh).categoryIds).toEqual(['c-3']);
+  });
+
   it('keeps the reader’s typing where both changed the same box', () => {
     const typed = { ...opened, nameEn: 'Mine' };
     const fresh = { ...opened, nameEn: 'Theirs' };

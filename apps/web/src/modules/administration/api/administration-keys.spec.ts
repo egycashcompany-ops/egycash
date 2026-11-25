@@ -80,6 +80,7 @@ describe('the module’s query keys', () => {
       catalogs: ['administration', 'catalogs'],
       items: ['administration', 'items'],
       warehouses: ['administration', 'warehouses'],
+      suppliers: ['administration', 'suppliers'],
     });
   });
 });

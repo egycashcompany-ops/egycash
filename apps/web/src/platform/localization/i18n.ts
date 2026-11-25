@@ -16335,7 +16335,7 @@ const en: Record<string, string> = {
   'administration.suppliers.fields.contactNameOf': 'Contact person {{n}} — name',
   'administration.suppliers.errors.email': 'Not an e-mail address — such as name@example.com.',
   'administration.suppliers.errors.stale':
-    'This supplier was saved elsewhere after it was opened here — the form now shows it as it is. Make the change again, then save.',
+    'This supplier was saved elsewhere after it was opened here — the form now shows it as it is, with your changes kept. Check them, then save again.',
   'administration.suppliers.sections.identity': 'Supplier',
   'administration.suppliers.sections.reach': 'Contact details',
   'administration.suppliers.contacts.title': 'Contact people',
@@ -32311,7 +32311,7 @@ const ar: Record<string, string> = {
   'administration.suppliers.fields.contactNameOf': 'اسم جهة الاتصال {{n}}',
   'administration.suppliers.errors.email': 'هذا ليس عنوان بريد إلكتروني — مثل name@example.com.',
   'administration.suppliers.errors.stale':
-    'حُفظ هذا المورد في مكان آخر بعد فتحه هنا — يعرض النموذج الآن المورد كما هو. أعِد إدخال التعديل ثم احفظ.',
+    'حُفظ هذا المورد في مكان آخر بعد فتحه هنا — يعرض النموذج الآن المورد كما هو مع الإبقاء على تعديلاتك. راجعها ثم احفظ مجددًا.',
   'administration.suppliers.sections.identity': 'المورد',
   'administration.suppliers.sections.reach': 'بيانات الاتصال',
   'administration.suppliers.contacts.title': 'جهات الاتصال',

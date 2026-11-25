@@ -408,7 +408,10 @@ export const SupplierDocuments = ({
                 >
                   <FileIcon className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                    <p
+                      className="truncate text-sm font-medium text-slate-800 dark:text-slate-100"
+                      dir="auto"
+                    >
                       {paper.label}
                     </p>
                     <p className="truncate text-xs text-slate-500 dark:text-slate-400">

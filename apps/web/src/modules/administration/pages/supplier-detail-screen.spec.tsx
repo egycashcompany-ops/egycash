@@ -195,6 +195,8 @@ describe('the documents card (OD-11 A)', () => {
     expect(html).toContain(ar('administration.suppliers.papers.caption', { size: '١٠' }));
     const row = paperRow(html, 'a-1');
     expect(row).toContain('السجل التجاري');
+    // The label takes its own direction, so a truncated Arabic label loses its end, not its start.
+    expect(row).toMatch(/<p class="truncate[^"]*" dir="auto">السجل التجاري<\/p>/u);
     expect(row).toContain('registry.pdf');
     expect(text(row)).toContain(ar('administration.suppliers.papers.size.kb', { size: '٢٤٠' }));
   });
@@ -227,13 +229,12 @@ describe('the documents card (OD-11 A)', () => {
 
   it('reads the record again with backoff while a paper is being scanned, and maps a 422 to that', () => {
     expect(QUERIES).toContain('refetchInterval: (query) =>');
-    // The doubling counts the reads since a paper was first seen pending (`nextScanWait`).
+    // The wait is measured from when a paper was first seen pending (`nextScanWait`), in time.
     expect(QUERIES).toContain(
-      'nextScanWait(query.state.data?.attachments, reads, scanWaits.get(query))',
+      'nextScanWait(query.state.data?.attachments, now, scanWaits.get(query))',
     );
-    expect(QUERIES).toContain(
-      'scanRecheckDelay(query.state.data?.attachments, reads - wait.from + 1)',
-    );
+    expect(QUERIES).toContain('scanRecheckDelay(query.state.data?.attachments, now - wait.since)');
+    expect(QUERIES).not.toContain('dataUpdateCount');
     expect(CARD).toContain('error instanceof ApiError && error.status === 422');
     expect(CARD).toContain('if (scan) onScanPending();');
   });

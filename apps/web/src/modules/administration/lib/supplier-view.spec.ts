@@ -70,36 +70,45 @@ describe('a paper’s scan state (§11.5)', () => {
   });
 
   it('reads the record again with backoff only while a paper is pending', () => {
-    expect(scanRecheckDelay(undefined, 1)).toBe(false);
-    expect(scanRecheckDelay([paper(), paper({ scanStatus: 'blocked' })], 1)).toBe(false);
+    expect(scanRecheckDelay(undefined, 0)).toBe(false);
+    expect(scanRecheckDelay([paper(), paper({ scanStatus: 'blocked' })], 0)).toBe(false);
     const pending = [paper(), paper({ attachmentId: 'a-2', scanStatus: 'pending' })];
-    expect([1, 2, 3, 4, 5, 6, 9].map((reads) => scanRecheckDelay(pending, reads))).toEqual([
-      5_000, 10_000, 20_000, 40_000, 60_000, 60_000, 60_000,
-    ]);
+    // Each wait is about as long as the paper has waited so far: 5, 5, 10, 20, 40, then a minute.
+    const waits: number[] = [];
+    let elapsed = 0;
+    for (let read = 0; read < 7; read += 1) {
+      const delay = scanRecheckDelay(pending, elapsed) as number;
+      waits.push(delay);
+      elapsed += delay;
+    }
+    expect(waits).toEqual([5_000, 5_000, 10_000, 20_000, 40_000, 60_000, 60_000]);
   });
 
-  it('starts the doubling at the read that first shows a paper pending, not at the page’s load', () => {
+  it('starts the wait when a paper is first seen pending, and an echo a moment later skips nothing', () => {
     const clean = [paper()];
     const one = [paper(), paper({ attachmentId: 'a-2', scanStatus: 'pending' })];
     const two = [...one, paper({ attachmentId: 'a-3', scanStatus: 'pending' })];
-    // Read 1 loads the record and reads 2–5 are edits: nothing pending, no wait kept.
-    expect(nextScanWait(clean, 5, undefined)).toBeUndefined();
-    // Read 6 is the re-read after the paper was filed: its first wait is five seconds.
-    const filed = nextScanWait(one, 6, undefined) as ScanWait;
-    expect(filed).toEqual({ pending: ['a-2'], from: 6 });
-    const delay = (reads: number, wait: ScanWait): number | false =>
-      scanRecheckDelay(one, reads - wait.from + 1);
-    expect(delay(6, filed)).toBe(5_000);
-    // The same paper still pending: the wait keeps doubling from where it started.
-    const later = nextScanWait(one, 8, filed) as ScanWait;
-    expect(later.from).toBe(6);
-    expect(delay(8, later)).toBe(20_000);
+    // The page has been open a long while with nothing pending: no wait kept.
+    expect(nextScanWait(clean, 600_000, undefined)).toBeUndefined();
+    // The write's own re-read first shows the paper pending: its first wait is five seconds.
+    const filed = nextScanWait(one, 600_000, undefined) as ScanWait;
+    expect(filed).toEqual({ pending: ['a-2'], since: 600_000 });
+    expect(scanRecheckDelay(one, 600_000 - filed.since)).toBe(5_000);
+    // The realtime echo of the same write, 0.3 s later, keeps the five seconds.
+    const echo = nextScanWait(one, 600_300, filed) as ScanWait;
+    expect(echo.since).toBe(600_000);
+    expect(scanRecheckDelay(one, 600_300 - echo.since)).toBe(5_000);
+    // Still pending twenty seconds on: the next wait is twenty seconds.
+    const later = nextScanWait(one, 620_000, echo) as ScanWait;
+    expect(scanRecheckDelay(one, 620_000 - later.since)).toBe(20_000);
     // A second paper filed meanwhile starts the wait over.
-    expect(nextScanWait(two, 9, later)).toEqual({ pending: ['a-2', 'a-3'], from: 9 });
+    expect(nextScanWait(two, 625_000, later)).toEqual({ pending: ['a-2', 'a-3'], since: 625_000 });
     // One of two answered: the other keeps its wait.
-    expect(nextScanWait(one, 10, { pending: ['a-2', 'a-3'], from: 9 })?.from).toBe(9);
+    expect(nextScanWait(one, 630_000, { pending: ['a-2', 'a-3'], since: 625_000 })?.since).toBe(
+      625_000,
+    );
     // None pending any more: the wait ends.
-    expect(nextScanWait(clean, 11, later)).toBeUndefined();
+    expect(nextScanWait(clean, 640_000, later)).toBeUndefined();
   });
 
   it('holds twenty papers at most (§11.4)', () => {

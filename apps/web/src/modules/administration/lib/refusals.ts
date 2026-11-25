@@ -129,8 +129,11 @@ export const isStaleRefusal = (error: unknown): boolean =>
  * keeps the reader's typing, which they can see before pressing Save again.
  */
 export const carryEdits = <F extends object>(opened: F, typed: F, fresh: F): F => {
+  // Compared by value, so a list (a supplier's categories or contacts) counts as changed only when
+  // what it holds differs — a form rebuilt from the same record is not an edit.
+  const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
   const mine = Object.fromEntries(
-    Object.entries(typed).filter(([key, value]) => value !== opened[key as keyof F]),
+    Object.entries(typed).filter(([key, value]) => !same(value, opened[key as keyof F])),
   );
   return { ...fresh, ...mine };
 };

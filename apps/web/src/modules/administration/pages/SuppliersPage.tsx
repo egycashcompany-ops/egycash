@@ -134,9 +134,10 @@ export const SuppliersPage = (): JSX.Element => {
         supplier.phone === null ? (
           '—'
         ) : (
-          <span className="whitespace-nowrap tabular-nums" dir="ltr" data-supplier-phone="">
+          // bdo, not a dir span: Arabic-Indic digits around the stars would otherwise swap ends.
+          <bdo className="whitespace-nowrap tabular-nums" dir="ltr" data-supplier-phone="">
             {maskPhone(supplier.phone)}
-          </span>
+          </bdo>
         ),
     },
     {

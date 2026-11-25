@@ -118,6 +118,8 @@ describe('the supplier register', () => {
     expect(text(phone)).toBe('010****5678');
     expect(phone).toContain('dir="ltr"');
     expect(phone).toContain('whitespace-nowrap');
+    // A bidi override, so a number in Arabic-Indic digits keeps its ends where they are typed.
+    expect(phone).toContain('<bdo');
     expect(html).not.toContain('01012345678');
     // Nor in a contact's: the register shows no contact's phone at all.
     expect(html).not.toContain('01198765432');
@@ -242,6 +244,9 @@ describe('the supplier form', () => {
     expect(html).not.toMatch(/data-administration-save=""[^>]*disabled/u);
     expect(html.match(/<span class="text-red-500"> \*<\/span>/gu)).toHaveLength(2);
     expect(FORM).toContain('<AdministrationDialogFrame');
+    // One explicit column on a phone, so a long categories summary cannot widen the dialog.
+    expect(FORM).toContain('grid grid-cols-1 gap-4 sm:grid-cols-2');
+    expect(FORM).not.toMatch(/className="grid gap-\d sm:grid-cols-2"/u);
     expect(html).toContain(ar('administration.suppliers.contacts.none'));
   });
 
@@ -328,16 +333,19 @@ describe('the supplier form', () => {
     expect(FORM).toContain('if (hasEmailProblem(form)) return;');
   });
 
-  it('after a refusal for a moved version, shows the supplier as it now is and saves with its version', () => {
-    // Overwrite nothing (Fleet's custody papers rule): read afresh, seed the form from it, say so.
+  it('after a refusal for a moved version, shows the supplier as it now is with the reader’s changes kept, and saves with its version', () => {
+    // Read afresh and lay the reader's own changes over it, as the module's other dialogs do: a box
+    // they did not touch shows the other save, so the next Save never undoes it.
     expect(FORM).toContain(
       'if (base !== null && error instanceof ApiError && error.code === ErrorCodes.STALE_DOCUMENT) {',
     );
-    expect(FORM).toContain(
-      'queryKey: supplierKey(id), queryFn: () => getSupplier(id), staleTime: 0',
-    );
+    expect(FORM).toContain('await rereadAfterStale(base, form);');
+    expect(FORM).toContain('queryFn: () => getSupplier(opened.id),');
+    expect(FORM).toContain('staleTime: 0,');
     expect(FORM).toContain('setBase(fresh);');
-    expect(FORM).toContain('setForm(supplierFormFrom(fresh));');
+    expect(FORM).toContain(
+      'setForm(carryEdits(supplierFormFrom(opened), typed, supplierFormFrom(fresh)));',
+    );
     expect(FORM).toContain("? t('administration.suppliers.errors.stale')");
     // Every save is measured against that base and carries its version.
     expect(FORM).toContain('body: { ...supplierChanges(form, base), version: base.version },');

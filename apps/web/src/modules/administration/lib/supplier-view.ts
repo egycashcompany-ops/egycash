@@ -90,38 +90,37 @@ const SCAN_WAIT_FIRST_MS = 5_000;
 const SCAN_WAIT_MAX_MS = 60_000;
 
 /**
- * How long the record waits before reading again while a paper is still being scanned — doubling
- * from five seconds to a minute over the reads made since that paper was first seen pending
- * (`reads`, the first such read being 1), or `false` when nothing is pending, so a page with no
- * pending paper never polls.
+ * How long the record waits before reading again while a paper is still being scanned, given how
+ * long ago that paper was first seen pending (`elapsedMs`): about as long again, from five seconds
+ * up to a minute, so the waits roughly double (5, 5, 10, 20, 40, 60 s). It is measured in time, not
+ * counted in reads, so a write's own re-read and its realtime echo, a moment apart, do not skip a
+ * step. `false` when nothing is pending, so a page with no pending paper never polls.
  */
 export const scanRecheckDelay = (
   papers: readonly Pick<AdministrationSupplierAttachmentDto, 'scanStatus'>[] | undefined,
-  reads: number,
+  elapsedMs: number,
 ): number | false => {
   if (papers === undefined || !papers.some((paper) => paper.scanStatus === 'pending')) {
     return false;
   }
-  const doublings = Math.max(0, Math.min(reads - 1, 4));
-  return Math.min(SCAN_WAIT_FIRST_MS * 2 ** doublings, SCAN_WAIT_MAX_MS);
+  return Math.min(Math.max(SCAN_WAIT_FIRST_MS, elapsedMs), SCAN_WAIT_MAX_MS);
 };
 
-/** Where a record's scan wait stands: the papers it saw pending, and the read that first showed one. */
+/** Where a record's scan wait stands: the papers it saw pending, and when it first saw one. */
 export interface ScanWait {
   readonly pending: readonly string[];
-  readonly from: number;
+  readonly since: number;
 }
 
 /**
- * The scan wait after a read (`reads` counts every read of the record, its load included). The
- * doubling starts over at the read that first shows a newly pending paper — a paper filed after a
- * long session waits five seconds, not the minute an earlier one had reached — and ends with
- * `undefined` once none is pending.
+ * The scan wait after a read at `now` (ms). It starts over when a newly pending paper appears — a
+ * paper filed late in a session waits five seconds, not the minute an earlier one had reached — and
+ * ends with `undefined` once none is pending.
  */
 export const nextScanWait = (
   papers:
     readonly Pick<AdministrationSupplierAttachmentDto, 'attachmentId' | 'scanStatus'>[] | undefined,
-  reads: number,
+  now: number,
   wait: ScanWait | undefined,
 ): ScanWait | undefined => {
   const pending = (papers ?? [])
@@ -129,9 +128,9 @@ export const nextScanWait = (
     .map((paper) => paper.attachmentId);
   if (pending.length === 0) return undefined;
   if (wait === undefined || pending.some((id) => !wait.pending.includes(id))) {
-    return { pending, from: reads };
+    return { pending, since: now };
   }
-  return { pending, from: wait.from };
+  return { pending, since: wait.since };
 };
 
 /** A paper's size in the reader's digits: kilobytes under a megabyte, else megabytes. */

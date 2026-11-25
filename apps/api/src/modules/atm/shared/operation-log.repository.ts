@@ -414,18 +414,26 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
    * (contad_app.js:800, :875, :904). No version check, deliberately: the legacy multi-actions are
    * last-write-wins over an explicit selection, and imposing optimistic concurrency on them would
    * invent a rule. The scope filter still applies — a caller can only write rows they can see.
-   * Returns the affected rows re-read, for the response and the audit trail.
+   * Returns the affected rows re-read, for the response and the audit trail. `where` narrows the
+   * write further (the close splits the rows that already name a leader from those that do not);
+   * the answer is still every row of `ids` the scope reaches.
    */
   async updateManyByIds(
     ids: readonly string[],
     set: UpdateQuery<T>['$set'],
-    meta: { by: string; scope: ScopeSelector; onlyOpen?: boolean; session?: ClientSession },
+    meta: {
+      by: string;
+      scope: ScopeSelector;
+      onlyOpen?: boolean;
+      where?: FilterQuery<T>;
+      session?: ClientSession;
+    },
   ): Promise<T[]> {
     const objectIds = ids
       .filter((id) => Types.ObjectId.isValid(id))
       .map((id) => new Types.ObjectId(id));
     if (objectIds.length === 0) return [];
-    const extra: FilterQuery<T> = { _id: { $in: objectIds } } as FilterQuery<T>;
+    const extra: FilterQuery<T> = { ...meta.where, _id: { $in: objectIds } } as FilterQuery<T>;
     if (meta.onlyOpen === true) (extra as Record<string, unknown>).closedAt = null;
     const filter = this.baseFilter(meta.scope, extra);
     await this.model
@@ -466,6 +474,7 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
     rows: readonly T[],
     leaderName: string | null,
     by: string,
+    alsoSet?: UpdateQuery<T>['$set'],
   ): Promise<number> {
     let touched = 0;
     for (const row of leaderCascadeGroups(rows)) {
@@ -475,6 +484,7 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
         openedAt: row.openedAt,
         leaderName,
         by,
+        ...(alsoSet === undefined ? {} : { alsoSet }),
       });
     }
     return touched;
@@ -483,7 +493,8 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
   /**
    * The leader cascade (contad_app.js:861-867 / :2023-2031): every OPEN row of the same branch
    * and area whose open time falls in the same Cairo shift window gets the new leader. Returns
-   * how many rows the cascade touched.
+   * how many rows the cascade touched. `alsoSet` is what a kind writes with a leader given by name
+   * (maintenance clears the employee id the name no longer stands for).
    */
   async cascadeLeader(params: {
     branchId: Types.ObjectId;
@@ -491,6 +502,7 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
     openedAt: Date;
     leaderName: string | null;
     by: string;
+    alsoSet?: UpdateQuery<T>['$set'];
   }): Promise<number> {
     const window = cairoShiftWindow(params.openedAt);
     const result = await this.model
@@ -503,7 +515,11 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
           openedAt: { $gte: window.start, $lt: window.end },
         } as FilterQuery<T>,
         {
-          $set: { leaderName: params.leaderName, updatedBy: new Types.ObjectId(params.by) },
+          $set: {
+            ...params.alsoSet,
+            leaderName: params.leaderName,
+            updatedBy: new Types.ObjectId(params.by),
+          },
           $inc: { __v: 1 },
         } as UpdateQuery<T>,
       )

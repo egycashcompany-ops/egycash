@@ -1,15 +1,17 @@
 // Maintenance dialogs — the two the legacy page owns beyond replenishment's:
 //
-//   · CLOSE (atm_maintenance.ejs:1151-1230): closing REQUIRES assigning an employee from the ATM
-//     department list — the modal's required datalist. Single row or the checked set, one submit.
-//     The list is `/atm/leaders/options` (the ATM department by name, or the departments ticked on
-//     /atm/settings); the box is searchable and shows each person with their HR code.
+//   · CLOSE (atm_maintenance.ejs:1151-1230): single row or the checked set, one submit. A row that
+//     already names its crew leader closes under that name (owner, 2026-11-25: «عايز اسم الموظف دا
+//     يجي تلقائي من قائد الطاقم فى الجدول لو مُعين .. لو لأ خليه يدخله هو»); the employee box is
+//     shown, and required, only while a row names none, and its pick is written on those rows
+//     only. The list is `/atm/leaders/options` (the ATM department by name, or the departments
+//     ticked on /atm/settings); the box is searchable and shows each person with their HR code.
 //   · EDIT (:1561-1650): service type, notes, open time, leader — a changed leader cascades over
 //     the row's area+shift unconditionally (contad_app.js:2019-2032), stated in the hint — unless
 //     the «الوردية» box beside it is unticked (2026-10-27): then the row, or the checked rows, only.
 //     Ticked on a checked set, it goes over each checked row's area and shift too.
 import { useEffect, useId, useState, type FormEvent } from 'react';
-import { type AtmLeaderOptionDto, type AtmMaintenanceDto } from '@ecms/contracts';
+import { atmLeaderNamed, type AtmLeaderOptionDto, type AtmMaintenanceDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
@@ -45,7 +47,10 @@ export const CloseMaintenanceDialog = ({
 }): JSX.Element => {
   const t = useT();
   const close = useCloseAtmMaintenances();
-  const options = useAtmLeaderOptions(open);
+  // The rows the close cannot name a leader for by itself — the server's own test of a name.
+  const leaderless = rows.filter((row) => !atmLeaderNamed(row.leaderName)).length;
+  const needsEmployee = leaderless > 0;
+  const options = useAtmLeaderOptions(open && needsEmployee);
   const pickerId = useId();
   const [leaderEmployeeId, setLeaderEmployeeId] = useState('');
   const people = options.data ?? [];
@@ -61,9 +66,12 @@ export const CloseMaintenanceDialog = ({
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    if (leaderEmployeeId === '') return;
+    if (needsEmployee && leaderEmployeeId === '') return;
     try {
-      await close.mutateAsync({ ids: rows.map((row) => row.id), leaderEmployeeId });
+      await close.mutateAsync({
+        ids: rows.map((row) => row.id),
+        ...(needsEmployee ? { leaderEmployeeId } : {}),
+      });
       toast.success(t('atm.maintenance.closed'));
       onClose();
     } catch {
@@ -87,35 +95,48 @@ export const CloseMaintenanceDialog = ({
           {rows.map((row) => (
             <li key={row.id} className="rounded bg-slate-100 px-2 py-1 dark:bg-slate-800">
               {row.machineCode} — {row.machineName}
+              <span className="text-slate-500 dark:text-slate-400">
+                {' · '}
+                {atmLeaderNamed(row.leaderName)
+                  ? t('atm.maintenance.closeLeader', { name: row.leaderName ?? '' })
+                  : t('atm.maintenance.closeNoLeader')}
+              </span>
             </li>
           ))}
         </ul>
-        <Field
-          label={t('atm.maintenance.assignEmployee')}
-          htmlFor={pickerId}
-          required
-          error={options.isError ? t('atm.common.leadersLoadFailed') : undefined}
-          warning={
-            options.isSuccess && people.length === 0
-              ? t('atm.maintenance.noEmployeesHint')
-              : undefined
-          }
-        >
-          <Combobox
-            id={pickerId}
-            value={labelOfId.get(leaderEmployeeId) ?? ''}
-            options={labels}
-            onChange={(label) => setLeaderEmployeeId(idOfLabel.get(label) ?? '')}
-            placeholder={t('atm.maintenance.pickEmployee')}
-            emptyText={t(options.isLoading ? 'common.loading' : 'common.noResults')}
-            clearLabel={t('common.clear')}
-          />
-        </Field>
+        {needsEmployee && (
+          <Field
+            label={t('atm.maintenance.assignEmployee')}
+            htmlFor={pickerId}
+            required
+            hint={t('atm.maintenance.assignEmployeeHint', { count: leaderless })}
+            error={options.isError ? t('atm.common.leadersLoadFailed') : undefined}
+            warning={
+              options.isSuccess && people.length === 0
+                ? t('atm.maintenance.noEmployeesHint')
+                : undefined
+            }
+          >
+            <Combobox
+              id={pickerId}
+              value={labelOfId.get(leaderEmployeeId) ?? ''}
+              options={labels}
+              onChange={(label) => setLeaderEmployeeId(idOfLabel.get(label) ?? '')}
+              placeholder={t('atm.maintenance.pickEmployee')}
+              emptyText={t(options.isLoading ? 'common.loading' : 'common.noResults')}
+              clearLabel={t('common.clear')}
+            />
+          </Field>
+        )}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
             {t('atm.common.cancel')}
           </Button>
-          <Button type="submit" loading={close.isPending} disabled={leaderEmployeeId === ''}>
+          <Button
+            type="submit"
+            loading={close.isPending}
+            disabled={needsEmployee && leaderEmployeeId === ''}
+          >
             {t('atm.common.close')}
           </Button>
         </div>

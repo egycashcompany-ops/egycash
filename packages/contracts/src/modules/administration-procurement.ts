@@ -576,10 +576,10 @@ export interface AdministrationPurchaseRequestRoundDto {
 }
 
 /**
- * The record (phase-2 §6.5): the row, the request's texts and snapshots, its lines, the rounds a
- * return archived, the stamps and reasons of each act, and what this reader may do now. The
- * current round's trail joins with the decisions that read it (P2.4), and the attachments with
- * their scan states with the attachments themselves (P2.6).
+ * The record (phase-2 §6.5): the row, the request's texts and snapshots, its lines, its files with
+ * their scan states (P2.6), the rounds a return archived, the stamps and reasons of each act, and
+ * what this reader may do now. The current round's trail joins with the decisions that read it
+ * (P2.4).
  */
 export interface AdministrationPurchaseRequestDetailDto extends AdministrationPurchaseRequestDto {
   justification: string | null;
@@ -588,6 +588,14 @@ export interface AdministrationPurchaseRequestDetailDto extends AdministrationPu
   businessDate: string | null;
   requester: AdministrationPurchaseRequestRequesterDto;
   lines: AdministrationPurchaseRequestLineDto[];
+  /**
+   * Linked and removed only while the request is a draft, by its requester, through the act's key —
+   * the first of `.create` and `.edit` whose own scope finds the request — when that key covers its
+   * Unit (phase-2 §4.2, §4.3). Where the write keys the reader holds share one scope and reach, as
+   * the department requester's bundle grants them, the record offers these writes exactly when
+   * `availableActions` holds `edit` or `submit` enabled; never on status and requester alone.
+   */
+  attachments: AdministrationPurchaseRequestAttachmentDto[];
   approvalRounds: AdministrationPurchaseRequestRoundDto[];
   submittedBy: string | null;
   approvedAt: string | null;
@@ -601,4 +609,52 @@ export interface AdministrationPurchaseRequestDetailDto extends AdministrationPu
   cancelledByUserId: string | null;
   cancelReason: string | null;
   availableActions: AdministrationAvailableActionDto[];
+}
+
+// ── A request's files — `administration-request-attachments` (phase-2 §4.3; P2.6) ──
+//
+// The supplier papers' shape (P1b.1): one file per upload, under the field `file`, linked by a
+// version-held write and removed by its link alone. A purchase request's list changes only while
+// it is a draft, and only by its requester (OD-76 after submission (i); phase-2 §1.2 item 22).
+
+/**
+ * The text fields sent beside the file (multipart, so each arrives as a string): what the file is
+ * — «مواصفات الطابعة», «صورة العطل» — bounded as a file's display name is, and the version of the
+ * request the requester was looking at, because a file's link is an edit of the draft.
+ */
+export const AddAdministrationPurchaseRequestAttachmentSchema = z
+  .object({
+    label: z.string().trim().min(1).max(200),
+    version: z.coerce.number().int().min(0),
+  })
+  .strict();
+export type AddAdministrationPurchaseRequestAttachment = z.infer<
+  typeof AddAdministrationPurchaseRequestAttachmentSchema
+>;
+
+/** `?version=` on a file's removal — a DELETE carries no body. */
+export const AdministrationPurchaseRequestAttachmentVersionQuerySchema = z
+  .object({ version: z.coerce.number().int().min(0) })
+  .strict();
+export type AdministrationPurchaseRequestAttachmentVersionQuery = z.infer<
+  typeof AdministrationPurchaseRequestAttachmentVersionQuerySchema
+>;
+
+/** One file on the request's list (list B, design §11.4), its scan state read at read time. */
+export interface AdministrationPurchaseRequestAttachmentDto {
+  /** What the file’s read and removal name: `/purchase-requests/:id/attachments/:attachmentId`. */
+  attachmentId: string;
+  categoryKey: string;
+  label: string;
+  fileName: string;
+  mime: string;
+  size: number;
+  addedByUserId: string;
+  addedAt: string;
+  /**
+   * The file's scan state, never stored (design §11.5): `pending` can be neither previewed nor
+   * downloaded yet, `blocked` never. Null when the file is gone or archived, or when this reader
+   * may not open the request's files.
+   */
+  scanStatus: ScanStatus | null;
 }

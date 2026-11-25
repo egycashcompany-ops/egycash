@@ -8,12 +8,14 @@ import {
   type AdministrationItemCategoryDto,
   type AdministrationItemDto,
   type AdministrationPersonDto,
+  type AdministrationPurchaseRequestAttachmentDto,
   type AdministrationPurchaseRequestDetailDto,
   type AdministrationPurchaseRequestDto,
   type AdministrationSupplierDetailDto,
   type AdministrationSupplierDto,
   type AdministrationWarehouseDto,
   type AdministrationWarehouseKeeperDto,
+  type ScanStatus,
 } from '@ecms/contracts';
 import { type DirectoryEmployee, type DirectoryEmployeeListing } from '../../platform/directory';
 import { type AdministrationCatalogItemDoc } from './catalog/catalog-items/catalog-item.model';
@@ -23,6 +25,7 @@ import { type AdministrationItemDoc } from './catalog/items/item.model';
 import { type ItemLabels } from './catalog/items/item.service';
 import {
   type AdministrationApprovalEntrySub,
+  type AdministrationPurchaseRequestAttachmentSub,
   type AdministrationPurchaseRequestDoc,
 } from './procurement/purchase-requests/purchase-request.model';
 import { type AdministrationSupplierDoc } from './procurement/suppliers/supplier.model';
@@ -271,13 +274,35 @@ const toApprovalEntryDto = (
 });
 
 /**
+ * One file on a request's list, its scan state read at read time (null for a file gone or
+ * archived, or one this reader may not open; design §11.5). The file id stays on the server: a
+ * file is read through the request's own route, by `attachmentId`.
+ */
+const toPurchaseRequestAttachmentDto = (
+  entry: AdministrationPurchaseRequestAttachmentSub,
+  scanStates: ReadonlyMap<string, ScanStatus | null>,
+): AdministrationPurchaseRequestAttachmentDto => ({
+  attachmentId: String(entry.attachmentId),
+  categoryKey: entry.categoryKey,
+  label: entry.label,
+  fileName: entry.fileName,
+  mime: entry.mime,
+  size: entry.size,
+  addedByUserId: String(entry.addedByUserId),
+  addedAt: iso(entry.addedAt),
+  scanStatus: scanStates.get(String(entry.fileId)) ?? null,
+});
+
+/**
  * The record (P2 plan §6.5): the row, the request's texts, the requester's snapshot, the lines
- * with their snapshots and counters, the rounds a return archived as stored, every act's stamp and
- * reason, and `actions`, the server's answer for this reader of what they may do now.
+ * with their snapshots and counters, its files with their scan states (P2.6), the rounds a return
+ * archived as stored, every act's stamp and reason, and `actions`, the server's answer for this
+ * reader of what they may do now.
  */
 export const toAdministrationPurchaseRequestDetailDto = (
   doc: AdministrationPurchaseRequestDoc,
   actions: AdministrationAvailableActionDto[],
+  scanStates: ReadonlyMap<string, ScanStatus | null>,
 ): AdministrationPurchaseRequestDetailDto => ({
   ...toAdministrationPurchaseRequestDto(doc),
   justification: doc.justification,
@@ -301,6 +326,7 @@ export const toAdministrationPurchaseRequestDetailDto = (
     cancelledQty: line.cancelledQty,
     notes: line.notes,
   })),
+  attachments: doc.attachments.map((entry) => toPurchaseRequestAttachmentDto(entry, scanStates)),
   approvalRounds: doc.approvalRounds.map((round) => ({
     round: round.round,
     endedBy: round.endedBy,

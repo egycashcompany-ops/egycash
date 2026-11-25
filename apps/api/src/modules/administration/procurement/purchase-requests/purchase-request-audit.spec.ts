@@ -2,8 +2,10 @@
 // registry scans for; a `create` row of the request's facts, the requester as ids and the lines
 // summarized; an `update` row of what an edit changed, and nothing for a save that changed none;
 // and after every audited act one `update` signal carrying the request's branch, which a
-// department requester's room hears and the audit row alone (no branch) never reaches. The
-// `consumable-history.spec.ts` posture: the platform's audit and realtime mocked.
+// department requester's room hears and the audit row alone (no branch) never reaches. P2.6: a
+// file linked or its link removed is one `update` row naming the file by its category and label,
+// and the same branch signal. The `consumable-history.spec.ts` posture: the platform's audit and
+// realtime mocked.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +19,8 @@ vi.mock('../../../../platform/audit', () => ({ auditService: { record: mocks.rec
 vi.mock('../../../../platform/realtime', () => ({ publishAuditedChange: mocks.publish }));
 
 const {
+  auditPurchaseRequestAttachmentAdded,
+  auditPurchaseRequestAttachmentRemoved,
   auditPurchaseRequestCreated,
   auditPurchaseRequestEdited,
   purchaseRequestEntityRef,
@@ -202,5 +206,64 @@ describe('a draft’s edit (design §10.2)', () => {
     );
     expect(mocks.record).not.toHaveBeenCalled();
     expect(mocks.publish).not.toHaveBeenCalled();
+  });
+});
+
+describe('a file linked or its link removed (P2.6; design §10.2, §11.4)', () => {
+  const file = { categoryKey: 'administration-request-attachments', label: 'مواصفات الطابعة' };
+
+  it('a link is one `update` row, `attachment` from nothing to the file, then the branch signal', async () => {
+    await auditPurchaseRequestAttachmentAdded(request({ __v: 1 }), file);
+    expect(recorded()).toEqual([
+      {
+        entityRef: purchaseRequestEntityRef('64a0000000000000000000f1'),
+        action: 'update',
+        changes: [
+          {
+            field: 'attachment',
+            old: null,
+            new: 'administration-request-attachments:مواصفات الطابعة',
+          },
+        ],
+      },
+    ]);
+    expect(signals()).toEqual([
+      expect.objectContaining({
+        entityRef: purchaseRequestEntityRef('64a0000000000000000000f1'),
+        action: 'update',
+        branchId: String(BRANCH),
+      }),
+    ]);
+  });
+
+  it('a removal is one `update` row, `attachment` from the file to nothing, then the branch signal', async () => {
+    await auditPurchaseRequestAttachmentRemoved(request({ __v: 2 }), file);
+    expect(recorded()).toEqual([
+      {
+        entityRef: purchaseRequestEntityRef('64a0000000000000000000f1'),
+        action: 'update',
+        changes: [
+          {
+            field: 'attachment',
+            old: 'administration-request-attachments:مواصفات الطابعة',
+            new: null,
+          },
+        ],
+      },
+    ]);
+    expect(signals()).toEqual([expect.objectContaining({ branchId: String(BRANCH) })]);
+  });
+
+  it('records before it signals, so a screen that reads again finds the row', async () => {
+    const order: string[] = [];
+    mocks.record.mockImplementation(async () => {
+      order.push('record');
+    });
+    mocks.publish.mockImplementation(() => {
+      order.push('signal');
+    });
+    await auditPurchaseRequestAttachmentAdded(request(), file);
+    await auditPurchaseRequestAttachmentRemoved(request(), file);
+    expect(order).toEqual(['record', 'signal', 'record', 'signal']);
   });
 });

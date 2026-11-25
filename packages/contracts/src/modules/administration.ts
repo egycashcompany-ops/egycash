@@ -187,13 +187,34 @@ export interface AdministrationPersonDto {
 }
 
 /**
- * The most entries one typed attachment list holds (design §11.4, list B): a supplier's papers now,
- * a request's and a receipt's later. It bounds the record's size and keeps one list inside a single
- * read of its files' scan states (§11.5); the write that would add one more is refused
- * (`ADMINISTRATION_ATTACHMENT_LIMIT`), its filter carrying the bound so two racing adds cannot
- * both pass it.
+ * The most entries one typed attachment list holds (design §11.4, list B): a supplier's papers and
+ * a purchase request's files now, a receipt's later. It bounds the record's size and keeps one list
+ * inside a single read of its files' scan states (§11.5); the write that would add one more is
+ * refused (`ADMINISTRATION_ATTACHMENT_LIMIT`), its filter carrying the bound so two racing adds
+ * cannot both pass it.
  */
 export const ADMINISTRATION_MAX_LIST_ATTACHMENTS = 20;
+
+// ── Request attachments — `administration-request-attachments` (design §11.2; P2.6) ──
+
+/**
+ * The file category a request's own files are filed in: a purchase request's spec sheet, photo or
+ * memo now, a material request's from P6 (design §11.2). One key per purpose, so this purpose's
+ * formats and retention stay its own decisions (OD-76, OD-77), whatever another list's become.
+ */
+export const ADMINISTRATION_REQUEST_ATTACHMENTS_FILE_CATEGORY =
+  'administration-request-attachments';
+
+/** PDF and images only (OD-76 formats (i)), each previewable in the browser; no Office file. */
+export const ADMINISTRATION_REQUEST_ATTACHMENT_MIMES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+] as const;
+
+/** The category's limit, the one a user meets: the upload's own cap sits 5 MB above it (§11.2). */
+export const ADMINISTRATION_REQUEST_ATTACHMENT_MAX_MB = 10;
 
 // ── What every document shares (design §2.1, §5.1.4; P2.2) ─────────────────
 

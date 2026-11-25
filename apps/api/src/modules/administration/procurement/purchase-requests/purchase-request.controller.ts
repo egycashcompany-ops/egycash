@@ -3,6 +3,8 @@
 // do next.
 import { type Request, type Response } from 'express';
 import {
+  type AddAdministrationPurchaseRequestAttachment,
+  type AdministrationPurchaseRequestAttachmentVersionQuery,
   type AdministrationPurchaseRequestDetailDto,
   type CreateAdministrationPurchaseRequest,
   type ListAdministrationPurchaseRequestsQuery,
@@ -10,21 +12,33 @@ import {
 } from '@ecms/contracts';
 import { created, ok, okPage, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
+import { ValidationError } from '../../../../shared/errors';
 import { type AuthContext } from '../../../../shared/types';
 import {
   toAdministrationPurchaseRequestDetailDto,
   toAdministrationPurchaseRequestDto,
 } from '../../administration.mappers';
+import { uploadedFileName } from '../../shared/file-upload';
+import { administrationPurchaseRequestAttachments as attachments } from './purchase-request-files';
 import { type AdministrationPurchaseRequestDoc } from './purchase-request.model';
 import { administrationPurchaseRequestService as service } from './purchase-request.service';
 
 type IdParam = { id: string };
+type AttachmentParam = { id: string; attachmentId: string };
 
-const detail = (
+/**
+ * The record this reader is answered with: its acts, and each file's scan state read now (P2.6) —
+ * so it is awaited, and every handler that answers the record answers `await detailOf(…)`.
+ */
+const detailOf = async (
   ctx: AuthContext,
   doc: AdministrationPurchaseRequestDoc,
-): AdministrationPurchaseRequestDetailDto =>
-  toAdministrationPurchaseRequestDetailDto(doc, service.actionsFor(doc, ctx));
+): Promise<AdministrationPurchaseRequestDetailDto> =>
+  toAdministrationPurchaseRequestDetailDto(
+    doc,
+    service.actionsFor(doc, ctx),
+    await attachments.scanStates(ctx, doc),
+  );
 
 export const listAdministrationPurchaseRequests = async (
   req: Request,
@@ -41,7 +55,7 @@ export const getAdministrationPurchaseRequest = async (
 ): Promise<void> => {
   const { params } = validated<never, never, IdParam>(req);
   const ctx = authContext(req);
-  ok(res, detail(ctx, await service.get(params.id, ctx)));
+  ok(res, await detailOf(ctx, await service.get(params.id, ctx)));
 };
 
 export const createAdministrationPurchaseRequest = async (
@@ -50,7 +64,7 @@ export const createAdministrationPurchaseRequest = async (
 ): Promise<void> => {
   const { body } = validated<CreateAdministrationPurchaseRequest>(req);
   const ctx = authContext(req);
-  created(res, detail(ctx, await service.create(body, ctx)));
+  created(res, await detailOf(ctx, await service.create(body, ctx)));
 };
 
 export const updateAdministrationPurchaseRequest = async (
@@ -59,5 +73,60 @@ export const updateAdministrationPurchaseRequest = async (
 ): Promise<void> => {
   const { body, params } = validated<UpdateAdministrationPurchaseRequest, never, IdParam>(req);
   const ctx = authContext(req);
-  ok(res, detail(ctx, await service.update(params.id, body, ctx)));
+  ok(res, await detailOf(ctx, await service.update(params.id, body, ctx)));
+};
+
+// ── A request's files (P2.6) ────────────────────────────────────────────────
+
+export const addAdministrationPurchaseRequestAttachment = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const { body, params } = validated<AddAdministrationPurchaseRequestAttachment, never, IdParam>(
+    req,
+  );
+  const uploaded = req.file;
+  if (uploaded === undefined) {
+    throw new ValidationError([
+      { field: 'file', code: 'REQUIRED', message: 'a file part named "file" is required' },
+    ]);
+  }
+  const ctx = authContext(req);
+  const doc = await attachments.add(ctx, params.id, body, {
+    originalName: uploadedFileName(uploaded.originalname),
+    mime: uploaded.mimetype,
+    size: uploaded.size,
+    buffer: uploaded.buffer,
+  });
+  created(res, await detailOf(ctx, doc));
+};
+
+export const removeAdministrationPurchaseRequestAttachment = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const { query, params } = validated<
+    never,
+    AdministrationPurchaseRequestAttachmentVersionQuery,
+    AttachmentParam
+  >(req);
+  const ctx = authContext(req);
+  const doc = await attachments.remove(ctx, params.id, params.attachmentId, query.version);
+  ok(res, await detailOf(ctx, doc));
+};
+
+/** The bytes inline, never cached by anything between the server and the reader (design §11.5). */
+export const getAdministrationPurchaseRequestAttachment = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const { params } = validated<never, never, AttachmentParam>(req);
+  const file = await attachments.read(authContext(req), params.id, params.attachmentId);
+  res.setHeader('Content-Type', file.mime);
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+  );
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.send(file.buffer);
 };

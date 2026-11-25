@@ -1484,7 +1484,7 @@ Feature specs sit beside their files in the PR feature, `procurement/purchase-re
 | `purchase-request-files.spec.ts` | C | P2.6 | the authorizer: each key with its own scope; write only by the requester and only on a draft, so a write on a submitted PR is denied; the delete asked as a write |
 | `purchase-request-sweeps.spec.ts` | C | P2.7 | the declaration's key, cron and owner; reminders only after an earlier Cairo date; the stuck notice and its audience; idempotency keys with the rung; the `_id` cursor across pages; no write |
 | `catalog/items/item-unit-lock.spec.ts` | C | P2.2 | no registrant passes; a registrant's answer refuses the unit change and only that |
-| `purchase-request-guards.spec.ts`, the source-scan guards | C, M | P2.2; P2.3, P2.4 | design §5.16 specs 9–13: one writer of `status`; every status write filtered on `__v` or `status`; pair A1 in decide and return, B1 in decide; no `approvalService.statusFor(` and no `decide(` inside `unitOfWork(`; no content write matches a terminal status |
+| `purchase-request-guards.spec.ts`, the source-scan guards | C, M | P2.2; P2.3, P2.4, P2.6 | design §5.16 specs 9–13: one writer of `status`; every status write filtered on `__v` or `status`; pair A1 in decide and return, B1 in decide; no `approvalService.statusFor(` and no `decide(` inside `unitOfWork(`; no content write matches a terminal status; the file link, the repository's one write, writes the list alone and holds the version and the draft set in its filter (P2.6) |
 | `administration.module.spec.ts`, `administration-scope-guards.spec.ts`, `administration-indexes.spec.ts` | M | P2.2–P2.7 | the surface pinned; the PR repository's scope fields and its section-as-own reading (design §7.3); the model list |
 | `administration.seed.spec.ts` | C, M | P2.3; P2.4, P2.5, P2.7 | every sent template seeded |
 
@@ -1582,7 +1582,7 @@ listed, then modified.
 | `packages/contracts/src/modules/administration.ts` + spec | M | P2.1; P2.2–P2.7 | numbering; lines cap; available actions; the unit-lock vocabulary; events; templates; the request-attachments category |
 | `packages/contracts/src/modules/administration-procurement.ts` + spec | M | P2.2–P2.6 | PR statuses, guard sets, schemas, DTOs, action keys and reasons |
 | `packages/contracts/src/modules/administration-catalog.ts` + spec | M | P2.1 | `stockTracked`; `CreateAdministrationItemInput` |
-| `packages/contracts/src/errors/index.ts` | M | P2.2–P2.5 | §5's eight codes; `ADMINISTRATION_EMPLOYEE_EXITED`'s comment |
+| `packages/contracts/src/errors/index.ts` | M | P2.2–P2.6 | §5's eight codes; `ADMINISTRATION_EMPLOYEE_EXITED`'s comment; `ADMINISTRATION_ATTACHMENT_LIMIT`'s comment names the request's files (P2.6) |
 | `packages/contracts/src/events/catalog.ts` + `catalog.spec.ts` | M | P2.3–P2.5 | the module's source, name and word |
 | `packages/contracts/src/platform/notification-target.ts` + spec | M | P2.W1 | `ENTITY_ROUTES` |
 | `packages/contracts/src/platform/audit.ts` | M | P2.0 | `approvalDecision` |
@@ -1595,9 +1595,9 @@ listed, then modified.
 | `administration.module.ts` + `.spec.ts` | M | P2.2–P2.7 | keys, page, routes, collection, the file authorizer (P2.6), `scheduledTasks` (P2.7) |
 | `administration.seed.ts` | M | P2.2–P2.7 | the year's counter (P2.2); each template in its slice (P2.3–P2.5, P2.7); the request-attachments category (P2.6) |
 | `administration.seed.spec.ts` | C, M | P2.3; P2.4, P2.5, P2.7 | every sent template seeded |
-| `administration-indexes.ts` + `administration-indexes.spec.ts` | M | P2.1 (the spec), P2.2 | the item input's parsed `stockTracked` (P2.1); the PR model |
+| `administration-indexes.ts` + `administration-indexes.spec.ts` | M | P2.1 (the spec), P2.2, P2.6 (the spec) | the item input's parsed `stockTracked` (P2.1); the PR model; the seed's request-attachments step in its order (P2.6) |
 | `administration-roles.ts` | M | P2.2, P2.5 | §9.3 |
-| `administration.mappers.ts` | M | P2.1; P2.2 | `stockTracked ?? true` on the item DTO; the PR DTOs |
+| `administration.mappers.ts` | M | P2.1; P2.2; P2.6 | `stockTracked ?? true` on the item DTO; the PR DTOs; the detail's files with their scan states (P2.6) |
 | `administration-scope-guards.spec.ts` | M | P2.2 | the PR repository's fields |
 | `shared/document-number.ts` + spec | M | P2.1 | the yearly series and its Cairo-year key; `highestNumberPipeline`, `numberFloorFrom` |
 | `shared/cairo-day.ts` | C | P2.1 | re-exports of the contracts' Cairo calendar (`cairoCalendarDate`, `cairoYmd`, the day bounds), nothing copied (design §3.5), as HR's `apps/api/src/modules/hr/shared/business-date.ts:4-10` does; no spec of its own, because the contracts spec covers the calendar (`packages/contracts/src/common/cairo-date.spec.ts:37-40`) |
@@ -1617,7 +1617,7 @@ listed, then modified.
 | `procurement/purchase-requests/purchase-request-notices.ts` | C, M | P2.3; P2.4, P2.5, P2.7 | the sends of §11.1 |
 | `procurement/purchase-requests/purchase-request-files.ts` + spec | C | P2.6 | category, authorizer, the three routes' service |
 | `procurement/purchase-requests/purchase-request-sweeps.ts` + spec | C | P2.7 | §11.2 |
-| `procurement/purchase-requests/purchase-request-guards.spec.ts` | C, M | P2.2; P2.3, P2.4 | §12.1's source-scan guards |
+| `procurement/purchase-requests/purchase-request-guards.spec.ts` | C, M | P2.2; P2.3, P2.4, P2.6 | §12.1's source-scan guards |
 
 **Platform registries, census, seeds and scripts**
 

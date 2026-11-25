@@ -1,9 +1,10 @@
 # Administrative Affairs — Phase 2: purchase requests (re-detail)
 
-**Status:** DRAFT v0.3 (2026-11-25), its design review recorded in §18. This is the P2 re-detail that design §18 and §21
-require before a phase's first pull request: the plan of record "re-checked against the code (a drift check) and
-re-detailed as a §19-shaped section" in a sibling file, whose design review "is the gate before that phase's first pull
-request" (`administration-module-decisions-and-phases.md:2003-2007`); design §22 records it. The platform slice P2
+**Status:** DRAFT v0.4 (2026-11-25), its design review recorded in §18 and its second drift check, on the engine PX-1
+built, in §1.2 E. This is the P2 re-detail that design §18 and §21 require before a phase's first pull request: the
+plan of record "re-checked against the code (a drift check) and re-detailed as a §19-shaped section" in a sibling file,
+whose design review "is the gate before that phase's first pull request"
+(`administration-module-decisions-and-phases.md:2006-2010`); design §22 records it. The platform slice P2
 builds on is re-detailed in [administration-module-phase-px1.md](administration-module-phase-px1.md), and its decision
 is ADR-041, Accepted (`docs/03-decisions/ADR-041-money-approvals-on-the-platform-engine.md`).
 
@@ -16,7 +17,7 @@ D-1…D-22, the design §2.4.4 posting invariant and the design §2.4.5–§2.4.
 graph, the states and edges of design §5, the scope rules of design §7, the realtime rules of design §9 and every name
 design §2 fixes. P2 touches no stock rule (design §2.4.4–§2.4.6 start in P5) and relies on the design §3.6 graph twice
 (§1; §1.2 item 14). Routes, bodies, DTOs, fields beyond their names and exit criteria are the plan of record, which this
-document re-details (`administration-module-decisions-and-phases.md:2000-2003`).
+document re-details (`administration-module-decisions-and-phases.md:2003-2006`).
 
 **Paths.** Code paths are from the repository root, with three shorthands. Module paths are under
 `apps/api/src/modules/administration/` unless they say otherwise, and "the PR feature" is
@@ -26,13 +27,17 @@ there. Documents in `docs/12-planning/` are cited by file name, other documents 
 root; an ADR is named by its number, with its path when a line is cited. A bare `:n` cites the file named last before
 it.
 
-**Drift check** (design §18), on `main` at `de38fd71`. Every code citation below was read on that commit. §1.2
-details each finding; three shape the phase:
+**Drift check** (design §18), on `main` at `de38fd71`, and a second one on the engine PX-1 built, read on `a4434d00`,
+PX-1.6's head (§3). Since `de38fd71` the code has changed only in the engine and its tests, its contract, HR leave's
+service and model, the chain screen's files and their source scan, and `i18n.ts`, so every other code citation below
+still holds as read on that commit; those in the changed files were read again on `a4434d00`, and the lines that moved
+are re-pinned (§1.2 E). §1.2 details each finding; three shape the phase:
 
-- **The engine P2 is written against is not built yet.** Only PX-1.0, the documents, has merged. The engine still has
-  three statuses, no pin and no audit option (`approval-trail.ts:39`; `index.ts:1-9`; `request-type.registry.ts:17-20`).
-  P2 is written against the engine as ADR-041 leaves it. Its code waits for PX-1 to close, and a second drift check,
-  in a docs pull request of its own, reads the merged engine before P2.0 opens (§3).
+- **P2 is written against the engine PX-1 built.** The first check ran when only PX-1.0, the documents, had merged.
+  The second read PX-1.1 to PX-1.6 against §1.2 A items 1–5, item 17 and the calls of §8, and found the engine as
+  ADR-041 leaves it: five statuses, the pin and the audit option (`approval-trail.ts:46`; `index.ts:1-18`;
+  `request-type.registry.ts:37-43`). It corrected this re-detail's wording, its pins and four of its rules, and asks
+  for no engine change (§1.2 E).
 - **ADR-041 supersedes five points of the P2 text** (§1.2 A, items 1–5): the pin holds rung subdocuments, not
   `string[]`; the type opts into the after-commit audit, and `decide` returns the audit changes; `chainFor` returns a
   status; the engine itself drops inactive accounts and off-type keys, so two of the module's planned submission
@@ -41,9 +46,10 @@ details each finding; three shape the phase:
   floor read, the order of the stale check, filing under the top bar, the feature index exports, the missing unit-lock
   registry, the attachment limit, and one citation error in the design.
 
-No other drift was found in the platform code P2 relies on: no file under `apps/api/src/platform/approvals/`,
-`apps/api/src/platform/audit/`, `apps/api/src/platform/notifications/` or HR leave changed since the design's drift
-check at `9efdcbd9`. Each pull request re-pins the lines it touches, as design §19.1 does.
+No other drift was found in the platform code P2 relies on. No file under `apps/api/src/platform/audit/` or
+`apps/api/src/platform/notifications/` has changed since the design's drift check at `9efdcbd9`; the engine, HR
+leave and the chain screen changed in PX-1, and §1.2 E records what that moved. Each pull request re-pins the lines it
+touches, as design §19.1 does.
 
 **Terms.** ADR-041's Context defines the Unit, levels, rungs, staffed and settled rungs, the waiting rung, the rung to
 decide, a grant's scope and reach, grants in force and rounds. This document adds:
@@ -53,10 +59,14 @@ decide, a grant's scope and reach, grants in force and rounds. This document add
   (design §7.3), and the only person who edits, submits or attaches files to its draft (§4.2; §1.2 item 22).
 - The **live rung** is ADR-041's waiting rung, read from the PR's pin: the first staffed rung at or after the first
   unsettled one. `currentApprovers` names its holders, and on a `pending` chain the trail's `currentStep` points at it.
-  An `unstaffed` chain has no live rung; its `currentStep` is the rung to decide, which only an override settles
-  (ADR-041 decision 3). The host cannot tell which rung is live, since staffing is the engine's and no per-rung lookup
-  is exported (§8.2 step 5). It can tell the **first unsettled rung**, the highest `stepIndex` among the round's
-  entries plus one (`approval-trail.ts:48-49`), and so the **rungs left**, from that rung to the last pinned one.
+  An `unstaffed` chain has no live rung; its `currentStep` is the rung to decide, the first unsettled one, which only
+  an override settles (ADR-041 decision 3). `currentStep` is the same for every viewer (`approval.service.ts:181-214`;
+  `rungToDecide`, `approval-trail.ts:89-96`), so a host that holds an `AuthContext`, as a decision does, can read the
+  live rung from the trail; the sweep acts for nobody and holds none. Who holds a rung is the engine's: no per-rung
+  holder lookup is exported (`approversFor`), only the live rung's holders through `currentApprovers` (§8.2 step 5).
+  From its own entries the host can tell the **first unsettled rung**, the highest `stepIndex` among the round's
+  entries plus one (`progressOf`, `approval-trail.ts:55-56`), and so the **rungs left**, from that rung to the last
+  pinned one, by which P2 chooses the stuck audience (§1.2 item 24).
 - The **A1 set** of a PR is its `requesterUserId`, `createdBy` and `submittedBy`: the people pair A1 keeps off every
   rung (design §6.6). OD-21 B names the three roles for every administration type; on a PR they are one person, because
   only the requester creates, edits and submits it. Pair **B1** keeps one person to one rung per round.
@@ -103,21 +113,23 @@ P2 also makes two changes to items, both named by the design for this phase:
 - items gain `stockTracked`, the non-stock kind of OD-14 C (design §2.3.4, §19.2);
 - once a PR line names an item, the item edit refuses to change its base unit. The check runs before the write,
   through the checker registry design §3.6 places in `catalog/items`, which design §22's P1a.2 entry leaves to ship
-  "with its first registrant" (`administration-module-decisions-and-phases.md:3127-3128`); P5's posting is the binding
+  "with its first registrant" (`administration-module-decisions-and-phases.md:3130-3131`); P5's posting is the binding
   guard (§6.2).
 
 **When it starts.** This re-detail is written before the phase. P2's code starts once PX-1 has closed: PX-1.6 merged,
-its exit criteria met and the owner told (`administration-module-phase-px1.md:198`). PX-1's own code starts only once
+its exit criteria met and the owner told (`administration-module-phase-px1.md:200`). PX-1's own code starts only once
 Phase 1 is closed, "its exit criteria met and the owner told" (`administration-module-phase-px1.md:66-68`). Design §22
 records Phase 1's pull requests merged and criteria 1 to 8 checked, with criterion 9, the owner's acceptance on staging,
-"the one left" (`administration-module-decisions-and-phases.md:3394-3399`). Phase 1 is therefore not closed yet:
-PX-1.1, and with it P2, waits until criterion 9 is recorded in design §22, or the owner waives it. The order is the
-owner's rule: «وامشى Phase واحده وبعد ما نقفل كل واحده ندخل على اللى بعدها» (design §16.12).
+"the one left" (`administration-module-decisions-and-phases.md:3397-3402`). The order was the owner's rule:
+«وامشى Phase واحده وبعد ما نقفل كل واحده ندخل على اللى بعدها» (design §16.12). On 2026-11-25 the owner told the work
+to carry on and finish P2, merge it, and stop there, «كمل وخلص P2 وأدمجها وأقف عندها» (design §16.12): PX-1 and P2 run to their merge with
+criterion 9 still owed, and nothing after P2 starts. Criterion 9 stays open, and is recorded in design §22 when the
+owner gives it.
 
 ### 1.1 The owner's answers P2 applies
 
 On 2026-11-24 the owner adopted every recommended default as the working answer
-(`administration-module-decisions-and-phases.md:1929-1940`). P2 applies these:
+(`administration-module-decisions-and-phases.md:1929-1939`). P2 applies these:
 
 | Decision | Answer | What it means in P2 |
 |---|---|---|
@@ -210,9 +222,9 @@ PX-1 re-detail §4–§6). Where the P2 text predates the ADR, the ADR wins:
 12. The attachment limit. Request attachments inherit Phase 1's bound, `ADMINISTRATION_MAX_LIST_ATTACHMENTS` (20,
     `packages/contracts/src/modules/administration.ts:120`), and its refusal `ADMINISTRATION_ATTACHMENT_LIMIT`
     (`packages/contracts/src/errors/index.ts:732-737`), which design §5.15's P2 table does not list.
-13. An older citation error. Design §7.5's basis for refusing an unplaced account, `leave-request.service.ts:85-90`,
-    refuses only a login with no employee; an employee with no department is filed with a null department
-    (`leave-request.service.ts:101-111`). P2 refuses both (§4.2).
+13. An older citation error. Design §7.5's basis for refusing an unplaced account, `leave-request.service.ts:85-90`
+    (leave's `ownEmployee`, now at `:87-92`), refuses only a login with no employee; an employee with no department is
+    filed with a null department (`unitOf`, `leave-request.service.ts:103-113`). P2 refuses both (§4.2).
 
 **C. Plan-of-record changes this re-detail makes, and its one reading of ADR-041 (item 17).** Each item that sets a
 new rule names the alternative it rejects.
@@ -223,7 +235,7 @@ new rule names the alternative it rejects.
     cancel (`:898`), the open-claim checker is registered by `purchase-orders` (design §3.6), and OD-28.3's check
     needs RFQs. So the remainder cancel, the `.closed` event and the checker ship in P4, and OD-28.3's RFQ check in
     P3. Design §5.4's table still holds all nine rows from P2 (§7). This changes design §18.2's and §18.3's P2 rows,
-    which list `.closed` and `/cancel-remainder` (`administration-module-decisions-and-phases.md:2161, 2227`), in line
+    which list `.closed` and `/cancel-remainder` (`administration-module-decisions-and-phases.md:2164, 2230`), in line
     with the rule that an event ships with its emitter (design §8.1, D-13). *Rejected:* shipping them in P2 as those
     rows list them, a route that can only refuse and an event no act emits.
 15. **The PR line names an item.** Under OD-14 C a service or an uncataloged good is a non-stock item, so `itemId` is
@@ -231,7 +243,7 @@ new rule names the alternative it rejects.
     free text (`administration-module-design.md:1329`). If the owner later answers OD-14 B, the two fields return,
     absence-safe. *Rejected:* keeping both nullable fields now, for a free-text line no answer asks for.
 16. **The module's first scheduled task is P2's sweep**, not P6's leaver sweep
-    (`administration-module-decisions-and-phases.md:2166`). OD-61's daily reminder and the stuck-approval sweep of
+    (`administration-module-decisions-and-phases.md:2169`). OD-61's daily reminder and the stuck-approval sweep of
     ADR-041 decision 3 are both P2's (§11).
 17. **The sweep asks `currentApprovers`, not `statusFor`: a departure from ADR-041 decision 3's wording, not from its
     decision.** Decision 3 says "A host's sweep or report asks `statusFor` per document. For Administrative Affairs that
@@ -239,13 +251,14 @@ new rule names the alternative it rejects.
     (`docs/03-decisions/ADR-041-money-approvals-on-the-platform-engine.md:240-242`). What it decides is that the stuck
     list is the host's, because the engine holds no requests; P2 keeps that, since its own sweep lists stuck PRs
     (§11.2). The sweep asks `currentApprovers` because one read per PR gives both the reminder's recipients and the
-    stuck test: it answers no holders on an `unstaffed` chain, which has no live rung (`approval.service.ts:226-233`),
-    and it also shows a live rung held only by the A1 set, which `statusFor` reads as `pending`. So design §5.16 spec
-    12, "no `approvalService.statusFor(`", stands as written (`administration-module-design-flows.md:1550`). No new ADR
-    is needed: ADR-041 asks for one when its decisions change
-    (`docs/03-decisions/ADR-041-money-approvals-on-the-platform-engine.md:512-514`), and none does. *Rejected:*
-    `statusFor` and then `currentApprovers` for each PR, two engine reads where one answers both questions. The second
-    drift check (§3) confirms `currentApprovers`' answer on an `unstaffed` chain in the merged engine.
+    stuck test: it answers no holders on an `unstaffed` chain, which has no live rung, and it reads the pinned chain
+    (`currentApprovers` over `chainOf`, `approval.service.ts:310-317`); and it also shows a live rung held only by the
+    A1 set, which `statusFor` reads as `pending`. So design §5.16 spec 12, "no `approvalService.statusFor(`", stands as
+    written (`administration-module-design-flows.md:1550`). No new ADR is needed: ADR-041 asks for one when its
+    decisions change (`docs/03-decisions/ADR-041-money-approvals-on-the-platform-engine.md:512-514`), and none does.
+    *Rejected:* `statusFor` and then `currentApprovers` for each PR, two engine reads where one answers both questions.
+    The second drift check (§3) confirmed both answers in the engine PX-1 built: no holders on an `unstaffed` chain, and
+    on a `pending` one the live rung's holders, the A1 set included.
 18. **No export, paper, section or setting.** Design §14.5 gives the PR register's export as "client, on request"
     (`administration-module-design-integration.md:2502`), and no request had come by 2026-11-25 (design §16.12's log
     holds none); OD-59 A prints no PR; OD-62 A ships sections later. So PC-11 (the shared export code) and the
@@ -261,7 +274,7 @@ new rule names the alternative it rejects.
     a cancel.
 20. **The requester's screens refresh live in P2, without PC-7.** Design §18.3's P2 row has the requester's screen
     refresh on a decision "once PC-7 has landed", and on navigation and `staleTime` until then
-    (`administration-module-decisions-and-phases.md:2227`), and PC-7, "requester liveness", rests on own scope joining
+    (`administration-module-decisions-and-phases.md:2230`), and PC-7, "requester liveness", rests on own scope joining
     no room (`:92`). Under OD-16 A the requester holds `.view` at department scope, which joins the branch rooms
     (`apps/api/src/platform/realtime/realtime-rooms.ts:18-20, 29-34`), so the branch signal refreshes their register
     and record now. Criterion 6 states this, and PC-7 is left to approvers who hold `.approve` without `.view` (§10.1).
@@ -297,6 +310,108 @@ new rule names the alternative it rejects.
 - corrected, not moved: the audit service's `recordMany` is `apps/api/src/platform/audit/audit.service.ts:251-273`.
   Design §10.1 cites `:229-274`, which starts at its doc comment (`administration-module-design-integration.md:499`);
   the file has not changed since `9efdcbd9`.
+
+**E. The second drift check, on the engine PX-1 built** (2026-11-25, §3). It read `a4434d00`, PX-1.6's head, against
+§1.2 A items 1–5 and 17, Terms, §4.4, §8, §10.2 and §12's engine-facing cases, and against how HR leave now hosts the
+engine. Items 1 to 5 and 17 hold as written: the pin fields (`workflow.model.ts:74-86`), the audit option
+(`request-type.registry.ts:37-43`), `chainFor`'s three statuses (`approval.service.ts:152-164, 540-562`), active
+accounts and off-type keys, `decide`'s refusal keys (`:245-265`) and `currentApprovers` (`:310-317`). Where the code
+differs from this re-detail:
+
+23. **The decision's audit fields** (§10.2; §12.1). `auditChanges` is a list of `{ field, old: null, new }`
+    (`approval.service.ts:283-294`): `decision`; `step`, the decided rung's index as a string; `level` and
+    `permissionKey`, that rung's; `overriddenWith`, only on an override; and `covers`, only when the actor decides early
+    from a rung of their own above the waiting rung, the indexes from the waiting rung to the rung below theirs,
+    comma-joined (`decisionFor`, `approval-chain.ts:154-164`). An override never carries `covers`, and `covers` never
+    names the empty rungs below the waiting rung, which the decision appends as `skipped` entries all the same
+    (`entriesForDecision`, `approval-trail.ts:113-145`). This re-detail had named a `key` and "covered rungs". §10.2's
+    row and the audit spec now use the engine's names and expect `overriddenWith` and `covers` only where the engine
+    writes them; a reader who needs every rung a decision settled reads the PR's `approvalSteps`.
+24. **The live rung can be read from the trail** (Terms; PRQ-2 (b); §11). `trailFor(subject, viewer).currentStep` is the
+    live rung on a `pending` chain and the first unsettled rung on an `unstaffed` one, the same for every viewer
+    (`approval.service.ts:181-214`; `rungToDecide`, `approval-trail.ts:89-96`). So a host reads the live rung wherever
+    it holds an `AuthContext`, as a decision does; the sweep acts for nobody and holds none. Who holds a rung stays
+    inside the engine (`approversFor`), and `currentApprovers` names the live rung's holders only, so §8.2 step 5
+    stands. Terms and PRQ-2's evidence, which said the host could not tell the live rung, are corrected. The stuck
+    audience is still chosen by the rungs left, counted from the first unsettled rung, in the decision's notice (P2.4)
+    and in the sweep (P2.7) alike, as PRQ-2 (b)'s answer words it. The audience's organization-scope and whole-branch holders
+    reach every rung left; a delegate confined to one department copy, or a holder barred by pair A1 or B1 (§8.4), may
+    still be told of a rung they cannot decide, since the audience filters by key, scope and the PR's read only. It can
+    leave out someone who can: when the empty rungs below
+    a live rung held only by the A1 set include a `department` or `organization` rung, the audience is the organization
+    one, although an override then decides the live rung alone, by its level, and those rungs are appended as `skipped`.
+    *Rejected:* counting from `currentStep` in P2.4, an extra engine read per decision that the sweep cannot make, which
+    would send one stop's notices to two audiences under one idempotency key (§11.2).
+25. **Off `pendingApproval` the trail marks no rung** (§8.6; §12.2). Leave's `trailFor` returns the engine's trail with
+    `currentStep: null` as well as the four fields this re-detail names (`leave-request.service.ts:701-711`): a
+    cancelled request's chain still reads `pending` or `unstaffed` to the engine, and the panel marks "waiting here"
+    from `currentStep` alone (`apps/web/src/platform/approvals/ApprovalChainPanel.tsx:61, 84-88`). This re-detail copied
+    the four fields of PX-1's re-detail (`administration-module-phase-px1.md:362-371`), which leave's later fix for a
+    cancelled request's panel extended (`46e1b345`, CHANGELOG "marks no rung as waiting"). §8.6 now clears `currentStep`
+    too, and §12.2's cancel case checks that no rung is marked waiting. On an approved or rejected PR the engine already
+    answers `currentStep` null.
+26. **The subject maps the stored entries** (§8.1; §8.3 step 6). `DecidedEntry.deciderUserId` is a string or null
+    (`approval-trail.ts:26-36`), while a PR's stored `ApprovalEntry` holds an ObjectId and two snapshots (design §2.1,
+    `administration-module-design.md:735-738`). Leave's `subjectOf` maps each stored entry to the engine's six fields,
+    the id as a string (`leave-request.service.ts:124-138`), and its append turns the returned ids back into ObjectIds
+    (`:630-634`). Passed raw, the PR's entries would not typecheck, and `trailFor` would collect decider ids and look up
+    their names by an ObjectId (`approval.service.ts:187-199`). The adapter maps them as leave does, for every call that
+    passes a subject (§8.1), and the append converts back (§8.3 step 6).
+27. **No rung has a caption** (§6.1; §8.6; §9.5; criterion 13). The chain screen writes none: a rung row offers a key
+    select and a level select only, and Add step writes `{ permissionKey, level: 'unit', label: null }`
+    (`apps/web/src/modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx:327-379, 390`), as it did on
+    `de38fd71`. The API accepts a caption (`packages/contracts/src/platform/approvals.ts:44-48`), but no screen or seed
+    writes one. So every rung written at `/system/approvals` has none: every PR's `stepLabel` is null, the panel shows
+    the level's name, and an archived round, whose entries store no level, has no rung name to show. P2 keeps the entry
+    as design §2.1 fixes it, and P2.W1's earlier-rounds block names a rung by its `stepLabel` in the reader's language,
+    else by its position, "Step n" / «الخطوة n», n being `stepIndex` plus one. *Rejected:* a level stored on each entry,
+    a third snapshot in design §2.1's `ApprovalEntry` for a fallback; and a caption field in P2.0's chain editor, a
+    platform screen change nothing asks for, after which a rung may still have no caption. P4's re-detail, whose PO
+    paper reprints the rounds (design §2.1 note 6), may add the level, absence-safe. This is settled here as an
+    engineering choice with its alternatives recorded; P2.W1's pull request shows it.
+28. **The pin is written by an update** (§8.2 step 7). `approvalPinFields`' validator, which refuses an id with no
+    rungs, runs only where Mongoose validates a document, at create and save; no update in ECMS runs validators
+    (`workflow.model.ts:44-61, 74-86`). Leave pins inside its create, where it runs
+    (`leave-request.service.ts:334-341`). P2 is the first host to pin through an update, the submission's conditional
+    write, so that write alone keeps the two fields together: it sets `approvalWorkflowId` to an ObjectId of
+    `pin.workflowId` and `approvalChainShape` to `pin.steps`, from one `pinOf` result. After §8.2 step 3, `pinOf` never
+    returns null or an id without rungs (`approval.service.ts:119-127`).
+29. **The audit option cannot be read back** (§12.1). `getApprovalRequestType` returns the type's DTO, and the audit
+    mode is kept beside it (`request-type.registry.ts:25-28, 48-49`); `auditModeOf` is internal to the engine's folder
+    (`:51-56`), and the barrel does not export it (`index.ts:13-17`). The module's isolation spec scans spec files too,
+    `vi.mock` paths included, and refuses any platform path that is not a barrel
+    (`administration-isolation.spec.ts:29-34, 83-92`). So `shared/approvals.spec.ts` checks the option by mocking the
+    barrel and asserting `registerApprovalRequestType`'s second argument, `{ audit: 'host' }`, and P2.4's integration
+    case, two `approvalDecision` rows and no `platform/approval` row, proves it end to end.
+30. **A source scan reads the chain screen** (§12.3).
+    `apps/web/src/modules/system-admin/system-admin-api-contract.spec.ts:444-543`, which PX-1.6 extended, reads
+    `ApprovalWorkflowsPage.tsx` and pins how it builds a draft: `const emptyDraft = … => placed(`, exactly four
+    `setDraft(placed(` calls, no `basedOn: null` and no `basisAt(` (`:508-520`); a `<field>:` for each field of the
+    save's schema, `basedOn` included (`:479-506`); `APPROVAL_LEVELS.map` (`:527`) and `keysFor(draft.requestType).map`
+    (`:538`). P2.0 changes the option labels of the three selects whose handlers hold three of those calls, and keeps
+    every pinned string; §12.3 lists the spec among those that stay.
+31. **Moved pins** (no behavior changed). PX-1 changed fourteen engine and contract files, HR leave's service and model,
+    and the chain screen; these citations are re-pinned where they stand:
+    - the engine: `progressOf`, `approval-trail.ts:48-49` → `:55-56` (Terms); `currentApprovers`,
+      `approval.service.ts:226-233` → `:310-317` (item 17), which now reads the pinned chain through `chainOf` (`:312`);
+      the registration, `request-type.registry.ts:17-20` → `:37-43` (§8.1); `setWorkflow`'s key check,
+      `approval.service.ts:262-267` → `:342-361` (§9.1), which now also refuses an unregistered type (`:343-344`) and a
+      key the type does not offer (`:351-356`), neither of which P2 meets, since its type offers `.approve`; the decider
+      names, Arabic first, `:331-345` → `:585-600` (criterion 13); `DecideApprovalSchema`,
+      `packages/contracts/src/platform/approvals.ts:184-189` → `:212-217` (§5);
+    - HR leave: the registration, `leave-request.service.ts:65-71` → `:67-73`; the unplaced-login refusal, `:85-90` →
+      `:87-92`; the Unit, `:101-111` → `:103-113` (item 13; §8.1); the conditional append, `:589-611` → `:619-641`
+      (§8.3); PX-1's leave-trail paragraph, `administration-module-phase-px1.md:360-369` → `:362-371` (§8.6), and that
+      file's other cited lines by two (`:198` → `:200`, `:765-817` → `:767-819`);
+    - the chain screen (§3, the P2.0 row and note 1): the Arabic names, `ApprovalWorkflowsPage.tsx:91-92, 97-101, 260,
+      282, 298` → `:102-103, 108-114, 275, 299, 317`; the rung keys, `:214, 323-327` → `:229, 342-346`. PX-1.6 also
+      added the reader's `locale` (`:73`) and `errorMessage(save.error, locale)` (`:402-404`), which P2.0 can reuse;
+    - the design: every citation of `administration-module-decisions-and-phases.md` past its §16.12 log moved three
+      lines down when the owner's answers of 2026-11-25 were logged (`:1940-1942`).
+
+Not drift, and kept as written: leave's append filter also carries `isDeleted: false` (`leave-request.service.ts:624`),
+which §8.3's leaves out, since no PR is soft-deleted in P2; and `LiveChain.status` is typed with all five statuses
+(`approval.service.ts:87-97`), while `chainFor` gives only the three of item 3.
 
 ## 2. What P2 needs from the owner
 
@@ -374,9 +489,9 @@ starts from these.
     decision yet, the requester's withdrawal (design §5.2; §7.4). An override reaches a rung by the rung's level: one
     held at organization scope reaches every rung, one held over a branch only `unit` and `branch` rungs, and a
     `department` rung needs that department in every branch, which no branch audience addresses (ADR-041 decision 6).
-    The module cannot tell which rung a stopped request waits on, only which rungs are left (Terms), and an override
-    decides one rung at a time, so the audience is chosen by the rungs left. An override holder opens the record only
-    with `.view` or `.approve` (§8.6).
+    The daily sweep, which acts for nobody, cannot ask the trail which rung a stopped request waits on, only which rungs
+    are left (Terms), and an override decides one rung at a time, so the audience is chosen by the rungs left, after a
+    decision as in the sweep (§1.2 item 24). An override holder opens the record only with `.view` or `.approve` (§8.6).
 - **Options.**
   - (a)
     1. The holders of `administrationPurchaseRequest.cancel` at organization scope, the procurement manager's key (S).
@@ -475,9 +590,10 @@ P2.3, P2.4, P2.W1 and P2.W2 exceed it, because a feature's coupled files travel 
 why in its description.
 
 **Dependencies outside the module.** P2's code waits for PX-1 to close (design §18.2's graph, PX-1 → P2,
-`administration-module-decisions-and-phases.md:2186-2187`): PX-1.4 brings the pin fields P2.2's model spreads, PX-1.5
+`administration-module-decisions-and-phases.md:2189-2190`): PX-1.4 brings the pin fields P2.2's model spreads, PX-1.5
 the audit option P2.3 registers with, and PX-1.6 the chain save P2's integration file writes through. PX-1 itself
-waits for Phase 1 to close, which waits on Phase 1's criterion 9 (§1). PC-7, requester liveness from notices, is soft:
+waited for Phase 1 to close; the owner's instruction of 2026-11-25, «كمل وخلص P2 وأدمجها وأقف عندها», lets PX-1 and P2 run to their merge
+with Phase 1's criterion 9 still owed (§1). PC-7, requester liveness from notices, is soft:
 P2 ships without it (design §18.1; §1.2 item 20).
 
 **A second drift check, on the merged engine.** This re-detail's drift check ran before the engine code P2 calls
@@ -485,11 +601,14 @@ existed. After PX-1.6 merges, a drift check reads the merged engine against §1.
 §8: `chainFor`'s `status`, `pinOf`, `readApprovalPin`, `approvalPinFields`, the `{ audit: 'host' }` option, `decide`'s
 `auditChanges` and refusal keys, and `currentApprovers` with a pin and on an `unstaffed` chain. A docs pull request of
 its own carries it, with its entry in design §22 and any difference folded into this re-detail; it is reviewed and
-merged before P2.0 opens.
+merged before P2.0 opens. It ran on 2026-11-25, on `a4434d00`, PX-1.6's head before PX-1.6 merged (if PX-1.6
+merges with a change to a file §1.2 E cites, those pins are read again before P2.0), and read HR leave's hosting and the
+chain screen as well. It found the engine as §1.2 A describes it and asks for no engine change; its differences are
+§1.2 E's items 23 to 31, folded into the sections each names.
 
 | Pull request | Content | Depends on | Size |
 |---|---|---|---|
-| **P2.0** | Platform prerequisites. The audit verb `approvalDecision` in `AUDIT_ACTIONS`, with its rationale comment and its en and ar labels, "approval decided" and «البت في اعتماد», the catalog's wording (`packages/contracts/src/events/catalog.ts:872`). The approval panel, which shows the Arabic caption today, shows a rung's caption in the reader's language, else the level's name, and drops the raw `permissionKey · level` line (`apps/web/src/platform/approvals/ApprovalChainPanel.tsx:76-79, 95-97`; note 1). The chain screen, which shows Arabic names today, names request types and places in the reader's language, in its list and in its editor's three selects (`apps/web/src/modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx:91-92, 97-101, 260, 282, 298`) | PX-1 closed (PX-1.6 edits the same page); deployed before P2.4 as §15 orders | about 250 |
+| **P2.0** | Platform prerequisites. The audit verb `approvalDecision` in `AUDIT_ACTIONS`, with its rationale comment and its en and ar labels, "approval decided" and «البت في اعتماد», the catalog's wording (`packages/contracts/src/events/catalog.ts:872`). The approval panel, which shows the Arabic caption today, shows a rung's caption in the reader's language, else the level's name, which is what it shows in practice, since the chain screen writes no caption (§1.2 item 27), and drops the raw `permissionKey · level` line (`apps/web/src/platform/approvals/ApprovalChainPanel.tsx:76-79, 95-97`; note 1). The chain screen, which shows Arabic names today, names request types and places in the reader's language, in its list and in its editor's three selects (`apps/web/src/modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx:102-103, 108-114, 275, 299, 317`), with the reader's `locale` it already reads (`:73`), and keeps every string its source scan pins (§1.2 item 30) | PX-1 closed (PX-1.6 edits the same page); deployed before P2.4 as §15 orders | about 250 |
 | **P2.1** | Numbering and the item's kind. The yearly formatter and parser in contracts; the yearly series key and floor in `shared/document-number.ts`; `shared/cairo-day.ts`, a re-export of the contracts' Cairo calendar; items gain `stockTracked` (contract, model, service, DTO, audit snapshot). No key, route or page | PX-1 closed | about 350 |
 | **P2.2** | Drafts. Keys `.view`, `.create`, `.edit` and `.approve`, and the page (§9.1); the model with every field of §6.1 and its indexes; `shared/lifecycle.ts` and the whole lifecycle table (§7); the register, the record, create, and draft edits that only the requester may make (§1.2 item 22); the item reads opened to `.create` for the picker, `activeFor` and the many-id item read exported; the item unit lock and its first registrant; the topic and its web row; audit `create` and `update`; the census rows of §6.4; the department requester bundle, `.view` in four bundles and `.approve` in the Administrative Affairs manager's (§9.3) | P2.1; PX-1.4 (the pin fields) | about 1,200 |
 | **P2.3** | Submission. The adapter: registration with `{ audit: 'host' }`, the Unit, OD-19 A, the eligible-approver check, the remap; `POST /:id/submit`, the number and the pin; the approvers' notice and its template, and the seed-coverage spec; the event `.submitted`; criterion 8's contention script (§16) | P2.2; PX-1.5 | about 700 |
@@ -507,7 +626,7 @@ merged before P2.0 opens.
    trail field, and on a PR names the type's one key on every rung. The panel's override line keeps the key it
    records, `approval.override` (`ApprovalChainPanel.tsx:106-110`), one of the owner's four facts, which its spec pins
    (`ApprovalChainPanel.spec.tsx:172-182`); the chain screen keeps the rung keys an administrator configures
-   (`ApprovalWorkflowsPage.tsx:214, 323-327`).
+   (`ApprovalWorkflowsPage.tsx:229, 342-346`).
 
 P2 closes when P2.W2 has merged, the exit criteria of §16 are met, and the owner is told.
 
@@ -672,7 +791,7 @@ is its requester.
 | File | P2 adds |
 |---|---|
 | `packages/contracts/src/modules/administration.ts` | `ADMINISTRATION_DOCUMENT_KINDS = ['purchaseRequest']`, their prefixes (`PR`) and `ADMINISTRATION_DOCUMENT_DIGITS = 6`; `formatAdministrationNumber(kind, year, seq)` and `parseAdministrationNumber(number)`, which read only the formatter's own spelling, as the master-code pair does (`:38-68`); `ADMINISTRATION_MAX_DOCUMENT_LINES = 100`; `AdministrationAvailableActionDto { key, permission, enabled, reason }`, recruitment's shape (design §5.1.4); `ADMINISTRATION_ITEM_UNIT_LOCKS = ['purchaseRequestLine']`, the unit-lock checkers' answers (§6.2); `AdministrationEvents`, one flat `as const` with the four P2 names, and their `…PayloadV1` schemas (§10.3); `AdministrationTemplates`, the template keys of §11.1, HR leave's shape (`packages/contracts/src/modules/hr-leave.ts:554-564`); `ADMINISTRATION_REQUEST_ATTACHMENTS_FILE_CATEGORY` and its MIME list |
-| `packages/contracts/src/modules/administration-procurement.ts` | `ADMINISTRATION_PURCHASE_REQUEST_STATUSES` (six) and `…_ORDER_STATUSES` (three); the guard sets `PR_SOURCEABLE`, `APPROVAL_PENDING`, `CONTENT_EDITABLE` and `PR_CANCELLABLE`, each a `Readonly<Record<status, boolean>>` (design §5.14); `CreateAdministrationPurchaseRequestSchema { neededBy?, justification?, notes?, lines }`, each line `{ itemId, qty, notes? }`, 0 to 100 lines, `qty` an integer from 1 to 1,000,000 (design §2.1, Quantities), `neededBy` a `YYYY-MM-DD` date (`isYmd`, `packages/contracts/src/common/cairo-date.ts:89`), past dates allowed, since a returned draft may carry one; `UpdateAdministrationPurchaseRequestSchema` with `version`, `null` clearing a field and `lines` replacing the list, each line `{ lineId?, itemId, qty, notes? }` (§4.2); `SubmitAdministrationPurchaseRequestSchema { version }`; `ListAdministrationPurchaseRequestsQuerySchema`, `PaginationQuerySchema` extended with §4.1's filters, `status` as `listQuery(status)` and `departmentIds` as `listQuery(objectId(), 200)`; `ADMINISTRATION_PURCHASE_REQUEST_ACTIONS` and `…_ACTION_REASONS`, §4.4's keys and reasons; `DecideAdministrationPurchaseRequestSchema`, the platform's `DecideApprovalSchema` (`packages/contracts/src/platform/approvals.ts:184-189`) plus `version` and `cuts?: { lineId, qty }[]`, at most 100 with distinct `lineId`s, each `qty` an integer from 1 to 1,000,000 that the service bounds by the line's open quantity (§7.3), refusing cuts on a rejection; `ReturnAdministrationPurchaseRequestSchema { version, reason }` and `CancelAdministrationPurchaseRequestSchema { version, reason? }`, a reason being 1 to 1,000 characters; `AddAdministrationPurchaseRequestAttachmentSchema` and `AdministrationPurchaseRequestAttachmentVersionQuerySchema`, as the supplier's (`administration-procurement.ts:100-117`); the list, detail, summary and attachment DTOs (§6.5) |
+| `packages/contracts/src/modules/administration-procurement.ts` | `ADMINISTRATION_PURCHASE_REQUEST_STATUSES` (six) and `…_ORDER_STATUSES` (three); the guard sets `PR_SOURCEABLE`, `APPROVAL_PENDING`, `CONTENT_EDITABLE` and `PR_CANCELLABLE`, each a `Readonly<Record<status, boolean>>` (design §5.14); `CreateAdministrationPurchaseRequestSchema { neededBy?, justification?, notes?, lines }`, each line `{ itemId, qty, notes? }`, 0 to 100 lines, `qty` an integer from 1 to 1,000,000 (design §2.1, Quantities), `neededBy` a `YYYY-MM-DD` date (`isYmd`, `packages/contracts/src/common/cairo-date.ts:89`), past dates allowed, since a returned draft may carry one; `UpdateAdministrationPurchaseRequestSchema` with `version`, `null` clearing a field and `lines` replacing the list, each line `{ lineId?, itemId, qty, notes? }` (§4.2); `SubmitAdministrationPurchaseRequestSchema { version }`; `ListAdministrationPurchaseRequestsQuerySchema`, `PaginationQuerySchema` extended with §4.1's filters, `status` as `listQuery(status)` and `departmentIds` as `listQuery(objectId(), 200)`; `ADMINISTRATION_PURCHASE_REQUEST_ACTIONS` and `…_ACTION_REASONS`, §4.4's keys and reasons; `DecideAdministrationPurchaseRequestSchema`, the platform's `DecideApprovalSchema` (`packages/contracts/src/platform/approvals.ts:212-217`) plus `version` and `cuts?: { lineId, qty }[]`, at most 100 with distinct `lineId`s, each `qty` an integer from 1 to 1,000,000 that the service bounds by the line's open quantity (§7.3), refusing cuts on a rejection; `ReturnAdministrationPurchaseRequestSchema { version, reason }` and `CancelAdministrationPurchaseRequestSchema { version, reason? }`, a reason being 1 to 1,000 characters; `AddAdministrationPurchaseRequestAttachmentSchema` and `AdministrationPurchaseRequestAttachmentVersionQuerySchema`, as the supplier's (`administration-procurement.ts:100-117`); the list, detail, summary and attachment DTOs (§6.5) |
 | `packages/contracts/src/modules/administration-catalog.ts` | `stockTracked` on the item create (default `true`), update and DTO (`:223, 254, 270`); the item list's `stockTracked` filter is not added |
 | `packages/contracts/src/errors/index.ts` | eight codes, the seven of design §5.15 and one more: `ADMINISTRATION_INVALID_TRANSITION`, `…_TRANSITION_BLOCKED`, `…_REASON_REQUIRED`, `…_APPROVAL_CHAIN_MISSING`, `…_APPROVAL_NOT_PENDING`, `…_APPROVAL_NOT_YOUR_STEP` (422) and `…_SEPARATION_OF_DUTIES` (403); and `ADMINISTRATION_ITEM_UNIT_LOCKED` (422, §1.2 item 21). Each ships in the slice that first raises it, with its doc comment naming its details (§4.4). An exited requester reuses Phase 1's `ADMINISTRATION_EMPLOYEE_EXITED`, whose comment gains the PR's case |
 | `packages/contracts/src/events/catalog.ts` | `ADMINISTRATION_EVENT_PAYLOAD_SCHEMAS`, `ADMINISTRATION_EVENT_SOURCE` appended to `buildEventCatalog` (`:1486-1492`), `EVENT_MODULE_NAMES.administration` (`:657-664`) and the entity word `purchaseRequest` (design §8.3). Every action word exists |
@@ -705,7 +824,7 @@ The common fields of design §2.1: `baseFields`, `timestamps` and `__v`.
 | `attachments` | list B (design §11.4) | P2.6 | `{ attachmentId, fileId, categoryKey, label, fileName, mime, size, addedByUserId, addedAt }` |
 | `approvalRequestType` | string \| null | each submission | `administration.purchaseRequest` |
 | `approvalWorkflowId`, `approvalChainShape` | the spread of `approvalPinFields` | each submission; cleared by a return | ADR-041 decision 4 |
-| `approvalSteps` | `ApprovalEntry[]` | each decision | the engine's entries plus `stepLabel`, the rung's caption from the pin, and `deciderName`: the two snapshots design §2.1 fixes in `ApprovalEntry` for every approval host (`administration-module-design.md:735-738`). On the current round the record shows `trailFor`'s captions and names (§8.6). A return clears the PR's pin, and `trailFor` does not read archived rounds, so the two snapshots are what the record shows of `approvalRounds`; P4's PO paper reprints them (design §2.1 note 6). Their cost is RK-34 (§6.4) |
+| `approvalSteps` | `ApprovalEntry[]` | each decision | the engine's entries, `deciderUserId` stored as an ObjectId (§8.1), plus `stepLabel`, the rung's caption from the pin, null when the rung has none, as no rung written at `/system/approvals` has one today (§1.2 item 27), and `deciderName`: the two snapshots design §2.1 fixes in `ApprovalEntry` for every approval host (`administration-module-design.md:735-738`). On the current round the record shows `trailFor`'s captions and names (§8.6). A return clears the PR's pin, and `trailFor` does not read archived rounds, so the two snapshots are what the record shows of `approvalRounds`; P4's PO paper reprints them (design §2.1 note 6). Their cost is RK-34 (§6.4) |
 | `approvalRounds` | `{ round, endedBy: 'returned', at, steps }[]` | each return | design §5.2, Rounds; `round` is 1 for the first round a return archives and one more for each later one, so it is the entry's position plus one |
 | `submittedBy`, `submittedAt` | ObjectId, Date | each submission | design §2.1 note 4 |
 | `approvedAt` / `approvedByUserId`, `rejectedAt` / `rejectedByUserId` | Date, ObjectId | the settling decision | the rejection's reason is its entry's `comment` |
@@ -926,21 +1045,27 @@ The route is gated by `.view`; the service picks the row from the status and the
 
 ### 8.1 The request type and the Unit
 
-- **Registration** at module load, beside the permissions (`request-type.registry.ts:17-20`; leave's,
-  `leave-request.service.ts:65-71`): key `administration.purchaseRequest`, module `administration`, name «طلبات
+- **Registration** at module load, beside the permissions (`request-type.registry.ts:37-43`; leave's,
+  `leave-request.service.ts:67-73`): key `administration.purchaseRequest`, module `administration`, name «طلبات
   الشراء» / "Purchase requests", `permissionKeys: ['administrationPurchaseRequest.approve']`, option
   `{ audit: 'host' }` (ADR-041 decision 7). It lives in `shared/approvals.ts`, which imports no feature
   (`administration-isolation.spec.ts`).
 - **The Unit** is `{ branchId: PR.branchId, departmentId: PR.departmentId, departmentCatalogId }`, the last read from
   the department copy at every call through `departmentRepository.findById` (design §7.6), never from the current
-  placement as leave's is (`leave-request.service.ts:101-111`). So moving the requester does not move the request,
+  placement as leave's is (`leave-request.service.ts:103-113`). So moving the requester does not move the request,
   while a copy linked to a company department after submission gains its `catalogId`, and with it the rungs and grants
   that match on the company department (P2-R13; ADR-041 decision 4 keeps staffing current). A guard refuses 422
   `ADMINISTRATION_TRANSITION_BLOCKED` when the copy no longer lies in the PR's branch (design §7.6). The PR's own fields
   are written once, at create, so only an operator's data fix or the org-catalog merge, which rewrites `departmentId`
   fields (design §7.7), could bring that about; the guard keeps such a PR from being decided on another branch's Unit.
-- **The subject** is `{ requestType: PR.approvalRequestType, unit, decisions: PR.approvalSteps, pin:
-  readApprovalPin(PR) }`. P2 always pins, so `pin` is never null after submission (ADR-041 decision 10).
+- **The subject** is `{ requestType: PR.approvalRequestType, unit, decisions, pin: readApprovalPin(PR) }`, built by
+  one helper in the adapter for every call that passes one: the submission's `currentApprovers`, `decide`, `trailFor`
+  for the return and the detail, and the notices' `currentApprovers`. `decisions` maps each entry of
+  `PR.approvalSteps` to the engine's `DecidedEntry`, its six fields only, with `deciderUserId` as a string or null,
+  as leave's `subjectOf` does (`leave-request.service.ts:124-138`; `approval-trail.ts:26-36`): a stored entry holds an
+  ObjectId and the two snapshots, and the engine collects decider ids and looks up their names as strings
+  (`approval.service.ts:187-199`; §1.2 item 26). P2 always pins, so `pin` is never null after submission (ADR-041
+  decision 10).
 
 ### 8.2 Submission (P2.3)
 
@@ -958,13 +1083,18 @@ The route is gated by `.view`; the service picks the row from the status and the
    nothing. The remedies are outside the PR: an administrator gives that rung to a second person or removes it from
    the department's chain, or another focal point of the department raises the PR. The refusal's detail is the code
    `noEligibleApprover`, whose words in the web name the three remedies (§4.4), and P2-R3 records the limit.
-5. Only the live rung is checked: no per-rung lookup is exported, so a later rung held only by the A1 set passes and
-   is caught after the decision before it (§8.3 step 7; design §5.2, "What submission cannot see").
+5. Only the live rung is checked: no per-rung holder lookup is exported (`approversFor` stays inside the engine, and
+   `chainFor`'s `staffed` flag says whether anybody holds a rung, not who), so a later rung held only by the A1 set
+   passes and is caught after the decision before it (§8.3 step 7; design §5.2, "What submission cannot see").
 6. A first submission: `ensureCounter` for the year, outside the transaction.
 7. `unitOfWork`: the number first, when the PR has none; then one conditional write on `{ _id, status: 'draft', __v
    }` that sets the status, the number and `businessDate` (first submission only), `approvalRequestType`, the pin,
    `approvalSteps: []`, `submittedAt` and `submittedBy`, the snapshots rewritten once more, and bumps `__v`. A miss is
-   re-read and answered 422 or 409.
+   re-read and answered 422 or 409. The pin is step 4's `pinOf` result written whole, `approvalWorkflowId` as an
+   ObjectId of its `workflowId` and `approvalChainShape` as its `steps`, as leave's create sets them
+   (`leave-request.service.ts:334-341`). The fields' own check that an id comes with its rungs runs only at create and
+   save, never in an update (`workflow.model.ts:44-61`), so this write is the pin's only guard; after step 3 `pinOf`
+   never returns null or an id without rungs (§1.2 item 28).
 8. After commit: audit `statusChange` with `number`; the signal; the awaiting-decision notice to the eligible
    approvers; the event `.submitted`.
 
@@ -990,18 +1120,20 @@ not this one: the PR is decided on the pin it stored (ADR-041 decision 4).
    (design §5.15). An override within its reach decides, recorded as `overriddenWith` (OD-69 (i); ADR-041 decision 6).
 6. The conditional append, one `findOneAndUpdate` on `{ _id, status: 'pendingApproval', __v: version,
    'approvalSteps.<n>': { $exists: false } }`, where `<n>` is the number of entries read at load, so the filter fails
-   once anyone has appended since. It is the shape of leave's (`leave-request.service.ts:589-611`) with the version
+   once anyone has appended since. It is the shape of leave's (`leave-request.service.ts:619-641`) with the version
    added (design §5.1.3, A). It pushes the entries `decide` returned, one per rung the decision settles (its own, and
-   the rungs below it that it covers or skips, ADR-041 decision 2), each with its `stepLabel` from the pin and the
-   actor's `deciderName`, writes the cuts, maps the engine's status (`pending` and `unstaffed` keep `pendingApproval`;
-   `approved` and `rejected` set their status and stamp), and bumps `__v`. A miss is re-read and answered in §4.2's
-   order: a status that has left `pendingApproval` is 422 `ADMINISTRATION_APPROVAL_NOT_PENDING`, whatever the version;
-   a PR still pending with a moved version, or a new entry, is 409 `STALE_DOCUMENT`. Every status move also moves
-   `__v`, so a race lost to the settling decision answers 422, and a race lost to a decision that leaves the PR pending
-   answers 409. No other document moves in P2, so the append needs no transaction.
+   the rungs below it that it covers or skips, ADR-041 decision 2), each with `deciderUserId` back as an ObjectId, as
+   leave's does (`:630-634`), its `stepLabel` from the pin and the actor's `deciderName`, writes the cuts, maps the
+   engine's status (`pending` and `unstaffed` keep `pendingApproval`; `approved` and `rejected` set their status and
+   stamp), and bumps `__v`. A miss is re-read and answered in §4.2's order: a status that has left `pendingApproval` is
+   422 `ADMINISTRATION_APPROVAL_NOT_PENDING`, whatever the version; a PR still pending with a moved version, or a new
+   entry, is 409 `STALE_DOCUMENT`. Every status move also moves `__v`, so a race lost to the settling decision answers
+   422, and a race lost to a decision that leaves the PR pending answers 409. No other document moves in P2, so the
+   append needs no transaction.
 7. After commit: the `approvalDecision` row (§10.2); the signal; then by status:
    - `pending`: the awaiting-decision notice to the new live rung's eligible approvers; with none, the stuck notice
-     to the audience its rungs left choose (§11.1);
+     to the audience its rungs left choose, counted from the first unsettled rung as the sweep counts them (§11.1;
+     §1.2 item 24);
    - `unstaffed`: the stuck notice, likewise;
    - `approved`: the requester's and procurement's notices (PRQ-2 (a)); the event `.approved`;
    - `rejected`: the requester's notice; the event `.rejected`.
@@ -1056,12 +1188,16 @@ requester's notice. No event: a return emits nothing (design §8.2).
   decision 4), so a returned draft would show a fresh pending chain and offer its holders a decision. A PR that holds a
   pin answers `trailFor(subject, ctx)`. On a stuck PR its `currentStep` names the rung an override would decide (ADR-041
   decision 3). Outside `APPROVAL_PENDING` (approved, rejected, or cancelled from `pendingApproval` or `approved`, which
-  keeps its pin and its partial decisions) the trail comes back with `viewerMayDecide` and `viewerMayOverride` false,
-  `viewerStep` null and `viewerCovers` empty, as PX-1 does for leave (`administration-module-phase-px1.md:360-369`),
-  since the panel offers its actions on those flags alone (`ApprovalChainPanel.tsx:130-132`).
+  keeps its pin and its partial decisions) the trail comes back with `currentStep` null, `viewerMayDecide` and
+  `viewerMayOverride` false, `viewerStep` null and `viewerCovers` empty, as leave's does
+  (`leave-request.service.ts:701-711`; `administration-module-phase-px1.md:362-371` names the last four). The panel
+  offers its actions on the two flags alone (`ApprovalChainPanel.tsx:130-132`) and marks a rung "waiting here" from
+  `currentStep` alone (`:61, 84-88`), and a cancelled PR's chain still reads `pending` or `unstaffed` to the engine; on
+  an approved or rejected PR the engine already answers `currentStep` null (§1.2 item 25).
 - **Earlier rounds.** A returned draft, and any later status, shows each archived round from `approvalRounds`: its
-  rungs by their stored `stepLabel`, each entry's outcome, `deciderName`, `decidedAt` and comment (§9.5). The trail
-  covers the current round only.
+  rungs by their stored `stepLabel`, else by position, "Step n" / «الخطوة n» with n the entry's `stepIndex` plus one,
+  since an entry stores no level and the chain screen writes no caption (§1.2 item 27); each entry's outcome,
+  `deciderName`, `decidedAt` and comment (§9.5). The trail covers the current round only.
 - An `approval.override` holder decides through the API on override alone, but opens the record only with `.view` or
   `.approve`, the two keys a read tries (design §13.4 note ³). §2's setup gives whoever holds the override for PRs
   `.view` or `.approve` at the same scope, and the stuck notice goes only to override holders who also hold one of
@@ -1076,7 +1212,7 @@ Declared literally in `administration.module.ts`, one `declarePermissions` call 
 | Key | Label en / ar | Slice |
 |---|---|---|
 | `administrationPurchaseRequest.view`, `.create`, `.edit` | the standard labels over "Purchase requests" / «طلبات الشراء» | P2.2 |
-| `administrationPurchaseRequest.approve` | the standard label | P2.2: the detail read admits it from P2.2 (§4.1), and P2.3's chains name it (§8.1), which `setWorkflow` refuses for a key the booted registry lacks (`approval.service.ts:262-267`; ADR-041 decision 9) |
+| `administrationPurchaseRequest.approve` | the standard label | P2.2: the detail read admits it from P2.2 (§4.1), and P2.3's chains name it (§8.1), which `setWorkflow` refuses for a key the type does not offer or the booted registry lacks (`approval.service.ts:342-361`; ADR-041 decision 9) |
 | `administrationPurchaseRequest.cancel` (special) | "Cancel purchase requests" / «إلغاء طلبات الشراء» | P2.5 |
 
 The page is `administration.purchase-requests`, "Purchase requests" / «طلبات الشراء», sort order 50, route
@@ -1177,8 +1313,8 @@ every refusal is worded from its code and detail (§4.4).
   words. Sections: the request (the requester's snapshot, the branch, needed by, justification, notes, submitted at and
   by, the business date); the lines (item code and name, a non-stock mark, unit, quantity, the cut when above 0, the
   open quantity, notes); the approval panel on the current trail, with the decide and return buttons as its actions
-  (§8.6); the earlier rounds, one block per `approvalRounds` entry, each rung's `stepLabel`, outcome, `deciderName`,
-  date and comment; the outcome stamps and reasons of §6.1. P2.W2 adds the attachments card.
+  (§8.6); the earlier rounds, one block per `approvalRounds` entry, each rung's `stepLabel`, else "Step n" (§8.6),
+  outcome, `deciderName`, date and comment; the outcome stamps and reasons of §6.1. P2.W2 adds the attachments card.
 - **The editor** (`PurchaseRequestEditorPage`, P2.W1). Needed by, justification and notes; a lines table with, per
   line, the `ItemPicker`, an integer quantity from 1 and notes. Add line, until the 100th, after which the button is
   disabled and a sentence gives the cap; remove line. Lines keep the order entered, and no reorder is offered. A kept
@@ -1223,7 +1359,7 @@ on every attempt (design §10.1). The entity is `{ moduleId: 'administration', e
 |---|---|---|
 | create; draft edit | `create`; `update` | `diffChanges` of the snapshot, only if non-empty |
 | submit | `statusChange` | `number` when taken |
-| decide, any rung | `approvalDecision` (OD-82 A) | the engine's `auditChanges` (decision, step, level, key, `overriddenWith`, covered rungs; ADR-041 decision 7), plus `requestType`, `comment` and, with a cut, `cuts [{ itemCode, qty }]` |
+| decide, any rung | `approvalDecision` (OD-82 A) | the engine's `auditChanges` as it returns them (ADR-041 decision 7; `approval.service.ts:283-294`): `decision`, `step` (the decided rung's index as a string), `level`, `permissionKey`, `overriddenWith` on an override only, and `covers` only on an early decision over rungs below the actor's own (§1.2 item 23); plus `requestType`, `comment` and, with a cut, `cuts [{ itemCode, qty }]`. Every rung the decision settled, skipped ones included, is in the PR's `approvalSteps` |
 | return | `statusChange` | `reason`; the archived round's number; each folded line as `folded [{ itemCode, from, to }]`, `to` 0 for a line removed (PRQ-1) |
 | cancel | `cancel` | `reason`, except on an unnumbered draft, which has none |
 | a file linked or withdrawn | `update` | `attachment` (`<categoryKey>:<label>`) |
@@ -1338,8 +1474,8 @@ Feature specs sit beside their files in the PR feature, `procurement/purchase-re
 | `shared/lifecycle.spec.ts` | C | P2.2 | `findTransition`, `availableActions`, `statusesWhere`, `reachableFrom` |
 | `purchase-request-lifecycle.spec.ts` | C, M | P2.2; P2.5 | design §5.16 specs 1–7 over the nine rows, spec 5 with its list of keys not yet declared, which P2.5 empties and removes (§7); `submitProblem` with each detail code, `cancelProblem`, `orderStatusOf` (zero lines, cuts), `closeCondition` |
 | `purchase-request-rules.spec.ts` | C, M | P2.2; P2.3–P2.5 | the requester refusals and their details, and the draft's ownership; a cut's bounds (1 to the open quantity, once per line, a known line), a cut to 0, and never every line at 0; the return's fold, a line cut to nothing removed; "before a decision"; the cancel table of §7.4; pairs A1 and B1 over every round shape, B1 refusing an override's second empty rung; the rungs left and the stuck audience they choose; `availableActions` for each status, with each `enabled` and `reason` of §4.4 |
-| `shared/approvals.spec.ts` | C | P2.3 | the registration and its option; the Unit from the document; the copy-in-branch guard; `noChain` and `unstaffed` refused; the A1 exclusion at submission; the remap by message key |
-| `purchase-request-audit.spec.ts` | C, M | P2.2; P2.3–P2.6 | the literal pair, each act's verb and changes, `approvalDecision`'s fields, the branch signal after every act (`consumable-history.spec.ts` shape) |
+| `shared/approvals.spec.ts` | C | P2.3 | the registration and its option, read as `registerApprovalRequestType`'s second argument, `{ audit: 'host' }`, through a `vi.mock` of the platform barrel, since the registry gives no host the mode back and the isolation spec admits only barrel paths (§1.2 item 29); the subject's entries mapped to `DecidedEntry`, `deciderUserId` as a string (§8.1); the Unit from the document; the copy-in-branch guard; `noChain` and `unstaffed` refused; the A1 exclusion at submission; the remap by message key |
+| `purchase-request-audit.spec.ts` | C, M | P2.2; P2.3–P2.6 | the literal pair, each act's verb and changes; `approvalDecision`'s fields, the engine's `decision`, `step`, `level` and `permissionKey` always, `overriddenWith` on an override only and `covers` on an early decision only (§10.2), with `requestType`, `comment` and `cuts`; the branch signal after every act (`consumable-history.spec.ts` shape) |
 | `purchase-request-events.spec.ts` | C, M | P2.3; P2.4, P2.5 | each helper's payload parses against its schema and carries exactly the catalog's keys (design §8.4) |
 | `purchase-request-files.spec.ts` | C | P2.6 | the authorizer: each key with its own scope; write only by the requester and only on a draft, so a write on a submitted PR is denied; the delete asked as a write |
 | `purchase-request-sweeps.spec.ts` | C | P2.7 | the declaration's key, cron and owner; reminders only after an earlier Cairo date; the stuck notice and its audience; idempotency keys with the rung; the `_id` cursor across pages; no write |
@@ -1389,7 +1525,7 @@ slice (RK-01). Its setup:
 | A caller holding `.approve` on a unit rung of branch A and `approval.override` at organization scope finds and decides a stuck PR of branch B | P2.4 |
 | On an approved PR, the detail's trail offers no decision: both flags false for a rung holder and for an override holder | P2.4 |
 | The awaiting-decision read lists every PR in `pendingApproval` that the caller's `.approve` grant reaches, a settled lower rung's holder included, and none outside it | P2.4 |
-| Cancel: each row of §7.4's table and each refusal; the approvers' notice on row 7; no event on a draft; a PR cancelled from `pendingApproval` keeps its trail with both flags false; once a PR naming an item is a cancelled unnumbered draft, the item's unit change passes | P2.5 |
+| Cancel: each row of §7.4's table and each refusal; the approvers' notice on row 7; no event on a draft; a PR cancelled from `pendingApproval` keeps its trail with both flags false and `currentStep` null, so no rung is marked waiting (§8.6); once a PR naming an item is a cancelled unnumbered draft, the item's unit change passes | P2.5 |
 | Attachments: a file links in draft and is refused after submission; the 21st is 422; a link's `DELETE` unlinks it, and with a stale version is 409; a colleague's write on another's draft is 403; a platform file write (`replace`, `softDelete`) on a submitted PR's file is 403; a reader under `.approve` alone reads it; a file whose scan has not passed is refused by the platform's scan gate | P2.6 |
 | The sweep: one reminder per eligible approver on a later day, none the same day, one stuck notice, nothing twice on a rerun | P2.7 |
 | The summary: counts by status, by department copy and by Cairo month for a filtered set, equal to the list's totals under the same filters | P2.7 |
@@ -1399,13 +1535,15 @@ Suites that stay unchanged and green: `hr-leave.spec.ts` and PX-1's `approvals.s
 
 ### 12.3 Existing tests and counts that change (RK-17)
 
-This table gives every count P2's pull requests pin, from its value on `de38fd71`; other sections refer to it.
+This table gives every count P2's pull requests pin, from its value on `de38fd71`, which PX-1 left unchanged on
+`a4434d00`; other sections refer to it.
 
 | Pin | Change | Slice |
 |---|---|---|
-| `scripts/check-page-registry.mjs` totals | 121 → 122 pages and 441 → 445 keys (P2.2), then 445 → 446 keys (P2.5) (`administration-module-decisions-and-phases.md:3397`) | P2.2, P2.5 |
+| `scripts/check-page-registry.mjs` totals | 121 → 122 pages and 441 → 445 keys (P2.2), then 445 → 446 keys (P2.5) (`administration-module-decisions-and-phases.md:3400`) | P2.2, P2.5 |
 | `apps/web/src/platform/approvals/ApprovalChainPanel.spec.tsx` | the caption in each locale; the level's name without one; no `permissionKey · level` line; the override line as it is (`:172-182`) | P2.0 |
 | `apps/web/src/modules/system-admin/approvals/pages/ApprovalWorkflowsPage.spec.tsx` (C) | request types, departments and branches named in each locale, in the list and in the editor's three selects | P2.0 |
+| `apps/web/src/modules/system-admin/system-admin-i18n.spec.ts` | + a case pinning `approvalDecision` in `AUDIT_ACTIONS` and its en and ar labels to the catalog's `approvalDecided` words (`EVENT_ACTION_NAMES`), since its census only checks that each verb has a label | P2.0 |
 | `targets.spec.ts:76-91`; `workforce-reset.spec.ts:223-246, :362-363` | +1 `keep`; the untouched list 14 → 15 entries; the recruitment count 13 → 14, and its comment's "The other thirteen" (`:362`) "The other fourteen" | P2.2 |
 | `employee-name-copies.spec.ts:36, :43-60` | 16 → 17 copies, and the comment's "Sixteen copies across eight collections" "Seventeen copies across nine collections" | P2.2 |
 | `packages/contracts/src/events/catalog.spec.ts:147, :181` | each event in `ALL_SCHEMAS` and the "invents nothing" set | P2.3–P2.5 |
@@ -1417,9 +1555,11 @@ This table gives every count P2's pull requests pin, from its value on `de38fd71
 | `apps/web/src/modules/administration/pages/home-screen.spec.tsx` | the PR tile, and the two counts with their params and links | P2.W2 |
 | `apps/web/src/shared/lib/errors.spec.ts`; `apps/web/src/shared/lib/remembered-filters-coverage.spec.ts`; `apps/web/src/modules/administration/administration-{i18n,api-contract,realtime}.spec.ts` | the new codes in `FRIENDLY`, en and ar; the new pages' classes (§9.4); the new keys, calls and topic | P2.W1, P2.W2 |
 
-These stay: `apps/web/src/modules/system-admin/system-admin-i18n.spec.ts:115-126` and
+These stay: the audit filter's two label cases, one per locale, in
 `apps/web/src/modules/system-admin/audit/audit-screens.spec.tsx:362-368`, which read `AUDIT_ACTIONS` and pass once
-P2.0's `i18n.ts` labels the verb (`systemAdmin.users.audit.approvalDecision`, en and ar); `realtime-registry.spec.ts`
+P2.0's `i18n.ts` labels the verb (`systemAdmin.users.audit.approvalDecision`, en and ar);
+`apps/web/src/modules/system-admin/system-admin-api-contract.spec.ts:444-543`, the chain screen's source scan, whose
+pinned strings P2.0's renamed options leave intact (§1.2 item 30); `realtime-registry.spec.ts`
 and `realtime.spec.ts`, whose registries gain one row each; the event publishers spec, which discovers the new
 constant; the settings counts, the print-window list, the stream-rows list and the notification categories, none of
 which P2 touches.
@@ -1441,6 +1581,7 @@ listed, then modified.
 | `packages/contracts/src/events/catalog.ts` + `catalog.spec.ts` | M | P2.3–P2.5 | the module's source, name and word |
 | `packages/contracts/src/platform/notification-target.ts` + spec | M | P2.W1 | `ENTITY_ROUTES` |
 | `packages/contracts/src/platform/audit.ts` | M | P2.0 | `approvalDecision` |
+| `packages/contracts/src/platform/approvals.ts` | M | P2.0 | the caption's comment: an uncaptioned rung is named by its level, never by its key (§3 note 1) |
 
 **API module**
 
@@ -1502,6 +1643,7 @@ listed, then modified.
 |---|---|---|---|
 | `apps/web/src/platform/approvals/ApprovalChainPanel.tsx` + spec | M | P2.0 | locale captions |
 | `apps/web/src/modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx` + `ApprovalWorkflowsPage.spec.tsx` (C) | M | P2.0 | locale names |
+| `apps/web/src/modules/system-admin/system-admin-i18n.spec.ts` | M | P2.0 | the verb's pin (§12.3) |
 | `apps/web/src/platform/localization/i18n.ts` | M | P2.0; P2.W0–P2.W2 | the verb's labels; `administration.purchaseRequests.*`, `administration.nav.purchaseRequests`, `ReferencePicker`'s texts |
 | `routes.tsx` | M | P2.W1, P2.W2 | §9.2, and its header table |
 | `api/administration-keys.ts` | M | P2.W1 | `purchaseRequests` and its keys |
@@ -1578,7 +1720,7 @@ listed, then modified.
 
 ## 16. Exit criteria
 
-Design §18.3's P2 row (`administration-module-decisions-and-phases.md:2227`), made checkable, with thresholds, and
+Design §18.3's P2 row (`administration-module-decisions-and-phases.md:2230`), made checkable, with thresholds, and
 with one premise corrected: criterion 6 has the requester refresh live now, where the row waits for PC-7 (§1.2 item
 20). Each names what shows it.
 
@@ -1608,7 +1750,7 @@ with one premise corrected: criterion 6 has the requester refresh live now, wher
    `shared/document-number.spec.ts` pass.
 8. **Series contention (RK-33).** On staging, before P2 closes, ten concurrent submissions of 100-line PRs in one
    series all commit, none exhausts the driver's 120 s retry, and the slowest commits within 5 s. That is design
-   §18.3.2's threshold for P5's postings (`administration-module-decisions-and-phases.md:2282`), the only measured
+   §18.3.2's threshold for P5's postings (`administration-module-decisions-and-phases.md:2285-2286`), the only measured
    threshold for a numbered write, borrowed here. `scripts/measure-purchase-request-contention.mjs` runs it (§13), and
    the figures are recorded in design §22. A miss is put to the owner with OD-58 B, a series per branch, before P2
    closes.
@@ -1624,11 +1766,13 @@ with one premise corrected: criterion 6 has the requester refresh live now, wher
 12. **Audit.** Every decision writes one `approvalDecision` row on the PR after its commit, carrying the engine's
     audit changes, and the engine writes none for the type.
 13. **Language.** Every new code has en and ar words in `FRIENDLY`; the formal-Arabic, placeholder and module i18n
-    specs are green. The approval panel shows each rung's caption in the reader's language, else its level's name, and
-    no rung key; its override line keeps the key it records (§3, note 1). The chain screen names request types,
-    departments and branches in the reader's language, in its list and its editor, and keeps the rung keys an
-    administrator configures. Person names are shown as recorded, Arabic first (D-22; `approval.service.ts:331-345`).
-    The panel's and the chain screen's specs show it (§12.3).
+    specs are green. The approval panel shows each rung's caption in the reader's language, else its level's name,
+    which is what a chain written at `/system/approvals` shows, since that screen writes no caption (§1.2 item 27),
+    and no rung key; its override line keeps the key it records (§3, note 1). The record's earlier rounds name a rung
+    by its `stepLabel`, else "Step n" (§8.6). The chain screen names request types, departments and branches in the
+    reader's language, in its list and its editor, and keeps the rung keys an administrator configures. Person names
+    are shown as recorded, Arabic first (D-22; `approval.service.ts:585-600`). The panel's and the chain screen's specs
+    show it (§12.3).
 14. **Docs.** CHANGELOG entries, the automation design's correction, PRQ-1's to PRQ-4's answers in design §16.12 once
     given, the second drift check's entry (§3) and design §22's closing entry.
 15. **Owner acceptance.** With §2's setup in place, the owner raises, approves on a two-rung chain, returns, rejects and
@@ -1637,11 +1781,11 @@ with one premise corrected: criterion 6 has the requester refresh live now, wher
 ## 17. Risks
 
 Likelihood (L) and impact (I) are H, M or L, judged before mitigation, as design §17 rates them
-(`administration-module-decisions-and-phases.md:1945`).
+(`administration-module-decisions-and-phases.md:1948`).
 
 | # | Risk | L | I | Mitigation |
 |---|---|---|---|---|
-| P2-R1 | **PX-1 slips**, and P2 waits: OD-20 A ships no stopgaps | M | M | PX-1's own plan and gates; P2's pull requests are written against ADR-041's interface, so only their order waits; the second drift check (§3) compares the merged engine with that interface, and a difference is folded in before P2.0 opens |
+| P2-R1 | **PX-1 slips**, and P2 waits: OD-20 A ships no stopgaps | M | M | PX-1's own plan and gates; P2's pull requests are written against ADR-041's interface, so only their order waits; the second drift check (§3) compared the engine PX-1 built with that interface on 2026-11-25, found no difference that needs an engine change, and folded its differences into this re-detail (§1.2 E) |
 | P2-R2 | **A worker refuses `approvalDecision` jobs** after a deploy that skips the verb's order (RK-29) | L | M | §15's deploy order |
 | P2-R3 | **Stuck requests on small branches.** A1, B1 and one desk per level can leave a live rung with nobody eligible | M | M | refused at submission when it is the live rung, even with a staffed rung above; the remedy is a second person on that rung, the rung removed from the chain, or another focal point raising the PR (§8.2 step 4). After a decision, the stuck notice and the daily sweep; an override within reach or a cancel moves it (§8.6). A PR whose last k rungs are empty needs k different override holders, because B1 binds overrides; staffing a rung, which the engine reads live under the pin, or a cancel are the other ways out (§8.4) |
 | P2-R4 | **Approvers without `.view` see no live change** | M | L | navigation and `staleTime`; the notices; PC-7 when platform review accepts it |
@@ -1662,7 +1806,7 @@ Likelihood (L) and impact (I) are H, M or L, judged before mitigation, as design
 ## 18. Review
 
 Design review of this re-detail, **Full** preset, 2026-11-25, as the design-review skill runs it
-(`.claude/skills/design-review/SKILL.md`), modeled on PX-1's record (`administration-module-phase-px1.md:765-817`). The
+(`.claude/skills/design-review/SKILL.md`), modeled on PX-1's record (`administration-module-phase-px1.md:767-819`). The
 feature range is the front matter to §2; the detailed range starts at §3, the delivery plan. The review is the gate
 before P2.0, P2's first code pull request.
 

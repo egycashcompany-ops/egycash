@@ -15,7 +15,8 @@
 // and the second is recorded: deciding EARLY is the viewer's own authority (a general manager
 // answering while a branch manager's rung is still waiting), while stepping into a chain he is not
 // on at all needs `approval.override` and says so before he presses anything.
-import { type ApprovalTrailDto, type ApprovalOutcome } from '@ecms/contracts';
+import { type ApprovalTrailDto, type ApprovalOutcome, type Locale } from '@ecms/contracts';
+import { useAppSelector } from '../../store';
 import { useT } from '../localization/useT';
 import { Badge, Card, CardBody, type Tone } from '../../shared/ui';
 
@@ -47,6 +48,7 @@ export const ApprovalChainPanel = ({
   actions?: JSX.Element | undefined;
 }): JSX.Element | null => {
   const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
   if (trail === null) return null;
 
   return (
@@ -60,6 +62,7 @@ export const ApprovalChainPanel = ({
             {trail.steps.map((step, index) => {
               const live = trail.currentStep === index;
               const mine = trail.viewerStep === index;
+              const caption = step.label?.[locale] ?? '';
               return (
                 <li
                   key={index}
@@ -70,13 +73,14 @@ export const ApprovalChainPanel = ({
                   <span className="mt-0.5 w-4 shrink-0 text-center">{MARK[step.outcome]}</span>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      {/* The caption if the chain carries one; otherwise the LEVEL, which is what
-                          the rung actually means. Never a job title — the chain does not store
-                          one, and inventing one here would put a name on an authority. */}
+                      {/* The caption in the reader's language if the chain carries one;
+                          otherwise the LEVEL, which is what the rung actually means. Never a job
+                          title — the chain does not store one, and inventing one here would put
+                          a name on an authority. Never the rung's key either: the panel's readers
+                          are requesters and approvers, who need not hold the permission catalog's
+                          read, so a key is a word they cannot look up. */}
                       <span className="font-medium">
-                        {step.label?.ar != null && step.label.ar !== ''
-                          ? step.label.ar
-                          : t(`approvals.level.${step.level}`)}
+                        {caption !== '' ? caption : t(`approvals.level.${step.level}`)}
                       </span>
                       <Badge size="sm" tone={TONE[step.outcome]}>
                         {t(`approvals.outcome.${step.outcome}`)}
@@ -92,9 +96,6 @@ export const ApprovalChainPanel = ({
                         </Badge>
                       )}
                     </div>
-                    <p className="mt-0.5 font-mono text-[11px] text-slate-400" dir="ltr">
-                      {step.permissionKey} · {step.level}
-                    </p>
                     {step.decidedBy !== null && (
                       <p className="text-xs text-slate-500">
                         {t('approvals.decidedBy', { name: step.decidedBy.name })}
@@ -103,6 +104,8 @@ export const ApprovalChainPanel = ({
                     {step.comment !== null && step.comment !== '' && (
                       <p className="text-xs text-slate-500">{step.comment}</p>
                     )}
+                    {/* The override keeps its key: «الصلاحية/السبب» is one of the four facts the
+                        owner asked every decision to keep. */}
                     {step.overriddenWith !== null && (
                       <p className="font-mono text-[11px] text-amber-600" dir="ltr">
                         {step.overriddenWith}

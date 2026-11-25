@@ -11,6 +11,31 @@ its entry here in the same PR.
 
 ### Added
 
+- **Roles: quick selection by permission type, and a full-width role form** (`/system/roles`).
+  «جنبها الصلاحيات فى جروبات أقدر أحددها مره واحده .. مثلاً قراءة فقط .. تعديل فقط».
+  - Beside the permission tree, «تحديد سريع حسب النوع» ticks every permission of one type over every
+    module or one chosen module: View (read only), Add, Edit, Delete, Export/print/download, Import,
+    Approvals and decisions, Manage lists and settings, Workflow actions, Sensitive data,
+    Exceptional permissions. Each shows the same tri-state and «x من y» counter as the tree; a
+    second press clears the type.
+  - The type is the registry's own `action` (`lib/action-groups.ts`), corrected by name where the
+    action understates the key. «البيانات الحساسة» holds pay and payroll (runs, adjustments,
+    loans, payroll reports, the contract paper), medical files and the pre-hire medical and
+    security checks, national IDs, the audit log (its rows carry pay amounts), machine keys and
+    the safe-door combination, a fuel card's password — none of it is part of View or Export.
+    «الصلاحيات الاستثنائية» holds every break-glass key and the two overrides (another's approval
+    step, rehire against ineligibility). The status alias that suspends an employee sits with
+    Manage, and the two portal-only grants belong to no type. An action the table does not name
+    falls to Workflow actions. 449 permissions on 2026-11-25: 97 View, 67 Add, 65 Edit, 37 Delete,
+    13 export, 5 import, 23 approve, 65 manage, 45 workflow, 22 sensitive, 8 exceptional.
+  - It goes through the tree's own `applyBulk`, so it reaches only what the administrator may
+    grant and never clears a carried key he could not have given; the payload and the server's
+    guards are unchanged.
+  - The role form is the width of the screen with one scrollbar (the list no longer scrolls inside
+    the form), the quick selection stays in view beside the tree (whole, at 1280×720 and up), the
+    permission rows run four columns on a wide screen, and a click outside no longer closes a
+    half-built role (× and Escape do).
+
 - **Compliance and Risks — a new module, «الالتزام والمخاطر», with one page: «الملفات»**
   (`docs/12-planning/compliance-files-design.md`). Folders on a shelf shaped like HR's
   «مستندات المتقدمين», drawn with the module's own copy of that folder.
@@ -539,6 +564,33 @@ its entry here in the same PR.
     on its date, check-in, check-out and hours columns.
 
 ### Added
+
+- **Approvals: an audit verb for an approval decision, and the approval panel and the chain screen
+  in the reader's language.** This is P2.0, the platform prerequisites of Administrative Affairs'
+  Phase 2, purchase requests (`docs/12-planning/administration-module-phase-2.md` §3; design
+  §18.1), shipped on their own, with no module code.
+  - **The verb.** `approvalDecision` joins `AUDIT_ACTIONS` (OD-82 A): a decision on one rung of an
+    approval chain, by the rung's holder or by an override, recorded under a verb of its own that
+    the audit trail can be filtered on. The audit screen names it «البت في اعتماد» / "Approval
+    decided", the event catalog's words for the same act. Nothing writes it yet: purchase-request
+    decisions (P2.4) are its first writer. It is not a broadcast verb.
+  - **The approval panel,** on every record that carries an approval chain (today HR leave's),
+    names each rung by its caption in the reader's language, or by its level's name («مدير الفرع» /
+    "Branch manager") where the caption has no words in that language; it showed the Arabic caption
+    to every reader. It no longer prints a rung's raw `permissionKey · level` line, a key that its
+    readers, requesters and approvers, have no catalog to look up. A rung decided by an override
+    still shows the key used, `approval.override`.
+  - **The chain screen** (`/system/approvals`, for administrators holding `approval.configure`)
+    names request types, departments and branches in the reader's language, in its list and in
+    the editor's request-type, department and branch selects; it showed the Arabic names in both
+    languages. The rung keys an administrator chooses stay as they are.
+  - `ApprovalChainPanel.spec.tsx` checks the caption in each locale, the level's name without one,
+    and no key line; the new `ApprovalWorkflowsPage.spec.tsx` renders the list in both locales and
+    pins the editor's three selects; `system-admin-i18n.spec.ts` pins the verb and its labels.
+  - **Deploy.** At least one release before P2.4, or P2.4's api and worker deployed together: a
+    worker that predates the verb refuses an audit job that carries it (RK-29).
+  - Rollback (RK-30): reverting removes the verb, which no row holds before P2.4, and restores the
+    Arabic-only names and the key line; nothing stored changes.
 
 - **The approvals engine's baseline: its tests over today's behavior.** This is PX-1.1, the first
   code slice of PX-1, which hardens the platform approvals engine before Administrative Affairs'

@@ -307,10 +307,11 @@ its entry here in the same PR.
 
 - **Administrative Affairs («الشئون الإدارية»), suppliers: the register, the «SUP-» code and the
   suppliers' papers.** The «Suppliers» master data the owner's request names, typed on the screens
-  as he asked («لأ خلينا من غير شيتات او بيانات دلوقتى»), so nothing is loaded at deploy. This is
-  P1b.1 of the design (`docs/12-planning/administration-module-decisions-and-phases.md` §19.1),
-  under ADR-040: the register is the module's own, a platform seam may read it later, and IT's
-  vendors and Fleet's workshops are untouched. The API only; the Suppliers screen arrives with P1b.W.
+  as the owner asked («لأ خلينا من غير شيتات او بيانات دلوقتى»), so nothing is loaded at deploy.
+  This is P1b.1 of the design (`docs/12-planning/administration-module-decisions-and-phases.md`
+  §19.1), under ADR-040: the register is the module's own, a platform seam may read it later, and
+  IT's vendors and Fleet's workshops are untouched. The API only; the Suppliers screen arrives with
+  P1b.W.
   - **Three keys and a page:** `administrationSupplier.view`, `.create` and `.edit` («عرض
     الموردين», «إنشاء الموردين», «تعديل الموردين») on «الموردون», over
     `/api/v1/administration/suppliers` and `/suppliers/:id`. Any holder of `.view` reads the whole

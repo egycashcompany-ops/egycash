@@ -51,6 +51,18 @@ export const ApprovalStepSchema = z
 export type ApprovalStep = z.infer<typeof ApprovalStepSchema>;
 
 /**
+ * The chain row a save replaces, as the screen's draft saw it: the row's id and its `version`.
+ *
+ * Both, because a row deleted and written again at the same place starts at version 0 again, so a
+ * version alone would let a screen that saw the deleted row overwrite its successor (ADR-041
+ * decision 9). Declared on its own rather than inline in the save's schema, so that schema holds
+ * one closing `.strict()`, its own, which the web contract spec reads up to.
+ */
+export const ApprovalWorkflowBasisSchema = z
+  .object({ id: objectId(), version: z.number().int().nonnegative() })
+  .strict();
+
+/**
  * A chain, and where it applies.
  *
  * `departmentCatalogId` and `branchId` are both nullable, and null means «any». Resolution takes
@@ -58,6 +70,12 @@ export type ApprovalStep = z.infer<typeof ApprovalStepSchema>;
  * the company-wide default — so one default can be written once and overridden only where the
  * company actually differs, which is how the owner described it: «الـworkflow يعتمد على الـDepartment
  * + Branch + نوع الطلب».
+ *
+ * `basedOn` names the chain this save replaces, or is null when the screen saw none at this place.
+ * It is required, with no default: a save that named nothing would overwrite whatever another
+ * administrator wrote after the screen loaded, so a body without it is refused rather than read as
+ * «replace anything». A save whose basis is not the place's row as it stands now is refused 409
+ * `STALE_DOCUMENT`.
  */
 export const SetApprovalWorkflowSchema = z
   .object({
@@ -66,6 +84,7 @@ export const SetApprovalWorkflowSchema = z
     branchId: objectId().nullable(),
     steps: z.array(ApprovalStepSchema).min(1).max(10),
     isActive: z.boolean().default(true),
+    basedOn: ApprovalWorkflowBasisSchema.nullable(),
   })
   .strict();
 export type SetApprovalWorkflow = z.infer<typeof SetApprovalWorkflowSchema>;
@@ -77,6 +96,8 @@ export interface ApprovalWorkflowDto {
   branch: { id: string; name: { ar: string; en: string } } | null;
   steps: ApprovalStep[];
   isActive: boolean;
+  /** The row's `__v`, which a save of this chain sends back as `basedOn.version`. */
+  version: number;
   updatedAt: string;
 }
 

@@ -759,8 +759,11 @@ const CREW_PLAN_KEYS = [
     'title',
     'fileStem',
     'day',
-    'hint',
+    // Round 34 E — 'hint' left with the legend: «واسمح الحاجات اللى فوق دى».
     'viewOnly',
+    // Round 34 critic — the lock says «للعرض فقط» in words; the count on a phone in figures only.
+    'viewOnlyMark',
+    'filter.shownShort',
     'picked',
     'cancelPick',
     'placeHere',

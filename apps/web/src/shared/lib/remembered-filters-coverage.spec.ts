@@ -44,6 +44,12 @@ const pageFiles = (dir: string): string[] =>
 
 /** Screens that remember their filters, with the params each deliberately does NOT remember. */
 const COVERED: readonly (readonly [string, readonly string[]])[] = [
+  // `kind`: the catalogs' tab — a link to the categories opens the categories (as IT's catalogs).
+  ['modules/administration/pages/CatalogsPage.tsx', ['kind']],
+  ['modules/administration/pages/ItemsPage.tsx', []],
+  ['modules/administration/pages/SuppliersPage.tsx', []],
+  ['modules/administration/pages/WarehousesPage.tsx', []],
+  ['modules/compliance/pages/ComplianceFilesPage.tsx', []],
   ['modules/atm/pages/DataEditPage.tsx', ['tab']],
   // `q`: the free-text search from before the column filters (banks, codes, name, areas — all
   // remembered), only ever deleted so an old link or remembered view sheds it.
@@ -182,6 +188,12 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   // screen IS every محصنة in the vault («كله يبقى موجود فى تاريخ يتفلتر»), and a delivery day looked
   // at once is not where the next visit starts.
   ['modules/operations/pages/SecuredDispatchPage.tsx', ['date']],
+  // Round 33 B — «الشحنات المسلَّمة» on the day board's board: its filters remembered alike,
+  // «حالة التأكيد» (`confirmed`) in «التسليم»'s place; `date` is not — the screen opens on today
+  // («الافتراضى يكون اليوم»), and a past day looked at once is not where the next visit starts.
+  // Round 33 C — nor «رقم الإيصال» (`receipt`, read by the board, not by the page): a one-off
+  // lookup that would hide every row awaiting its ✓ if it came back (`BOARD_LOOKUP_PARAMS`).
+  ['modules/operations/pages/DeliveredShipmentsPage.tsx', ['date']],
   ['modules/operations/pages/StandingCrewPage.tsx', []],
   // Round 19 — «كشف طاقم العمليات» in the boards' look: its four filters remembered as the boards'
   // are. It reads no `date` any more — the roster is the same every day. Round 19b: `code` and
@@ -240,7 +252,7 @@ const EXCLUDED: readonly (readonly [string, string])[] = [
   ],
   [
     'modules/operations/pages/CatalogsPage.tsx',
-    '`kind` selects which catalogue renders \u2014 navigation, not a filter',
+    '`kind` selects which catalogue renders \u2014 navigation, not a filter; its search and filters (`q`, `status`, `bank`, Round 34 B) belong to one kind and are dropped whenever the kind changes (`withCatalogKind`), so they live in the address bar for a reload or a shared link and never cross a visit',
   ],
   ['modules/operations/pages/CrewAttendancePage.tsx', '`date` is the day being recorded'],
   [
@@ -276,6 +288,9 @@ const MIGRATION_PENDING: readonly string[] = [];
  * with no control on the page, and `page`-only lists.
  */
 const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
+  ['modules/administration/pages/AdministrationHomePage.tsx'],
+  ['modules/administration/pages/ItemDetailPage.tsx'],
+  ['modules/administration/pages/SupplierDetailPage.tsx'],
   ['modules/atm/pages/AtmOverviewPage.tsx'],
   // AT-D4 has no filters to remember, and the detector does not flag it — so no note either, which
   // this file's own rule calls a stale look. It is the WHOLE list of machine ids nothing in ECMS

@@ -18,6 +18,7 @@ import {
   PaginationQuerySchema,
   asciiDigits,
   booleanQuery,
+  isYmd,
   listQuery,
   objectId,
 } from '../common/index.js';
@@ -523,7 +524,12 @@ export interface OperationsShiftTypeDto {
   name: string;
   /** The English name, or null — the areas' rule: optional, the board reads Arabic. */
   nameEn: string | null;
-  colour: OperationsShiftTypeColour;
+  /**
+   * The type's colour, or null — Round 34 C: «مش لازم نوع يكون واخد اجبارى لون». A type with no colour
+   * is drawn neutral everywhere (its dot an outline, its tag untinted), and a row of it that keeps
+   * «لون النوع» is drawn as an uncoloured row. The types saved before Round 34 keep their colours.
+   */
+  colour: OperationsShiftTypeColour | null;
   /**
    * The type's place in the catalog's ARRANGED order — 0 first — or null while nobody has arranged
    * the list (`PUT /operations/shift-types/order`, the currencies' drag exactly). THE ORDER THE LIST
@@ -544,7 +550,11 @@ export interface OperationsShiftTypeDto {
 const shiftTypeCore = {
   name: z.string().trim().min(1).max(60),
   nameEn: z.string().trim().min(1).max(60).nullable().default(null),
-  colour: OperationsShiftTypeColourSchema,
+  /**
+   * A colour of the palette, or null for none (Round 34 C) — left out on create, none. On the edit
+   * (`.partial()`) left out means unchanged, and null takes the type's colour off.
+   */
+  colour: OperationsShiftTypeColourSchema.nullable().default(null),
   /** Optional, as the currencies': left out on create, a new type joins the END of an arranged list. */
   sortOrder: z.number().int().min(0).nullable().optional(),
 };
@@ -1011,6 +1021,175 @@ export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
   pickedUpAt: string | null;
 }
 
+// ── «الشحنات المسلَّمة» — what reached its bank, and its receipt (Round 33 B) ─────────────────────
+//
+// The owner: «وعاوز اعمل شاشة جديدة زى شاشةاليوم التشغيلى بس يظهر بس اللى اتسلمت سواء يومى او كانت
+// محصنة ف الخونة واسلمت ل بنك هتظهرلى لما تكون تم التسليم بس الاجراءات هيكون فيه علامة صح لما ادوس
+// عليها لازم يكون فيه رقم الايصال ويفضل الصورة تكون مرفوعه و يحدد البنك من او الى اللى هيتحسب عليه
+// تكلفة نقل الشحنة». Asked about the day board's own ✓: «الشاشة الجديدة حاجاتها لوحدها» — its act is
+// its OWN record; and about the photo at ✓: «اختيارية مع تنبيه».
+//
+//   · `GET /operations/shipments/delivered?date=YYYY-MM-DD` (`operationsShipment.view`, the day
+//     board's read) — the shipments DELIVERED TO THEIR BANK on that Cairo day
+//     (`isOperationsShipmentDeliveredToBank`, by the Cairo day of `captainDeliveredAt`), with their
+//     delivery confirmation. Today in Cairo when no day is given; any real day may be asked (a
+//     receipt often comes back days later). The day board's rows and crews, the same reader rules.
+//     It echoes the day answered and the server's own Cairo `today` (Round 33 critic).
+//   · `POST /operations/shipments/:id/delivery-confirmation` (`operationsShipment.complete`, the day
+//     board's ✓ grant) `{receiptNumber, billedSide, version}` — the ✓: writes the shipment's
+//     `deliveryConfirmation` and NOTHING ELSE (not `status`, not the day board's ✓, not
+//     `mainBankId`, `secondaryBankId`, `receiptNumber` or `vaultReceiptNumber`). The billed bank is
+//     the SERVER's: the bank of the branch on the side chosen, read at that moment; who confirmed is
+//     the token's user. Refused: 404 a deleted or unknown shipment; 409
+//     `OPERATIONS_SHIPMENT_NOT_DELIVERED` (not delivered to its bank yet),
+//     `OPERATIONS_DELIVERY_ALREADY_CONFIRMED`, `STALE_DOCUMENT` (the version moved); 422
+//     `OPERATIONS_DELIVERY_RECEIPT_NUMBER_REQUIRED` / `…_TOO_LONG` (`deliveryReceiptNumberProblem`),
+//     `OPERATIONS_DELIVERY_BILLED_SIDE_REQUIRED`. Each 422 carries one detail naming its field.
+//   · `DELETE /operations/shipments/:id/delivery-confirmation` (same grant) `{version}` — «إلغاء
+//     التأكيد»: the record cleared to null. 409 `OPERATIONS_DELIVERY_NOT_CONFIRMED` when there is none.
+//   · Round 33 critic — while a delivery is confirmed, `PATCH /operations/shipments/:id` may not
+//     move its «من فرع» or «إلى فرع» (409 `OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED`): the bank
+//     billed was chosen between those two. «إلغاء التأكيد» first; every other field edits as before.
+//   · The receipt photo is the shipment's own «صورة الإيصال» (`POST /operations/shipments/:id/
+//     receipt-image`), optional at ✓ — a confirmed row without one is shown «بدون صورة».
+//
+// Both acts are audited on the shipment (`deliveryConfirmed` / `deliveryUnconfirmed` in «السجل», with
+// the receipt number and the billed bank) and emit `operations.shipment.deliveryConfirmed` /
+// `operations.shipment.deliveryUnconfirmed`.
+
+/**
+ * Which branch's bank the cost of moving the shipment is billed to — «يحدد البنك من او الى اللى
+ * هيتحسب عليه تكلفة نقل الشحنة»: `origin` («من» — the bank of the branch it was collected from) or
+ * `destination` («إلى» — the bank of the branch it was delivered to). When the two branches are of
+ * ONE bank the side is still recorded, and the bank is the same either way.
+ */
+export const OPERATIONS_DELIVERY_BILLED_SIDES = ['origin', 'destination'] as const;
+export const OperationsDeliveryBilledSideSchema = z.enum(OPERATIONS_DELIVERY_BILLED_SIDES);
+export type OperationsDeliveryBilledSide = (typeof OPERATIONS_DELIVERY_BILLED_SIDES)[number];
+
+/** The longest receipt number taken, after trimming — a paper receipt's number, never a note. */
+export const OPERATIONS_DELIVERY_RECEIPT_NUMBER_MAX = 40;
+
+/**
+ * Why a receipt number cannot be taken — `required` (empty once trimmed) or `tooLong` (past
+ * `OPERATIONS_DELIVERY_RECEIPT_NUMBER_MAX`) — or null when it can. ONE rule for the dialog and the
+ * server (`OPERATIONS_DELIVERY_RECEIPT_NUMBER_REQUIRED` / `…_TOO_LONG`).
+ */
+export const deliveryReceiptNumberProblem = (
+  value: string | null | undefined,
+): 'required' | 'tooLong' | null => {
+  const trimmed = (value ?? '').trim();
+  if (trimmed === '') return 'required';
+  return trimmed.length > OPERATIONS_DELIVERY_RECEIPT_NUMBER_MAX ? 'tooLong' : null;
+};
+
+/**
+ * HAS THIS SHIPMENT REACHED ITS BANK? — the one rule the screen lists by and the ✓ is refused by.
+ * «هتظهرلى لما تكون تم التسليم بس»: the day board's own «تم التسليم» — its crew captain confirmed
+ * delivering it to the DESTINATION in the mobile app (`captainDeliveredAt`: the pickup leg of a
+ * daily shipment, the delivery leg of a secured one). A secured shipment counts only once it has
+ * LEFT THE VAULT for it — `dispatched` or `completed` («كانت محصنة ف الخزنة واسلمت ل بنك»): one still
+ * in the vault, or never in it, has not gone to the bank whatever its delivery leg says.
+ */
+export const isOperationsShipmentDeliveredToBank = (row: {
+  shipmentType: OperationsShipmentType;
+  status: OperationsShipmentStatus;
+  captainDeliveredAt: string | Date | null;
+}): boolean =>
+  row.captainDeliveredAt != null &&
+  (row.shipmentType === 'daily' || row.status === 'dispatched' || row.status === 'completed');
+
+/**
+ * May a FIRST receipt photo be added to this shipment? Round 10 locks a محصنة's photo from the
+ * vault's ✓ on («ميقدر حد … يعدل عليها»), and Round 33 B opens it ONCE, narrowly: a locked محصنة
+ * that has REACHED ITS BANK (`isOperationsShipmentDeliveredToBank`) and has NO photo yet may take one
+ * — the bank's paper receipt, which only exists after the delivery («ويفضل الصورة تكون مرفوعه»,
+ * «اختيارية مع تنبيه»: a row confirmed without it keeps «بدون صورة» until one is uploaded). Nothing
+ * the vault signed for is changed: a photo already there is never replaced or deleted on a locked
+ * row. An unlocked shipment (every daily one, a محصنة before the vault) takes one as always.
+ */
+export const isOperationsReceiptPhotoAddable = (row: {
+  shipmentType: OperationsShipmentType;
+  status: OperationsShipmentStatus;
+  captainDeliveredAt: string | Date | null;
+  hasReceiptImage: boolean;
+}): boolean =>
+  !row.hasReceiptImage &&
+  (!isOperationsShipmentLocked(row) || isOperationsShipmentDeliveredToBank(row));
+
+/** `GET /operations/shipments/delivered` — one Cairo day of deliveries; today when left out. */
+export const OperationsDeliveredBoardQuerySchema = z
+  .object({
+    date: z.string().refine(isYmd, { message: 'a real day, YYYY-MM-DD' }).optional(),
+  })
+  .strict();
+export type OperationsDeliveredBoardQuery = z.infer<typeof OperationsDeliveredBoardQuerySchema>;
+
+/**
+ * The ✓ («تأكيد التسليم»). `receiptNumber` and `billedSide` are typed loosely ON PURPOSE: a number
+ * left empty or too long, or no side, is the SERVER's coded 422 (`deliveryReceiptNumberProblem`,
+ * `OPERATIONS_DELIVERY_BILLED_SIDE_REQUIRED`), so a screen can name the box — not a bare
+ * validation failure. The number is stored trimmed. `version` is the shipment's, as on «complete».
+ */
+export const ConfirmOperationsDeliverySchema = z
+  .object({
+    receiptNumber: z.string().nullable().optional(),
+    billedSide: OperationsDeliveryBilledSideSchema.nullable().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type ConfirmOperationsDelivery = z.infer<typeof ConfirmOperationsDeliverySchema>;
+
+/** «إلغاء التأكيد» — the shipment's version, as on «reopen». */
+export const UndoOperationsDeliverySchema = z.object({ version: z.number().int().min(0) }).strict();
+export type UndoOperationsDelivery = z.infer<typeof UndoOperationsDeliverySchema>;
+
+/** A shipment's delivery confirmation, as the screen prints it — every name resolved. */
+export interface OperationsDeliveryConfirmationDto {
+  /** As typed, trimmed. */
+  receiptNumber: string;
+  billedSide: OperationsDeliveryBilledSide;
+  /** The branch on that side, and its bank AT THE MOMENT OF THE ✓ — the bank billed. */
+  billedBranchId: string;
+  billedBankId: string;
+  /** The bank's operational name (`opsName`); '' when the bank record is gone. */
+  billedBankName: string;
+  /** The USER who pressed ✓ (from the token), and their display name (null when unknown). */
+  confirmedById: string;
+  confirmedByName: string | null;
+  confirmedAt: string;
+}
+
+/** A row of «الشحنات المسلَّمة»: the day board's row, delivered, and its confirmation. */
+export interface OperationsDeliveredShipmentDto extends OperationsDayBoardShipmentDto {
+  /** Always set on this screen — a row is listed only once delivered. */
+  captainDeliveredAt: string;
+  /** Null until the ✓; null again after «إلغاء التأكيد». */
+  deliveryConfirmation: OperationsDeliveryConfirmationDto | null;
+}
+
+export interface OperationsDeliveredBoardDto {
+  /** The Cairo day answered, 'YYYY-MM-DD'. */
+  date: string;
+  /**
+   * Round 33 critic — TODAY in Cairo on the SERVER's clock, 'YYYY-MM-DD', read with `date` (so the
+   * two never disagree across a midnight): the latest day «يوم التسليم» offers, and the day the
+   * screen opens on when it asks for none. A desk PC's clock never overrides it.
+   */
+  today: string;
+  /** Delivered first-come first: by `captainDeliveredAt`, oldest first. */
+  shipments: OperationsDeliveredShipmentDto[];
+  /** As `OperationsDayBoardDto.crews` — empty without `operationsCrew.view`. */
+  crews: OperationsDayBoardVehicleCrewDto[];
+}
+
+/** What the ✓ and its undo answer: the shipment's new version and its confirmation now. */
+export interface OperationsDeliveryConfirmationResultDto {
+  shipmentId: string;
+  version: number;
+  deliveryConfirmation: OperationsDeliveryConfirmationDto | null;
+}
+
 // ── The dates a person may give a shipment ──────────────────────────────────────────────────────
 //
 // «مينفعش لما يجى يضيف شحنه يختار تاريخ فات» and «ميقدرش يحدد يوم قبل يوم اللى كانت عليه الشحنة».
@@ -1117,6 +1296,12 @@ export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
  *                        The one change a received (locked) محصنة may take: a FLOW act — it goes out
  *                        on a later day than planned — not an edit of what the vault signed for. The
  *                        screen says so in the entry's sentence.
+ *   deliveryConfirmed    (Round 33 B) «الشحنات المسلَّمة»'s ✓ — the delivery confirmed with its paper
+ *                        receipt (`POST /operations/shipments/:id/delivery-confirmation`). `changes`
+ *                        carry `deliveryReceiptNumber` and `billedBank` (old = null → new). Its OWN
+ *                        act, never the desk's `received` («الشاشة الجديدة حاجاتها لوحدها»).
+ *   deliveryUnconfirmed  (Round 33 B) «إلغاء التأكيد» — that confirmation taken back; `changes` carry
+ *                        the two values it had (old → null).
  *   other                an audited act this list does not name yet — shown plainly, never hidden.
  */
 export const OPERATIONS_SHIPMENT_LOG_KINDS = [
@@ -1143,6 +1328,8 @@ export const OPERATIONS_SHIPMENT_LOG_KINDS = [
   'receiptCancelled',
   'crewRemoved',
   'deliveryRescheduled',
+  'deliveryConfirmed',
+  'deliveryUnconfirmed',
   'other',
 ] as const;
 export type OperationsShipmentLogKind = (typeof OPERATIONS_SHIPMENT_LOG_KINDS)[number];
@@ -1185,6 +1372,9 @@ export type OperationsShipmentLogKind = (typeof OPERATIONS_SHIPMENT_LOG_KINDS)[n
  *                                (see OPERATIONS_SHIPMENT_LOG_PICKED_UP_BY_FIELDS)
  * A cancelled vault receipt (on `receiptCancelled`, Round 10) — for every reader:
  *   reason                       the reason typed when the receipt was cancelled, as typed
+ * The delivery confirmation (on `deliveryConfirmed` / `deliveryUnconfirmed`, Round 33 B):
+ *   deliveryReceiptNumber        the paper receipt's number, as typed
+ *   billedBank                   the bank billed for moving it — its operational name
  */
 export const OPERATIONS_SHIPMENT_LOG_FIELDS = [
   'mainBank',
@@ -1212,6 +1402,8 @@ export const OPERATIONS_SHIPMENT_LOG_FIELDS = [
   'reason',
   'bagSealsPerBag',
   'denominations',
+  'deliveryReceiptNumber',
+  'billedBank',
 ] as const;
 export type OperationsShipmentLogField = (typeof OPERATIONS_SHIPMENT_LOG_FIELDS)[number];
 
@@ -1909,6 +2101,23 @@ export const OPERATIONS_CREW_ROW_COLOURS = OPERATIONS_SHIFT_TYPE_COLOURS;
 export type OperationsCrewRowColour = OperationsShiftTypeColour;
 
 /**
+ * Round 34 C — «بدون لون»: «ولو انا مثبت لون للنوع ممكن لو تندى صف اشيل لونه عادى». A row's colour has
+ * THREE states, and `rowColour` holds each:
+ *   · null — «لون النوع», the default: the row wears its type's colour, or none when its type has
+ *     none (or it has no type). Every row saved before Round 34, and every save of an older client
+ *     that knows no other way to take a colour off, means this — as before;
+ *   · a palette name — the colour picked by hand, over the type's;
+ *   · `'none'` — NO colour, picked by hand: it wins over the type's colour, so a «محصنة» row can stand
+ *     uncoloured beside the «محصنة» rows that wear the type's. Stored as written.
+ * `'none'` is no palette name and no Round-20 name (the contracts' spec holds it), so nothing maps
+ * onto it or away from it.
+ */
+export const OPERATIONS_CREW_ROW_NO_COLOUR = 'none' as const;
+export type OperationsCrewRowNoColour = typeof OPERATIONS_CREW_ROW_NO_COLOUR;
+/** What a row's `rowColour` may hold besides null («لون النوع»): a palette colour, or «بدون لون». */
+export type OperationsCrewRowColourSetting = OperationsCrewRowColour | OperationsCrewRowNoColour;
+
+/**
  * Round 20's six row colours → the palette's names, each the palette's colour Round 20 drew it in:
  * its swatch was the palette's dot exactly — `yellow` bg-yellow-400 (the palette's `gold`, NOT
  * `amber`, an orange-brown amber-600 that would have read as one with `orange`), `green`
@@ -1930,13 +2139,14 @@ const LEGACY_ONLY_ROW_COLOURS = ['yellow', 'green', 'blue', 'red', 'purple'] as 
   readonly Exclude<OperationsLegacyCrewRowColour, OperationsShiftTypeColour>[];
 
 /**
- * A stored or sent row colour → the palette's name, or null: a palette name as it is, a Round-20
- * name mapped, anything else (null, absent, a name no build of this contract knows) none. The one
- * reading every reader of a STORED colour goes through — a row the boot's migration has not reached
- * yet reads as it will after.
+ * A stored or sent row colour → the palette's name, `'none'`, or null: a palette name as it is, a
+ * Round-20 name mapped, «بدون لون» (`'none'`, Round 34 C) as it is, anything else (null, absent, a
+ * name no build of this contract knows) null — «لون النوع». The one reading every reader of a STORED
+ * colour goes through — a row the boot's migration has not reached yet reads as it will after.
  */
-export const canonicalCrewRowColour = (value: unknown): OperationsCrewRowColour | null => {
+export const canonicalCrewRowColour = (value: unknown): OperationsCrewRowColourSetting | null => {
   if (typeof value !== 'string') return null;
+  if (value === OPERATIONS_CREW_ROW_NO_COLOUR) return OPERATIONS_CREW_ROW_NO_COLOUR;
   if ((OPERATIONS_SHIFT_TYPE_COLOURS as readonly string[]).includes(value)) {
     return value as OperationsCrewRowColour;
   }
@@ -1946,11 +2156,13 @@ export const canonicalCrewRowColour = (value: unknown): OperationsCrewRowColour 
 };
 
 /**
- * What the save takes for `rowColour`: a palette name, or a Round-20 name MAPPED to one (the parsed
- * value is always a palette name — the service never sees a legacy one). Anything else → 400.
+ * What the save takes for `rowColour`: a palette name, a Round-20 name MAPPED to one (the parsed
+ * value is never a legacy name — the service never sees one), or `'none'` — «بدون لون» (Round 34 C).
+ * Null («لون النوع») is the field's `.nullable()`. Anything else → 400.
  */
 export const OperationsCrewRowColourSchema = z.union([
   OperationsShiftTypeColourSchema,
+  z.literal(OPERATIONS_CREW_ROW_NO_COLOUR),
   z
     .enum(LEGACY_ONLY_ROW_COLOURS)
     .transform((legacy): OperationsCrewRowColour => OPERATIONS_LEGACY_CREW_ROW_COLOURS[legacy]),
@@ -1967,7 +2179,8 @@ export interface OperationsCrewAssignmentDto {
   fleetDutyAssignmentId: string | null;
   /** «النوع» — a type of the `أنواع التشغيل` catalog, or null («اختر»). */
   shiftTypeId: string | null;
-  rowColour: OperationsCrewRowColour | null;
+  /** Null «لون النوع», a palette colour, or `'none'` «بدون لون» — see `OPERATIONS_CREW_ROW_NO_COLOUR`. */
+  rowColour: OperationsCrewRowColourSetting | null;
   /**
    * The slot's occupants, in the order Operations entered them — at most `CREW_SLOT_CAPACITY`.
    *
@@ -2022,7 +2235,8 @@ export interface OperationsCrewBoardCrewDto {
   notes: string | null;
   /** «النوع» — a type of the `أنواع التشغيل` catalog (`GET /operations/shift-types`), or null. */
   shiftTypeId: string | null;
-  rowColour: OperationsCrewRowColour | null;
+  /** Null «لون النوع», a palette colour, or `'none'` «بدون لون» — see `OPERATIONS_CREW_ROW_NO_COLOUR`. */
+  rowColour: OperationsCrewRowColourSetting | null;
   /**
    * Round 32 critic — how many محصنات «توزيع المحصنات» placed on this crew row (its LIVE legs). They
    * ride the row, so they stay with its van whatever crosses in «تبديل بين سيارتين»; the board's
@@ -3403,7 +3617,9 @@ export const OPERATIONS_DISTRIBUTION_MAX_CHANGES = 500;
  *     400 (omit the key). Round 30 — «عاوز هنا يقدر يجيب اليوم اللى قبله ك رؤيى بس ميقدرش يعدل عليه
  *     او يعمل حاجه ك سجل يعنى»: a day BEFORE today is no longer refused — it answers as that day's
  *     RECORD (`past` true, see `OperationsSecuredDistributionDto`), read only: the save refuses it
- *     (422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`).
+ *     (422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`). Round 33 — «تسليم المحصنات» opens a past day too,
+ *     as the same record (with `recordHandovers` for the vault's readers); its «تسليم» stays today's
+ *     (422 `OPERATIONS_DISPATCH_NOT_TODAY` on a past day's van).
  */
 export const OperationsSecuredDistributionQuerySchema = z
   .object({ date: z.coerce.date().optional() })
@@ -3501,6 +3717,23 @@ export interface OperationsSecuredDistributionPackagesDto {
   boxes: number;
 }
 
+/**
+ * Round 33 — «انا عاوزك تفتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط»: one shipment of a
+ * RECORD the vault HANDED OVER (`recordHandovers`) — when it left the vault and who pressed «تسليم»:
+ * its custody's release, written by `POST /operations/secured/dispatch` with the signed-in user the
+ * TOKEN names (a request never says who).
+ */
+export interface OperationsSecuredDistributionHandoverDto {
+  shipmentId: string;
+  /** When it left the vault (the custody's `releasedAt`, ISO instant). */
+  handedOverAt: string;
+  /**
+   * Who handed it over — the user's Arabic display name, the English one when there is none (the
+   * receipt's rule, `receivedByName`); null when the directory cannot name them.
+   */
+  handedOverByName: string | null;
+}
+
 export interface OperationsSecuredDistributionDto {
   /** The day distributed (its UTC midnight, ISO) — today in Cairo when none was asked for. */
   date: string;
@@ -3538,6 +3771,16 @@ export interface OperationsSecuredDistributionDto {
    * for a reader without the vault's grant.
    */
   recordPackages: OperationsSecuredDistributionPackagesDto[] | null;
+  /**
+   * Round 33 — on a RECORD (`past`), for a reader of the vault (`operationsVault.view`, the grant of
+   * «تسليم المحصنات» and of `recordPackages`): each listed shipment the vault HANDED OVER — when, and
+   * by whom (`OperationsSecuredDistributionHandoverDto`), in the order `shipments` lists them. A
+   * shipment still in the vault, never received, or whose receipt was cancelled is absent. The
+   * vault's «تسليم» writes it whatever screen sent it; the record only reads it. NULL on today and on
+   * every later day (their screens list only what has not left yet) and for a reader without the
+   * vault's grant.
+   */
+  recordHandovers: OperationsSecuredDistributionHandoverDto[] | null;
   /**
    * Whether the reader holds `operationsCrew.view` — the crew plan's grant. Without it every van is
    * still listed (the vans ARE this screen: number, captains, direction, time — what every board
@@ -4348,6 +4591,14 @@ export const OperationsEvents = {
    * the shipment. `OperationsShipmentPickupPayloadV1.by` is whose ✓ was removed.
    */
   ShipmentPickupUndone: 'operations.shipment.pickupUndone',
+  /**
+   * Round 33 B — «الشحنات المسلَّمة»'s ✓: a delivered shipment confirmed with its receipt number and
+   * the bank billed for moving it (`OperationsShipmentDeliveryPayloadV1`). Not `completed`: the
+   * day board's ✓ is another act («الشاشة الجديدة حاجاتها لوحدها»).
+   */
+  ShipmentDeliveryConfirmed: 'operations.shipment.deliveryConfirmed',
+  /** Round 33 B — that confirmation taken back («إلغاء التأكيد»); the payload names what it was. */
+  ShipmentDeliveryUnconfirmed: 'operations.shipment.deliveryUnconfirmed',
   SecuredLegAssigned: 'operations.shipmentAssignment.assigned',
   /**
    * Round 12 — a secured shipment taken OFF its van on «توزيع المحصنات», or by an edit that moves its
@@ -4428,6 +4679,16 @@ export const OperationsCustodyEventPayloadV1 = z.object({
  */
 export const OperationsShipmentPickupPayloadV1 = OperationsShipmentEventPayloadV1.extend({
   by: OperationsSecuredPickedUpBySchema,
+});
+
+/**
+ * Round 33 B — a delivery confirmed on «الشحنات المسلَّمة», or that confirmation taken back: the
+ * receipt number, the side chosen and the bank it resolved to (on the undo, what was cleared).
+ */
+export const OperationsShipmentDeliveryPayloadV1 = OperationsShipmentEventPayloadV1.extend({
+  receiptNumber: z.string(),
+  billedSide: OperationsDeliveryBilledSideSchema,
+  billedBankId: objectId(),
 });
 
 /** Round 10 — a cancelled vault receipt: the voided custody, its shipment, and why. */

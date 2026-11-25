@@ -242,6 +242,29 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // not in the room.
   'it.vehicleCheck': { permission: 'itVehicleCheck.view' },
 
+  // ── Administrative Affairs ─────────────────────────────────────────────────
+  // Items, units and item categories (docs/12-planning/administration-module-design-integration.md
+  // §9.2), organization-wide data whose signals name no branch. Units and categories sit on the
+  // wider of their two read keys, `administrationItem.view`, because every item screen shows them;
+  // a holder of the catalog key alone refreshes the catalogs screen on navigation (§9.7).
+  'administration.item': { permission: 'administrationItem.view' },
+  'administration.catalogItem': { permission: 'administrationItem.view' },
+  'administration.itemCategory': { permission: 'administrationItem.view' },
+  // Warehouses (§9.2), branch records: every act also sends one `update` WITH the warehouse's
+  // branch (`signalWarehouse`), so a branch-scoped reader's room hears it, not only the
+  // organization-wide one the audit row reaches.
+  'administration.warehouse': { permission: 'administrationWarehouse.view' },
+  // Suppliers (§9.2), organization-wide as the items are; a paper's link is an `update` on its
+  // supplier (§11.4).
+  'administration.supplier': { permission: 'administrationSupplier.view' },
+
+  // ── Compliance and Risks ───────────────────────────────────────────────────
+  // The files shelf (docs/12-planning/compliance-files-design.md §9): a folder's and a file's
+  // writes refresh the responsible person's screens. Readers do not join — a signal names a folder
+  // id, and a reader is told only of the folders shared with them; their page reads again on focus.
+  'compliance.folder': { permission: 'complianceFile.manage' },
+  'compliance.document': { permission: 'complianceFile.manage' },
+
   // ── Automation ─────────────────────────────────────────────────────────────
   'automation.workflow': { permission: 'workflow.view' },
   'automation.variable': { permission: 'variable.view' },

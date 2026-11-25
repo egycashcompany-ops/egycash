@@ -255,6 +255,7 @@ import {
   OperationsShipmentAssignmentPayloadV1,
   OperationsShipmentEventPayloadV1,
   OperationsShipmentPickupPayloadV1,
+  OperationsShipmentDeliveryPayloadV1,
   OperationsShipmentExecutionPayloadV1,
   OperationsShipmentReorderedPayloadV1,
 } from '../modules/operations.js';
@@ -913,6 +914,9 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   pickupConfirmed: { en: 'pickup confirmed', ar: 'تأكيد استلام' },
   pickupUndone: { en: 'pickup undone', ar: 'التراجع عن استلام' },
   receiptCancelled: { en: 'receipt cancelled', ar: 'إلغاء استلام' },
+  // operations (Round 33 B): «الشحنات المسلَّمة»'s ✓ with the paper receipt, and its undo.
+  deliveryConfirmed: { en: 'delivery confirmed', ar: 'تأكيد التسليم' },
+  deliveryUnconfirmed: { en: 'delivery confirmation undone', ar: 'إلغاء تأكيد التسليم' },
   // operations (Round 12): «توزيع المحصنات» takes a shipment off its van — the counterpart of
   // `assigned` on the same entity.
   removed: { en: 'removed', ar: 'إزالة' },
@@ -1455,6 +1459,9 @@ export const OPERATIONS_EVENT_PAYLOAD_SCHEMAS: Readonly<
   [OperationsEvents.VaultReceiptCancelled]: OperationsCustodyReceiptCancelledPayloadV1,
   [OperationsEvents.ShipmentPickupConfirmed]: OperationsShipmentPickupPayloadV1,
   [OperationsEvents.ShipmentPickupUndone]: OperationsShipmentPickupPayloadV1,
+  // Round 33 B — «الشحنات المسلَّمة»'s ✓ and its undo.
+  [OperationsEvents.ShipmentDeliveryConfirmed]: OperationsShipmentDeliveryPayloadV1,
+  [OperationsEvents.ShipmentDeliveryUnconfirmed]: OperationsShipmentDeliveryPayloadV1,
   [OperationsEvents.SecuredLegAssigned]: OperationsShipmentAssignmentPayloadV1,
   // Round 12 — «توزيع المحصنات» takes a shipment off its van, or an edit moves its delivery date off
   // the van's day: the leg that was retired.

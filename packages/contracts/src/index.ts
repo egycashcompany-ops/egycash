@@ -79,3 +79,8 @@ export * from './modules/atm-map.js';
 export * from './modules/atm-map-geometry.js';
 export * from './modules/atm-settlements.js';
 export * from './modules/atm-settings.js';
+export * from './modules/administration.js';
+export * from './modules/administration-catalog.js';
+export * from './modules/administration-warehouses.js';
+export * from './modules/administration-procurement.js';
+export * from './modules/compliance.js';

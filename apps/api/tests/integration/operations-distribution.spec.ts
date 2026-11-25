@@ -2953,3 +2953,191 @@ describe('Round 30 — a PAST day opens as its record: read only, every write re
     }
   });
 });
+
+// ── Round 33 — «انا عاوزك تفتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط زى ما عملنا فى شاشة
+// توزيع المحصنات» ─────────────────────────────────────────────────────────────────────────────────
+//
+// «تسليم المحصنات» reads the day through the same `GET /operations/secured/distribution` as «توزيع
+// المحصنات», on the vault's own grant (`operationsVault.view`). A past day answers as its record
+// (Round 30) and now says, to a reader of the vault, what was handed over, when and by whom
+// (`recordHandovers` — the custody's release, its user the one whose token pressed «تسليم»). Its
+// «تسليم» stays today's: `POST /operations/secured/dispatch` refuses a past day's van (Round 17).
+describe('Round 33 — «تسليم المحصنات» on a PAST day: its record — what was handed over, when and by whom', () => {
+  const PLAN = shift(63);
+  /**
+   * Six days ago on the Cairo calendar — a day that has passed, and no other suite's: Round 30's
+   * record is three days ago, and its `stray` is due the day before that.
+   */
+  const RECORD = addDaysYmd(cairoYmd(new Date()), -6);
+  /** The treasurer who pressed «تسليم» — named apart from every other user of this file. */
+  const TREASURER = 'ops-r33-treasurer@ecms.local';
+  /** When the release is set to have happened: 10:15 Cairo on RECORD's morning. */
+  const HANDED_AT = new Date(cairoDayStart(RECORD).getTime() + (10 * 60 + 15) * 60_000);
+  let treasurerToken = '';
+  let crew7 = '';
+  let outFirst = ''; // on van 7, handed over by the treasurer
+  let outSecond = ''; // on van 7, handed over with it
+  let keptInVault = ''; // on van 7, never handed over — still in the vault
+  let neverReceived = ''; // on van 7, a draft the vault never took in
+  let onNoVan = ''; // in the vault, due on the day, on no van
+
+  beforeAll(async () => {
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'R33 treasurer', ar: 'أمين الخزينة R33' },
+        permissionKeys: ['operationsVault.view', 'operationsVault.dispatch'],
+      },
+      adminId,
+    );
+    const { user } = await userService.create(
+      {
+        email: TREASURER,
+        firstName: { ar: 'سامح', en: 'Sameh' },
+        lastName: { ar: 'الخزين', en: 'Vault' },
+        locale: 'ar',
+        organization: { branchId: null, departmentId: null, sectionId: null, jobTitleId: null },
+      },
+      null,
+    );
+    await userService.setPassword(String(user._id), PASSWORD, 'passwordReset');
+    await userService.forceActivate(String(user._id));
+    await rbacService.ensureAssignment(String(user._id), String(role._id), 'organization');
+    treasurerToken = await login(TREASURER);
+
+    const van7 = await mkVehicle('OPS-R33-H');
+    crew7 =
+      (
+        await planDay(PLAN, [{ vehicleId: van7, captainEmployeeIds: [capA], direction: 'المعادي' }])
+      ).get(van7) ?? '';
+    expect(crew7).not.toBe('');
+
+    outFirst = (await book(PLAN, 'المعادي')).id;
+    await intoVault(outFirst, 4);
+    outSecond = (await book(PLAN, 'المعادي')).id;
+    await intoVault(outSecond, 1);
+    keptInVault = (await book(PLAN, 'المعادي')).id;
+    await intoVault(keptInVault);
+    neverReceived = (await book(PLAN, 'المعادي')).id;
+    onNoVan = (await book(PLAN, 'الدقي')).id;
+    await intoVault(onNoVan);
+    const placed = await save(
+      [outFirst, outSecond, keptInVault, neverReceived].map((shipmentId) => ({
+        shipmentId,
+        crewAssignmentId: crew7,
+        captainEmployeeId: capA,
+        version: null,
+      })),
+      PLAN,
+    );
+    expect(placed.status, JSON.stringify(placed.body)).toBe(200);
+    // «تسليم» on the van's own day, by the treasurer — the only user who ever releases them.
+    const out = await dispatchOn(
+      PLAN,
+      { crewAssignmentId: crew7, shipmentIds: [outFirst, outSecond] },
+      TREASURER,
+    );
+    expect(out.status, JSON.stringify(out.body)).toBe(200);
+
+    // …and the day passes: PLAN's shipments due on RECORD, its operating day RECORD's, the release
+    // on RECORD's morning.
+    const ids = [outFirst, outSecond, keptInVault, neverReceived, onNoVan];
+    await OperationsShipmentModel.updateMany(
+      { _id: { $in: ids } },
+      { $set: { collectionDate: new Date(iso(RECORD)), deliveryDate: new Date(iso(RECORD)) } },
+    ).exec();
+    await OperationsShipmentModel.db
+      .collection('operations_days')
+      .updateOne({ date: new Date(iso(PLAN)) }, { $set: { date: new Date(iso(RECORD)) } });
+    await OperationsVaultCustodyModel.updateMany(
+      { shipmentId: { $in: [outFirst, outSecond] } },
+      { $set: { releasedAt: HANDED_AT } },
+    ).exec();
+  });
+
+  it('opens on the vault’s own grant as the record — the van, what rode it, and who handed what over and when', async () => {
+    const view = await viewOf(RECORD, treasurerToken);
+    expect(view).toMatchObject({ date: iso(RECORD), past: true, crewPlanVisible: false });
+    expect(view.crews.map((c) => [c.crewAssignmentId, c.vehicleCode])).toEqual([
+      [crew7, 'OPS-R33-H'],
+    ]);
+    const byId = new Map(view.shipments.map((s) => [s.id, s]));
+    expect([...byId.keys()].sort()).toEqual(
+      [outFirst, outSecond, keptInVault, neverReceived, onNoVan].sort(),
+    );
+    for (const id of [outFirst, outSecond]) {
+      expect(byId.get(id), id).toMatchObject({
+        status: 'dispatched',
+        securedStage: 'dispatched',
+        placedCrewAssignmentId: crew7,
+      });
+    }
+    expect(byId.get(keptInVault)).toMatchObject({
+      status: 'inVault',
+      placedCrewAssignmentId: crew7,
+      overdue: true,
+    });
+    expect(byId.get(neverReceived)).toMatchObject({
+      status: 'draft',
+      placedCrewAssignmentId: crew7,
+    });
+    expect(byId.get(onNoVan)).toMatchObject({ status: 'inVault', placedCrewAssignmentId: null });
+
+    // Who handed over and when: the two that left, in the record's order, named by the directory
+    // as the treasurer whose token pressed «تسليم» — never the admin who booked and placed them.
+    expect(view.recordHandovers).toEqual([
+      {
+        shipmentId: outFirst,
+        handedOverAt: HANDED_AT.toISOString(),
+        handedOverByName: 'سامح الخزين',
+      },
+      {
+        shipmentId: outSecond,
+        handedOverAt: HANDED_AT.toISOString(),
+        handedOverByName: 'سامح الخزين',
+      },
+    ]);
+    // …and the counts the vault took them in with, the handed-over ones too.
+    const counted = new Map((view.recordPackages ?? []).map((p) => [p.shipmentId, p.bags]));
+    expect(counted.get(outFirst)).toBe(4);
+    expect(counted.get(outSecond)).toBe(1);
+    expect(counted.has(neverReceived)).toBe(false);
+  });
+
+  it('says who handed over to a reader of the vault only — and on no day but a past one', async () => {
+    // The desk's reader sees the record, not the vault's release.
+    const viewer = await viewOf(RECORD, viewerToken);
+    expect(viewer.past).toBe(true);
+    expect(viewer.recordHandovers).toBeNull();
+    expect(viewer.recordPackages).toBeNull();
+    // The admin holds the vault's grant among the rest: the same two.
+    const admin = await viewOf(RECORD);
+    expect(admin.recordHandovers?.map((h) => h.shipmentId)).toEqual([outFirst, outSecond]);
+    // Today and a day to come list nothing that has left: no handovers to read.
+    expect((await viewOf(cairoYmd(new Date()), treasurerToken)).recordHandovers).toBeNull();
+    expect((await viewOf(DAY, treasurerToken)).recordHandovers).toBeNull();
+    expect((await distribution(`?date=${RECORD}`, nobodyToken)).status).toBe(403);
+  });
+
+  it('keeps «تسليم» refused on the record’s van — 422 TODAY_ONLY, nothing released, the record as it was', async () => {
+    const today = cairoYmd(new Date());
+    const before = await read(keptInVault);
+    const custodyBefore = await OperationsVaultCustodyModel.findOne({ shipmentId: keptInVault })
+      .lean()
+      .exec();
+    expect(custodyBefore?.state).toBe('held');
+    for (const token of [treasurerToken, adminToken]) {
+      const res = await dispatch({ crewAssignmentId: crew7, shipmentIds: [keptInVault] }, token);
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(errorOf(res).code).toBe(ErrorCodes.OPERATIONS_DISPATCH_NOT_TODAY);
+      expect(errorOf(res).details).toEqual([
+        { field: 'crewAssignmentId', code: 'TODAY_ONLY', message: today },
+      ]);
+    }
+    expect(await read(keptInVault)).toEqual(before);
+    expect(
+      await OperationsVaultCustodyModel.findOne({ shipmentId: keptInVault }).lean().exec(),
+    ).toEqual(custodyBefore);
+    const after = await viewOf(RECORD, treasurerToken);
+    expect(after.recordHandovers?.map((h) => h.shipmentId)).toEqual([outFirst, outSecond]);
+  });
+});

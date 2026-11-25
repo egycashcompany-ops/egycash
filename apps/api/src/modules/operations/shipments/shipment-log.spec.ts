@@ -475,6 +475,39 @@ describe('the shipment action log — one audit row, one entry, in names', () =>
     expect(edited?.changes).toEqual([{ field: 'mainBank', old: 'الأهلي', new: null }]);
   });
 
+  // Round 33 B — «الشحنات المسلَّمة»'s ✓ and its undo: their OWN kinds, the receipt's number and the
+  // bank billed by name — never the desk's `received`, and never the side or the branch's id.
+  it('prints the delivery confirmed with its receipt, and its undo, as their own kinds', () => {
+    const changes = (to: boolean) => [
+      { field: 'deliveryReceiptNumber', old: to ? null : 'RC-1', new: to ? 'RC-1' : null },
+      { field: 'deliveryBilledBankId', old: to ? null : BANK_B, new: to ? BANK_B : null },
+      {
+        field: 'deliveryBilledSide',
+        old: to ? null : 'destination',
+        new: to ? 'destination' : null,
+      },
+      { field: 'deliveryBilledBranchId', old: to ? null : BRANCH_B, new: to ? BRANCH_B : null },
+    ];
+    const [confirmed, undone] = build([
+      shipmentRow('update', changes(true)),
+      shipmentRow('update', changes(false)),
+    ]);
+    expect(confirmed?.kind).toBe('deliveryConfirmed');
+    expect(confirmed?.changes).toEqual([
+      { field: 'deliveryReceiptNumber', old: null, new: 'RC-1' },
+      { field: 'billedBank', old: null, new: 'مصر' },
+    ]);
+    expect(undone?.kind).toBe('deliveryUnconfirmed');
+    expect(undone?.changes).toEqual([
+      { field: 'deliveryReceiptNumber', old: 'RC-1', new: null },
+      { field: 'billedBank', old: 'مصر', new: null },
+    ]);
+    // The bank billed is named in the one bank read.
+    expect(collectShipmentLogRefs([shipmentRow('update', changes(true))]).bankIds).toEqual([
+      BANK_B,
+    ]);
+  });
+
   it('collects every id the values name, by kind, for one read each', () => {
     const refs = collectShipmentLogRefs([
       shipmentRow('update', [

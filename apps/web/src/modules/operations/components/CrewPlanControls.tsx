@@ -53,7 +53,12 @@ import { useAppSelector } from '../../../store';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { floatingSpot, type FloatingSpot } from '../../../shared/ui/MultiSelect';
 import { BoardIcon, NUM } from '../../fleet/components/FuelCardBoard';
-import { parseClock, shiftTypeChoices, type CrewRowColour } from '../lib/crew-plan';
+import {
+  parseClock,
+  shiftTypeChoices,
+  type CrewRowColour,
+  type CrewRowColourSetting,
+} from '../lib/crew-plan';
 import {
   directionAddOfferInBox,
   directionAddRefusalText,
@@ -70,9 +75,20 @@ import {
   type DirectionItem,
 } from '../lib/direction-pick';
 import { type DirectionAdd } from '../api/direction-area';
-import { gridStep, type CatalogState, type RowColourChoice } from '../lib/type-colours';
+import {
+  NO_ROW_COLOUR,
+  gridStep,
+  type CatalogState,
+  type RowColourChoice,
+} from '../lib/type-colours';
 import { PLAN_ICON } from './crew-plan-icons';
-import { SHIFT_TYPE_TONE, ShiftTypeDot, ShiftTypeTag, shiftTypeName } from './shift-type-look';
+import {
+  NoColourSwatch,
+  SHIFT_TYPE_TONE,
+  ShiftTypeDot,
+  ShiftTypeTag,
+  shiftTypeName,
+} from './shift-type-look';
 
 // ── The looks ────────────────────────────────────────────────────────────────────────────────────
 
@@ -1136,11 +1152,17 @@ export const ShiftTypePicker = ({
  * The button shows the colour the row is drawn in: the override solid; the type's in a dashed ring
  * («automatic»); none, the drop. The keyboard walks the swatches by the arrows (a grid, in the
  * reading direction), Enter picks, Escape closes.
+ *
+ * Round 34 C — «ولو انا مثبت لون للنوع ممكن لو تندى صف اشيل لونه عادى»: the list opens on «لون النوع»
+ * (the type's swatch, or «بدون لون» when the type has none) and «بدون لون» (`'none'` — no colour,
+ * over the type's), then the palette; a colour once picked goes back to either. The button shows a
+ * row «بدون لون» picked by hand as the struck ring (`NoColourSwatch`), pressed like any picked colour.
  */
 export const RowColourPicker = ({
   rowKey,
   value,
   typeColour,
+  hasType,
   choices,
   wornBy,
   catalog,
@@ -1149,10 +1171,18 @@ export const RowColourPicker = ({
   onChange,
 }: {
   rowKey: string;
-  /** The colour picked by hand on the row, or null — «لون النوع». */
-  value: CrewRowColour | null;
-  /** The row's type's colour, or null (no type yet). */
+  /**
+   * The colour picked by hand on the row: a palette colour, `'none'` «بدون لون» (Round 34 C), or null
+   * — «لون النوع».
+   */
+  value: CrewRowColourSetting | null;
+  /** The row's type's colour, or null (no type yet, or — Round 34 C — a type with no colour). */
   typeColour: CrewRowColour | null;
+  /**
+   * Whether the row has a type — so «لون النوع» says «بدون لون» for a type with no colour and «لا نوع
+   * للصف» for a row with none. Left out: a row with a type colour has a type, one without has none.
+   */
+  hasType?: boolean;
   /** What the list offers (`rowColourChoices`). */
   choices: readonly RowColourChoice[];
   /** The live types wearing a colour, by name — a swatch's tooltip. */
@@ -1162,26 +1192,31 @@ export const RowColourPicker = ({
   /** Read the types again — after a failed read. */
   onRetry: () => void;
   disabled: boolean;
-  onChange: (next: CrewRowColour | null) => void;
+  onChange: (next: CrewRowColourSetting | null) => void;
 }): JSX.Element => {
   const t = useT();
   const anchor = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   useFocusOnOpen(open, `[data-colour-panel="${rowKey}"]`);
-  const pick = (next: CrewRowColour | null): void => {
+  const pick = (next: CrewRowColourSetting | null): void => {
     setOpen(false);
     anchor.current?.querySelector('button')?.focus({ preventScroll: true });
     if (next !== value) onChange(next);
   };
-  const shown = value ?? typeColour;
-  const name =
-    value !== null
+  const none = value === NO_ROW_COLOUR;
+  const shown = none ? null : (value ?? typeColour);
+  const typed = hasType ?? typeColour !== null;
+  const name = none
+    ? t('operations.crewPlan.colour.none')
+    : value !== null
       ? t(`operations.catalogs.shiftType.colours.${value}`)
       : typeColour !== null
         ? t('operations.crewPlan.colour.autoOf', {
             colour: t(`operations.catalogs.shiftType.colours.${typeColour}`),
           })
-        : t('operations.crewPlan.colour.none');
+        : typed
+          ? t('operations.crewPlan.colour.autoOf', { colour: t('operations.crewPlan.colour.none') })
+          : t('operations.crewPlan.colour.none');
   return (
     <div ref={anchor} className="inline-block" data-colour-picker={rowKey}>
       <button
@@ -1191,11 +1226,17 @@ export const RowColourPicker = ({
         aria-label={`${t('operations.crewPlan.colour.open')}: ${name}`}
         title={`${t('operations.crewPlan.colour.open')}: ${name}`}
         data-colour-source={value !== null ? 'row' : typeColour !== null ? 'type' : 'none'}
+        data-colour-value={value ?? 'type'}
         disabled={disabled}
         onClick={() => setOpen((now) => !now)}
         className="flex items-center justify-center rounded-lg border border-slate-200 bg-white transition hover:border-brand-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 disabled:opacity-50 dark:border-slate-700 dark:bg-[#0a1233]"
       >
-        {shown === null ? (
+        {none ? (
+          // «بدون لون» picked by hand — the struck ring, so it never reads as «nobody picked one».
+          <span data-colour-shown="none" className="inline-flex">
+            <NoColourSwatch size="md" />
+          </span>
+        ) : shown === null ? (
           <BoardIcon d={PLAN_ICON.drop} className="h-4 w-4 text-slate-400" />
         ) : (
           <span
@@ -1225,6 +1266,7 @@ export const RowColourPicker = ({
         <RowColourSwatches
           value={value}
           typeColour={typeColour}
+          hasType={typed}
           choices={choices}
           wornBy={wornBy}
           catalog={catalog}
@@ -1240,28 +1282,34 @@ export const RowColourPicker = ({
 const COLOUR_COLUMNS = 6;
 
 /**
- * The «اللون» list itself: the palette shown (each swatch naming the types that wear it), the row's
- * own colour after it when outside it, and «لون النوع». Pressed: the colour picked on the row; dashed:
- * the type's, while nothing is picked. Until the types have answered (`catalog`), it says they are
- * loading, or that the read failed with «إعادة المحاولة» — never «no active types».
+ * The «اللون» list itself: «لون النوع» and «بدون لون» first (Round 34 C — «عاوز اقدر بعد ما اضيف لون
+ * اقدر اشيله عادي»), then the palette shown (each swatch naming the types that wear it) and the row's
+ * own colour after it when outside it. Pressed: what the row holds — «لون النوع» (null), «بدون لون»
+ * (`'none'`), or the colour picked on it; dashed: the type's, while nothing is picked. Until the
+ * types have answered (`catalog`), it says they are loading, or that the read failed with «إعادة
+ * المحاولة» — never «no active types»; «لون النوع» and «بدون لون» are there to press all the same.
  */
 export const RowColourSwatches = ({
   value,
   typeColour,
+  hasType,
   choices,
   wornBy,
   catalog = 'ready',
   onRetry,
   onPick,
 }: {
-  value: CrewRowColour | null;
+  value: CrewRowColourSetting | null;
   typeColour: CrewRowColour | null;
+  /** Whether the row has a type (see `RowColourPicker`); left out, as its type colour says. */
+  hasType?: boolean;
   choices: readonly RowColourChoice[];
   wornBy: (colour: CrewRowColour) => readonly string[];
   catalog?: CatalogState;
   onRetry?: () => void;
-  onPick: (next: CrewRowColour | null) => void;
+  onPick: (next: CrewRowColourSetting | null) => void;
 }): JSX.Element => {
+  const typed = hasType ?? typeColour !== null;
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
   const colourName = (colour: CrewRowColour): string =>
@@ -1292,6 +1340,68 @@ export const RowColourSwatches = ({
   };
   return (
     <>
+      {/* Round 34 C — the two ways a colour is taken off, first: «لون النوع» (the type's, or none
+          when the type has none) and «بدون لون» (none, over the type's colour). */}
+      <div className="mb-2 grid gap-1" data-colour-off="true">
+        <button
+          type="button"
+          data-colour="type"
+          aria-pressed={value === null}
+          title={t('operations.crewPlan.colour.autoHint')}
+          onClick={() => onPick(null)}
+          className={cn(
+            OPTION,
+            'justify-start border text-[12.5px] text-slate-600 dark:text-slate-300',
+            value === null
+              ? 'border-solid border-brand-400 bg-brand-500/10'
+              : 'border-dashed border-slate-300 dark:border-slate-600',
+          )}
+        >
+          {typeColour !== null ? (
+            <ShiftTypeDot colour={typeColour} size="sm" />
+          ) : typed ? (
+            // A type with no colour: its neutral ring.
+            <ShiftTypeDot colour={null} size="sm" />
+          ) : (
+            <span
+              aria-hidden
+              className="h-3 w-3 shrink-0 rounded-full border border-dashed border-slate-400"
+            />
+          )}
+          <span className="min-w-0 truncate">
+            {t('operations.crewPlan.colour.auto')}
+            {typeColour === null && (
+              <span
+                className="ms-1 font-semibold text-slate-500 dark:text-slate-400"
+                data-colour-type-none={typed ? 'true' : undefined}
+              >
+                (
+                {typed
+                  ? t('operations.crewPlan.colour.none')
+                  : t('operations.crewPlan.colour.noType')}
+                )
+              </span>
+            )}
+          </span>
+        </button>
+        <button
+          type="button"
+          data-colour={NO_ROW_COLOUR}
+          aria-pressed={value === NO_ROW_COLOUR}
+          title={t('operations.crewPlan.colour.noneHint')}
+          onClick={() => onPick(NO_ROW_COLOUR)}
+          className={cn(
+            OPTION,
+            'justify-start border text-[12.5px] text-slate-600 dark:text-slate-300',
+            value === NO_ROW_COLOUR
+              ? 'border-solid border-brand-400 bg-brand-500/10'
+              : 'border-dashed border-slate-300 dark:border-slate-600',
+          )}
+        >
+          <NoColourSwatch size="sm" />
+          <span className="min-w-0 truncate">{t('operations.crewPlan.colour.none')}</span>
+        </button>
+      </div>
       {catalog === 'ready' && (
         <p className="mb-2 text-[11px] font-black text-slate-500 dark:text-slate-400">
           {t('operations.crewPlan.colour.palette', { count: formatNumber(palette, locale) })}
@@ -1358,35 +1468,6 @@ export const RowColourSwatches = ({
           })}
         </div>
       )}
-      <button
-        type="button"
-        data-colour="type"
-        aria-pressed={value === null}
-        title={t('operations.crewPlan.colour.autoHint')}
-        onClick={() => onPick(null)}
-        className={cn(
-          OPTION,
-          'mt-2 justify-center border border-dashed border-slate-300 text-[12.5px] text-slate-600 dark:border-slate-600 dark:text-slate-300',
-          value === null && 'border-solid border-brand-400 bg-brand-500/10',
-        )}
-      >
-        {typeColour === null ? (
-          <span
-            aria-hidden
-            className="h-3 w-3 shrink-0 rounded-full border border-dashed border-slate-400"
-          />
-        ) : (
-          <ShiftTypeDot colour={typeColour} size="sm" />
-        )}
-        <span className="min-w-0 truncate">
-          {t('operations.crewPlan.colour.auto')}
-          {typeColour === null && (
-            <span className="ms-1 font-semibold text-slate-400 dark:text-slate-500">
-              ({t('operations.crewPlan.colour.noType')})
-            </span>
-          )}
-        </span>
-      </button>
     </>
   );
 };

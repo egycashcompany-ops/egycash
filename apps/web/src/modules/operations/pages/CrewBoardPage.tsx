@@ -91,8 +91,9 @@
 //
 // ROUND 32 C — «انا عاوز بقى اقدر اعمل اسوابنج بين عربيتين واقدر احدد هنقل ايه بالظبط للعربيه
 // التانيه»: a row's «⇄» opens «تبديل بين سيارتين» (`CrewSwapDialog`) — the two vans' cards side by
-// side, every person and field ticked to cross or not, «تبديل المحدد ⇄» or «نقل المحدد» one way, and
-// the two cards after the change before «تطبيق». The board's rules hold (`lib/crew-swap.ts`); it is
+// side, every person and field ticked to cross or not, and three arrows between them that MOVE the
+// ticked items on the window's working copy (Round 34 D): one way, or both ways for the swap, press
+// after press, «تراجع عن آخر نقل» inside. The board's rules hold (`lib/crew-swap.ts`); «تطبيق» is
 // ONE operation on the draft for «تراجع», saved by «حفظ» like any other. Not on a record.
 //
 // `?date=` is the only thing in the URL: empty means TOMORROW, resolved by the server — crews are
@@ -216,7 +217,7 @@ import {
   vehiclelessRow,
   wrongSlotOf,
   type CrewRole,
-  type CrewRowColour,
+  type CrewRowColourSetting,
   type CrewSlot,
   type PlanRefusal,
   type PlanPool,
@@ -267,11 +268,10 @@ import {
 } from '../lib/crew-undo';
 import { giveVehicle, vanName, vehicleChoices, type VehicleChoice } from '../lib/crew-vehicles';
 import {
-  applySwapToDraft,
-  swapOperation,
-  type SwapMode,
-  type SwapPicks,
+  applySwapStepsToDraft,
+  swapStepsOperation,
   type SwapRules,
+  type SwapStep,
 } from '../lib/crew-swap';
 import { isCrewRecord } from '../lib/crew-record';
 import { useCairoToday } from '../lib/use-cairo-today';
@@ -279,6 +279,7 @@ import {
   catalogStateOf,
   colourWearers,
   paletteFor,
+  NO_ROW_COLOUR,
   resolveRowColour,
   rowColourChoices,
   typeColourOf,
@@ -851,14 +852,17 @@ export const CrewBoardPage = (): JSX.Element => {
         )
       : undefined;
   /**
-   * The row's colour picked by hand — or (null) taken off, back to its type's. ONE operation for
-   * «تراجع», said with the colour: «تلوين الصف 150 باللون كحلي» / «إعادة الصف 150 إلى لون نوعه».
+   * The row's colour picked by hand — or (null) taken off, back to its type's, or (Round 34 C,
+   * `'none'`) taken off altogether, «بدون لون» over its type's. ONE operation for «تراجع», said with
+   * the colour: «تلوين الصف 150 باللون كحلي» / «إعادة الصف 150 إلى لون نوعه» / «إزالة لون الصف 150».
    */
-  const recolour = (key: string, rowColour: CrewRowColour | null): void =>
+  const recolour = (key: string, rowColour: CrewRowColourSetting | null): void =>
     applyRows(
       rowColour === null
         ? { kind: 'colourAuto', vars: { row: nameOfRow(key) } }
-        : { kind: 'colour', vars: { row: nameOfRow(key), colour: colourName(rowColour) } },
+        : rowColour === NO_ROW_COLOUR
+          ? { kind: 'colourNone', vars: { row: nameOfRow(key) } }
+          : { kind: 'colour', vars: { row: nameOfRow(key), colour: colourName(rowColour) } },
       (current) => patchRow(current, key, { rowColour }),
     );
 
@@ -1123,13 +1127,16 @@ export const CrewBoardPage = (): JSX.Element => {
     setVanPicker(null);
     setSwapFrom(key);
   };
-  const swapRows = (bKey: string, picks: SwapPicks, mode: SwapMode): void => {
+  // Round 34 D — the window's arrows MOVE the ticked items on a working copy; «تطبيق» hands over
+  // its presses, replayed here on the draft as it is NOW (another desk's save since the window
+  // opened is judged again by the same rules) — ONE operation of «تراجع», whatever the count.
+  const swapRows = (bKey: string, steps: readonly SwapStep[]): void => {
     if (!canPlan || swapFrom === null) return;
     const aKey = swapFrom;
-    // Round 32 critic — a one-way move is said as one («نقل المحدد من 213 إلى 255»), never as a
-    // swap; and the standing crew's toggle lets go of the two rows (`applySwapToDraft`).
-    const what = swapOperation(mode, { a: nameOfRow(aKey), b: nameOfRow(bKey) });
-    apply(what, (draft) => applySwapToDraft(draft, aKey, bKey, picks, mode, swapRules));
+    // Round 32 critic — one way throughout is said as a move («نقل المحدد من 213 إلى 255»), never
+    // as a swap; and the standing crew's toggle lets go of the two rows (`applySwapStepsToDraft`).
+    const what = swapStepsOperation(steps, { a: nameOfRow(aKey), b: nameOfRow(bKey) });
+    apply(what, (draft) => applySwapStepsToDraft(draft, aKey, bKey, steps, swapRules));
     setSwapFrom(null);
     // What the last save said about either row no longer describes it.
     setRefusal((current) => (current?.key === aKey || current?.key === bKey ? null : current));
@@ -1677,6 +1684,7 @@ export const CrewBoardPage = (): JSX.Element => {
               rowKey={row.key}
               value={row.rowColour}
               typeColour={typeColourOf(shiftTypes, row.shiftTypeId)}
+              hasType={row.shiftTypeId !== null}
               choices={rowColourChoices(palette, row.rowColour)}
               wornBy={wornBy}
               catalog={typesCatalog}
@@ -2154,10 +2162,13 @@ export const CrewBoardPage = (): JSX.Element => {
                 rowProps={(row) => {
                   const { colour, source } = colourOfRow(row);
                   const marks: Record<string, string> = { 'data-plan-row': row.key };
-                  // Where its colour comes from: picked on the row, or its type's.
+                  // Where its colour comes from: picked on the row, or its type's — or (Round 34 C)
+                  // that «بدون لون» was picked on it, over its type's: drawn as a plain row.
                   if (colour !== null) {
                     marks['data-row-colour'] = colour;
                     marks['data-row-colour-source'] = source ?? 'type';
+                  } else if (source === 'none') {
+                    marks['data-row-colour-source'] = 'none';
                   }
                   if (refusal?.key === row.key) marks['data-row-refused'] = refusal.field;
                   return marks as HTMLAttributes<HTMLTableRowElement>;

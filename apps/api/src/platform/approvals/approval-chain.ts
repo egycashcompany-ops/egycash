@@ -72,13 +72,13 @@ export const resolveChain = (
 ): ResolvedStep[] => steps.map((step) => ({ ...step, staffed: hasApprovers(step) }));
 
 /**
- * The rung a request is waiting on, or `null` when nothing is left to decide.
+ * The rung a request is waiting on, or `null` when no staffed rung is left.
  *
  * Unstaffed rungs are stepped over — «لو مفيش Branch Manager، يتخطى المستوى ده ويروح للـGeneral
- * Department Manager» — and so are rungs already decided. A chain whose every rung is unstaffed
- * leaves nothing waiting, which is the one case a caller must handle rather than assume: it means
- * the request is approved by default, and whether that is acceptable is the caller's policy, not
- * this function's.
+ * Department Manager» — and so are rungs already decided. `null` is not «approved»: it is either a
+ * chain with every rung settled, or one with rungs left that nobody holds, and `statusOf` tells the
+ * two apart as `approved` and `unstaffed`. The engine reports `unstaffed`, and `noChain` when no
+ * chain applies, as what they are; what a host does with either is its policy, not this function's.
  */
 export const liveStep = (
   steps: readonly ResolvedStep[],

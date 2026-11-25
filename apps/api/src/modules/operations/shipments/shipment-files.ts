@@ -9,6 +9,7 @@ import {
 import { fileCategoryService, type FileEntityAuthorizer } from '../../../platform/files';
 import { hasPermission } from '../../../shared/types';
 import { operationsShipmentRepository } from './shipment.repository';
+import { receiptPhotoAddable } from './delivered';
 
 const SHIPMENT_RECEIPT_CATEGORY: CreateFileCategory = {
   key: OPERATIONS_SHIPMENT_RECEIPT_FILE_CATEGORY,
@@ -49,8 +50,14 @@ export const shipmentFileAuthorizer: FileEntityAuthorizer = {
       // Round 10 — the receipt photo of a محصنة the vault has received is locked like the rest of
       // it («ميقدر حد … يعدل عليها»). The board's own routes refuse with the coded 409; this is the
       // same lock on the platform's file endpoints (replace / delete), so the photo cannot be
-      // swapped behind the board's back. Reading it is never locked.
-      return intent !== 'write' || !isOperationsShipmentLocked(shipment);
+      // swapped behind the board's back. Reading it is never locked. Round 33 B — a FIRST photo of a
+      // locked محصنة that has reached its bank is open (the upload asks here too); with a photo
+      // there, the lock holds (`receiptPhotoAddable`).
+      return (
+        intent !== 'write' ||
+        !isOperationsShipmentLocked(shipment) ||
+        (await receiptPhotoAddable(shipment))
+      );
     } catch {
       return false;
     }

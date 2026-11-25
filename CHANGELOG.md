@@ -9,7 +9,172 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Added
+
+- **Compliance and Risks — a new module, «الالتزام والمخاطر», with one page: «الملفات»**
+  (`docs/12-planning/compliance-files-design.md`). Folders on a shelf shaped like HR's
+  «مستندات المتقدمين», drawn with the module's own copy of that folder.
+  - **The responsible person** (`complianceFile.manage`, the seeded role «مسؤول ملفات الالتزام
+    والمخاطر») makes folders, names and renames them, puts a picture on each, chooses which active
+    employee accounts see each one, uploads PDF, Word and Excel files of up to 20 MB, renames and
+    deletes them — and sees, per file, who has seen it, how many times they opened and downloaded
+    it, and when.
+  - **A person a folder is shared with** sees only the folders whose list names them (anyone else is
+    answered 404) and may only view and download. «الملفات» appears in their sidebar because the
+    module gives them the reader role with the first folder shared and takes that grant back with
+    the last (`rbacService.removeAssignment`, new); the boot reconciles both directions.
+  - **Every opening and download is recorded** through the module's own endpoints, which are the only
+    way a reader reaches the bytes. Word and Excel files are viewed in the page — headings,
+    paragraphs, tables and sheet rows read on the server under the zip and XML rules every workbook
+    read follows; a PDF opens in a new tab.
+  - A file's type is decided by its extension and checked against its first bytes; Arabic file names
+    are kept. Refusals: `COMPLIANCE_FOLDER_NAME_TAKEN`, `COMPLIANCE_VIEWER_INVALID`,
+    `COMPLIANCE_FILE_CONTENT_MISMATCH`.
+  - Navigation: the «الالتزام والمخاطر» tile (a shield) and its «الملفات» row, opened by either key.
+    The seeded navigation now holds 146 rows.
+
 ### Fixed
+
+- **The approvals engine: the after-commit audit is opt-in per request type.** This is PX-1.5 of
+  PX-1, which hardens the platform approvals engine before Administrative Affairs' money approvals
+  run on it (`docs/12-planning/administration-module-phase-px1.md` §3 and §6.6; ADR-041 decision
+  7). It fixes R5 of the engine defects the design lists
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §15.2.1): `decide` recorded
+  every decision as `platform/approval` before the host's own write, so a decision the host then
+  refused left its row behind, and the row's only link to the host's document was the HTTP request
+  id.
+  - **The option.** `registerApprovalRequestType(type, { audit: 'host' })` declares, for one
+    request type, that its host records each decision; the default is `'engine'`, and one module
+    may register types of both kinds. The request-type registry keeps the option beside the type:
+    `listApprovalRequestTypes`, which feeds the chain screen, and `getApprovalRequestType` return
+    the type as before, without it. Re-registering a type replaces its option.
+  - **What `decide` returns.** It always returns `auditChanges` as well: the decision, its rung's
+    index, level and key, `overriddenWith` and the rungs it covers, the change rows the engine's own
+    row carries. For a `'host'` type it records nothing, and the host records one row on its own
+    document, with its own verb, after its commit, so a decision its host refused leaves no row. A
+    process that stops between that commit and the record leaves the decision with no audit row,
+    and the document's own trail is then its record (ADR-041 Consequences). For an `'engine'` type
+    it records as before.
+  - **For HR leave,** the engine's only host: nothing changes. Leave registers without the option,
+    so the engine still writes its `platform/approval` row before leave's write, beside leave's own
+    `leaveDecision` row, and a decision leave then refuses can still leave that row behind. Moving
+    leave onto the option is a separate HR slice (design §18.3.1 item 5). No host registers
+    `'host'` yet; Administrative Affairs' types will, from P2.
+  - `approval.service.spec.ts` gains the `'host'` cases, run through a stub host that commits and
+    then records, and `request-type.registry.spec.ts` the option's. The registry's comment no longer
+    says that a chain built on a key nobody holds approves everything.
+  - Rollback (RK-30): reverting removes the option and `auditChanges` and leaves nothing stored
+    behind; no host registers `'host'` yet, so every decision is audited as it is now.
+
+- **The approvals engine: a request is decided on the chain it was submitted on.** This is PX-1.4
+  of PX-1, which hardens the platform approvals engine before Administrative Affairs' money
+  approvals run on it (`docs/12-planning/administration-module-phase-px1.md` §3, §5, §6.5 and §10;
+  ADR-041 decisions 4 and 10). It fixes R1, the engine defect of a chain read again at every call
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §15.2.1): a request's decisions
+  are kept by rung number, so an edit to its chain laid them over other rungs, and a deleted or
+  deactivated chain fell back to a wider one or to none.
+  - **The host pins the chain at submission.** A host stores the row `chainFor` chose and its rungs,
+    captions included, in two fields it declares by spreading the engine's `approvalPinFields`
+    (`approvalWorkflowId`, null while not pinned, and `approvalChainShape`, in the chain row's own
+    rung schema; an id with no rungs is refused). `pinOf` turns `chainFor`'s answer into the pin, and
+    `readApprovalPin` reads it back from the host's document. `ApprovalSubject` gains `pin`: with one,
+    `statusFor`, `trailFor`, `decide` and `currentApprovers` take the rungs and captions from it and
+    read no chain row; who stands on each rung is still read at every call. A pin with no rungs
+    reads `noChain`. With `pin: null` they read the chain that applies now, as before.
+  - **For HR leave,** the engine's only host: a request submitted on a chain from this release
+    stores its pin in the same write that stamps it `pendingApproval` (`approvalWorkflowId` and
+    `approvalChainShape` on `hr_leave_requests`, no index), and hands it to the engine for its
+    decision, its trail and its notice. A chain edit no longer moves a request already submitted:
+    an administrator's edit, deactivation or deletion of a chain applies to new submissions only,
+    and the request keeps its rungs, their captions on its chain panel, and the decisions taken on
+    them. A request submitted after a chain is deleted takes the next wider chain that applies,
+    or, with none, leave's manager and HR path, as before. Requests already waiting in `pendingApproval` have no pin and keep reading their chain
+    live, so an edit can still move them; nothing is backfilled, and no migration, command or boot
+    step ships. Who stands on a rung still follows the employee's current placement. Leave's
+    submission rule, its manager and HR path, its notices, its audit and its API are unchanged.
+  - Rollback (RK-30): reverting leaves the pin fields on requests written meanwhile; the older code
+    ignores them, and those requests read their chain live again.
+
+- **The approvals engine: only grants in force decide, and only active accounts staff a rung.**
+  This is PX-1.3 of PX-1, which hardens the platform approvals engine before Administrative
+  Affairs' money approvals run on it (`docs/12-planning/administration-module-phase-px1.md` §3,
+  §6.3 and §6.4; ADR-041 decisions 5 and 8). It fixes two more of the engine defects the design
+  lists, R3 and R8 (`docs/12-planning/administration-module-decisions-and-phases.md` §15.2.1).
+  - **Only grants in force decide (R3).** The rungs a reader stands on are read from the role
+    assignments in force now (`findInForceForUsers`), the validity window RBAC's effective
+    permissions apply and staffing already read. A grant whose `validTo` has passed, or whose
+    `validFrom` has not come, no longer offers its holder a decision, on its own rung or early over
+    the rungs below it. `decide` refuses its holder `approvals.notYourStep`, unless another grant in
+    force puts them on a rung at or above the waiting one, or they also hold an `approval.override`
+    that reaches the rung to decide, which then decides it as an override, recorded
+    `overriddenWith` (PX-1.2). `findActiveForUser` stays unfiltered for its other readers, among
+    them the effective-permissions screen (ADR-026 SA-4). Delegated grants carry no validity window
+    and are read as before (ADR-032).
+  - **Only active accounts staff a rung (R8).** `approversFor` keeps only the holders
+    `userRepository.activeIdsAmong` returns, the account predicate sign-in and the last-Super-Admin
+    guard share (ADR-026 SA-6), whether a role assignment or a delegation put them on the rung: an
+    `invited`, `suspended`, `archived` or deleted account no longer stands on it. It is one id-only
+    read per distinct key and level, inside the staffing memo `chainFor` already keeps. A rung held
+    only by such accounts is unstaffed, so it is passed when the holder of a later rung decides,
+    and a chain with no staffed rung left reads `unstaffed` (PX-1.2).
+  - **For HR leave,** the engine's only host: an expired or not-yet-started `leave.approve` grant no
+    longer offers Approve and Reject on a request or decides it, and its holder is refused
+    `approvals.notYourStep`. Two things still let that holder decide: another `leave.approve` grant
+    in force that puts them on a rung at or above the one the request waits on, which decides as
+    their own rung; and an `approval.override` they also hold that reaches the rung, which still
+    shows Approve and Reject and decides it as an override, recorded `overriddenWith`. A suspended
+    or archived approver, or one never activated, is no longer counted as staffing a rung or
+    notified of a request: the request waits on the next rung an active account holds, whose
+    holders are notified instead, and the passed rung reads `skipped` once that holder decides; a
+    request whose remaining rungs only such accounts hold waits `unstaffed` for an override within
+    reach. Leave's own code is unchanged: its submission rule, its manager and HR path, its inbox
+    and reminder, which read `leave.approve` themselves, and its audit.
+  - `apps/api/src/platform/approvals/approver-lookup.spec.ts` is the lookup's first spec;
+    `apps/api/tests/integration/approvals.spec.ts` gains a case for each fix.
+  - Rollback (RK-30): reverting restores the unfiltered reads and leaves nothing stored behind.
+
+- **The approvals engine: a request nobody can decide no longer reads approved, and an override
+  decides only within its reach.** This is PX-1.2 of PX-1, which hardens the platform approvals
+  engine before Administrative Affairs' money approvals run on it
+  (`docs/12-planning/administration-module-phase-px1.md` §3, §6.1 and §6.2; ADR-041 decisions 2,
+  3 and 6). It fixes two of the engine defects the design lists, R2 and R4
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §15.2.1).
+  - **No chain and no staffed rung are answers of their own (R2).** A chain now reads `pending`,
+    `approved`, `rejected`, `unstaffed` or `noChain`, and `chainFor` returns that answer at
+    submission. Approved means every rung is settled. A chain with rungs left that nobody holds
+    reads `unstaffed`, and a request no chain applies to reads `noChain`; both read approved before.
+    An approval no longer closes the empty rungs above it: an empty rung is still passed when the
+    holder of a later rung decides, and only then. The trail's `currentStep` marks the rung to
+    decide on an `unstaffed` chain too, the first rung nobody holds, so the screen shows where the
+    request stopped.
+  - **An override reaches as far as the rung's level asks (R4).** `approval.override` decides an
+    organization rung only at organization scope, a department rung only over that department in
+    every branch, a branch rung only over that whole branch, and a unit rung only over that
+    department in that branch; `own` and `section` reach none, and below organization scope a rung
+    whose request lacks the place its level names fails closed (`override-reach.ts`). An override
+    held at any scope decided any rung before. On an `unstaffed` chain it decides one rung at a
+    time, and nothing above it.
+  - **`decide` answers by the chain's status, then the actor:** `approvals.nothingToDecide` with no
+    chain, `approvals.alreadyDecided` once approved or rejected, and `approvals.notYourStep` to
+    anyone with neither a rung of their own nor an override that reaches the rung to decide.
+  - **For HR leave,** the engine's only host: a request whose remaining rungs have nobody on them
+    now waits in `pendingApproval` instead of being approved by the lower approval, and one
+    submitted with nobody on any rung waits as before. A holder of `approval.override` who reaches
+    the rung can now decide either, one rung at a time, and anyone else is refused
+    `approvals.notYourStep` (a request that waited with nobody on its remaining rungs was refused
+    `approvals.alreadyDecided` before); nobody who can decide such a request is notified of it. On
+    a request whose chain was deleted or deactivated, with no wider chain to fall back to, `decide`
+    now refuses `approvals.nothingToDecide` for everyone, where it refused
+    `approvals.alreadyDecided`. A holder of an override that does not reach the rung no longer sees
+    Approve and Reject on it, and a cancelled request offers nobody a decision and marks no rung as
+    waiting on its chain panel. Leave's
+    submission rule, its manager and HR path, its notices and its audit are unchanged. What leave
+    should do with a request nobody can approve is the owner's question PXQ-1 (re-detail §2); until
+    it is answered, such a request waits for an override. The chain screen's hint says so, in
+    English and Arabic.
+  - Rollback (RK-30): reverting restores the old reading and leaves nothing stored behind; a leave
+    request left waiting under it stays `pendingApproval`, as one with nobody on any rung did
+    before.
 
 - **ATM: a machine code written with a space inside is searched and filtered whole.** «لما بعمل
   بحث هنا /atm/machines على الماكينة دى HDB-ATM 9501 بسبب المسافة اللى فيها بتتقسم كأنها
@@ -27,6 +192,43 @@ its entry here in the same PR.
   («NBE» above «- 1056») would otherwise run into the code below it.
 
 ### Changed
+
+- **A shared counter for running numbers, and one Arabic name fold for every module.**
+  `apps/api/src/shared/base/counter.ts` (`defineCounter`) is Fleet's custody counter written as a factory: a module
+  names its own `<module>_counters` collection and gets `ensure` (create-if-missing, raised to a floor and never
+  lowered), `next` (inside the caller's transaction, so concurrent saves get consecutive numbers) and `peek`. IT's
+  `foldName`, which compares two spellings of one Arabic name («الأسكندرية» = «الاسكندرية», «قطعه» = «قطعة»), moved
+  to the contracts (`packages/contracts/src/common/fold-name.ts`); IT imports it, and its behavior is unchanged.
+  Fleet's and ATM's counters keep their copies. This is PC-13, the second prerequisite of the Administrative
+  Affairs module (`docs/12-planning/administration-module-decisions-and-phases.md` §18.1).
+
+- **ATM's branch-scope rule and organization-scope check are shared code.** The fail-closed rule for branch
+  records (`branchScopeMatch`, `branchScopeBranches`, `narrowToBranch`, `writableBranches`, `resolveWorkBranch`) and
+  the organization-scope check behind ATM's settings and banks now live in `apps/api/src/shared/base/branch-scope.ts`
+  and `org-authority.ts` (`assertOrganizationScope`). ATM re-exports them under the same names and keeps its
+  active-branch loader, so its behavior and messages are unchanged; a spec pins that ATM's register rule and the
+  shared `selectorBranches` agree on every selector shape. This is PC-12, the first prerequisite of the
+  Administrative Affairs module (`docs/12-planning/administration-module-decisions-and-phases.md` §18.1), which
+  reads the same rule instead of copying it.
+
+- **The zod advisory waiver runs to 2026-12-26.** «موافق على Zod». The waiver for
+  GHSA-mrhx-c7xc-m3w5 (zod 3, no patched release) ended on 2026-11-26, after which the dependency
+  audit would have failed every pull request. The owner renewed it for 30 days
+  (`scripts/dependency-audit.waivers.json`). The remedy is still the monorepo-wide zod 4
+  migration, as its own change, before the new date.
+
+- **A hand-over of several devices prints on ONE sheet.** «عند تسليم أكثر من أصل يتم عمل إيصال
+  لكل أصل على حدي أنا عايز يتطبعوا فى ورقه واحده». A hand-over was already one «إقرار استلام»
+  under one number, but it printed a page per device, each with its own statement and signature,
+  which read as a receipt per device. A paper of several devices is now one statement — «بأنني قد
+  استلمت الأجهزة الآتية وعددها (n) وبياناتها كالتالي:» — a table with a row per device (its kind,
+  make and model, serial, its specifications in short, its accessories), one undertaking and one
+  signature; a department's paper says «لتكون في عهدة إدارة … بموقع …». The owner approved it from
+  a sample. A paper of one device is the form's page, unchanged. A list too long for the sheet runs
+  on to further pages, each headed by the table's header row and the paper's number, the
+  undertaking and the signature kept whole and with the list's last row (short of fifteen or more
+  devices with six computers' full specifications). Nothing is stored differently, and reprinting
+  an older receipt of several devices prints the sheet.
 
 - **Fleet: every figure in Latin digits, in Arabic as in English — and the car record's
   «المخالفات» count and count wording.** The owner, 23 November: «اى ارقام خليها بالانجلش حتى لو
@@ -222,6 +424,269 @@ its entry here in the same PR.
     on its date, check-in, check-out and hours columns.
 
 ### Added
+
+- **The approvals engine's baseline: its tests over today's behavior.** This is PX-1.1, the first
+  code slice of PX-1, which hardens the platform approvals engine before Administrative Affairs'
+  money approvals run on it (`docs/12-planning/administration-module-phase-px1.md` §3; ADR-041). It
+  ships tests only, the coverage the design's R12 asks for
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §15.2.1), so each later fix can
+  show the case it changes. `apps/api/src/platform/approvals/approval.service.spec.ts`, the
+  service's first spec, mocks its seams and covers which chain applies and the staffing memo, a
+  rung's holder deciding and deciding early, the refusals `approvals.notYourStep` and
+  `approvals.alreadyDecided`, the override, where a request stands, the trail's flags, the
+  notification list and the chain save's three refusals. `apps/api/tests/integration/approvals.spec.ts`
+  writes a two-rung `hr.leave` chain through `PUT /api/v1/platform/approvals` and takes a leave
+  request through `pendingApproval` to approved and to rejected, each decision writing leave's
+  `leaveDecision` row and the engine's own. A case that pins a defect PX-1.2 to PX-1.6 fix names it: today a chain with nobody on any
+  rung, or no chain at all, reads approved (R2), an `approval.override` held at any scope decides
+  (R4), and a save accepts any registered key under the version the server just read (R9). The
+  engine still records its own row before leave's write; PX-1.5 keeps that for leave, which stays
+  an 'engine' type, and a case pins it (R5). An `approval.override` that has expired already
+  decides nothing, and a guard case keeps it so. Nothing changes for HR leave or for anyone else: no
+  source file, route, key, setting or row changes. Rollback: reverting it removes the two spec
+  files and leaves nothing behind (RK-30).
+
+- **Administrative Affairs («الشئون الإدارية») on screen: the suppliers — closing Phase 1.** The
+  supplier register and each supplier's record over P1b.1's API, typed in by hand as the owner asked
+  («لأ خلينا من غير شيتات او بيانات دلوقتى»). This is P1b.W, the last Phase 1 pull request of the
+  design (`docs/12-planning/administration-module-decisions-and-phases.md` §19.1, §19.5, §19.10).
+  - **A fifth row,** «الموردون» / Suppliers, on `administrationSupplier.view`, wearing the existing
+    building glyph; a reader holding only that key sees exactly that row. The home gains its tile
+    and the live suppliers' count. 144 → 145 seeded rows.
+  - **The supplier register** (`/administration/suppliers`), in the board frame: searched by code or
+    name, filtered by one category (a top-level one reads its subcategories' suppliers too) and the
+    status; the categories each supplier supplies by name. **A phone is masked in the list**
+    («010****5678») and shown whole only on the record; no phone travels in the address. A row opens
+    the record.
+  - **A supplier's record** (`/administration/suppliers/:id`): its names, registration numbers,
+    payment terms, categories, phone, e-mail, address and contact people. **A tax number another
+    supplier holds is a warning, never a block** (OD-11 (i)): the record names up to five other
+    holders, each a link, a retired one marked, and a save that lands on a shared number says so.
+  - **The supplier's documents** (OD-11 A): a paper is filed with what it is and its file (PDF or a
+    photo, up to 10 MB, at most 20), opened in the page — a photo inline, a PDF in a frame — and
+    removed from the list. Its virus-scan state is shown: «قيد الفحص» while scanned, the record
+    reading itself again until the scanner answers; «محظور» never opens; «الملف غير متاح» for a file
+    gone. A file of another type is refused before it is sent. Filing and removing take
+    `administrationSupplier.edit`.
+  - **The form** adds or corrects a supplier — no code box (the server gives «SUP-00001»), no VAT
+    status until OD-29 gives its values, no bank data — with its contact people as rows (at most
+    20), its categories picked from both levels, and Active to retire it on an edit. Save stays
+    pressable and names what is missing; an e-mail that is no address is marked before a round trip.
+    A save that meets a newer version of the supplier shows it as it now is with the reader's own
+    changes kept over it, so the next Save goes through and undoes nothing the other person saved.
+  - **Refusals worded for every record that meets them:** `ADMINISTRATION_ATTACHMENT_LIMIT` (a full
+    documents list) gains its words in both languages, `ADMINISTRATION_REFERENCE_INACTIVE` now says
+    «a unit or category chosen» — a supplier's retired category as well as an item's — and
+    `FILE_TYPE_NOT_ALLOWED` is said in the reader's words instead of the server's English sentence.
+    A category change refreshes the supplier screens too, on the reader's own screen and through
+    realtime alike.
+
+- **Administrative Affairs («الشئون الإدارية») on screen: the home, the items, the warehouses, and the
+  units and categories.** The Phase 1 screens over the three API slices before them, where master data
+  is typed in by hand, as the owner asked («لأ خلينا من غير شيتات او بيانات دلوقتى»). This is P1a.W of
+  the design (`docs/12-planning/administration-module-decisions-and-phases.md` §19.1, §19.5).
+  - **A sidebar category of its own,** «الشئون الإدارية» / Administrative Affairs, after ATM and before
+    System Administration (sort order 29), with four rows and no sections (OD-62 A): «الرئيسية»,
+    «المخازن», «الأصناف» and «وحدات القياس والتصنيفات», each on the key its screen's route asks
+    (`administrationWarehouse.view`, `administrationItem.view`, `administrationCatalog.manage`; the
+    home row on the items key). The launcher tile wears a new box glyph (OD-62.1 A), which the Items
+    row wears too; the Warehouses row wears a new warehouse glyph. 140 → 144 seeded rows.
+  - **The home** (`/administration`, no route guard: the page decides) draws a tile per screen the
+    reader's grants open and the live warehouses' and items' counts, each read under its own key; a
+    count that fails says so, never 0, and a reader with none of the screens is told so.
+  - **The item register** and **an item's record** (`/administration/items`, `/items/:id`): searched
+    by code, name or barcode, filtered by one category (a top-level one reads its subcategories'
+    items too), one unit and the status; a row opens the record. The form adds or corrects an item —
+    no code box (the server gives «ITM-00001»), no stock box, an Arabic name that may carry a Latin
+    brand («حبر HP 85A»), a category filed where an item may be filed (a subcategory where its
+    category has one), whole-number levels kept in order, and Active to retire it on an edit.
+  - **The warehouse register** (`/administration/warehouses`): its branch filter offers only the
+    branches the reader may read, and drops a remembered one the server no longer offers; a row's
+    edit is offered only where the server says the edit would be taken; the keeper is shown as HR
+    answers today — marked when they have left, flagged when HR no longer knows them. The form opens
+    a store only in a branch it may be opened in — «add» shows only while some branch takes one —
+    keeps the branch for good, names a department of that branch (one since retired stays, marked)
+    and a keeper through the module's own picker of people who work here today.
+  - **Units and categories** (`/administration/catalogs`): one tab each, edited — never deleted — in
+    a dialog, a category's parent picked from the active top-level categories.
+  - **Every register wears the board frame** (OD-83 B), which the owner asked for module by module —
+    Fleet, then ATM («عايزك فى كل الصفحات تثبت الفورم والفلتر وتخلي الجدول بس هو اللى يعمل
+    Scroll»), then IT and System Administration: the title, the filters and the pager keep their
+    place and only the rows scroll. Filters are remembered across visits and carried in the URL.
+  - **Every refusal of the module is worded in both languages** in the shared table
+    (`ADMINISTRATION_DUPLICATE`, `_CATEGORY_PARENT_INVALID`, `_STOCK_LEVELS_ORDER`,
+    `_REFERENCE_INACTIVE`, `_SUBCATEGORY_REQUIRED`, `_EMPLOYEE_EXITED`, `_DEACTIVATION_BLOCKED`), and
+    each dialog also says, beside the field a refusal names, what to change. Save stays pressable and
+    names what is missing. A save refused because someone saved the record meanwhile shows the record
+    as it now is with the reader's own changes kept over it, so the next Save is taken and undoes
+    nothing the other person saved.
+
+- **Administrative Affairs («الشئون الإدارية»), third slice: warehouses, and the keeper picker.** The
+  stores of each branch, «المخازن», with the «Warehouse manager / responsible person» the owner's
+  request lists in a warehouse's master data, typed on the screens as the owner asked («لأ خلينا من
+  غير شيتات او بيانات دلوقتى»). This is P1a.3 of the design
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §19.1): the API only; the
+  Warehouses screen arrives with P1a.W.
+  - **Three keys and a page:** `administrationWarehouse.view`, `.create` and `.edit` («عرض المخازن»,
+    «إنشاء المخازن», «تعديل المخازن») on «المخازن», over `/api/v1/administration/warehouses` and
+    `/warehouses/:id`. Several stores per branch, each typed main, branch or sub (OD-10 A), with a
+    code unique in the company, a name unique in its branch (compared folded, under a unique index,
+    so two spellings typed at the same moment make one store); either clash answers 409
+    `ADMINISTRATION_DUPLICATE` naming the field (`code` or `name`). A store may name an owning
+    department of its own branch, which grants nothing, a location and notes. The branch is set once,
+    at the create, and never edited.
+  - **Read fail-closed, written in reach.** Every read goes through the shared branch rule: the
+    organization reads everything, narrowed by the top bar; a branch holder their branches; a
+    department or section holder, or a department copy by role or by delegation, the branch it sits in;
+    `own` nothing. A `branchId` filter outside the reader's reach is 400 `OUT_OF_REACH`, and a store
+    outside it 404. A create needs `.create` over the body's branch, an edit `.edit` over the store's,
+    which no department grant gives; a create files under the top bar's branch, so another branch is
+    400 `OUT_OF_REACH` on `body.branchId` (ADR-028); every row says whether its reader may edit it (`canEdit`), and
+    says so only when the edit would find it under the top bar's branch. A write outside the key's
+    reach is 403. A closed or unknown branch, or a department that is not an active copy in the
+    store's own branch, is 404. An edit that sends a branch is 400 `VALIDATION_FAILED`. An edit sent
+    with an old `version` answers 409 `STALE_DOCUMENT` before any rule judges it.
+  - **The branch options:** `GET /warehouses/branch-options` lists every active branch as the top
+    bar's switcher names and orders them, each with `canView` and `canCreate` for its reader, so the
+    screen's filter and create dialog offer only what the server would accept.
+  - **The keeper,** «أمين المخزن» (OD-10 keeper (i)), picked from `GET /api/v1/administration/people`
+    (and `/people/:employeeId`), which whoever may create or edit a warehouse reads through the
+    platform directory, never HR: the people who work here today, in the keys' reach, with seven
+    facts each. A keeper a save names must be one the picker would offer its writer: anybody outside
+    the keys' reach is 404, as the picker's by-id read answers, whatever their status. A keeper HR
+    answers as having left is refused, 422 `ADMINISTRATION_EMPLOYEE_EXITED`. The keeper is stored as
+    an id and named from HR at every read, so no name is copied onto the store.
+  - **Retiring** is `isActive: false`, refused while stock, transit or an open document holds the
+    store (OD-70 B, 422 `ADMINISTRATION_DEACTIVATION_BLOCKED`); nothing can hold one before stock
+    exists, so in this phase a store retires freely.
+  - **A workforce reset keeps the warehouses** (OD-64 A): a store outlives its keeper, whose id then
+    names nobody until another is named.
+  - Audited as `create`, `update`, `activate` and `deactivate`, each followed by one signal carrying
+    the store's branch, so branch-scoped screens refresh too. The six ready-made roles gain the
+    warehouse keys §6.5 gives them: the view key for «أمين المخزن», «موظف المشتريات», «مدير المشتريات»,
+    «مدير الشئون الإدارية» and «المراجع الداخلي», all three for «مسؤول البيانات الأساسية».
+
+- **Administrative Affairs («الشئون الإدارية»), suppliers: the register, the «SUP-» code and the
+  suppliers' papers.** The «Suppliers» master data the owner's request names, typed on the screens
+  as the owner asked («لأ خلينا من غير شيتات او بيانات دلوقتى»), so nothing is loaded at deploy.
+  This is P1b.1 of the design (`docs/12-planning/administration-module-decisions-and-phases.md`
+  §19.1), under ADR-040: the register is the module's own, a platform seam may read it later, and
+  IT's vendors and Fleet's workshops are untouched. The API only; the Suppliers screen arrives with
+  P1b.W.
+  - **Three keys and a page:** `administrationSupplier.view`, `.create` and `.edit` («عرض
+    الموردين», «إنشاء الموردين», «تعديل الموردين») on «الموردون», over
+    `/api/v1/administration/suppliers` and `/suppliers/:id`. Any holder of `.view` reads the whole
+    register, a retired supplier by its id included; the writes need the key at ORGANIZATION scope
+    (OD-04 A), as every master-data write does.
+  - **What a supplier holds** (OD-11 A): its trade name in Arabic and English, phone, e-mail,
+    address, up to 20 contact people, the item categories it supplies, its tax and commercial
+    registration numbers, payment terms as free text, notes, and active or retired (OD-12 A). No
+    bank, IBAN or account data and no national id. The VAT status is kept empty until OD-29 gives
+    its values. A contact's phone is redacted from the logs at the root and up to two levels deep
+    (`CONTACT_PHONE_PATHS`).
+  - **A generated code, «SUP-00001»** (OD-05 A), on the same counter machinery as the items' under
+    its own key, `supplier:global`: two creates at once get consecutive codes, a create refused
+    inside its transaction gives its number back, and the seed and every create raise the counter
+    above the highest code already given.
+  - **One supplier per name; a repeated tax number warns.** The Arabic name is compared folded
+    («قطعه» = «قطعة») under a unique index, so two spellings typed at the same moment make one
+    supplier (409 `ADMINISTRATION_DUPLICATE`, field `name`). A tax number another supplier holds is
+    saved — a supplier's branches may be separate records — and the supplier's record names up to
+    five other holders, retired ones marked (OD-11 (i)).
+  - **Categories:** the supplier's categories must exist (404) and, when named anew, be active
+    (422 `ADMINISTRATION_REFERENCE_INACTIVE`, naming each retired one); a supplier keeps one that
+    retired later. The categories list now also opens to `administrationSupplier.create` and
+    `.edit`, so the supplier form can pick them; `?categoryId=` of a category reads its
+    subcategories' suppliers too.
+  - **The suppliers' papers** (OD-11 A): a file category of their own, «مستندات الموردين», PDF and
+    images up to 10 MB, kept for ever (OD-76 (i), OD-77 A). `POST /suppliers/:id/attachments` files
+    one under the supplier with its label and the version the person saw; a `GET` of
+    `/suppliers/:id/attachments/:attachmentId` sends it inline, `private, no-store`, refused while a
+    virus scan is pending (`FILE_SCAN_PENDING`) or after it blocked the file (`FILE_BLOCKED`); a
+    `DELETE` of the same path removes the link and keeps the file. A supplier holds at most 20
+    papers (422 `ADMINISTRATION_ATTACHMENT_LIMIT`), an upload its link does not reach is withdrawn,
+    its record shows each paper's scan state, and a paper is never reached through another
+    supplier. The platform's own file paths ask the supplier's keys, writes only at organization
+    scope.
+  - **Every ready-made role reads suppliers** (OD-78 A): the storekeeper, the procurement officer
+    and manager, the Administrative Affairs manager and the auditor gain `.view`; «مسؤول البيانات
+    الأساسية» gains all three.
+  - Audited as `create`, `update`, `activate` and `deactivate`, a paper's link as an `update` naming
+    it; the realtime topic `administration.supplier`.
+
+- **Administrative Affairs («الشئون الإدارية»), second slice: items, and the «ITM-» code.** The
+  item master every store, request and order will name, with the «Category / Subcategory» the
+  owner's request lists among an item's fields, typed on the screens as the owner asked
+  («لأ خلينا من غير شيتات او بيانات دلوقتى»), so nothing is loaded at deploy. This is P1a.2 of the design
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §19.1): the API only; the
+  Items screen arrives with P1a.W.
+  - **Three keys and a page:** `administrationItem.view`, `.create` and `.edit` («عرض الأصناف»,
+    «إنشاء الأصناف», «تعديل الأصناف») on «الأصناف», over `/api/v1/administration/items` and
+    `/items/:id`. Any holder of `.view` reads the whole register; the writes need the key at
+    ORGANIZATION scope (OD-04 A), as the catalog's do. A retired item still resolves by its id.
+  - **A generated code, «ITM-00001»** (OD-05 A), taken inside the create's transaction from the
+    module's counter (`administration_counters`, the shared `defineCounter`): two creates at once
+    get consecutive codes, and a create refused inside the transaction gives its number back, so the
+    series has no gap. The seed raises the counter to the highest code already given, at any width,
+    and every create does again first, so a lost counter never comes back below a used code.
+  - **One item per name and per barcode.** The Arabic name is compared folded («قطعه» = «قطعة») under
+    a unique index, so two spellings typed at the same moment make one item; a barcode, optional,
+    belongs to one live item (OD-05 (i)) and its unique index is its only check. Either clash
+    answers 409 `ADMINISTRATION_DUPLICATE` naming the field (`name` or `barcode`). `search` reads
+    the code, both names and the barcode, so a scan finds its item.
+  - **Its rules, each refused with its own code:** the levels are whole numbers from 0 (OD-08; 400
+    `VALIDATION_FAILED`) and keep minimum ≤ reorder point ≤ maximum where set (OD-09; 422
+    `ADMINISTRATION_STOCK_LEVELS_ORDER`, naming the fields); a retired unit or category is not given
+    to an item, though an item keeps one that retired later (422
+    `ADMINISTRATION_REFERENCE_INACTIVE`); and an item is not filed in a category with active
+    subcategories — it names one of them (OD-06 (i); 422 `ADMINISTRATION_SUBCATEGORY_REQUIRED`). An
+    item filed before its category gained its first subcategory keeps it until its next edit, which
+    re-files it; retiring it or bringing it back, and nothing else, is not that edit. An edit sent with an old `version` answers 409 `STALE_DOCUMENT` before any rule
+    judges it, for units and categories too. The list labels each item with its category, that
+    category's parent and its unit, and `?categoryId=` of a category reads its subcategories' items
+    too.
+  - **An item reader reads the units and categories.** Both lists now take `administrationItem.view`
+    as well as `administrationCatalog.manage`, so the item form's lists populate; their realtime
+    topics move to the item key, beside the new `administration.item`.
+  - **Five more ready-made roles** (OD-78 A), seeded as managed roles with the item view key and
+    assigned to nobody: «أمين المخزن», «موظف المشتريات», «مدير المشتريات», «مدير الشئون الإدارية» and
+    «المراجع الداخلي»; «مسؤول البيانات الأساسية» gains the three item keys.
+  - Audited as `create`, `update`, `activate` and `deactivate`, with an explicit signal after a
+    (de)activation.
+
+- **Administrative Affairs («الشئون الإدارية»), first slice: units of measure and item categories.**
+  The owner's request of 2026-10-29 for warehouses and procurement starts with its master data; the
+  owner, 2026-11-24, on the open decisions: «اعمل انت الـ Recommendations من عندك دلوقتى وبعدين نبقى
+  نعدل», and on loading lists from files: «لأ خلينا من غير شيتات او بيانات دلوقتى» — so master data is
+  typed on the screens and nothing is loaded at deploy. This is P1a.1 of the design
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §19.1): the API only; the
+  screens, the menu category and its rows arrive with P1a.W.
+  - **A new module, `administration`**, with one key and one page: `administrationCatalog.manage`
+    («إدارة وحدات القياس وتصنيفات الأصناف») on «وحدات القياس والتصنيفات». It reads and writes
+    `/api/v1/administration/catalog-items?kind=unit` and `/api/v1/administration/item-categories`.
+    The writes need the key at ORGANIZATION scope (OD-04 A): one taxonomy serves every branch, so a
+    branch-scoped or delegated holder reads the lists and writes none of them (403).
+  - **Two spellings of one name are one row.** Each name is stored with `nameKey`, its Arabic
+    folded by the shared `foldName` («قطعه» = «قطعة», «الاثاث» = «الأثاث»), under a unique index —
+    per kind for units, per parent for categories — so two people typing both spellings at the same
+    moment get one unit, not two. A clash answers 409 `ADMINISTRATION_DUPLICATE` naming the field
+    (`name` or `code`). Nothing is deleted: `isActive: false` retires a row, which keeps its name.
+  - **Two category levels** (OD-06 A): a category, or a subcategory under a top-level one. A refused
+    parent answers 422 `ADMINISTRATION_CATEGORY_PARENT_INVALID` with its reason — itself, one of its
+    own subcategories, a subcategory, a retired parent, or a move of a category that has
+    subcategories. `?topLevel=true` lists the level a parent is picked from, `?parentId=` one
+    category's subcategories.
+  - **An Arabic name needs a letter or a digit.** A name of tatweel or harakat alone («ـ», «ً»)
+    folds to nothing, so it is refused as 400 `VALIDATION_FAILED`.
+  - **The indexes are the module's own to build.** Its seed builds them first through the shared
+    `syncDeclaredIndexes('apply', …)` and logs the report; each repository waits for its
+    collection's indexes before its first write, so a failed build refuses the write and the next
+    one tries again.
+  - **A ready-made role, «مسؤول البيانات الأساسية»** (`administration-master-data`, OD-78 A), seeded
+    as a managed role holding the catalog key and assigned to nobody.
+  - Audited as `create`, `update`, `activate` and `deactivate`; the realtime topics
+    `administration.catalogItem` and `administration.itemCategory`; the role matrix names the module
+    «الشئون الإدارية» / Administrative Affairs.
 
 - **«ساعات العمل»: the hours each department owes, edited on their own screen.** A new tab on
   «الإعدادات» (`/hr-settings/working-hours`) sets the working hours per department for employees
@@ -2715,6 +3180,893 @@ its entry here in the same PR.
         vans, the roster van's drivers, midnight's one gate, `isBoardUndoKey`, the exchange and the
         archived pair, `applySwapToDraft`, `swapOperation`, `modeStepOf`, `shipmentsLeftBehind`, the
         window's pair tick, the shipments note and the notes' line.
+  - Round 33 — «تسليم المحصنات» على يوم مضى، وشاشة «الشحنات المسلَّمة». The owner: «انا عاوزك تفتحلى
+    الايام اللى فاتت فى تسليم المحصنات ك روية فقط زى ما عملنا فى شاشة توزيع المحصنات
+    وعاوز اعمل شاشة جديدة زى شاشةاليوم التشغيلى بس يظهر بس اللى اتسلمت سواء يومى او كانت محصنة ف
+    الخونة واسلمت ل بنك هتظهرلى لما تكون تم التسليم بس الاجراءات هيكون فيه علامة صح
+    لما ادوس عليها لازم يكون فيه رقم الايصال ويفضل الصورة تكون مرفوعه و يحدد البنك من او الى اللى
+    هيتحسب عليه تكلفة نقل الشحنة». His answers: on the day board's ✓ (it completes a shipment with no
+    receipt number) — «الشاشة الجديدة حاجاتها لوحدها»; on the receipt photo at ✓ — «اختيارية مع
+    تنبيه».
+    - A — «انا عاوزك تفتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط زى ما عملنا فى شاشة توزيع
+      المحصنات». «تسليم المحصنات» (`VaultHandoverPage`, `/operations/vault/handover`) opens a past
+      day as that day's RECORD, view only, as «توزيع المحصنات» became in Round 30.
+      - «يوم التسليم» takes a past day (it had a floor at today, and a past `?date=` opened on today —
+        `readDistributionDate`, gone: the screen reads its day as the distribution does,
+        `readDistributionDay`). Today stays the default; a later day is still the plan, to read and
+        print, its «تسليم» off as before.
+      - The record is the distribution's (`lib/secured-distribution.ts` `isRecordScreen`): the
+        URL's day before the read is in, then the SERVER's `past` (a PC clock running ahead never
+        turns today into a record), plus midnight passing on a screen left open — yesterday's read
+        turns into yesterday's record. Every act asks ONE gate,
+        `canHandOver = mayHandOver && !isRecord`: no «تسليم» on any van (not even a disabled one), no
+        confirmation (one left open at midnight shuts with the day), nothing sent. In the hint's place the calm notice «سجل يوم …
+        — للعرض فقط، لا يمكن التعديل» and what it shows; where the acts would stand, «سجل · للعرض
+        فقط» and «العودة إلى اليوم». No drag or menu (the screen had none). The van filters, the
+        hover cards and «طباعة» still work.
+      - What it shows: each van of the day with what rode it, and what became of each محصنة as the
+        vault reads it back — «سلّمتها الخزينة» (it left the vault: out for delivery, or delivered
+        since; when, on the Cairo clock, and who pressed «تسليم»), «بقيت بالخزينة ولم تُسلَّم», or
+        «لم تستلمها الخزينة» — on its chip and on its card (`recordHandoverState`). Under each van:
+        «سُلِّمت محصنتان · سلّمها … · 10:15» and how many on it were not handed over
+        (`vanHandoverRecord`, `handoverWhen` — the day too when the release was on another). The top
+        figure «جاهزة للتسليم» becomes «سُلِّمت»; the packages are the read's own (`recordPackages`,
+        a van that went out keeps its counts). Drawn calmly: no rose on «بلا سيارة» or its figure, no
+        placing alarm on a van (`calm`); the left column says «لم تُوزَّع على سيارة في ذلك اليوم».
+      - «طباعة» on a record prints the van's sheet and says it is one: «سجل يوم … — للاطلاع فقط، ولا
+        يُسلَّم منه شيء» in the day's place, and «التسليم: …» (who, how many, when) after the crew
+        (`lib/van-load-sheet.ts` `record`).
+      - The server. The read already answered a past day as its record, for the vault's grant too
+        (`GET /operations/secured/distribution?date=`, `operationsShipment.view` or
+        `operationsVault.view` — Round 30). It now says, on a record and to a reader of the vault
+        only, what was handed over, when and by whom — `recordHandovers` (contracts
+        `OperationsSecuredDistributionHandoverDto`: `shipmentId`, `handedOverAt`,
+        `handedOverByName`), read from the custody's release (`releasedAt`, and `releasedById` — the
+        token's user of the dispatch, now on `VaultCustodyView`), named by the directory (one read
+        for the day, `userDisplayNames`); null on today, on a later day and without the vault's
+        grant. «تسليم» on a past day's van stays refused, before any shipment is read:
+        `POST /operations/secured/dispatch` → 422 `OPERATIONS_DISPATCH_NOT_TODAY` (Round 17
+        `assertTodaysVan`, its tests «refuses a van of a PASSED day the same way — that van has
+        left» and Round 30's «keeps «تسليم» off the record’s vans too — they have left»). A future
+        day keeps its rule (read as the plan, «تسليم» refused). No new permission, page or
+        collection.
+      - Specs rewritten: (web) `lib/secured-distribution.spec.ts` «the day «تسليم المحصنات» opens on»
+        — «reads a real day from today on, else today (the server’s default)» → «reads ANY real day
+        — from today on as before — else today …», «never a past day on the vault’s screen — a past
+        day’s vans have left» → «a past day on the vault’s screen too — as its record, view only
+        (Round 33)», «never a malformed one …» on the shared reader; `pages/secured-distribution.spec.tsx`
+        «yesterday’s read left open past Cairo midnight: «تسليم» is off, the load in the vault
+        notwithstanding» → «… turns into yesterday’s record: no «تسليم» at all …» (the case it drew —
+        a read just in, the server's day behind the PC's — kept as its own: «a read just in whose
+        server day is behind this PC’s clock: not a record — «تسليم» stays off by the live day»),
+        «shuts every act through ONE gate …» (its pins of the vault's floor, `min={minDay}` and
+        `readDistributionDate`, now pin none), «the vault hands over through the existing dispatch
+        …» (the two gates now `day === today && !isRecord` and `canHandOver`). New: (api, run whole)
+        `operations-distribution.spec.ts` «Round 33 — «تسليم المحصنات» on a PAST day …» — the record
+        on the vault's own grant (its van, every status, who handed over and when — a treasurer
+        named apart from the admin who placed), withheld from a desk reader and null on today and a
+        day to come, every «تسليم» of the record refused with nothing released; (web) the page's
+        Round 33 block (the notice, no write control, the marks, the van lines, the figures and
+        packages, calm, before the read, a reader without the dispatch grant, every word in both
+        languages, the one gate), `recordHandovers`, `recordHandoverState`, `vanHandoverRecord`,
+        `handoverWhen`, the record's sheet.
+    - B — «وعاوز اعمل شاشة جديدة زى شاشةاليوم التشغيلى بس يظهر بس اللى اتسلمت سواء يومى او كانت محصنة
+      ف الخونة واسلمت ل بنك هتظهرلى لما تكون تم التسليم بس الاجراءات هيكون فيه علامة صح لما ادوس عليها
+      لازم يكون فيه رقم الايصال ويفضل الصورة تكون مرفوعه و يحدد البنك من او الى اللى هيتحسب عليه تكلفة
+      نقل الشحنة». A new screen, «الشحنات المسلَّمة» («Delivered shipments»,
+      `/operations/shipments/delivered`), a sidebar row and a home card right beneath «اليوم التشغيلي», on
+      the day board's own read grant (`operationsShipment.view`). No new permission, page or collection.
+      - Which rows: what REACHED ITS BANK on one Cairo day — the day board's own «تم التسليم», its crew
+        captain's delivery to the destination in the app (`captainDeliveredAt`, the pickup leg of a
+        daily shipment, the delivery leg of a محصنة), and for a محصنة only once it has left the vault
+        (`dispatched` or `completed` — one in the vault, out and not delivered yet, or delivered into
+        the vault by its pickup leg is not listed). One rule in the contract
+        (`isOperationsShipmentDeliveredToBank`); the leg is read the one way every board reads it
+        (`legDeliveredAt`, apps/api `shipments/delivered.ts`, which `boardView` now uses too). The day
+        is the Cairo day of the delivery, cut at Cairo midnight; oldest delivery first.
+      - The screen is «اليوم التشغيلي»'s board (`ShipmentsBoard`, new `kind="delivered"`): the same
+        figures, the same filters on one row (van, bank, from, to, area, captain, type) with «حالة
+        التأكيد» — «بانتظار التأكيد» / «مؤكَّدة» / «الكل» — in «التسليم»'s place, and «يوم التسليم» (today
+        by default, any day before it; never a later one — `readDeliveredDay`). A row awaiting its ✓ is
+        the day board's yellow «تم التسليم» with the time the captain delivered it; a confirmed one is
+        green, «مؤكَّدة», with «إيصال رقم …», «تُحتسب على البنك (من / إلى)», and «بدون صورة» while it has no
+        receipt photo («اختيارية مع تنبيه»). «صورة الإيصال» is the day board's own column; «السجل» stays;
+        no «إضافة شحنة», no day board ✓, no edit or delete on this screen.
+      - The ✓ (for `operationsShipment.complete`, the day board's ✓ grant) opens «تأكيد التسليم», in the
+        boards' dialog design (Tab kept inside — the swap window's trap, moved to
+        `components/use-focus-trap.ts` and shared; Escape closes): «رقم الإيصال» required (trimmed, at
+        most 40 characters — `deliveryReceiptNumberProblem`, the same rule on the server); «صورة
+        الإيصال» optional — the photo there is shown, a new one is picked and goes up through the day
+        board's own upload right after the confirmation; without one the dialog warns that the row will
+        keep «بدون صورة»; «البنك الذي تُحتسب عليه تكلفة النقل» — exactly two, «من» (the origin branch's
+        bank) and «إلى» (the destination's), each by bank and branch, with a note when both are one
+        bank (the side is still recorded). «إلغاء التأكيد» on a confirmed row, asked first. A refusal
+        that says the row moved (not delivered, confirmed by a colleague, a stale version) re-reads the
+        screen and closes the dialog onto it; a box the server names is marked.
+      - Its own record («الشاشة الجديدة حاجاتها لوحدها»): `deliveryConfirmation` on the shipment —
+        `receiptNumber`, `billedSide` (`origin` / `destination`), `billedBranchId`, `billedBankId`,
+        `confirmedById`, `confirmedAt`; absent or null = not confirmed, no migration. The bank billed is
+        the SERVER's — the bank of the branch on the side chosen, read at the ✓ — and who confirmed is
+        the token's user; the client sends neither (a body naming a bank or a person is refused, 400).
+        Writing it moves NOTHING else: not `status`, not the day board's ✓ (`receivedById` /
+        `receivedAt`), not `mainBankId`, `secondaryBankId`, `receiptNumber` or `vaultReceiptNumber`.
+        The day board's ✓ and its undo work as before, beside it.
+      - API: `GET /operations/shipments/delivered?date=YYYY-MM-DD` (`operationsShipment.view`; today in
+        Cairo by default) → `{date, today, shipments, crews}` (`today` the server's — Round 33
+        critic), the day board's rows (`boardForReader`) with `deliveryConfirmation` (bank and person
+        by name); `POST` / `DELETE` on
+        `/operations/shipments/:id/delivery-confirmation` (`operationsShipment.complete`)
+        `{receiptNumber, billedSide, version}` / `{version}` →
+        `{shipmentId, version, deliveryConfirmation}`. Refused:
+        404 deleted or unknown; 422 `OPERATIONS_DELIVERY_RECEIPT_NUMBER_REQUIRED` /
+        `OPERATIONS_DELIVERY_RECEIPT_NUMBER_TOO_LONG` (detail `receiptNumber`, `REQUIRED` /
+        `MAX_LENGTH`), `OPERATIONS_DELIVERY_BILLED_SIDE_REQUIRED` (detail `billedSide`); 409
+        `OPERATIONS_SHIPMENT_NOT_DELIVERED`, `OPERATIONS_DELIVERY_ALREADY_CONFIRMED`,
+        `OPERATIONS_DELIVERY_NOT_CONFIRMED` (the undo), `STALE_DOCUMENT`. Audited on the shipment;
+        «السجل» shows «أُكِّد التسليم بالإيصال» / «أُلغي تأكيد التسليم بالإيصال» (kinds `deliveryConfirmed`
+        / `deliveryUnconfirmed`, fields `deliveryReceiptNumber`, `billedBank`); events
+        `operations.shipment.deliveryConfirmed` / `.deliveryUnconfirmed`. The screen's read lives
+        under the day board's cache key, so every act that moves the board, and the shipments'
+        realtime topics, move it. One leg index for the day's read (`ix_delivered_at_live`).
+      - The receipt photo's lock (Round 10), opened ONCE: a محصنة the vault has received stays locked,
+        EXCEPT that one which has reached its bank and has NO photo may take its FIRST one — the bank's
+        receipt, which exists only after the delivery (`isOperationsReceiptPhotoAddable`, on the
+        server's upload, the platform's file authorizer and the board's photo cell alike). A photo
+        already there is never replaced or deleted on a locked row; a محصنة in the vault, or out and
+        not delivered, is locked as before.
+      - Specs rewritten (the board's new kind, the rules unchanged): (web) `lib/day-board.spec.ts`
+        «names them in the table’s column order» and «reads every filter from its param» (the new
+        `confirmed` param); `pages/shipment-screens.spec.ts` ««عاوز عادى يعدل و يحذف» …» (the photo
+        follows `canManageReceipts`, `canEditRows` by default), ««هنزود التاريخ التسليم …»»
+        (`const secured = kind === 'secured' || kind === 'vault'`), ««والحالة …»» (a page's `statusCell`
+        first); `pages/day-board-filters.spec.ts` «draws the vault’s two status boxes …» (the
+        confirmation box in the chain); `operations-navigation.spec.ts` (nineteen pages); (api)
+        `seed-navigation-operations.spec.ts` and `operations-navigation.spec.ts` (the new row in the
+        lists), `seed-navigation.spec.ts` «declares the row count …» and `auth-seed-login.spec.ts`
+        `SEEDED_APPLICATIONS` (139 → 140). New: (contracts) `operations-delivered.spec.ts`; (api, run whole)
+        `tests/integration/operations-delivered.spec.ts` — only what reached its bank (daily delivered,
+        محصنة out of the vault delivered; not undelivered, in the vault, out not delivered, delivered
+        into the vault, deleted), Cairo midnight both sides, today by default, the grants, the ✓ with
+        the origin's and the destination's bank and the token's user, nothing else on the shipment
+        changed, the log and the events, every refusal above, the undo, the day board's ✓ beside it,
+        the first photo of a delivered محصنة; (api unit) `shipment-log.spec.ts` «prints the delivery
+        confirmed with its receipt, and its undo, as their own kinds»; (web) `lib/delivered-board.spec.ts`,
+        `pages/delivered-shipments.spec.tsx` (the board, the day box, the filter, both row states and
+        «بدون صورة», the ✓ and undo by grant, no other act, the photo, the dialog's fields, sides and
+        warning, focus and Escape, both languages), the i18n keys; the persistence census
+        (`shared/lib/remembered-filters-coverage.spec.ts`) classifies the new page COVERED, its filters
+        remembered as the day board's and `date` not (it opens on today).
+      - Verified on the real stack (the live API, the captains' «تم التسليم» driven in the app). One
+        fix: a refused «إلغاء التأكيد» (a colleague had taken it back, 409) was said twice, the same
+        sentence from the global notifier and from the row; it is said once now, the global
+        notifier's (`DeliveredRowAction`). New spec: `pages/delivered-shipments.spec.tsx` «says a
+        refused «إلغاء التأكيد» ONCE — the global notifier’s, no toast of its own».
+      - Round 33 critic (the build's, never the owner's):
+        - A confirmed delivery keeps the two branches it was billed between. The ✓ records the bank of
+          «من فرع» or «إلى فرع»; an edit that moved either one afterwards (the day board's form, or the
+          history's on a past row) left the record naming a branch the shipment no longer had. Now
+          `PATCH /operations/shipments/:id` refuses moving either branch while `deliveryConfirmation`
+          stands — 409 `OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED`, nothing written, in both
+          languages on the form: «ألغِ التأكيد في «الشحنات المسلَّمة» أولًا، ثم غيِّر «من فرع» أو «إلى
+          فرع»». A branch sent back unchanged is no move; every other field (the billed main bank, the
+          secondary bank, the lines, the dates, the notes) edits as before — the record reads none of
+          them. One rule for both doors of the edit (`prepareEdit`, `assertConfirmedBranchesKept`).
+        - «Today» is the SERVER's. The screen named the desk PC's Cairo day in every request and
+          bounded «يوم التسليم» by it: a PC a day ahead opened on an empty tomorrow, one a day behind
+          could not reach the server's today at all. The default read now names no day and the read
+          says the server's Cairo `today` (`OperationsDeliveredBoardDto.today`, read once with the day
+          answered); the box's latest day and the day a `?date=` may name are bounded by it
+          (`readDeliveredDay` → the day asked, or null for the default). The PC's clock only says when
+          to ask again: the default read is keyed by it, so a screen left open re-reads at midnight.
+        - Midnight no longer throws away an open ✓. While the screen read the new day, the dialog's row
+          was missing and the dialog vanished with the number typed, the side chosen and the photo
+          picked. The dialog now stays on the row it was opened on while the screen reads another day,
+          or is still reading (`deliveredDialogRow`); on its own day's read it follows its row as
+          before. The day moving on is said once: «بدأ يوم جديد — انتقلت الشاشة إلى تسليمات اليوم.
+          تسليمات يوم … تجدها باختياره في «يوم التسليم»» (`defaultDayLeft`).
+        - A colleague deleted the shipment under an open ✓: the 404 closed the dialog but nothing
+          re-read the screen, so the row stayed yellow, offering a ✓ refused every time. A 404 is now
+          one of the refusals that re-read it (`isDeliveryConflict`).
+        - Screen readers and keyboards: «إلغاء التأكيد» no longer carries `aria-pressed` (it was
+          announced "undo, pressed" — the day board's own warning on its ✓); «من» / «إلى» are one Tab
+          stop, and the arrows move and choose inside the group in the reading direction, down on a
+          phone (`billedSideTabStop`, `billedSideAfterKey`, `modeStepOf` — the swap window's three ways).
+        - The undo's toast said twice was the verifier's fix, above.
+        - Specs rewritten (the rule changed): (web) `lib/delivered-board.spec.ts` «is today by default,
+          any real day before it when asked, never a later one» → «asks a real day before today by
+          name, else NO day — the server’s own today»; `pages/delivered-shipments.spec.tsx` «lives under
+          the day board’s key …» (the key's `null` default beside the PC's clock day). New: (api, run
+          whole) `operations-delivered.spec.ts` «says ITS OWN Cairo today beside the day answered …» and
+          «Round 33 critic — a confirmed delivery keeps the two branches it was billed between» (each
+          branch refused with nothing written and no «السجل» row, the unchanged branches and the other
+          fields edited, undo → edit → ✓ on the new branch's bank); (web) the server's today against a
+          PC a day ahead and a day behind, the dialog past midnight, the day-moved notice, the 404
+          re-read, the undo's name, the one Tab stop, `defaultDayLeft`, `deliveredDialogRow`,
+          `billedSideTabStop`, `billedSideAfterKey`; `shared/lib/errors.spec.ts` the branch lock's words;
+          the i18n keys.
+    - C — the owner's review of the screenshots: «عاوز رثم الايصال فى عمود لوحده
+      عاوز كلمة طباعة دى تكون العلامة بس وممكن تحطها فى مكان فى الكارد عشان متخدش مساحة كبيره».
+      - «رقم الإيصال» in a column of its own on «الشحنات المسلَّمة», just before «صورة الإيصال» so a
+        receipt's number and its photo sit together: the number the ✓ recorded, in the board's figures
+        (digits typed on an Arabic keyboard read Latin) and in its own direction — «RC-20418» and
+        «77310» left to right, a number typed with Arabic words («إيصال ١٢٣٤٥») in their order — or «—»
+        on a row still awaiting its ✓. A number of up to 12 characters is one line, never broken; a longer one (up to the 40
+        the ✓ takes) wraps inside 7rem, every character on screen. «الحالة» no longer says «إيصال رقم
+        …» — «مؤكَّدة», «تُحتسب على …» and «بدون صورة» stay. The day board, the history, the secured
+        and the vault screens keep their columns exactly.
+      - Its box, «رقم الإيصال» («Receipt no.»), after «ملاحظات» as the column stands — `receipt` in
+        the address (a reload and a shared link keep it), cleared by the reset, and NOT remembered
+        across visits as the screen's other boxes are: it looks one receipt up, and a number brought
+        back from last week would open today's screen with every row awaiting its ✓ hidden (none has
+        a number yet) — `BOARD_LOOKUP_PARAMS`, `rememberedFilterParams`. A fragment of the
+        number finds it, folded (Arabic-Indic digits, Latin case) with its separators ignored: «rc
+        20418» and «٢٠٤١٨» find «RC-20418»; a row awaiting its ✓ has no number to find. No other board
+        offers or reads it. The screen has no Excel or print of its rows, so none was added.
+      - The room for a fourteenth column, measured on the built screen (stubbed API, dark and light):
+        the delivered board takes the vault board's (Round 17) — names wrap from 4rem, a note is cut at
+        4rem, the cells' sides 7px below 1750px — and the number's cell gives up its sides as the icon
+        boxes do. At 1366, 1440 and 1920: no sideways scroll on the page, the table inside its frame,
+        the ✓ column whole, with a note on a row too (at 1366 the table scrolled 2px sideways before,
+        32px with a note). A day with a 40-character number and a note still scrolls the table 44px
+        at 1366 (234px before, the number then a line of «الحالة»), and fits from 1440. The filter row
+        stays one row; there the van's box takes a fifth more than an even share — the room its
+        suggestions' arrow took from «كود السيارة» once the row was cut in eleven — and the other
+        boxes share the row by the longer of their two names (`data-bar-box`, this screen's alone):
+        «من فرع» 1.16, the captain 1.19, the receipt's number 1.07, «إلى فرع» 1, the bank 0.9, the
+        notes 0.87, the area 0.8 — seven together as seven even shares, so «النوع» and «حالة التأكيد»
+        keep theirs. Every box's name is whole in Arabic at 1280, 1366, 1440 and 1920, and in English
+        but for one (before: «From branch» and «Crew captain» cut at 1280–1440, «Receipt no.» at 1280,
+        «رقم الإيصال» by 1px at 1280): the English «Vehicle code» still loses its last letter or two
+        under the browser's suggestions arrow at 1280 and 1440 (whole at 1366 and 1920), as it did
+        before this round. With a filter chosen the reset takes its room at the row's end: from
+        1366 every name stays whole; at 1280 three Arabic names are cut by 3px («اسم البنك»,
+        «المنطقة», «ملاحظات» — before, «قائد الطاقم» and «رقم الإيصال» by 3–5px) and five English ones
+        by 1–4px (as before). A type and a confirmation both chosen were already cut short in their
+        boxes at 1440 and are cut a little more. At 390 the screen behaves as before: the page still, the table scrolling inside its
+        frame, the filters two to a row (six rows now, five before).
+      - Specs rewritten (the rule changed): (web) `lib/day-board.spec.ts` «names them in the table’s
+        column order» → «… — «رقم الإيصال» last» and «reads every filter from its param» → «… —
+        «رقم الإيصال» too»; `lib/delivered-board.spec.ts` «is read from the URL, and only that board
+        offers it» → «… — ten boxes, «رقم الإيصال» last»; `pages/day-board-filters.spec.ts` «sizes each
+        text filter with a wrapper, since the control base class is w-full» → «sizes each text filter
+        with a wrapper — «رقم الإيصال» too — since the control base class is w-full» (eight typed
+        boxes) and «is the order of the columns themselves» → «… — «رقم الإيصال» before «صورة
+        الإيصال»»; `pages/shipment-screens.spec.ts` «makes the room for one-line badges on the vault’s
+        board alone» → «makes the room for one-line badges on the vault’s board, and for «رقم الإيصال»
+        on the delivered one». New: (web) `pages/delivered-shipments.spec.tsx` «Round 33 C …» (the
+        column's name in both languages and its place, the number and the dash, a long number,
+        «الحالة» without it, absent from the other four screens, the box and what it finds);
+        `lib/delivered-board.spec.ts` the number, `matchesReceiptNumber`, the board narrowed by it,
+        and «is read and offered, never remembered across visits — a lookup, not a standing slice»;
+        `pages/day-board-filters.spec.ts` the box last on that screen alone, the van box's share,
+        «shares «الشحنات المسلَّمة»’s one row by the boxes’ words — the total as the even share’s», and
+        «remembers «الشحنات المسلَّمة»’s boxes — never «رقم الإيصال», a one-off lookup, nor its day»;
+        `pages/delivered-shipments.spec.tsx` «lets a number typed in Arabic words keep their order —
+        the cell takes its first letter’s direction». The i18n key `operations.delivered.receiptNo` now names
+        the column and the box («رقم الإيصال»; it was the status line's «إيصال رقم»).
+      - «طباعة» on «تسليم المحصنات» is its icon alone (the same document drawing), at the END of each
+        van's head line, after the direction — a 24px square in the brand tint its word wore, named
+        «طباعة» («Print») to a screen reader, saying on hover what it prints («طباعة كشف تحميل السيارة
+        112»), the board's focus ring; `data-handover-print` kept. It prints exactly what it printed
+        (`print`, `lib/van-load-sheet.ts` unchanged), a record's sheet on a record. A press on it —
+        click, tap, Enter or Space — only prints: the van's card neither opens nor closes (the van's
+        group asks `vanTapAllowed` with `onAct`), and resting on it is not resting on the head (the
+        van's card waits no beat there, as on the captain's own name — `vanRestArms`); both rules
+        pure, in `lib/van-card.ts`. `VanCard` takes it as a new `headAction`; «توزيع المحصنات» gives
+        none and is unchanged.
+      - The row over the van is «تسليم»'s alone: on a record, and for a reader without
+        `operationsVault.dispatch`, there is no row at all (no empty strip) — each card 51px shorter
+        (47.5px at 390), the vans' column 153px shorter at 1366 and 1440 on the stubbed record day
+        (102px at 1920, 380px at 390). Today the row and the cards keep their height; «تسليم» on and
+        off are one height now (the filled one keeps a clear 1px edge), so every head lines up. The
+        head stays one line at 1366, 1440, 1920 and 390, dark and light; the code and the time are
+        never cut; the page never scrolls sideways at 390. The icon's 30px no longer come out of the
+        direction alone: a head that carries the icon measures its line (a size container,
+        `HEAD_SQUEEZE`), and at 18rem of line or less — on a 1024, 1366, 1440 or 1920 screen and a
+        phone; not at 1280, whose cards are wider — the time drops its clock (its «11:00» says what it is) and a crew
+        without a van drops its crossed-van drawing (its words say it), 16px and 22px back; the
+        direction is cut no shorter than its arrow and 28px of words (a shorter direction keeps its
+        own width, never padded). At 1366 a crew without a van now shows «حلوان» whole in Arabic and
+        in English (9px of it and 3px before this fix, 30px before the icon); «المعادي - حلوان» shows
+        73 of its 78px (57 before this fix); the long «السادس من أكتوبر…» 73px (57). At 1024 the same
+        (30/30, 71/78). Measured at every width from 360 to 1920 (8px apart, English, the widest
+        pill): «حلوان» whole, the line one line, no pill out of its line, the page still. With a
+        two-digit «No vehicle (12)» and a long direction at 1024 and 1366, 31–32px of the direction
+        show. «توزيع المحصنات»'s head carries no icon and none of this. The day bar's hint says where «طباعة» is («فوق كل سيارة «تسليم»، وفي نهاية رأسها أيقونة الطباعة
+        …»); to a reader without `operationsVault.dispatch`, whose vans have no «تسليم» and no row
+        over them, it says only «في نهاية رأس كل سيارة أيقونة الطباعة …» (the verifier's fix: it told
+        him «تسليم» was over each van).
+      - Specs rewritten (the rule changed): (web) `pages/secured-distribution.spec.tsx` «is the same
+        card on «تسليم المحصنات», under «تسليم» and «طباعة»» → «… under «تسليم», with «طباعة» at its
+        head line’s end», and «puts «تسليم» and «طباعة» over each van; «تسليم» counts only what the
+        vault holds» → «puts «تسليم» over each van and «طباعة» in its head; …». New: (web)
+        `pages/secured-distribution.spec.tsx` «Round 33 C» (the icon's name, tooltip, hook and no word
+        on the card, today, on a record and for a reader; its place at the head line's end; the line
+        squeezed on a narrow card; the one `print` of the van and its load; a press on it toggling
+        no van card and resting on it not the head's — `vanTapAllowed`'s `onAct`, `vanRestArms`; the
+        row over the van for «تسليم» alone, none on a record or for a reader without the grant, kept
+        on a day to come; the day's hint, «تسليم» over each van only to who has the grant; «توزيع
+        المحصنات»'s card unchanged); `components/distribution-van-card.spec.tsx` «Round 33 C»
+        (`headAction` at the line's end in both languages; «with an act, the line squeezes on a
+        narrow card — the clock and the no-van drawing go, the direction keeps a floor»; no row for
+        an absent, null or false `actions`; the card without them as it was); `lib/van-card.spec.ts`
+        «Round 33 C — the head’s own act is its own». Rewritten (the rule changed):
+        `components/distribution-round26.spec.tsx` «never opens while a drag is on, over an open
+        «نقل إلى…» menu, or on the captain’s own name» → «… — nor on the head’s own act» (the tap
+        path asks `onAct` too). New i18n keys `operations.handover.printTitle` and `operations.handover.hintViewer`;
+        `operations.handover.hint` rewritten.
+      - Verified on the live API (mongodb-memory-server) serving the built web: a ✓ through the
+        dialog puts its number in «رقم الإيصال» and nowhere else on the page, digits typed in
+        Arabic read Latin, undo brings the «—» back; the box finds «rc 204» and «٧٧٣», survives a
+        reload, and the reset clears it (it also came back on a fresh visit then — no longer, see
+        the critic's review below). The icon prints today's sheet and the
+        record's (the record's sheet byte-identical to HEAD's word button's), by click, Enter,
+        Space and a phone's tap, and opens no van card; «تسليم» still hands over today. The day
+        board, the history, the secured and the vault boards draw the same columns and boxes as
+        HEAD's build, and «توزيع المحصنات» the same van heads.
+      - The critic's review, seven findings, each fixed with a spec that fails on the code before
+        it (each fix reverted once and its spec seen red): (1) the direction starved by the icon on
+        a narrow card — the head's squeeze above; (2) the English bar names cut — the shares by
+        their words above; (3) the day's hint naming «تسليم» to a reader without the grant — the
+        verifier's fix, its spec re-run red without it; (4) a number typed with Arabic words drawn
+        backwards — the cell's direction is its own (`dir="auto"`); (5) «رقم الإيصال» remembered —
+        read, never remembered; (6) the print's «only prints» pinned by source regexes and class
+        strings — the rules are pure (`vanTapAllowed`'s `onAct`, `vanRestArms`) and tested in
+        `lib/van-card.spec.ts`, the card asks them instead of stopping the click, and the round's
+        markup specs read hooks and order (`data-van-head-action` after `data-van-direction`), not
+        whole class strings; (7) the print change labelled «Round 33b» in code, specs and i18n while
+        this entry is «C» — every label is «Round 33 C» now.
+  - Round 34 — أسهم «تبديل بين سيارتين» على «لوحة التشغيلة»، و«البيانات المرجعية». The owner, by
+    voice: «عاوز في السواب بتاع العربيتين في الشاشة بتاعت لوحة التشغيلة. السواب عايز يكون أسهم اللي
+    أنا ببدل ما بينهم وبين عربيتين، اللي هو السهم الشمال أو السهم اليمين أو السهمين اللي تحت بعض،
+    يكون السهمين اليمين والشمال نفس اللون والسهم اللي في النص لون مختلف. وعاوز أغير اللي اوت بتاع
+    بيانات المراجعة يكون بروفيشنال أكتر من كده، وعاوز الداتا اللي تبقى كبيرة زي الفروع والمناطق
+    والبنوك وهكذا يكون في سيرش اقدر اسيرش بيه.» («بيانات المراجعة» is the dictation of «البيانات
+    المرجعية», `/operations/catalogs`.)
+    - A — «السواب عايز يكون أسهم … السهم الشمال أو السهم اليمين أو السهمين اللي تحت بعض، يكون
+      السهمين اليمين والشمال نفس اللون والسهم اللي في النص لون مختلف». The three ways between the
+      two cards of «تبديل بين سيارتين» (`CrewSwapDialog`, Round 32 C) are ARROW buttons now (new
+      `components/crew-swap-arrows.tsx`), their word labels and short lines gone: a one-way move is
+      ONE arrow from the card that sends to the card that receives; the swap is the TWO arrows one
+      under the other (⇄).
+      - Where they point, in every layout (`swapArrowAim`, `swapArrowTurn`). Side by side (lg —
+        measured at 1024, 1366 and 1440) the first card is on the RIGHT in Arabic, so «من 213 إلى
+        255» points LEFT and «من 255 إلى 213» RIGHT, the swap's top arrow pointing as the one above
+        it and its bottom one as the one below; in English all of it mirrored (the first card on
+        the left). Stacked (390 and 768 — the cards one above the other, the three in a row between
+        them) the single arrows point DOWN and UP, toward the card below or above, and the swap
+        stands ⇅. Each glyph is drawn once and turned by CSS per layout.
+      - The colours: the two single arrows share one hue, sky — off a soft `sky-50` fill, a
+        `sky-300` border and a `sky-700` glyph (dark: `sky-400/10`, `sky-400/45`, `sky-300`), on a
+        solid `sky-600` (#0284c7) with a white glyph (4.1:1), a `sky-500/70` ring and its shadow;
+        the swap, the default way, the brand's indigo — off `brand-50`/`brand-300`/`brand-700`
+        (dark `brand-400/10`, `brand-200`), on `brand-600` #4f46e5 (6.3:1; dark `brand-500`
+        #6366f1, 4.47:1). Both apart from the preview's emerald «من 213» and rose «يبقى». The
+        keyboard's focus is a neutral outline outside the ring (`slate-900`, dark white); without a
+        second van the three are there at 40% and none can be pressed.
+      - The words: each arrow's name and tooltip say what it does with both vans —
+        «نقل المحدد من 213 إلى 255», «تبديل المحدد بين 213 و255 في الاتجاهين», «نقل المحدد من 255
+        إلى 213» («Move selected from 213 to 255», «Swap selected between 213 and 255, both
+        ways»); the group keeps «طريقة نقل المحدد». No caption under the arrows: each card's head
+        names its van right beside them, a single arrow at once marks the receiving card «تستقبل»
+        and dims its boxes, and the preview under them redraws.
+      - Kept as it was: the radio group, one way in the Tab order, the arrow keys in the reading
+        direction (`modeStepOf`), `data-swap-modes`/`data-swap-mode`, the swap as the default, what
+        each way does (`lib/crew-swap.ts` untouched), «تطبيق» and the preview. The buttons are
+        64×48 in the row and 56×48 in the column; the column went from 144px to 56px, the cards
+        took the room.
+      - i18n: `operations.crewPlan.swap.mode.{aToB,bToA,swap}` rewritten to name both vans;
+        `mode.{aToB,bToA,swap}Short` and `mode.{aToB,bToA,swap}Hint` removed (nothing drew them
+        any more).
+      - Specs. Rewritten (the rule changed): `components/crew-swap-dialog.spec.tsx` «the three ways
+        are a radio group: «نقل المحدد ←» «تبديل المحدد ⇄» «نقل المحدد →», the swap on» → «the
+        three ways are a radio group, the swap on — each named by what it does with both vans».
+        New, in the same file: «Round 34 A — the three ways are ARROWS between the two cards» (an
+        svg each and no word; each one's name and tooltip with both vans, Arabic and English; one
+        hue for the two single arrows and another for the swap, off and on; where each points per
+        language and per layout; `swapArrowAim` and `swapArrowTurn`; the roving Tab stop and the
+        arrow keys; no second van yet).
+      - Verified on the built web against the stubbed API at 390, 768, 1024, 1366 and 1440: each
+        glyph's computed transform points from the sending card's centre to the receiving one's,
+        Arabic and English; every arrow at least 44×44, no horizontal scroll; the two single
+        arrows' computed colours identical and the swap's another, the white glyphs' contrast
+        measured; ← (Arabic) and → (English) and ↓/↑ step the ways with the focus; «تطبيق» counts
+        what crosses one way.
+    - B — «وعاوز أغير اللي اوت بتاع بيانات المراجعة يكون بروفيشنال أكتر من كده، وعاوز الداتا اللي
+      تبقى كبيرة زي الفروع والمناطق والبنوك وهكذا يكون في سيرش اقدر اسيرش بيه». «البيانات المرجعية»
+      (`pages/CatalogsPage.tsx`, `/operations/catalogs`) in the boards' look — the day board's dark
+      filter bar and framed table, Fleet's figures — and a search on the three lists that grow.
+      - The kinds are a row of cards (new `components/CatalogKindCards.tsx`): each kind's icon in
+        its own tone, its name, and how many rows it holds in the boards' figures (Latin digits,
+        isolated left to right — «الفروع 1,340»), the chosen one in the site's purple with an edge
+        under it. Still a real tab list on `?kind=`: `role="tablist"`/`tab`/`tabpanel`,
+        `aria-selected`, one tab in the Tab order, the arrows walking it in the reading direction
+        (← is the next card in Arabic) and Home/End (`kindStep`). The counts: the banks from the
+        bank list the screen already reads whole; the branches and the areas from a one-row read
+        (`COUNT_READ`, its `totalItems`); the currencies and «أنواع التشغيل» from the whole lists
+        their tabs show (now read on every kind — they are 8 and 9 rows). «—» while a count is on
+        its way. On a phone the row scrolls inside itself and the chosen card is scrolled into it.
+      - A toolbar on banks, branches and areas (new `components/CatalogToolbar.tsx`, the boards'
+        `DARK_FILTER_BAR` over `FilterBar`): the search, «الحالة» (الكل / مُفعَّل / غير مُفعَّل →
+        `isActive`), on the branches «البنك» (كل البنوك / each bank → `bankId`), then the bar's own
+        reset once anything narrows and «n نتيجة» (Arabic forms: «نتيجة واحدة», «نتيجتان», «3
+        نتائج», «22 نتيجة»). One row from 1366px; on a phone the search takes a line and the two
+        lists share the next. «إضافة …» and «استيراد فروع من شيت» are the boards' buttons, at the
+        title's end on every kind.
+      - The search is the SERVER's (`search` — banks: operations name and both names; branches:
+        name, code, area; areas: both names and the governorate; folded there, `catalog-search.ts`).
+        Its rules are pure (new `lib/catalog-filters.ts`): sent ~300ms after the last key
+        (`createSearchDebounce` — «م», «مع», «معا» typed in a breath ask once); kept in `?q=` (a
+        reload or a shared link opens on it; typing replaces the history entry); the page back to
+        the first on any change, the page size kept; ✕ and Escape empty it at once; another kind
+        starts clean (`withCatalogKind` drops `q`, `status`, `bank` and the page), and a search
+        still waiting when the kind changes is dropped, never sent to the next kind; digits typed on
+        an Arabic keyboard are sent as Latin («١٢٣» → `123` — the server folds the letters, not the
+        digits) and runs of spaces as one, while the box keeps what was typed (`foldCatalogSearch`).
+        What was found is marked in the rows, folded as the server folds (`matchParts` —
+        «الاسكندريه» marks «الإسكندرية», «٢٠٤» marks «204»). While the next answer is asked the last
+        one stays on screen, dimmed, with a spinner in the count — three hooks of their own
+        (`useCatalogBanksPage`, `useCatalogBranchesPage`, `useCatalogAreasPage`, the same reads and
+        cache keys with `keepPreviousData`), so every other caller of `useOperationsBanks` & co.
+        reads exactly as before. The plain list still asks `{ page, pageSize }`, the query it always
+        asked.
+      - The table sits in one frame with its pager in the frame's foot (the numbered pager the
+        boards wear, 25 / 50 / 100 a page): the boards' table (`BOARD_TABLE_LOOK`) with its head held
+        while the rows scroll on a computer, comfortable rows (59px, 63px from 1750px), the names in
+        Cairo (the boards' monospace stack spread Arabic names word by word) and the codes and
+        numbers in the figures' face, the status as the boards' small badge, an inactive row dimmed,
+        the pen in the boards' action box, the maps pin kept. An empty answer says what was asked:
+        «لا توجد نتائج لـ «…»» with «مسح البحث» (and «مسح كل المرشحات» when a filter narrows too), or
+        «لا توجد نتائج تطابق المرشحات المحددة»; a list empty for real keeps its own words («لا توجد
+        فروع بعد»). Errors as before. On a phone the table scrolls sideways inside its frame.
+      - Currencies and «أنواع التشغيل» keep their drag, their arrows, their whole list on one page
+        and archive / restore, and take NO search: a filter over a dragged list would hide the rows
+        a drop lands between. Their note sits on the toolbar's line. The add / edit forms, the
+        branch import (in the list's place, as Round 29 drew it) and the address bar's `size` are as
+        they were.
+      - Without `operationsCatalog.manage` (the route asks for it; the screen no longer leans on
+        that) there is no add, no import, no pen, no grip, no arrows and no archive — the pens on
+        banks, branches, areas, currencies and types and the add button were drawn regardless
+        before. No new permission.
+      - The server: no change in B (the critic's review below folds the digits in
+        `catalog-search.ts`). Typing a bank's name into the branches' search is NOT matched: the
+        bank filter says it exactly, and the shipment form's branch picker reads the same endpoint
+        with `bankId` and `search` — matching the bank's name there would answer every branch of
+        «بنك مصر» to «مصر». The persistence census keeps the screen EXCLUDED, its reason now naming
+        `q`, `status` and `bank` (`shared/lib/remembered-filters-coverage.spec.ts`): they belong to
+        one kind and never cross a visit.
+      - Specs. Rewritten (the pager changed): `pages/catalogs-currency-order.spec.tsx` «shows no
+        pager — the whole list is on screen» and `pages/catalogs-shift-types.spec.tsx` «lists the
+        WHOLE catalog in the order the server answered — archived types too» — their «no pager»
+        looked for the old pager's «لكل صفحة» only (`common.pagination.perPage`), which the
+        new pager does not write; they now also assert no `data-catalog-pager` and no
+        `common.pager.perPage`. New: `lib/catalog-filters.spec.ts` (the kinds that search, the
+        address bar, the query, the digits, the arrows, the clock with fake timers, Escape, the
+        marks) and `pages/catalogs-layout.spec.tsx` (the cards — order, selection, ids, counts,
+        «—»; the search, the status and the bank reaching the query by its exact cache key; the
+        Arabic digits; the count and the reset; the marks; the figures and the badges; the four
+        empty states; each kind's toolbar and none on the dragged lists; the pager in the frame with
+        25 / 50 / 100; a bigger page; who may change what, on every kind; every new word in both
+        languages; no raw key in English).
+      - Verified on the built web (dist-r34b) against a stubbed API in the server's shapes with 10
+        banks, 1,340 branches over 4 banks, 120 areas, 8 currencies and 9 types, searching as the
+        server does: at 1366, 1440, 1920 and 390, dark and light — no sideways scroll of the page
+        or the board's frame, the toolbar on one row and the five cards in view from 1366, nothing
+        cut, the pager in the frame; at 390 the cards and the table scroll inside themselves and the
+        toolbar stacks. In the browser: seven keys typed 60ms apart sent ONE search, `?q=` and page
+        1, a reload kept it, Escape and ✕ cleared it, «٢٠٤» asked `204`, «غير مُفعَّل» and «بنك مصر»
+        reached the query, the reset cleared all, a kind switch dropped a waiting search, ← and Home
+        on the cards, the pager and 100 a page, a row's pen, «إضافة فرع», the import and back, the
+        empty state and «مسح البحث», the drag lists intact, English left to right.
+    - Round 34 verifier (the build's, never the owner's): on the real stack (the owner's four sheets
+      imported, 1,735 branches) at 768 and 820 the five kind cards share the row at 134–145px, and
+      with the icon BESIDE the name «أنواع التشغيل» had 56px and was cut («أنواع التـ…»). From `md`
+      to `lg` the icon now sits ABOVE the name (`CatalogKindCards`), whole at 768, 820, 900 and
+      1000; beside it again from `lg`, as before. New: `pages/catalogs-layout.spec.tsx` «from md to
+      lg the icon sits above the name, so «أنواع التشغيل» is not cut on a tablet».
+    - Round 34 critic (the build's, never the owner's): seven findings, each fixed with a spec that
+      fails on the code before it (each fix reverted once and its spec seen red).
+      - (1) A list read that failed left the toolbar's count at «جارٍ التحميل…» for good, beside
+        the table's «تعذّر التحميل»; and a `?bank=` that is no ObjectId reached the server, which
+        refuses it (400) — the whole list failed and the bank box named the raw id. Now the count
+        says «—» (named «تعذّر التحميل») and the pager hides while the read has failed;
+        `readCatalogFilters` reads a `bank` that is no id as no filter (contracts `objectId()`), and
+        `withKnownBank` one that names no bank on the list, once the list is in. New:
+        `lib/catalog-filters.spec.ts` «a bank that is not on the list is no filter once the list is
+        in …»; `pages/catalogs-layout.spec.tsx` «a link from elsewhere, and a read that failed»
+        (four cases). Rewritten (the rule changed): `lib/catalog-filters.spec.ts` «reads `q`,
+        `status` and `bank` — an unknown status is no filter at all» → «… — an unknown status, or a
+        bank that is no id, is no filter at all»; `pages/catalogs-layout.spec.tsx`'s bank fixtures
+        are ObjectIds now («b-nbe» → 24 hex digits, the server's shape), its assertions unchanged.
+      - (2) The toolbar's reset (or Back over a filter) pressed inside the 300ms wait left the typed
+        term in the box, and it landed in `?q=` after the reset. The box is a pure model now
+        (`createSearchBox` in `lib/catalog-filters.ts`; `CatalogToolbar` only hands it the keys and
+        the address bar): beside `q` it watches the rest of the narrowing (`searchBoxContext` — the
+        status and the bank), and a change made elsewhere puts the address bar's text in the box
+        and drops what was waiting; its own send coming back changes nothing. New:
+        `lib/catalog-filters.spec.ts` «the search box against the address bar» (the screen in
+        miniature — the model, `withCatalogSearch`, the reset, Back — six cases).
+      - (3) In English below `lg` the swap's ⇅ was not mirrored: the row read ↓ (↑↓) ↑, each of its
+        arrows against the one beside it. It is mirrored there now (`-scale-x-100 rotate-90`, reset
+        from `lg`): ↓ ⇅ ↑ in English, ↑ ⇅ ↓ in Arabic as before; the column (⇄) unchanged.
+        `swapArrowAim` lists the swap's two in the order the eye meets them — top first side by
+        side, left first stacked — so its `stacked` reads `up down` in Arabic, `down up` in English.
+      - (4) ✕ / Escape on a text never sent, or a space added, wrote the address bar anyway — the
+        page back to the first, and a `q` of spaces. `withCatalogSearch` writes nothing when the
+        folded question is unchanged, and never a `q` that folds to nothing. New:
+        `lib/catalog-filters.spec.ts` «what the box writes to the address bar» (three cases).
+      - (5) A code or a name saved with Arabic-Indic digits («١٠٤» — the form keeps what is typed)
+        was found by no typed form: the screen sends «104» for «١٠٤», and the server matched digits
+        literally. apps/api `catalog-search.ts` (`containsText`, every catalog's search) now
+        matches each digit in its Latin, Arabic-Indic and Persian forms («104», «١٠٤», «۱۰۴» find
+        one another). New: `catalog-search.spec.ts` «finds a code stored in Arabic-Indic or Persian
+        digits by its Latin digits, and every way round»; `tests/integration/operations.spec.ts`
+        «9b3. finds a code stored in Arabic-Indic digits by its Latin digits, and back» (Mongo's own
+        engine). Rewritten (the rule changed): `catalog-search.spec.ts` «treats two letters as one
+        exactly when normalizeArabic does» → «treats two characters as one exactly when
+        normalizeArabic, the digits read as Latin, does» (the reference fold gains `asciiDigits`,
+        and the Latin digits join the Arabic block).
+      - (6) The swap's spec pinned the dialog's source text and the turn's class strings: an
+        equivalent refactor broke it, while (3) passed. The radio group is its own hookless
+        component (`SwapWays` in `crew-swap-arrows.tsx`) whose key handler the spec calls, and the
+        arrows are read off the glyph's own svg heads, turned by the matrix its classes give in each
+        layout. Rewritten in `components/crew-swap-dialog.spec.tsx`: «the arrows point from the
+        sending card to the receiving one: left/right by the language, down/up stacked» → «the
+        arrows point where they say: the drawing, turned by its classes, against
+        `data-swap-points`», «each one-way arrow points from the sending card to the receiving one,
+        in every layout and language» and «the swap’s two arrows each point as the one-way arrow
+        beside them — ⇄ in the column, ↑ ⇅ ↓ / ↓ ⇅ ↑ in the row»; «the helpers agree:
+        `swapArrowAim` and `swapArrowTurn` for each way, each language» → «the words and the
+        drawing agree for every way, language and layout — and the two hues»; «the keyboard still
+        steps: one way in the Tab order, the arrow keys toward where the arrows go» → «the keyboard:
+        one way in the Tab order, and each arrow key moves to the way that lies that way»; and the
+        Round 32 critic block's «the arrow keys read the language: `modeStepOf` with the window’s
+        locale» → «the arrow keys read the language: the window’s ways step as its locale reads».
+      - (7) Before the second van each arrow was named «نقل المحدد من 150 إلى —» (and each box «…
+        إلى —»). Until it is chosen the second van is «السيارة الثانية» (new key
+        `operations.crewPlan.swap.secondVan`, «the second vehicle»), and each arrow's name and
+        tooltip add «اختر السيارة الثانية أولًا». Rewritten: «no second van yet: the arrows are
+        there, the swap marked, none to press» → «… — each named without a dash, and why»; «the
+        first card is that row, every item with its own box; the second is the board’s other rows»
+        (its box named «… إلى السيارة الثانية», no longer «إلى —»).
+    - D — the owner's review of A, on its screenshot: «أنا مش عايز كده، أنت كده عامل لي إن السهم اللي فوق
+      رصاصي والسهم اللي تحت رصاصي واللي في النص بنفسجي. أنا يعتبر محدد اللي في النص. البنفسجي ده هو اللون
+      الأشمل للويب سايت. أنا عايز تكون ألوان مختلفة، فاهم قصدي؟ ولما أنا أبقى هوفر يبقى يجيلي اللون ده، أو
+      لو أنا اخترت شمال أو يمين مثلا يفضل موجود لحد ما الداتا تتنقل ثانية أو ثانيتين ويقوم جاي متشال،
+      فاهم؟» The arrows are ACTIONS now, each in its own colour, and the window works on a copy of the
+      two rows until «تطبيق».
+      - The colours (`SWAP_ARROW_LOOK`, `crew-swap-arrows.tsx`): never grey, never the site's violet.
+        The two one-way arrows share sky, the swap is orange — apart from the brand, the cards' emerald
+        «من 213» and rose «لم يُنقل», and the amber «إجازة». At rest each is plainly in its colour: light
+        `sky-50` #f0f9ff / `sky-500` border / `sky-700` #0369a1 glyph (5.57:1) and `orange-50` #fff7ed /
+        `orange-500` / `orange-700` #c2410c (4.88:1); dark a 15% tint over the window's navy, a 70%
+        `sky-400` / `orange-400` border and a `sky-300` #7dd3fc / `orange-300` #fdba74 glyph (9.73:1,
+        9.87:1). Under the pointer and the keyboard's focus each fills solid — `sky-600` #0284c7,
+        `orange-600` #ea580c — with a white glyph (4.10:1, 3.56:1; a glyph's bar is 3:1), dark and light
+        alike; the focus also keeps its neutral outline outside, and its ring is the arrow's own hue (the
+        base layer's brand ring no longer shows on an arrow). All measured from computed styles.
+      - No way is «selected»: the radio group is gone. The three are a toolbar of buttons (`SwapArrows`):
+        one in the Tab order, the arrow keys moving the FOCUS in the reading direction (`modeStepOf`, as
+        A and the critic set the directions — they still point from the sending card to the receiving
+        one at 390, 768 and 1440, Arabic and English), Enter and Space pressing. A press MOVES the ticked
+        items at once with the same rules as before (`planSwap`: away that day, a slot his role does not
+        fit, no room left, an archived type keep an item back, named): the arrived items carry the
+        emerald «من 213» until «تطبيق» or close, a value a one-way field replaced is named struck beside
+        the one that took its place («بدلًا من 09:00» — also when a field went there and back and the
+        other row's value is gone), what a rule kept back flashes rose «لم يُنقل» on its card and the
+        notice under the arrows names it and why («لم يُنقل محمد ياسر احمد علي — خانة القائد في 255
+        ممتلئة»; it stays until the next press or undo, to be read), and the ticks clear. The pressed
+        arrow stays filled in its colour for `SWAP_HOLD_MS` = 1.4s (measured 1,395–1,400ms in the
+        browser), its glyph nudging twice toward the receiving card (`swap-nudge`, 2 × 700ms,
+        `motion-safe:` only — none under reduced motion, the fill stays), what it brought settling in,
+        the receiving card(s) framed in its hue with «تستقبل»; then it rests. Several presses follow one
+        another, each on what the one before left; «تراجع عن آخر نقل» in the footer takes them back one
+        at a time — the items home and ticked again as before the press — down to the opening state.
+      - Why an arrow cannot act, in its tooltip and its name (`aria-disabled`, still focusable — the
+        pressed arrow keeps the focus; softened to 60%, still in its colour): «اختر السيارة الثانية
+        أولًا» (no second van yet), «حدّد ما يُنقل من 213 أولًا» / «حدّد ما يُبدَّل على إحدى السيارتين
+        أولًا» (nothing ticked where it sends from), «النقل الجاري لم يكتمل بعد» (a press still playing).
+        «تطبيق» is off while nothing has changed («لم يتغيّر شيء بعد» — moved there and back is no
+        change); «تغيير» the second van is off while moves stand («طبِّق النقل أو تراجع عنه قبل تغيير
+        السيارة الثانية»).
+      - The window's state is a pure model, new `lib/crew-swap-window.ts` (`swapWindowReducer`: the
+        ticks, the presses, the last press, the arrow held; `swapArrowWhy`; `createSwapHoldClock`);
+        `lib/crew-swap.ts` composes the presses (`SwapStep`, `replaySwap`, `swapChanged`, `swapArrivals`,
+        `swapReplacedValues`, `swapStepsOperation`, `applySwapStepsToDraft`). The window keeps the
+        presses, never the rows they made: the cards are the presses replayed over the two rows as the
+        board holds them NOW, so another desk's save under the open window shows on the cards with the
+        moves on top, judged again.
+      - The page contract: `CrewSwapDialog`'s `onApply(bKey, picks, mode)` → `onApply(bKey, steps)`.
+        «تطبيق» hands over the presses and `CrewBoardPage` replays them on its draft as it is at that
+        press (`applySwapStepsToDraft` with the board's own `swapRules` — a man HR marked away since,
+        or one another desk moved, is judged again) as ONE operation of the board's «تراجع» (one press
+        takes all of it back), the standing crew letting go of the two rows as before; named a move
+        («نقل المحدد من 213 إلى 255») when every press went that one way, else the swap. Nothing is
+        saved until «حفظ». «إلغاء», ✕ and Escape drop every move with the window. `DesignSave` takes a
+        `title` (why it is off).
+      - Removed: the «بعد التطبيق — معاينة» section (`previewCard`, `data-swap-after`/`data-swap-preview`)
+        — the cards show it live — and with it the «ينتقل إلى …» line; the «تستقبل» tag and the
+        disabled receiving boxes of a chosen one-way (no way is chosen; the tag shows only while a press
+        plays); the «shared» field box of the swap way. The window went from the full 900px screen with
+        the preview scrolling to 561px at 1440×900, no scroll. Kept: the footer's count, now «نُقل: ٢ ·
+        بقي: ١» (every item the presses moved; what the last press kept back), and the «المحصنات
+        الموزَّعة … تبقى» note — on the working card, once the row's captains or direction have changed.
+      - i18n: removed `operations.crewPlan.swap.preview`, `swap.previewHint`, `swap.after`,
+        `swap.left`, `swap.receivingHint` and `swap.itemExchange`; new
+        `swap.why.{playing,nothingOn,nothingEither}`, `swap.keptLine`,
+        `swap.undoLast`, `swap.undoLastTitle`, `swap.undoNone`, `swap.nothingChanged`,
+        `swap.changeLocked`; rewritten `swap.summary` («نُقل: … · بقي: …» / «Moved: … · Kept back: …»),
+        `swap.kept` («لم يُنقل» / «Not moved»), `swap.nothing` («حدّد ما يُنقل ثم اضغط سهمًا»),
+        `swap.mode.group` («نقل المحدد بين السيارتين»). Tailwind: keyframes `swap-nudge`,
+        `swap-nudge-back`, `swap-arrive`, `swap-flash`.
+      - Specs. Rewritten (the rule changed), all in `components/crew-swap-dialog.spec.tsx`: «nothing to
+        apply and no preview until the second van is picked» → «nothing to apply until the second van is
+        picked — and no preview section at all»; the describe «two cards side by side, the ticks, the
+        ways and the preview AFTER» → «two cards side by side, the ticks and the arrows between them —
+        the cards are the working copy», and in it: «the first card BEFORE the second in the markup — on
+        the right in Arabic, on the left in English» (the preview's order dropped); «the ticked items
+        are checked; each card has «الكل» · «الطاقم فقط» · «لا شيء»» → «… ; every box live» (4 ticks on
+        150, not the shared field's 5; no box off); «the three ways are a radio group, the swap on —
+        each named by what it does with both vans» → «the three arrows are ACTIONS — a toolbar of
+        buttons, no radio, nothing «selected» — each named by what it does with both vans»; «the
+        preview: who arrives «من 213» / «من 150», the fields exchanged — nothing thrown away — what
+        goes» → «a press of the swap moves at once: each card holds what arrived «من 213» / «من 150» —
+        the fields exchanged, nothing thrown away — and the ticks clear»; «one way: a field moved onto a
+        value names the value it replaces, struck» (on the card after the press); «a rule keeps an item
+        back — shown on the preview with its reason, counted as staying» → «a rule keeps an item back —
+        rose «لم يُنقل» on its card, named with its reason under the arrows, counted in the footer»;
+        «one way: the receiving card says so and its boxes are not read» → «while an arrow plays, the
+        card(s) it sends to say «تستقبل», framed in its hue; at rest neither»; «English: the same window
+        in its own words» (no preview words); in the Round 32 critic block «in «تبديل المحدد ⇄» a field
+        ticked on one card shows ticked on both — the pair’s exchange, named so» → «a field ticked on
+        one card is that card’s own tick — the swap exchanges the pair, nothing thrown away», «an
+        archived type in an exchange: both rows keep theirs, each named why» (the reasons in the
+        notice), «says how many محصنات ride a row — and that they stay when its captain or its
+        direction leaves» → «… — and that they stay once its captain or its direction has left», «the
+        notes start their own line on the preview — never under the label column» → «… on the cards
+        …», «the arrow keys read the language: the window’s ways step as its locale reads» → «the arrow
+        keys read the language: the window’s arrows move the focus as its locale reads»; in the Round 34
+        A block «the two one-way arrows share ONE hue (sky), the swap another (the brand’s) — off and
+        on» → «the two one-way arrows share ONE hue (sky), the swap another (orange) — at rest, under the
+        pointer and held; never the brand’s, never grey», «the keyboard: one way in the Tab order, and
+        each arrow key moves to the way that lies that way» → «the keyboard: a toolbar — one arrow in
+        the Tab order, each arrow key moves the focus to the arrow that lies that way, a press is the
+        button’s own», «no second van yet: the arrows are there, the swap marked, none to press — each
+        named without a dash, and why» → «no second van yet: the arrows are there, none marked, none to
+        press — each named without a dash, and why»; in the board block ««تطبيق» is ONE step of «تراجع»
+        on the draft — `applySwapToDraft` under the board’s own rules» → ««تطبيق» is ONE step of «تراجع»
+        on the draft — the window’s presses replayed by `applySwapStepsToDraft` under the board’s own
+        rules». The Round 34 A block's two renders no longer pass `mode: 'swap'` (the window has none);
+        their assertions are unchanged. New: in the same file the describe «Round 34 D — the arrows
+        are ACTIONS; the window works on a copy until «تطبيق»» (the held arrow solid with its
+        `motion-safe:` nudge, the others off «النقل الجاري لم يكتمل بعد»; each arrow off with its
+        reason; several moves on top of one another and there-and-back as no change; the footer — the
+        frame's ✕/Escape and «إلغاء» only close, «تطبيق» hands over the presses, the undo's name; «تغيير»
+        locked while moves stand); new `lib/crew-swap-window.spec.ts` (a press moves at once with tags
+        and a kept-back reason, the ticks clear; several presses; a press that moves nothing is no step;
+        the in-window undo down to the opening; the reasons; the hold with fake timers — held, still
+        held at 1s, at rest at 1.4s, no press meanwhile, `stop`; 2 × 700ms = `SWAP_HOLD_MS` read off
+        tailwind.config.ts); and in `lib/crew-swap.spec.ts` the describe «Round 34 D — the window’s
+        presses: steps replayed on the two rows» (the replay = `planSwap` in turn; there and back; the
+        lost value; «تطبيق» as ONE step that one «تراجع» takes back, «حفظ (2)»; the same draft when
+        nothing changed; re-judged at «تطبيق» — a man marked away meanwhile stays, a man moved off by
+        another desk is not found; the standing crew let go; the operation's name). Its 32 earlier
+        tests are untouched and green. Each new rule was broken once (the brand colour back on the swap,
+        the ticks not clearing, «إلغاء» applying) and its spec seen red.
+      - Verified on the built web (dist-r34d) against the stubbed API (r34d/shoot-r34d.mjs, from the
+        Round 34 A and critic shooters): 119 checks — the directions and ≥ 44×44 at 390, 768 and 1440 in
+        Arabic and English with no sideways scroll; the colours at rest, under the pointer, on the
+        keyboard's focus and held, dark and light, the two one-way arrows' computed colours identical,
+        none the brand's; Enter on the focused arrow moving 0100007 and 213's direction to 255 at once,
+        0100008 kept back («خانة القائد في 255 ممتلئة») and named, 255's «التجمع الخامس» struck, the
+        ticks cleared, the board untouched; held 1.4s and at rest after; a second press keeping the
+        leave-taker 0100020 back; the undo twice back to the opening; «تطبيق» → «حفظ (2)» and ONE more
+        step of the board's «تراجع» named «التبديل بين 213 و255», one press of which put both rows back;
+        Escape, «إلغاء» and ✕ after moves leaving the board as it was; reduced motion — filled, no
+        nudge; no second van — the three off, saying why.
+    - C — colours on «لوحة التشغيلة» become optional. The owner: «والشاشة بتاعت لوحة التشغيلة عاوز اقدر بعد
+      ما اضيف لون اقدر اشيله عادي، يعني مش عاوز ان انا محصنة يبقى لونها محصنة فهتبقى كذا، لا انا عاوز ان انا
+      ممكن اضيف محصنة بس الصف بتاعها ما يكونش ملون عادي.» Asked to choose: «ما انا عاوز مش لازم نوع يكون واخد
+      اجبارى لون فاهم ولو انا مثبت لون للنوع ممكن لو تندى صف اشيل لونه عادى». So a type may have no colour,
+      and any row may be «بدون لون» over its type's colour; a colour once given can be taken off again.
+      - A row's colour has THREE states, all in `rowColour`: null «لون النوع» (as before — the type's
+        colour, or none when the type has none; every row saved before and every older client keep this
+        meaning), a palette name picked by hand, or the new `'none'` «بدون لون» picked by hand, which wins
+        over the type's colour. Contracts: `OPERATIONS_CREW_ROW_NO_COLOUR = 'none'`,
+        `OperationsCrewRowColourSetting`; `OperationsCrewRowColourSchema` takes `'none'` beside the palette
+        and still maps Round 20's six names; `canonicalCrewRowColour` reads a stored `'none'` as `'none'`;
+        both crew DTOs' `rowColour` is `OperationsCrewRowColourSetting | null`. `'none'` is no palette name
+        and no legacy name (a spec holds it). API: the crew row model's enum takes `'none'`; the save
+        stores it as written and an unchanged `'none'` is a no-op; a row holding only `'none'` is still a
+        row, as a row holding only a colour is. No migration: nothing stored changes meaning.
+      - A type's colour is optional: `OperationsShiftTypeDto.colour` is `OperationsShiftTypeColour | null`;
+        create takes `colour` null or leaves it out (none), the edit takes null to take it off and leaves
+        it unchanged when left out; `'none'` is never a type's colour (400). The model's `colour` is
+        optional (`default: null`); the mapper and the audit snapshot read `?? null`. No data migration:
+        every type keeps the colour it has, the seed's nine included. `paletteFor` still counts a type
+        with no colour (N swatches for N live types) and it wears none of them; `freeColourFor` ignores it.
+      - Drawn neutral everywhere a type's colour shows (`NO_COLOUR_TONE`, `typeDotTone`, `typeTagTone` in
+        `components/shift-type-look.tsx`): its dot a hollow ring in the panel's ink (`slate-500`, dark
+        `slate-400` — 4.8:1 on white, ≥ 6:1 on the dark panels), its tag untinted with a hairline ring;
+        `data-type-dot="none"` / `data-type-tag="none"`. Screens checked: the board's type box and type
+        list, its strip of counts, the row's «اللون» list, the swap window's «النوع» and «لون الصف»,
+        «ألوان الأنواع», the reference tab (its tag and its «اللون» column, «بدون لون» in words) and the
+        type's form preview. The distribution / handover cards, their print sheets and the board's Excel
+        name a type by its name only (`shiftTypeName`), never its colour — nothing to change. A row with
+        no colour (its own «بدون لون», or a type with none and «لون النوع» kept) is drawn exactly as an
+        uncoloured row: no tint, no bar (measured: the same cell fill and no inset shadow as a row with no
+        type, text 16.2:1 dark, 17.9:1 light).
+      - The row's «اللون» list (`RowColourPicker` / `RowColourSwatches`) opens on «لون النوع» (with the
+        type's swatch, or «(بدون لون)» for a type with none, «(لا نوع للصف)» for a row with no type —
+        new prop `hasType`) and «بدون لون» (`data-colour="none"`, the struck ring `NoColourSwatch`, its
+        hint «يظهر الصف بلا لون ولو كان لنوعه لون، ويعيده «لون النوع» إلى لون نوعه»), then the palette as
+        before; exactly one is pressed. The cell's button shows a row «بدون لون» as the struck ring
+        (`data-colour-source="row"`, `data-colour-shown="none"`), named «لون الصف: بدون لون». The board
+        marks such a row `data-row-colour-source="none"`. «بدون لون» is ONE step of «تراجع» —
+        «إزالة لون الصف 213» (`undo.kind.colourNone`).
+      - «ألوان الأنواع»: a column «بدون لون» first on every type's line (`data-swatch-off`, before the
+        palette's columns, which are as before), pressed for a type with none; a press sends the catalog's
+        PATCH with `colour: null` («أصبح لون محصنة: بدون لون»); read only without the grant as before.
+        The type's form (`ShiftTypeDialog`): «بدون لون» is the first choice, a radio of its own beside the
+        palette (`data-colour-off`), checked when the type has none; a new type still opens on a free
+        colour of the palette, «بدون لون» one press away.
+      - The swap window moves «بدون لون» as a value of «لون الصف» (an item, named «بدون لون» with the
+        neutral swatch; struck «بدلًا من كحلي» where it replaced a colour); «لون النوع» (null) is no item,
+        as an empty field never was. The standing crew holds no type and no colour (since Round 27), so
+        «تحميل الطاقم الثابت» fills a row and leaves its `'none'` as it was; nothing changed on
+        «الطاقم الثابت».
+      - i18n (Arabic and English): new `operations.crewPlan.colour.noneHint`,
+        `operations.crewPlan.typeColours.pickNone`, `operations.crewPlan.undo.kind.colourNone`,
+        `operations.catalogs.shiftType.noColour`, `operations.catalogs.shiftType.noColourHint`.
+      - Specs. Rewritten (the rule changed), in `components/type-colours.spec.tsx`: «offers exactly the
+        swatches shown, then «لون النوع» — nothing from Round 20’s six» → «offers «لون النوع» and «بدون لون»
+        first, then exactly the swatches shown — nothing from Round 20’s six»; and «a colour picked when the
+        palette was larger: still offered, at the end, pressed and so named» (title kept — its order now
+        «لون النوع», «بدون لون», the palette, the kept colour). New: contracts
+        `operations-crew-plan.spec.ts` «Round 34 C — colours are optional: a type without one, a row «بدون
+        لون»» (4: three states, `none` stored as written, wrong spellings refused; `none` no palette or
+        legacy name, the legacy names still mapped; `canonicalCrewRowColour`; a type's colour left out /
+        null / taken off / unchanged on a rename, `none` never a type's); API
+        `tests/integration/operations-crew-plan.spec.ts`, the same describe (6, the file run whole, 64
+        green: a type added with no colour, taken off and given back, every other type's colour kept; a
+        «محصنة» row `none` beside one keeping null and one navy — stored `none`, a no-op resent, null and a
+        colour and `none` again; a row with only `none`; old rows null, a row with no field at all null; a
+        type with no colour, its rows as saved; the standing crew holds no colour and a row filled from it
+        keeps `none`); web `lib/type-colours.spec.ts` (6), `components/type-colours.spec.tsx` (11: the
+        list's order and pressed states, the button, the neutral dot and tag and their contrast, the card's
+        column read only and on a phone, «تراجع», the board's wiring), `pages/catalogs-shift-types.spec.tsx`
+        (4: the tab, the form's choice, the palette counting a type with none, the form's source),
+        `lib/crew-swap.spec.ts` (4), `components/crew-swap-dialog.spec.tsx` (3), `lib/crew-plan.spec.ts`
+        (2: the standing load and the save keep `none`, `none` and null two states),
+        `lib/standing-crew.spec.ts` (1), and the five keys in `operations-i18n.spec.ts`. Each new rule was
+        broken once (`resolveRowColour` ignoring `none`; `canonicalCrewRowColour` dropping it; the model's
+        enum without it) and its specs seen red.
+      - Verified on the built web (dist-r34c) against the stubbed API (r34c/shoot-r34c.mjs, from the r27s
+        stub; «شلاتين» given no colour): 27 checks — 213 «محصنة» «بدون لون» drawn as a plain row beside 249
+        «محصنة» in slate, dark and light; «شلاتين»'s rows plain and its dot the ring in the strip; the list
+        on 213 «لون النوع» (slate), «بدون لون» pressed, the palette; «لون النوع» gives slate back and
+        «بدون لون» on 249 takes it off, each one «تراجع» step said so; «حفظ» sent 213 `rowColour: null`
+        and 249 `'none'`; the card's «بدون لون» sent `{ colour: null, version }`; the tab and the form say
+        «بدون لون», the preview following a colour given and taken off; 390 with no sideways scroll.
+    - Round 34 D and C verifier (the build's, never the owner's), on the owner's review of A: «أنا مش عايز
+      كده، أنت كده عامل لي إن السهم اللي فوق رصاصي والسهم اللي تحت رصاصي واللي في النص بنفسجي. أنا يعتبر
+      محدد اللي في النص. البنفسجي ده هو اللون الأشمل للويب سايت. أنا عايز تكون ألوان مختلفة، فاهم قصدي؟
+      ولما أنا أبقى هوفر يبقى يجيلي اللون ده، أو لو أنا اخترت شمال أو يمين مثلا يفضل موجود لحد ما الداتا
+      تتنقل ثانية أو ثانيتين ويقوم جاي متشال، فاهم؟» On the real stack (the live API on an in-memory
+      MongoDB, the built web), a time moved one way onto another («08:00» from 213 onto 61's «09:00») was
+      drawn OVER its own «من 213» tag in the narrow «التوقيت» cell (Arabic at 1366 and 1440, English at
+      1024): the value's wrapper was `min-w-0 flex-1`, so the box's wrap counted it as no width, kept the
+      tag and «بدلًا من 09:00» on its line and squeezed it to 11px while its 41px of digits — which never
+      shorten — spilled across the tag. A time now keeps its width (`flex-none`, `CrewSwapDialog`), so
+      what follows it wraps to the next line; a value that shortens with an ellipsis still gives way.
+      Measured after: no part of any item drawn over another on either card at 1024, 1366, 1440 and 390,
+      Arabic and English. New: `components/crew-swap-dialog.spec.tsx` «a moved time keeps its width
+      beside «من 213» and «بدلًا من …» — only a value that shortens gives way» (red on the code before).
+      Nothing else changed.
+    - Round 34 D critic (the build's, never the owner's), on D — the owner: «أنا مش عايز كده، أنت كده عامل
+      لي إن السهم اللي فوق رصاصي والسهم اللي تحت رصاصي واللي في النص بنفسجي. أنا يعتبر محدد اللي في
+      النص. البنفسجي ده هو اللون الأشمل للويب سايت. أنا عايز تكون ألوان مختلفة، فاهم قصدي؟ ولما أنا أبقى
+      هوفر يبقى يجيلي اللون ده، أو لو أنا اخترت شمال أو يمين مثلا يفضل موجود لحد ما الداتا تتنقل ثانية أو
+      ثانيتين ويقوم جاي متشال، فاهم؟» Seven findings, each fixed with a spec that fails on the code before
+      it (each fix reverted once and its specs seen red). Nothing on the server, the contracts or the board
+      page; the arrows' hues, the hold and what each way does are as D made them.
+      - (1) Moved there and back was «no change» only for a slot of one: 213's «أخصائي 1» [0300012,
+        0300014] came back [0300014, 0300012] (`planSwap` put an arrival at the slot's end), «تطبيق» live
+        and «حفظ» counting the row; and with his own slot taken meanwhile (0300012 to 255, 0200026 into the
+        room he left, 0300012 back) he came home in «أخصائي 2», unmarked. Now `replaySwap` hands `planSwap`
+        the window's opening rows (`home`): a person going back to his row takes his own slot first and his
+        own place in it, ahead of anybody who came in the window — so there and back is no change at all;
+        his own slot full, he takes the other «أخصائي» and his line says so, «من أخصائي 1» (emerald, as
+        «من 213»; `swapSlotChanges`, `data-swap-reseated`). One operation alone (`applySwap`, no opening)
+        keeps arrivals at the slot's end, as before. The window's press reads the same opening, so what it
+        names as moved and kept back is what the replay draws.
+      - (2) ✕, Escape and «إلغاء» dropped every move without a word while the cards showed the data moved.
+        With moves that change something they now ASK, in the footer's place: «لم تنتقل التغييرات إلى
+        اللوحة بعد — هل تريد تطبيقها أم تجاهلها؟» — «تطبيق» (hands them over), «تجاهل التغييرات» (closes,
+        nothing handed over), «متابعة التعديل» (and ✕ / Escape on the question: back to the window), the
+        focus on its «تطبيق» (`SwapCloseAsk`, `swapCloseStep`, the state's `closing`). With nothing changed
+        — moved there and back included — they close at once, as before. While the moves change something
+        the footer says where they go: «تنتقل التغييرات إلى اللوحة عند «تطبيق»» (`data-swap-apply-hint`).
+      - (3) The footer's «نُقل: N» summed every press (there and back read «نُقل: ٢» beside «لم يتغيّر شيء
+        بعد»), and its «·» read as the Arabic zero («نُقل: ٢ · بقي: ١»). It counts what differs from the
+        opening, as the cards show it (`swapWindowCounts(opening, work, state)`): «نُقل» every item on a
+        card it did not open on or in another slot of its own, «استُبدل» every value on neither row now
+        (said only when there is one), «بقي» what the last press kept back — «نُقل: ٢ — استُبدل: ١ —
+        بقي: ١», a dash between them («Moved: 2 — Replaced: 1 — Kept back: 1»). `data-swap-apply` carries
+        the same «نُقل». On a phone the count and the line about the board take a line of their own under
+        the buttons (squeezed beside them they broke a word to a line); one line beside them from `sm`.
+      - (4) A one-way press cleared the RECEIVING card's ticks too, which that arrow neither read nor
+        moved; and a press that moved nothing (everything kept back) cleared its ticks with no step the
+        undo could give them back by. Now a press clears only the ticks it read; the receiving card keeps
+        its own — but a field that took the arriving value (its tick named the value replaced); a press
+        that moves nothing leaves the ticks as they were, its reason under the arrows. The undo gives back
+        both cards' ticks as they were before the press.
+      - (5) The undo's spoken name was its detail only («تراجع عن نقل المحدد من 255 إلى 213»), not the
+        words it shows (WCAG 2.5.3): now «تراجع عن آخر نقل — …». «تطبيق», «تغيير» and the undo were
+        native-disabled, their reasons out of the keyboard's and the screen reader's reach: each is
+        `aria-disabled` now, reachable, its reason in its name and its tooltip, a press doing nothing — as
+        the arrows. `DesignSave` (`fleet/components/DesignDialog.tsx`) takes `why` for this in place of D's
+        `title` (nothing else passed it); every other caller is as before.
+      - (6) An arrow that cannot act — what the window shows most: at opening nothing is ticked — was
+        softened to 60% (2.59:1 sky, 2.52:1 orange in light). It keeps its colour whole now: the rest glyph
+        (`sky-700` / `orange-700`, dark `sky-300` / `orange-300`) on no tint with a lighter border, 5.93:1
+        and 5.18:1 on white (dark 12.1:1, 11.96:1); under the pointer a soft tint of its own colour comes
+        (`sky-100` 5.17:1, dark a 15% tint 9.73:1) — never the solid fill a press follows. Measured from
+        computed styles, nothing ticked, dark and light (`SWAP_ARROW_LOOK[…].off`).
+      - (7) No suite ran the window's press and its hold: the dialog spec drew static markup with the state
+        handed in, the window spec rebuilt the wiring by hand — dropping the clock's start would have held
+        every arrow for good with every spec green. The state, the press and the hold's clock are one store
+        now (`createSwapWindow`, read with `useSyncExternalStore`): a press that acts holds the arrow and
+        starts the clock, one that cannot changes nothing and starts nothing, the undo ends a hold, the
+        window closing (its last watcher gone) stops the clock. Driven with fake timers in the window spec,
+        and in the dialog spec through the arrows' own `onPress` and the footer's `onUndo` on the store the
+        window made.
+      - i18n (Arabic and English): new `operations.crewPlan.swap.applyHint`, `swap.closeAsk`,
+        `swap.closeDiscard`, `swap.closeStay`, `swap.fromSlot`, `swap.summaryReplaced`; rewritten
+        `swap.summary` («نُقل: {{moved}} — بقي: {{kept}}» / «Moved: {{moved}} — Kept back: {{kept}}»).
+      - Specs. Rewritten (the rule changed): in `lib/crew-swap-window.spec.ts` «a press that moves nothing
+        (everything kept back) is no step — but says why» → «a press that moves nothing (everything kept
+        back) is no step — says why, and its ticks stay»; «at once: what crossed lands on the other card
+        «من 213», a rule keeps someone back, the ticks clear» and «several moves in a row — each works on
+        what the one before left» (titles kept: `swapWindowCounts` reads the opening and the working copy,
+        `{ moved: 2, replaced: 1, kept: 1 }` and `{ moved: 2, replaced: 0, kept: 1 }`); «another second
+        van: the first card’s ticks kept, every move and tick of the other gone» (its state gains
+        `closing: false`, assertions unchanged). In `components/crew-swap-dialog.spec.tsx`, titles kept:
+        «nothing to apply until the second van is picked — and no preview section at all», «a rule keeps an
+        item back — rose «لم يُنقل» on its card, named with its reason under the arrows, counted in the
+        footer» and «an archived type in an exchange: both rows keep theirs, each named why» («تطبيق» off
+        by `aria-disabled` with its reason in its name — `applyOff` — not `disabled=""`); «a press of the
+        swap moves at once: each card holds what arrived «من 213» / «من 150» — the fields exchanged,
+        nothing thrown away — and the ticks clear» and «English: the same window in its own words» (the
+        dash for «·»); «the two one-way arrows share ONE hue (sky), the swap another (orange) — at rest,
+        under the pointer and held; never the brand’s, never grey» and «each arrow off with its reason:
+        nothing ticked on the card(s) it sends from» (off: no `opacity-60`, the rest glyph on no tint, a
+        soft tint under the pointer, never the solid fill); «several moves in a row: the cards show them one
+        on top of the other, «من …» against the opening» (the count against the opening — «3» with
+        «استُبدل: ١», there and back «0», no longer «2»); ««تغيير» the second van is off while moves stand
+        — «تطبيق» or take them back first» (`aria-disabled`, its reason in its name); and «the footer:
+        «تطبيق» hands over the presses (off while nothing changed, saying so); «إلغاء» only closes; «تراجع
+        عن آخر نقل» names the last move, off with none» → «the footer: «تطبيق» hands over the presses (off
+        while nothing changed, saying so); ✕, Escape and «إلغاء» close with nothing changed and ASK when
+        the moves change something; «تراجع عن آخر نقل» names the last move, off with none». New: in
+        `lib/crew-swap.spec.ts` the describe «Round 34 D critic — moved there and back: home to his own
+        seat» (4: a two-person slot, his own slot first, his own slot taken meanwhile «من أخصائي 1», one
+        operation alone as before); in `lib/crew-swap-window.spec.ts` «a one-way press clears the ticks it
+        read; the receiving card keeps its own — but a field that took the value arriving» and the describes
+        «Round 34 D critic — the footer counts what differs from the opening» (1), «Round 34 D critic —
+        closing with moves asks first» (2) and «Round 34 D critic — the window’s store: a press, its hold,
+        and the clock let go» (3); in `components/crew-swap-dialog.spec.tsx` «home in the other «أخصائي»
+        (his own taken meanwhile): his line says «من أخصائي 1»» and the describe «Round 34 D critic — the
+        window’s press, wired: the arrow held, then at rest» (2).
+      - Verified on the built web against the stubbed API (`r34x/shoot-r34x.mjs`, from D's shooter): 73
+        checks — the opening's arrows at opacity 1 in their colours, ≥ 4.5:1, a soft tint under the
+        pointer; «تطبيق» and the undo reachable and named why; a press holding 1.4s, 255's own tick kept,
+        «نُقل: ٢ — استُبدل: ١ — بقي: ١» and the line about the board; there and back — 213 in its opening
+        order, «نُقل: ٠ — بقي: ٠», «تطبيق» off, Escape closing at once; the taken slot «من أخصائي 1»;
+        Escape, ✕ and «إلغاء» asking, «متابعة التعديل» and Escape on the question going back, «تجاهل
+        التغييرات» leaving the board as it was, «تطبيق» on the question giving «حفظ (2)» and one «تراجع»
+        step; the question and the footer whole at 390 with no sideways scroll; the window 625px at
+        1024×768, 1366×768 and 1440×900 with the notice, nothing scrolling; English; reduced motion.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

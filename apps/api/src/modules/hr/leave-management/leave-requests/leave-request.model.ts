@@ -5,9 +5,11 @@
 // step is derived from the status; the manager binding is dynamic (R9b).
 import { Schema, type Types, model } from 'mongoose';
 import {
+  type ApprovalStep,
   type LeaveRequestStatus,
   type LeaveStatusDriveOutcome,
 } from '@ecms/contracts';
+import { approvalPinFields } from '../../../../platform/approvals';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../../shared/base/base.model';
 
 export interface LeaveApprovalStep {
@@ -59,6 +61,14 @@ export interface LeaveRequestDoc extends BaseDocFields {
   approvals: LeaveApprovalStep[];
   /** The engine's trail. Empty on a request the two-desk machine is running. */
   approvalSteps: LeaveApprovalEntry[];
+  /**
+   * The chain a request on the engine was submitted on (ADR-041 decision 4): the row's id, and
+   * its rungs in order with their captions. Written in the create that stamps `pendingApproval` and
+   * never again, because a leave request has one round. Optional because a request submitted
+   * before leave pinned has neither, and reads its chain live; a two-desk request has them empty.
+   */
+  approvalWorkflowId?: Types.ObjectId | null;
+  approvalChainShape?: ApprovalStep[];
   actualReturnDate: Date | null;
   statusDriveOutcome: LeaveStatusDriveOutcome | null;
   cancelReason: string | null;
@@ -108,6 +118,8 @@ const leaveRequestSchema = new Schema<LeaveRequestDoc>(
     attachments: { type: [Schema.Types.ObjectId], default: [] },
     approvals: { type: [approvalStepSchema], default: [] },
     approvalSteps: { type: [approvalEntrySchema], default: [] },
+    // Declared by the engine, so a pinned rung is validated as a chain row's own rung is.
+    ...approvalPinFields,
     actualReturnDate: { type: Date, default: null },
     statusDriveOutcome: { type: String, default: null },
     cancelReason: { type: String, default: null },

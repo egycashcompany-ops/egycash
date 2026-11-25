@@ -100,6 +100,13 @@ assignmentSchema.index(
   { crewAssignmentId: 1 },
   { name: 'ix_crew_assignment_live', partialFilterExpression: { isDeleted: false } },
 );
+// Round 33 B — «الشحنات المسلَّمة»: the legs DELIVERED within one Cairo day (`deliveredAt` in a
+// range), the screen's one read of which shipments reached their bank that day. Live legs only; built
+// by the deploy's index sync, like every index here.
+assignmentSchema.index(
+  { deliveredAt: 1 },
+  { name: 'ix_delivered_at_live', partialFilterExpression: { isDeleted: false } },
+);
 // No two stops share a position on one captain-day-leg. The service derives positions from the
 // payload's array index (so a duplicate cannot be expressed) — this index is the DB-level second
 // guard, the same belt-and-braces the fleet roster uses for its own identity pair.

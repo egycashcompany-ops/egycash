@@ -110,6 +110,8 @@ const opsRoutesOf = async (token: string): Promise<string[]> =>
 const ALL_OPS_ROUTES = [
   '/operations',
   '/operations/shipments',
+  // Round 33 B — «الشحنات المسلَّمة», what reached its bank and its ✓, on the board's own grant.
+  '/operations/shipments/delivered',
   // «سجل الشحنات» — the day board over a range of days, on the board's own grant.
   '/operations/shipments/history',
   '/operations/crew-board',
@@ -319,6 +321,8 @@ describe('the sidebar follows the permissions, not the catalog (B7)', () => {
       [
         '/operations',
         '/operations/shipments',
+        // Round 33 B — «الشحنات المسلَّمة» reads on the day board's own grant.
+        '/operations/shipments/delivered',
         '/operations/shipments/history',
         '/operations/secured',
         // Round 12 — «توزيع المحصنات» reads on the secured screen's own grant.

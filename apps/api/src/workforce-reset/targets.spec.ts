@@ -86,6 +86,7 @@ describe('what the classification decides', () => {
     ['it_mobile_line_assignments', 'custody a car holds too'],
     ['it_consumable_movements', 'the stock ledger every on-hand figure sums'],
     ['hr_job_offers', 'recruitment history'],
+    ['administration_warehouses', 'a store outlives its keeper'],
   ])('leaves %s completely alone (%s)', (collection) => {
     expect(find(collection)?.action).toBe('keep');
   });

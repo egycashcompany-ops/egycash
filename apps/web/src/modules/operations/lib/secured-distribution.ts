@@ -29,6 +29,7 @@ import {
   isYmd,
   type OperationsDayBoardPersonDto,
   type OperationsDayBoardVehicleCrewDto,
+  type OperationsSecuredDistributionHandoverDto,
   type OperationsSecuredDistributionPackagesDto,
   type OperationsSecuredDistributionRowDto,
   type OperationsShipmentDto,
@@ -36,6 +37,7 @@ import {
 } from '@ecms/contracts';
 import { record, startHistory, type UndoHistory } from './crew-undo';
 import { boardFigures } from './day-board';
+import { cairoStamp, ltrIsolate } from './shipment-log';
 
 /** The fields of a distribution row these rules read — the specs build rows with no more. */
 export type DistributionRowFacts = Pick<
@@ -60,20 +62,15 @@ export type DistributionVan = Pick<
 > & { securedType?: boolean };
 
 /**
- * «تسليم المحصنات»'s day from the URL (`?date=`), or null for the server's default — TODAY in Cairo.
- * Null as well for anything that is not a real calendar day, and for a day BEFORE `today`: the
- * vault hands over today's vans only and reads the days to come as the plan — a past day's vans have
- * left, so a stale bookmark opens on today. (Round 30: «توزيع المحصنات» opens a past day as its
- * record — `readDistributionDay`; the vault's screen keeps this rule.)
- */
-export const readDistributionDate = (raw: string | null, today: string): string | null =>
-  raw !== null && isYmd(raw) && raw >= today ? raw : null;
-
-/**
  * Round 30 — «عاوز هنا يقدر يجيب اليوم اللى قبله ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل يعنى»:
  * «توزيع المحصنات»'s day from the URL — ANY real calendar day, a past one too (it opens as that day's
  * record, `isRecordDay`); null for the server's default, today in Cairo, and for anything that is
  * not a real day.
+ *
+ * Round 33 — «انا عاوزك تفتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط زى ما عملنا فى شاشة
+ * توزيع المحصنات»: «تسليم المحصنات»'s day too. It had its own reader (`readDistributionDate`), which
+ * turned a day before today into today («a past day's vans have left»); a past day now opens there as
+ * its record as well, view only — and its «تسليم» stays today's, on the server too.
  */
 export const readDistributionDay = (raw: string | null): string | null =>
   raw !== null && isYmd(raw) ? raw : null;
@@ -565,6 +562,98 @@ export const handoverRequest = <
 ): { crewAssignmentId: string; shipmentIds: string[] } | null => {
   const ids = handoverShipments(rows, crewAssignmentId).map((row) => row.id);
   return ids.length === 0 ? null : { crewAssignmentId, shipmentIds: ids };
+};
+
+// ── Round 33 — «تسليم المحصنات» on a past day: its record ─────────────────────────────────────
+//
+// The owner: «انا عاوزك تفتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط زى ما عملنا فى شاشة
+// توزيع المحصنات». A past day opens as that day's RECORD (`isRecordScreen`, the distribution's own
+// rule): each van with what rode it, and what became of each محصنة on it as the vault reads it back —
+// handed over (when, and by whom: `recordHandovers`), kept in the vault, or never received. No
+// «تسليم», no confirmation; «طباعة» prints the record and says so.
+
+/** One shipment the vault handed over on a record: when (ISO instant) and by whom (null: unnamed). */
+export interface Handover {
+  at: string;
+  byName: string | null;
+}
+
+/**
+ * The record's handovers (`recordHandovers` on the read of a past day), by shipment id — null when
+ * the read carries none: today and every later day (nothing listed there has left), or a reader
+ * without the vault's grant.
+ */
+export const recordHandovers = (
+  list: readonly OperationsSecuredDistributionHandoverDto[] | null | undefined,
+): ReadonlyMap<string, Handover> | null =>
+  list === null || list === undefined
+    ? null
+    : new Map(
+        list.map(({ shipmentId, handedOverAt, handedOverByName }) => [
+          shipmentId,
+          { at: handedOverAt, byName: handedOverByName },
+        ]),
+      );
+
+/**
+ * What became of a محصنة on a record's van, for the vault — by its status NOW:
+ *   · `handedOver` — it left the vault (out for delivery, or delivered since);
+ *   · `keptInVault` — the vault still holds it: it was not handed over that day;
+ *   · `notReceived` — the vault never took it in, so it could not leave with the van.
+ */
+export type RecordHandoverState = 'handedOver' | 'keptInVault' | 'notReceived';
+
+export const recordHandoverState = (
+  row: Pick<DistributionRowFacts, 'status'>,
+): RecordHandoverState =>
+  row.status === 'dispatched' || row.status === 'completed'
+    ? 'handedOver'
+    : row.status === 'inVault'
+      ? 'keptInVault'
+      : 'notReceived';
+
+/** A record's van as the vault reads it back (`vanHandoverRecord`). */
+export interface VanHandoverRecord {
+  /** How many of its load left the vault. */
+  handedOver: number;
+  /** How many did not — kept in the vault, or never received. */
+  notHandedOver: number;
+  /** The LAST release among them (ISO instant), or null when the read names none. */
+  at: string | null;
+  /** Who pressed «تسليم» for them, each once, in the order they did; the unnamed left out. */
+  names: string[];
+}
+
+export const vanHandoverRecord = (
+  load: readonly Pick<DistributionRowFacts, 'id' | 'status'>[],
+  handovers: ReadonlyMap<string, Handover> | null,
+): VanHandoverRecord => {
+  const out = load.filter((row) => recordHandoverState(row) === 'handedOver');
+  const known = out
+    .map((row) => handovers?.get(row.id))
+    .filter((handover): handover is Handover => handover !== undefined)
+    .sort((a, b) => a.at.localeCompare(b.at));
+  const names: string[] = [];
+  for (const { byName } of known) {
+    if (byName !== null && byName !== '' && !names.includes(byName)) names.push(byName);
+  }
+  return {
+    handedOver: out.length,
+    notHandedOver: load.length - out.length,
+    at: known.at(-1)?.at ?? null,
+    names,
+  };
+};
+
+/**
+ * When a record's محصنة left the vault, as its van and its card say it — the Cairo clock, whatever
+ * the reader's browser zone («10:15»), with the Cairo day before it when that is not the record's
+ * own day («2026-11-19 10:15»). Latin figures in a left-to-right isolate, so the Arabic sentence
+ * around them never reorders them.
+ */
+export const handoverWhen = (at: string, day: string): string => {
+  const { day: on, time } = cairoStamp(at);
+  return ltrIsolate(time === '' ? on : on === day ? time : `${on} ${time}`);
 };
 
 /** A person's name as the cards print it — «…» where the directory could not name them. */

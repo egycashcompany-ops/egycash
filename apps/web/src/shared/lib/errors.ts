@@ -62,6 +62,22 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // A cancelled receipt asked for a shipment no longer in the vault (dispatched since, or never in).
     OPERATIONS_SECURED_NOT_IN_VAULT:
       'This secured shipment is not in the vault — its receipt can no longer be cancelled.',
+    // Round 33 B — «الشحنات المسلَّمة»'s ✓ and its undo. The dialog marks its own boxes; these are
+    // the same refusals wherever else they surface (a row that moved under the screen).
+    OPERATIONS_SHIPMENT_NOT_DELIVERED:
+      'This shipment has not reached its bank yet — it can be confirmed once it is delivered.',
+    OPERATIONS_DELIVERY_ALREADY_CONFIRMED: 'This delivery is already confirmed.',
+    OPERATIONS_DELIVERY_NOT_CONFIRMED:
+      'This delivery is not confirmed any more — there is nothing to undo.',
+    OPERATIONS_DELIVERY_RECEIPT_NUMBER_REQUIRED:
+      'Enter the receipt number to confirm the delivery.',
+    OPERATIONS_DELIVERY_RECEIPT_NUMBER_TOO_LONG: 'The receipt number is too long.',
+    OPERATIONS_DELIVERY_BILLED_SIDE_REQUIRED:
+      'Choose the bank billed for moving the shipment — “From” or “To”.',
+    // Round 33 critic — the edit form, on a shipment whose delivery is confirmed with its receipt:
+    // its two branches are what the bank billed was chosen between.
+    OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED:
+      'This delivery is confirmed with its receipt, and the bank billed was chosen between its two branches. Undo the confirmation on “Delivered shipments” first, then change “From branch” or “To branch”.',
     // Round 21b — «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى»: a seal the
     // vault still holds on another محصنة. The receive form marks the seal and names that محصنة
     // itself; these are the same refusal wherever else it surfaces.
@@ -135,7 +151,37 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'The counter reading must be higher than the last reading recorded for this printer — if its counter was reset, tick «The printer’s counter was reset».',
     IT_CONSUMABLE_COUNTER_ABOVE_NEXT:
       'This reading is dated before a later reading of the same printer, so it must be lower than that one.',
+    // Administrative Affairs — the master data's refusals (administration-module-design-flows.md
+    // §5.15). Each dialog also words the field a refusal names beside that field, from its
+    // `details`; these are the refusals themselves, wherever they surface.
+    ADMINISTRATION_DUPLICATE:
+      'Another record, active or retired, already has this name, code or barcode — a retired one is brought back, not added again.',
+    ADMINISTRATION_CATEGORY_PARENT_INVALID:
+      'This category cannot go under that parent: categories have two levels, and a category with subcategories stays at the top.',
+    ADMINISTRATION_STOCK_LEVELS_ORDER:
+      'The stock levels are out of order: where set, minimum ≤ reorder point ≤ maximum.',
+    // An item's unit or category, or one of a supplier's categories (P1b.1): said of whatever the
+    // record names, never of one kind of record.
+    ADMINISTRATION_REFERENCE_INACTIVE:
+      'A unit or category chosen is retired, so no record can be given it anew — choose an active one.',
+    ADMINISTRATION_SUBCATEGORY_REQUIRED:
+      'The category chosen has subcategories — file the item under one of them.',
+    ADMINISTRATION_EMPLOYEE_EXITED:
+      'The keeper chosen has left — choose somebody who works here today.',
+    ADMINISTRATION_DEACTIVATION_BLOCKED:
+      'This warehouse cannot be retired while it holds stock or a document not yet ended names it.',
+    ADMINISTRATION_ATTACHMENT_LIMIT:
+      'This list already holds 20 documents, as many as it takes — remove one before adding another.',
+    // Compliance and Risks — the files page's refusals (compliance-files-design.md §8).
+    COMPLIANCE_FOLDER_NAME_TAKEN: 'Another folder already has this name — choose a different one.',
+    COMPLIANCE_VIEWER_INVALID:
+      'A folder is shared only with employees who have an active account — someone chosen does not.',
+    COMPLIANCE_FILE_CONTENT_MISMATCH:
+      'This file is not what its name says — a renamed picture, perhaps. Save it as a real PDF, Word or Excel file and try again.',
     RATE_LIMITED: 'Too many requests — please slow down.',
+    // The server's own sentence names the file category's internal key («…for category
+    // administration-supplier-documents»), so no reader is ever shown it.
+    FILE_TYPE_NOT_ALLOWED: 'This kind of file is not accepted here.',
     FILE_TOO_LARGE: 'That file is too large.',
     PAYLOAD_TOO_LARGE: 'What was sent is too large to save at once.',
     FILE_BLOCKED: 'The virus scanner blocked this file.',
@@ -155,7 +201,8 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     ORG_UNIT_NOT_EDITABLE:
       'لا يمكن تعديل هذه الإدارة أو هذا القسم من هنا: غير مربوط بقائمة الشركة أو موقوف فيها.',
     ORG_SECTION_NAME_TAKEN: 'يوجد قسم بهذا الاسم في هذه الإدارة.',
-    BRANCH_WITHOUT_DEPARTMENT: 'الإدارة غير موجودة أو غير مربوطة بقائمة الشركة في أحد الفروع المحددة.',
+    BRANCH_WITHOUT_DEPARTMENT:
+      'الإدارة غير موجودة أو غير مربوطة بقائمة الشركة في أحد الفروع المحددة.',
     JOB_PLACE_NOT_ALLOWED:
       'لا يمكن وضع الوظيفة في هذا المكان: الوظيفة أو القسم موقوف، أو القسم لا يتبع هذه الإدارة.',
     ORG_CATALOG_ENTRY_IN_USE: 'توجد وظائف موضوعة في هذا البند، فلا يمكن حذفه.',
@@ -183,6 +230,15 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_SECURED_ALREADY_PICKED_UP:
       'استلام هذه المحصنة مؤكَّد بالفعل — من قائدها أو من العمليات.',
     OPERATIONS_SECURED_NOT_IN_VAULT: 'هذه المحصنة ليست بالخزينة، فلم يعد إلغاء استلامها ممكنًا.',
+    OPERATIONS_SHIPMENT_NOT_DELIVERED: 'لم تصل هذه الشحنة إلى بنكها بعد، فلا يمكن تأكيد تسليمها.',
+    OPERATIONS_DELIVERY_ALREADY_CONFIRMED: 'هذا التسليم مؤكَّد بالفعل.',
+    OPERATIONS_DELIVERY_NOT_CONFIRMED: 'لم يعد هذا التسليم مؤكَّدًا، فلا يوجد ما يُلغى.',
+    OPERATIONS_DELIVERY_RECEIPT_NUMBER_REQUIRED: 'أدخل رقم الإيصال لتأكيد التسليم.',
+    OPERATIONS_DELIVERY_RECEIPT_NUMBER_TOO_LONG: 'رقم الإيصال أطول من المسموح.',
+    OPERATIONS_DELIVERY_BILLED_SIDE_REQUIRED:
+      'اختر البنك الذي تُحتسب عليه تكلفة النقل: «من» أو «إلى».',
+    OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED:
+      'تسليم هذه الشحنة مؤكَّد بالإيصال، وقد اختير البنك الذي تُحتسب عليه تكلفة النقل من فرعيها. ألغِ التأكيد في «الشحنات المسلَّمة» أولًا، ثم غيِّر «من فرع» أو «إلى فرع».',
     OPERATIONS_SEAL_HELD_IN_VAULT:
       'أحد أختام هذا الاستلام ما زال في الخزينة على محصنة أخرى، ولا يُستلم مجددًا إلا بعد خروجها منها.',
     OPERATIONS_CREW_DAY_MISMATCH:
@@ -225,7 +281,28 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'قراءة العداد يجب أن تكون أكبر من آخر قراءة مسجّلة لهذه الطابعة — وإذا صُفِّر عدادها فحدِّد «تم تصفير عداد الطابعة».',
     IT_CONSUMABLE_COUNTER_ABOVE_NEXT:
       'تاريخ هذه القراءة سابق لقراءة لاحقة مسجّلة للطابعة نفسها، فيجب أن تكون أقل منها.',
+    ADMINISTRATION_DUPLICATE:
+      'هذا الاسم أو الكود أو الباركود مسجَّل لسجل آخر، نشطًا كان أو موقوفًا — والموقوف يُعاد تفعيله ولا يُضاف مرة أخرى.',
+    ADMINISTRATION_CATEGORY_PARENT_INVALID:
+      'لا يمكن وضع هذا التصنيف تحت ذلك التصنيف: للتصنيفات مستويان، والتصنيف الذي له تصنيفات فرعية يبقى رئيسيًا.',
+    ADMINISTRATION_STOCK_LEVELS_ORDER:
+      'حدود المخزون غير مرتبة: عند تحديدها يكون الحد الأدنى ≤ حد إعادة الطلب ≤ الحد الأقصى.',
+    ADMINISTRATION_REFERENCE_INACTIVE:
+      'وحدة أو تصنيف مما اخترته موقوف، فلا يُسنَد إلى أي سجل من جديد — اختر بديلًا نشطًا.',
+    ADMINISTRATION_SUBCATEGORY_REQUIRED: 'للتصنيف المختار تصنيفات فرعية — أدرج الصنف تحت أحدها.',
+    ADMINISTRATION_EMPLOYEE_EXITED:
+      'ترك أمين المخزن المختار العمل — اختر أحدًا ممن يعملون لدينا اليوم.',
+    ADMINISTRATION_DEACTIVATION_BLOCKED:
+      'لا يمكن إيقاف هذا المخزن ما دام فيه رصيد أو يشير إليه مستند لم يُغلق بعد.',
+    ADMINISTRATION_ATTACHMENT_LIMIT:
+      'تضم هذه القائمة عشرين مستندًا، وهو أقصى ما تتسع له — أزِل أحدها قبل إضافة غيره.',
+    COMPLIANCE_FOLDER_NAME_TAKEN: 'يوجد مجلد آخر بهذا الاسم — اختر اسمًا غيره.',
+    COMPLIANCE_VIEWER_INVALID:
+      'لا يُشارَك المجلد إلا مع موظفين لهم حساب نشط، وبين من اخترتهم من ليس له حساب نشط.',
+    COMPLIANCE_FILE_CONTENT_MISMATCH:
+      'محتوى هذا الملف لا يطابق امتداده — ربما صورة غُيِّر اسمها. احفظه ملف PDF أو Word أو Excel حقيقيًا ثم أعد المحاولة.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
+    FILE_TYPE_NOT_ALLOWED: 'هذا النوع من الملفات غير مقبول هنا.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',
     PAYLOAD_TOO_LARGE: 'حجم البيانات المُرسَلة أكبر من أن تُحفظ دفعة واحدة.',
     FILE_BLOCKED: 'حظر فاحص الفيروسات هذا الملف.',

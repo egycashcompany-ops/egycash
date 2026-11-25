@@ -810,6 +810,8 @@ const CREW_PLAN_KEYS = [
     'unworn',
     'outside',
     'empty',
+    // Round 34 C — «بدون لون» picked on a row, over its type's colour.
+    'noneHint',
   ].map((key) => `operations.crewPlan.colour.${key}`),
   ...[
     'open',
@@ -824,12 +826,14 @@ const CREW_PLAN_KEYS = [
     'empty',
     'saved',
     'stale',
+    'pickNone',
   ].map((key) => `operations.crewPlan.typeColours.${key}`),
   // Round 24 — «تراجع», one operation a press: the button's words, and each operation's (Round 24b:
   // a colour picked, and a row given back its type's).
   ...['title', 'none', 'done'].map((key) => `operations.crewPlan.undo.${key}`),
   ...[
-    ...['place', 'free', 'direction', 'time', 'type', 'colour', 'colourAuto', 'notes'],
+    ...['place', 'free', 'direction', 'time', 'type', 'colour', 'colourAuto', 'colourNone'],
+    'notes',
     ...['addRow', 'removeRow', 'clearRow', 'giveVan', 'dropVan', 'standingLoad', 'standingClear'],
     'restoreRow',
   ].map((key) => `operations.crewPlan.undo.kind.${key}`),
@@ -931,6 +935,9 @@ const SHIFT_TYPE_KEYS = [
     'restore',
     'archived',
     'restored',
+    // Round 34 C — «مش لازم نوع يكون واخد اجبارى لون».
+    'noColour',
+    'noColourHint',
   ].map((key) => `operations.catalogs.shiftType.${key}`),
   ...OPERATIONS_SHIFT_TYPE_COLOURS.map(
     (colour) => `operations.catalogs.shiftType.colours.${colour}`,
@@ -949,8 +956,56 @@ const ROUND26_DISTRIBUTION_KEYS = [
   ),
 ];
 
+/** Round 33 B — «الشحنات المسلَّمة»: its row, its filter, its ✓ and undo, the ✓'s dialog. */
+const DELIVERED_KEYS = [
+  'operations.nav.deliveredShipments',
+  'operations.cards.deliveredShipments',
+  ...[
+    'day',
+    'empty',
+    'filter',
+    'filter.awaiting',
+    'filter.confirmed',
+    'filter.all',
+    'awaiting',
+    'confirmed',
+    'receiptNo',
+    'billedTo',
+    'side.origin',
+    'side.destination',
+    'noPhoto',
+    'confirm',
+    'undo',
+    'undoConfirm',
+    'undone',
+    'dialog.title',
+    'dialog.save',
+    'receipt.label',
+    'receipt.hint',
+    'receipt.required',
+    'receipt.tooLong',
+    'photo.label',
+    'photo.optional',
+    'photo.current',
+    'photo.pick',
+    'photo.change',
+    'photo.warning',
+    'photo.warningCannotPick',
+    'side.label',
+    'side.sameBank',
+    'side.required',
+    'done',
+    'doneNoPhoto',
+    'photoFailed',
+    // Round 33 critic — the default day moved on under a screen left open.
+    'dayMoved.title',
+    'dayMoved',
+  ].map((key) => `operations.delivered.${key}`),
+];
+
 const ALL_KEYS = [
   ...SHELL_KEYS,
+  ...DELIVERED_KEYS,
   ...CATALOG_KEYS,
   ...BOARD_KEYS,
   ...CREW_KEYS,

@@ -62,7 +62,7 @@ const permissionsIn = (source) => {
   return out;
 };
 
-const MODULES = ['hr', 'fleet', 'it', 'operations', 'gold', 'atm'].map(
+const MODULES = ['hr', 'fleet', 'it', 'operations', 'gold', 'atm', 'administration', 'compliance'].map(
   (id) => `apps/api/src/modules/${id}/${id}.module.ts`,
 );
 const pages = [...platformPages];

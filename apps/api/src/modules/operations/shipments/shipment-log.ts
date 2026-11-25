@@ -162,6 +162,11 @@ const SHIPMENT_FIELDS: Readonly<Record<string, FieldRule>> = {
   // Round 10 — the reason typed when the vault's receipt was cancelled. Recorded on the SHIPMENT's
   // row (not only the custody's) so every reader of the log sees why, vault grant or not.
   receiptCancelReason: { field: 'reason', render: plain },
+  // Round 33 B — «الشحنات المسلَّمة»'s ✓ and its undo: the paper receipt's number and the bank billed
+  // (written by delivery-confirmation.service.ts; the side and the branch it also records are the
+  // record's, not printed — the bank is what is billed).
+  deliveryReceiptNumber: { field: 'deliveryReceiptNumber', render: plain },
+  deliveryBilledBankId: { field: 'billedBank', render: bank, ref: 'bankIds' },
 };
 
 const LEG_CREW_FIELDS: Readonly<Record<string, FieldRule>> = {
@@ -338,6 +343,15 @@ const shipmentEntry = (row: AuditLogDto, names: ShipmentLogNames): Drafted | nul
               kind: 'pickupConfirmed',
               changes: [{ field: 'pickedUpBy', old: null, new: pickedUpBy(pickup.new) }],
             };
+      }
+      // Round 33 B — the delivery confirmed with its receipt («الشحنات المسلَّمة»'s ✓), or taken back
+      // («إلغاء التأكيد»). Its OWN act — never the desk's `received`, which moves the status.
+      const delivery = changeOf(row, 'deliveryReceiptNumber');
+      if (delivery !== undefined) {
+        return {
+          kind: delivery.new == null ? 'deliveryUnconfirmed' : 'deliveryConfirmed',
+          changes: printed(row, SHIPMENT_FIELDS, names),
+        };
       }
       return { kind: 'edited', changes: printed(row, SHIPMENT_FIELDS, names) };
     }

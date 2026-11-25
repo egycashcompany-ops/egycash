@@ -103,6 +103,25 @@ describe('errorMessage', () => {
     expect(new Set(words).size).toBe(words.length);
   });
 
+  // Round 33 critic — the shipment form's edit of «من فرع» / «إلى فرع» on a delivery confirmed with
+  // its receipt: the form says the refusal with `errorMessage`, so it must name the way out — the
+  // undo on «الشحنات المسلَّمة» — in the reader's language, never the server's English.
+  it('words the confirmed delivery’s branch lock in both languages, naming the way out', () => {
+    const refused = new ApiError(
+      ErrorCodes.OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED,
+      'server english',
+      409,
+    );
+    const ar = errorMessage(refused, 'ar');
+    const en = errorMessage(refused, 'en');
+    expect(ar).not.toBe('server english');
+    expect(en).not.toBe('server english');
+    expect(ar).toContain('«الشحنات المسلَّمة»');
+    expect(ar).toContain('«من فرع»');
+    expect(ar).toContain('«إلى فرع»');
+    expect(en).toContain('“Delivered shipments”');
+  });
+
   // «صرف الخزينة» (Round 10) — its two dialogs say a refusal themselves (`errorMessage`): a crew
   // from another day than the shipment's, a captain no longer on the van, a release of a shipment
   // with no crew. Each in both languages, never the server's English.
@@ -156,6 +175,79 @@ describe('errorMessage', () => {
     expect(new Set(words).size).toBe(words.length);
     expect(words[0]).toContain('البيانات المرجعية');
     expect(words[2]).toContain('المناطق');
+  });
+
+  // Administrative Affairs (P1a.W) — the master data's refusals reach the module's dialogs, which say
+  // them in their alert box with `errorMessage`, and any other surface through the global notifier.
+  // EVERY code the module declares is worded, read off the contracts rather than listed by hand, so
+  // a refusal a later slice adds fails here until it has its words — in both languages, each its
+  // own, the Arabic in Arabic, never the server's English.
+  it('words every Administrative Affairs refusal in both languages, each its own', () => {
+    const codes = Object.values(ErrorCodes).filter((code) => code.startsWith('ADMINISTRATION_'));
+    expect(codes, 'the module declares its refusals').toEqual(
+      expect.arrayContaining([
+        ErrorCodes.ADMINISTRATION_CATEGORY_PARENT_INVALID,
+        ErrorCodes.ADMINISTRATION_DUPLICATE,
+        ErrorCodes.ADMINISTRATION_STOCK_LEVELS_ORDER,
+        ErrorCodes.ADMINISTRATION_REFERENCE_INACTIVE,
+        ErrorCodes.ADMINISTRATION_SUBCATEGORY_REQUIRED,
+        ErrorCodes.ADMINISTRATION_EMPLOYEE_EXITED,
+        ErrorCodes.ADMINISTRATION_DEACTIVATION_BLOCKED,
+        ErrorCodes.ADMINISTRATION_ATTACHMENT_LIMIT,
+      ]),
+    );
+    for (const locale of ['ar', 'en'] as const) {
+      const words = codes.map((code) => {
+        const text = errorMessage(new ApiError(code, 'server english', 422), locale);
+        expect(text, `${locale}: ${code}`).not.toBe('server english');
+        if (locale === 'ar') expect(text, code).toMatch(/[\u0621-\u064A]/u);
+        return text;
+      });
+      expect(new Set(words).size, locale).toBe(words.length);
+    }
+    // The duplicate's own sentence names what a retired record asks for: bringing it back.
+    expect(
+      errorMessage(new ApiError(ErrorCodes.ADMINISTRATION_DUPLICATE, 'taken', 409), 'ar'),
+    ).toContain('تفعيله');
+  });
+
+  // P1b.W — the supplier screens meet two of them: a full papers list, and a retired category. The
+  // retired reference is no longer an item's alone (a supplier names categories too, P1b.1), so its
+  // sentence names what was chosen and never one kind of record; the full list says what to do.
+  it('words a full papers list and a retired reference for every record that meets them', () => {
+    const inactive = (locale: 'ar' | 'en'): string =>
+      errorMessage(new ApiError(ErrorCodes.ADMINISTRATION_REFERENCE_INACTIVE, 'x', 422), locale);
+    expect(inactive('en')).not.toMatch(/\bitem/iu);
+    expect(inactive('en')).toMatch(/\bcategory\b/u);
+    expect(inactive('ar')).not.toContain('الصنف');
+    expect(inactive('ar')).toContain('تصنيف');
+    const full = (locale: 'ar' | 'en'): string =>
+      errorMessage(new ApiError(ErrorCodes.ADMINISTRATION_ATTACHMENT_LIMIT, 'x', 422), locale);
+    expect(full('en')).toContain('20');
+    expect(full('en')).toMatch(/\bremove\b/u);
+    expect(full('ar')).toContain('عشرين');
+    expect(full('ar')).toContain('أزِل');
+    // The card that raises it calls them documents in both languages, and so does its refusal.
+    expect(full('en')).toMatch(/\bdocuments\b/u);
+    expect(full('ar')).toContain('مستند');
+  });
+
+  // P1b.W — a supplier document of another type meets the file service's refusal, whose sentence
+  // names the category's internal key in English («Type text/plain is not allowed for category
+  // administration-supplier-documents»): the reader is told in their own words, without the key.
+  it('words a file type the category does not take, never with the server’s sentence', () => {
+    const server = 'Type text/plain is not allowed for category administration-supplier-documents';
+    for (const locale of ['en', 'ar'] as const) {
+      const said = errorMessage(
+        new ApiError(ErrorCodes.FILE_TYPE_NOT_ALLOWED, server, 422),
+        locale,
+      );
+      expect(said, locale).not.toContain('administration-supplier-documents');
+      expect(said, locale).not.toBe(server);
+    }
+    expect(
+      errorMessage(new ApiError(ErrorCodes.FILE_TYPE_NOT_ALLOWED, server, 422), 'ar'),
+    ).toContain('النوع');
   });
 });
 

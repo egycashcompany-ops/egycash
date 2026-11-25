@@ -1,7 +1,7 @@
 // إقرار استلام — the IT department's custody acknowledgment, printed from the system (FR-18).
 //
 // «ومعلش هنغير التصميم بتاع الطباعة فى الـ IT فقط لدا»: the owner replaced the item-table receipt
-// with the department's own form, and this is that form, ONE PAGE PER DEVICE. The letterhead (the
+// with the department's own form, and this is that form. The letterhead (the
 // logo, and «قطاع تكنولوجيا المعلومات» on its banner) over a rule; «إقرار استلام»; the statement —
 // «أقر أنا / … بوظيفة … بشركة إيجي كاش للحلول النقدية، كود …، بطاقة رقم قومي … بأنني قد
 // استلمت [النوع] … برقم مسلسل … ومواصفاته كالتالي:», the form's «جهاز» now the kind of what is
@@ -32,8 +32,17 @@
 // Under the signature the name is the first three PARTS («مش لازم رباعي ممكن ثلاثي فقط تحت عند
 // الإمضاء»), on one line; the statement above it keeps the full name.
 //
-// One receipt is one number: a hand-over of three devices prints three pages under it, each with
-// the page count in the footer's red block.
+// SEVERAL DEVICES ARE ONE SHEET (2026-11-24): «عند تسليم أكثر من أصل يتم عمل إيصال لكل أصل على
+// حدي أنا عايز يتطبعوا فى ورقه واحده». A hand-over was always one receipt under one number, but it
+// printed a page per device, each with its own statement and signature, and a page per device
+// reads as a receipt per device. Now a paper of one device is the form above, word for word, and a
+// paper of several is ONE statement — «بأنني قد استلمت الأجهزة الآتية وعددها (٣) وبياناتها
+// كالتالي:» — a table with a row per device (its kind, make and model, serial, its specifications in
+// short, its accessories), ONE undertaking and ONE signature. The owner approved it from a sample.
+// The devices are «هي», as Arabic calls a plural of things, so the undertaking is the form's own
+// feminine; a department's paper says «لتكون في عهدة إدارة …». A list too long for the sheet runs
+// on to further pages, each headed by the table's header row and the paper's number; the closing
+// goes over whole, and takes the list's last row with it wherever the page leaves room for both.
 //
 // Standalone HTML on purpose — the `fleet-report-print.ts` / `gold-print.ts` idiom: what prints is
 // what this file says and nothing the app's stylesheet contributes. No web font either: the page
@@ -49,6 +58,7 @@ import {
   IT_CUSTODY_RECEIPT_FORM,
   formatCustodyReceiptNumber,
   leadingNameParts,
+  type ItAssetSpecKey,
   type ItCustodyReceiptDocumentDto,
   type ItCustodyReceiptLineDto,
 } from '@ecms/contracts';
@@ -274,13 +284,19 @@ const withoutKind = (named: string, kind: string): string => {
  * starts with it («كمبيوتر مكتبي HP» is «جهاز HP»), nor «جهاز» twice.
  */
 const device = (line: ItCustodyReceiptLineDto): string => {
-  const kind = deviceKind(line);
-  const rest = withoutKind(
-    withoutKind(makeAndModel(line) || line.name.trim(), line.deviceType?.trim() ?? ''),
-    kind,
-  );
-  return `<span class="kind">${esc(kind)}</span> ${fill(rest, 24, rest.length <= WHOLE_DEVICE_NAME)}`;
+  const rest = deviceName(line);
+  return `<span class="kind">${esc(deviceKind(line))}</span> ${fill(rest, 24, rest.length <= WHOLE_DEVICE_NAME)}`;
 };
+
+/**
+ * What follows the item's kind: its make and model, or its own name when neither is on file — the
+ * kind's word taken off its front, as `device` writes it.
+ */
+const deviceName = (line: ItCustodyReceiptLineDto): string =>
+  withoutKind(
+    withoutKind(makeAndModel(line) || line.name.trim(), line.deviceType?.trim() ?? ''),
+    deviceKind(line),
+  );
 
 /** One row of the specifications table. */
 export interface SpecRow {
@@ -424,9 +440,10 @@ export const receiptFooter = (number: string, block: string): string =>
 /**
  * One sheet of the form: the letterhead, what this paper says it hands over (`body` — the
  * statement and what follows it), the closing and the footer. `block` is what the footer's red
- * block says: a page count, or nothing. `gender` is the gender of what the sheet hands over, and
- * the undertaking agrees with it. It defaults to the form's own masculine, which is right for
- * «جهاز» and for the line paper's «خط».
+ * block says — nothing, on every acknowledgment the department prints since a paper of several
+ * devices became one sheet (2026-11-24); it held the page count before. `gender` is the gender of
+ * what the sheet hands over, and the undertaking agrees with it. It defaults to the form's own
+ * masculine, which is right for «جهاز» and for the line paper's «خط».
  */
 export const receiptSheet = ({
   paper,
@@ -449,38 +466,168 @@ export const receiptSheet = ({
 </section>`;
 
 /**
- * One device's page. Its words for the item agree with that item's own kind, so a paper that hands
- * over a laptop and a screen says «ومواصفاته» on one page and «ومواصفاتها» on the other.
+ * The statement up to what was received: «أقر أنا / … بوظيفة … بشركة إيجي كاش للحلول النقدية، كود …،
+ * بطاقة رقم قومي …», and on a department custody paper (2026-11-19) «، بصفتي المسؤول عن إدارة …» —
+ * the responsible person acknowledges FOR the department. One device's page and the sheet of
+ * several say it in the same words, because it is the same signer saying it.
  */
-const page = (
-  paper: ItCustodyReceiptDocumentDto,
-  line: ItCustodyReceiptLineDto,
-  index: number,
-  count: number,
-): string => {
+const statementOpening = (paper: ItCustodyReceiptDocumentDto): string => {
+  const custodian = paperCustodian(paper);
+  const capacity =
+    custodian === null ? '' : `، بصفتي المسؤول عن إدارة ${fill(custodian.department, 24)}`;
+  return `أقر أنا / ${fill(paper.employeeName, 36)} بوظيفة ${fill(paper.jobTitle?.ar, 32)} بشركة إيجي كاش للحلول النقدية، كود ${fill(paper.employeeCode === null ? null : formDigits(paper.employeeCode), 12, true)}، بطاقة رقم قومي ${fill(paper.nationalId === null ? null : formDigits(paper.nationalId), 26, true)}${capacity}`;
+};
+
+/**
+ * A department custody paper's «… في عهدة إدارة … بموقع …», after what was received: the
+ * one-device page says «ليكون», as it has since 2026-11-19, and a sheet of several «لتكون» — the
+ * devices are «هي». Nothing on an employee's paper.
+ */
+const heldAt = (paper: ItCustodyReceiptDocumentDto, verb: 'ليكون' | 'لتكون'): string => {
+  const custodian = paperCustodian(paper);
+  return custodian === null
+    ? ''
+    : ` ${verb} في عهدة إدارة ${fill(custodian.department, 24)} بموقع ${fill(custodian.location, 20)}`;
+};
+
+/** On a department's paper, the department the signer signs for; null on an employee's. */
+const signsFor = (paper: ItCustodyReceiptDocumentDto): string | null => {
+  const custodian = paperCustodian(paper);
+  return custodian === null ? null : (custodian.department ?? '');
+};
+
+/**
+ * A paper of ONE device: the form, word for word. Its words for the item agree with that item's
+ * own kind — «ومواصفاته» for a laptop, «ومواصفاتها» for a screen.
+ */
+const page = (paper: ItCustodyReceiptDocumentDto, line: ItCustodyReceiptLineDto): string => {
   const groups = specGroups(line);
   const accessories = line.accessories.filter((item) => item.trim() !== '');
   const gender = kindGender(deviceKind(line));
   const words = RECEIPT_AGREEMENT[gender];
-  // A department custody paper (2026-11-19): the responsible person acknowledges FOR the
-  // department — «بصفتي المسؤول عن إدارة …» — that the device is «في عهدة إدارة … بموقع …».
-  const custodian = paperCustodian(paper);
-  const capacity =
-    custodian === null ? '' : `، بصفتي المسؤول عن إدارة ${fill(custodian.department, 24)}`;
-  const heldAt =
-    custodian === null
-      ? ''
-      : ` ليكون في عهدة إدارة ${fill(custodian.department, 24)} بموقع ${fill(custodian.location, 20)}`;
   return receiptSheet({
     paper,
-    body: `<p class="statement">أقر أنا / ${fill(paper.employeeName, 36)} بوظيفة ${fill(paper.jobTitle?.ar, 32)} بشركة إيجي كاش للحلول النقدية، كود ${fill(paper.employeeCode === null ? null : formDigits(paper.employeeCode), 12, true)}، بطاقة رقم قومي ${fill(paper.nationalId === null ? null : formDigits(paper.nationalId), 26, true)}${capacity} بأنني قد استلمت ${device(line)} برقم مسلسل ${fill(line.serialNumber, 18, true)}${heldAt}${groups.length > 0 ? ` ${words.specs}` : '.'}</p>
+    body: `<p class="statement">${statementOpening(paper)} بأنني قد استلمت ${device(line)} برقم مسلسل ${fill(line.serialNumber, 18, true)}${heldAt(paper, 'ليكون')}${groups.length > 0 ? ` ${words.specs}` : '.'}</p>
   ${groups.length > 0 ? specTable(groups) : ''}
   ${accessories.length > 0 ? `<p class="lead">${words.accessories}</p><div class="items">${accessoryList(accessories)}</div>` : ''}`,
-    block: count > 1 ? `${String(index + 1)}/${String(count)}` : '',
+    block: '',
     gender,
-    onBehalfOf: custodian === null ? null : (custodian.department ?? ''),
+    onBehalfOf: signsFor(paper),
   });
 };
+
+/**
+ * The short names a specification goes by in the devices table's «المواصفات» cell, where the
+ * form's own («Total amount of system memory») would take a line each. In the form's order.
+ */
+export const RECEIPT_SPEC_SHORT_LABELS: Readonly<
+  Record<ItAssetSpecKey | 'networkAdapters', string>
+> = {
+  processor: 'CPU',
+  memory: 'RAM',
+  systemType: 'System',
+  storage: 'Storage',
+  mediaDrive: 'Media',
+  displayAdapter: 'Graphics',
+  graphicsMemory: 'VRAM',
+  networkAdapters: 'Network',
+};
+
+/**
+ * A device's specifications, in short — «CPU: …», «RAM: …» — in the form's order, every row that
+ * has something to say (two network adapters are two rows). Its make and model are not among them:
+ * the table has a column of their own. Empty when nothing is on file.
+ */
+export const specSummary = (line: ItCustodyReceiptLineDto): SpecRow[] =>
+  IT_ASSET_SPEC_TABLE.flatMap(({ rows }) => rows).flatMap(({ key }): SpecRow[] => {
+    if (key === 'manufacturerModel') return [];
+    const label = RECEIPT_SPEC_SHORT_LABELS[key];
+    if (key === 'networkAdapters') {
+      return (line.specs?.networkAdapters ?? [])
+        .filter((value) => value.trim() !== '')
+        .map((value) => ({ label, value }));
+    }
+    const value = line.specs?.[key]?.trim() ?? '';
+    return value === '' ? [] : [{ label, value }];
+  });
+
+/** What a cell of the devices table says when there is nothing to list. */
+const NOTHING = '—';
+
+/**
+ * One device's row of the table: its number, kind, make and model, serial, specs, accessories. A
+ * device with no specifications or accessories says «—»; an unknown serial is left blank for the
+ * pen. The make and model cell holds what is known of them, or the asset's own name when neither
+ * is on file — isolated (`<bdi>`), because an Arabic name with a Latin word in it («طابعة HP
+ * ليزر») must keep its own order inside the left-to-right cell.
+ */
+const deviceRow = (line: ItCustodyReceiptLineDto, index: number): string => {
+  const specs = specSummary(line)
+    .map(({ label, value }) => `<div><b>${esc(label)}:</b> ${esc(value)}</div>`)
+    .join('');
+  const accessories = line.accessories
+    .map((item) => item.trim())
+    .filter((item) => item !== '')
+    .map(esc)
+    .join('، ');
+  return `<tr><td class="n">${arabicDigits.format(index + 1)}</td><td>${esc(deviceKind(line))}</td><td class="en"><bdi>${esc(deviceName(line))}</bdi></td><td class="en serial">${esc(line.serialNumber?.trim() ?? '')}</td><td class="en spec">${specs === '' ? NOTHING : specs}</td><td>${accessories === '' ? NOTHING : accessories}</td></tr>`;
+};
+
+/**
+ * A paper of SEVERAL devices, on one sheet (2026-11-24): one statement, the table of every device,
+ * one undertaking and one signature. The devices are «هي» — a plural of things — so the
+ * undertaking is the form's feminine, «لاستخدامها … عليها … بردها». The table's head carries the
+ * paper's number above its header row: a head is repeated on every page a long list runs onto, so
+ * every page of the paper names it, not only the last one with the footer.
+ */
+const devicesSheet = (paper: ItCustodyReceiptDocumentDto): string =>
+  receiptSheet({
+    paper,
+    body: `<p class="statement">${statementOpening(paper)} بأنني قد استلمت الأجهزة الآتية وعددها (<span class="fill">${arabicDigits.format(paper.lines.length)}</span>)${heldAt(paper, 'لتكون')} وبياناتها كالتالي:</p>
+  <table class="devices">
+    <colgroup><col class="n" /><col class="k" /><col class="m" /><col class="s" /><col /><col class="a" /></colgroup>
+    <thead><tr class="ref"><th colspan="6">${esc(receiptNumberLabel(paper.formNumber))}</th></tr><tr><th>م</th><th>الجهاز</th><th>الماركة / الموديل</th><th>الرقم المسلسل</th><th>المواصفات</th><th>المشتملات</th></tr></thead>
+    <tbody>${paper.lines.map(deviceRow).join('')}</tbody>
+  </table>`,
+    block: '',
+    gender: 'feminine',
+    onBehalfOf: signsFor(paper),
+  });
+
+/**
+ * The devices table's rules — only a paper of several devices carries them. The form's table
+ * borders and shading, Arabic in the form's face and what is written in Latin in the specification
+ * table's, the paper's number above the header row, a row never split across two pages, and the
+ * closing kept whole with the list's last row.
+ */
+export const DEVICES_STYLE = `  /* A hair narrower than the page and centred: print clips a collapsed border drawn on its edge. */
+  .devices { width: calc(100% - 1pt); margin-inline: auto; border-collapse: collapse; table-layout: fixed; font-size: 11pt; line-height: 1.2; }
+  .devices col.n { width: 5%; }
+  .devices col.k { width: 11.7%; }
+  .devices col.m { width: 19.4%; }
+  .devices col.s { width: 17.2%; }
+  .devices col.a { width: 14.5%; }
+  .devices th, .devices td { border: 0.5pt solid #000; padding: 1mm 1.5mm; vertical-align: top; overflow-wrap: anywhere; }
+  .devices th { background: ${RECEIPT_COLORS.shade}; font-size: 11.5pt; text-align: center; }
+  .devices tr.ref th { background: none; border: 0; padding: 0 0 1mm; direction: ltr; text-align: left; font-family: Calibri, Carlito, Arial, sans-serif; font-size: 10pt; font-weight: 400; }
+  .devices tr { break-inside: avoid; }
+  .devices td.n { text-align: center; white-space: nowrap; }
+  .devices td.en { direction: ltr; text-align: left; font-family: 'Times New Roman', Times, serif; }
+  /* A serial has no spaces: on one line when it fits, broken inside its own cell when it does not. */
+  .devices td.serial { font-size: 10.5pt; }
+  .devices td.spec { font-size: 9pt; line-height: 1.25; }
+  /*
+   * A list too long for one page: the closing goes over whole — the undertaking, the oath and the
+   * signature together, never an undertaking split across two pages nor a signature split from its
+   * name or its date — and takes the list's last row with it, so the signed page lists a device.
+   * Measured in Chromium over 2–20 devices with up to six computers' full specifications, only
+   * fifteen or more devices with six such computers defeat it: the browser then has no page with
+   * room for it all, and the closing goes over without a row, at twenty breaking the undertaking.
+   */
+  .undertaking { break-before: avoid; break-inside: avoid; }
+  .undertaking, .oath { break-after: avoid; }
+  .signs { break-inside: avoid; }
+`;
 
 /**
  * The form's page, letterhead, statement, table, signature block and footer, and the tab's own
@@ -622,13 +769,13 @@ export const buildCustodyReceiptHtml = (
   paper: ItCustodyReceiptDocumentDto,
   labels: Pick<ReceiptWindowLabels, 'print' | 'close'>,
 ): string =>
-  receiptDocument({
-    paper,
-    labels,
-    sheets: paper.lines
-      .map((line, index) => page(paper, line, index, paper.lines.length))
-      .join('\n'),
-  });
+  paper.lines.length > 1
+    ? receiptDocument({ paper, labels, sheets: devicesSheet(paper), style: DEVICES_STYLE })
+    : receiptDocument({
+        paper,
+        labels,
+        sheets: paper.lines.map((line) => page(paper, line)).join('\n'),
+      });
 
 /** Write the composed acknowledgment into a tab `openPrintWindow` opened; it prints itself. */
 export const writeCustodyReceipt = (

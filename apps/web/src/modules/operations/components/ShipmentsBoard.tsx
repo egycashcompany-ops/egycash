@@ -72,6 +72,21 @@
 // functions in `lib/day-board.ts`, because the legacy versions of them read rendered HTML
 // (main_ops.ejs:995). The history also hands in its range for the deleted shipments' icon.
 //
+// ROUND 33 B — A FIFTH SCREEN, «الشحنات المسلَّمة» (`pages/DeliveredShipmentsPage.tsx`, `kind=
+// "delivered"`): «زى شاشةاليوم التشغيلى بس يظهر بس اللى اتسلمت». The day board's columns, filters and
+// figures over what reached its bank on one day; its «الحالة» is the delivery's confirmation
+// (`statusCell`, the page's — «تم التسليم» awaiting its ✓, «مؤكَّدة» with the receipt), filtered by
+// «حالة التأكيد» in «التسليم»'s place; its ✓ is the page's `rowAction`. No edit or delete there (the
+// day board's and the history's), but the receipt photo is managed as on the day board
+// (`canManageReceipts`).
+//
+// ROUND 33 C — «عاوز رثم الايصال فى عمود لوحده» (the owner, on the screen's screenshots): on
+// «الشحنات المسلَّمة» alone, the receipt's number has a column of its own, «رقم الإيصال», just before
+// «صورة الإيصال» so a receipt's number and its photo sit together — the number the ✓ recorded, or a
+// quiet «—» on a row still awaiting it (`deliveredReceiptNumber`) — and «الحالة» no longer repeats it.
+// Its box, «رقم الإيصال», stands after «ملاحظات» as its column does. Every other board keeps its
+// columns and its boxes exactly.
+//
 // THE LEGACY TABLE (main_ops.ejs:829-897): م | السيارة | اسم البنك | من فرع | الى فرع | العملة |
 // قيمة الشحنة | قائد الطاقم | التاريخ | النوع | المنطقة | ملاحظات | actions.
 import { Fragment, useState, type ReactNode } from 'react';
@@ -81,6 +96,7 @@ import {
   type OperationsCurrencyDto,
   type OperationsDayBoardShipmentDto,
   type OperationsDayBoardVehicleCrewDto,
+  type OperationsDeliveredShipmentDto,
   type OperationsSecuredStage,
   type OperationsShipmentDto,
   type OperationsShipmentType,
@@ -122,6 +138,7 @@ import {
   boardDelivery,
   boardFigures,
   currencyOfKind,
+  deliveredReceiptNumber,
   isReceived,
   otherCurrencies,
   readDayBoardFilters,
@@ -211,6 +228,9 @@ const SHIPMENTS_TABLE = cn(
   // cells give up most of their side padding too (their badges draw their own frame), which with
   // their narrower badges keeps the actions on a 1440 laptop beside the menu.
   '[&_td:has([data-vault-pickup])]:!px-1 [&_td:has([data-vault-hold])]:!px-1',
+  // Round 33 C — «الشحنات المسلَّمة»'s «رقم الإيصال»: its number's cell too (the photo's box beside
+  // it draws its own frame). With it, a day with a note on a row keeps the ✓ on a 1366 laptop.
+  '[&_td:has([data-delivered-receipt])]:!px-1',
 );
 
 /**
@@ -229,6 +249,10 @@ const SHIPMENTS_TABLE = cn(
  *
  * Measured on the round's stubbed queue: the table needs 1305px with a note on a row, the scroller
  * beside the rail at 1440 has 1318; at 1366 the scroller scrolls sideways a little, as before.
+ *
+ * Round 33 C — «الشحنات المسلَّمة» takes the same room for its fourteenth column, «رقم الإيصال»
+ * (`delivered`): without it the new column pushed the actions 60px off a 1366 laptop's table, the
+ * ✓ under the edge. Its bank keeps its one line (the vault's alone wraps it).
  */
 const VAULT_TABLE = cn(
   '[--board-name-floor:4rem] [--board-notes-cut:4rem]',
@@ -269,8 +293,48 @@ const PERIOD_BAR_LAYOUT = cn(
   'xl:max-[1439px]:[&_button[aria-haspopup]_svg]:!h-3 xl:max-[1439px]:[&_button[aria-haspopup]_svg]:!w-3',
 );
 
+/**
+ * Round 33 C — «الشحنات المسلَّمة»'s bar, eleven boxes since «رقم الإيصال» joined it: on its one row
+ * (from 1280px) the van's box takes a fifth more than an even share. It alone carries the browser's
+ * arrow for its suggestions (`list`), which took the room «كود السيارة» needed once the row was cut
+ * in eleven — measured 5px short at 1366 and 10px at 1440.
+ *
+ * Round 33 C critic — and the rest share the row BY THEIR WORDS, not evenly: cut in eleven, the even
+ * share cut the English «From branch» and «Crew captain» at 1366 and 1440 (5–13px), and the Arabic
+ * «رقم الإيصال» at 1280 (1px), while «اسم البنك» / «Bank», «المنطقة» / «Area» and «ملاحظات» / «Notes»
+ * had room to spare in both languages. Each box's share follows the longer of its two names
+ * (`data-bar-box`, this bar's alone): «من فرع», the captain and the receipt's number more, the
+ * bank, the area and the notes less, «إلى فرع» and the two lists («النوع», «حالة التأكيد») their
+ * even share as before — the total unchanged. Measured on the built screen at 1280, 1366, 1440 and
+ * 1920: every name whole in Arabic, and in English but «Vehicle code», whose last letter or two the
+ * browser's suggestions arrow still covers at 1280 and 1440 (as before this round). With a filter
+ * chosen the reset takes its place at the row's end: at 1280 a few names are then cut a little (as
+ * several were before); from 1366 none is.
+ */
+const DELIVERED_BAR_LAYOUT = cn(
+  'xl:[&>div>*:has(input[list])]:!grow-[1.2]',
+  'xl:[&>div>*:has(input[data-bar-box=bank])]:!grow-[0.9]',
+  'xl:[&>div>*:has(input[data-bar-box=origin])]:!grow-[1.16]',
+  'xl:[&>div>*:has(input[data-bar-box=area])]:!grow-[0.8]',
+  'xl:[&>div>*:has(input[data-bar-box=captain])]:!grow-[1.19]',
+  'xl:[&>div>*:has(input[data-bar-box=notes])]:!grow-[0.87]',
+  'xl:[&>div>*:has(input[data-bar-box=receipt])]:!grow-[1.07]',
+);
+
 /** A figure in the table: monospace, tabular, never broken over two lines. */
 const FIGURE = cn('whitespace-nowrap', NUM);
+/**
+ * Round 33 C — «رقم الإيصال»'s number, typed by hand on the ✓, up to 40 characters. Measured on the
+ * built screen: a number the length receipts have («RC-20418», «77310») is ONE line, never broken —
+ * left to wrap, the table squeezed its column at 1366 and 1440 until Chrome broke «RC-20418» after
+ * its hyphen. A number longer than `RECEIPT_ONE_LINE` characters wraps inside 7rem (at a hyphen
+ * first, else wherever it must), so it makes its row taller and the column no wider than that.
+ * Every character stays on screen — no ellipsis: the number is what the desk reads off the row.
+ */
+export const RECEIPT_ONE_LINE = 12;
+const RECEIPT_NUMBER_SHORT = 'whitespace-nowrap';
+const RECEIPT_NUMBER_LONG =
+  'inline-block max-w-[7rem] whitespace-normal break-words align-middle leading-tight';
 /** An empty cell, as the boards draw one. */
 const DASH = <span className="text-slate-400">—</span>;
 /**
@@ -304,6 +368,8 @@ export interface BoardDatePicker {
    * is for the history's short «من» and «إلى», which always hold a day).
    */
   optional?: boolean;
+  /** The latest day the box takes ('YYYY-MM-DD') — «الشحنات المسلَّمة»'s today. */
+  max?: string;
   value: string;
   onChange: (value: string) => void;
 }
@@ -357,6 +423,7 @@ export const BoardDateBox = ({ picker }: { picker: BoardDatePicker }): JSX.Eleme
         aria-label={picker.label}
         title={picker.label}
         value={picker.value}
+        {...(picker.max === undefined ? {} : { max: picker.max })}
         onChange={(e) => picker.onChange(e.target.value)}
         // On an English page the date would start right after the calendar, where
         // the name is written: it goes to the box's far side instead, as on an Arabic
@@ -435,6 +502,8 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   canConfirmPickup = false,
   canCancelReceipt = false,
   selection,
+  statusCell,
+  canManageReceipts = canEditRows,
 }: {
   /** The page's `useSearchParams()` — the filters live in the URL beside the page's period. */
   search: [URLSearchParams, SetURLSearchParams];
@@ -562,6 +631,19 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   canCancelReceipt?: boolean;
   /** Rows ticked for an act over several (see `BoardSelection`) — a box at each row's start. */
   selection?: BoardSelection<T>;
+  /**
+   * Round 33 B — the row's «الحالة» drawn by the page instead of the board's badge: «الشحنات
+   * المسلَّمة»'s confirmation («تم التسليم» awaiting its ✓, «مؤكَّدة» with the receipt). A
+   * `statusNote` still goes under it.
+   */
+  statusCell?: (row: T) => ReactNode;
+  /**
+   * The receipt photo's upload / replace / delete are offered here (still subject to the grant and
+   * to the row's lock, `ShipmentReceiptImageCell`). The same as `canEditRows` unless a screen says
+   * otherwise: «الشحنات المسلَّمة» edits and deletes nothing, and manages the photo as the day board
+   * does («ويفضل الصورة تكون مرفوعه»).
+   */
+  canManageReceipts?: boolean;
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -588,10 +670,17 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   // A filter this board offers no box for reads as empty: a param with no box on screen never
   // narrows the table.
   const filters = offeredFilters(readDayBoardFilters(sp), kind, stages);
-  // The secured board's columns — the secured screen's and the vault's (`kind`).
-  const secured = kind !== 'shipments';
+  // The secured board's columns — the secured screen's and the vault's (`kind`). «الشحنات
+  // المسلَّمة» (Round 33 B) keeps the day board's: daily rows and محصنات side by side.
+  const secured = kind === 'secured' || kind === 'vault';
+  // Round 33 B — «الشحنات المسلَّمة»: «الحالة» is the delivery's confirmation, its own box.
+  const delivered = kind === 'delivered';
   // Round 13 — «مكان الحاله عمودين»: the vault's board alone says its status in two columns.
   const splitStatus = kind === 'vault';
+  // Round 33 C critic — «الشحنات المسلَّمة»'s boxes name themselves for its bar's shares by their
+  // words (`DELIVERED_BAR_LAYOUT`); every other board's boxes are as they were.
+  const barBox = (name: keyof DayBoardFilters): { 'data-bar-box'?: string } =>
+    delivered ? { 'data-bar-box': name } : {};
   const setFilter = (patch: Partial<DayBoardFilters>): void => {
     const params = new URLSearchParams(sp);
     for (const [name, value] of Object.entries({ ...filters, ...patch })) {
@@ -948,7 +1037,9 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
       render: (row) => {
         const stage = shownStage(row);
         const badge =
-          stage !== null ? (
+          statusCell !== undefined ? (
+            statusCell(row)
+          ) : stage !== null ? (
             <SecuredStageBadge stage={stage} />
           ) : (
             <DeliveryStatusBadge delivery={boardDelivery(row)} />
@@ -994,6 +1085,34 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
         ),
     },
     {
+      key: 'receiptNumber',
+      // Round 33 C — «الشحنات المسلَّمة»'s alone (`delivered`), beside the receipt's photo.
+      header: t('operations.delivered.receiptNo'),
+      render: (row) => {
+        const number = deliveredReceiptNumber(
+          row as Partial<Pick<OperationsDeliveredShipmentDto, 'deliveryConfirmation'>>,
+        );
+        // One line as receipts' numbers are; a long one (up to 40 characters) wraps inside 7rem
+        // rather than widening the column, every character still on screen. Round 33 C critic —
+        // its direction is its own first letter's (`auto`): «RC-20418» and «77310» read left to
+        // right, a number typed in Arabic words («إيصال ١٢٣٤٥») keeps its words' order.
+        return number === null ? (
+          DASH
+        ) : (
+          <bdi
+            dir="auto"
+            className={cn(
+              NUM,
+              number.length > RECEIPT_ONE_LINE ? RECEIPT_NUMBER_LONG : RECEIPT_NUMBER_SHORT,
+            )}
+            data-delivered-receipt={row.id}
+          >
+            {number}
+          </bdi>
+        );
+      },
+    },
+    {
       key: 'receiptImage',
       header: t('operations.board.receiptImage'),
       align: 'center',
@@ -1004,7 +1123,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
         <ShipmentReceiptImageCell
           row={row}
           onPreview={setPreviewingReceipt}
-          readOnly={!canEditRows}
+          readOnly={!canManageReceipts}
         />
       ),
     },
@@ -1131,10 +1250,12 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   // The ticks' column is the page's that hands in a `selection` («صرف الخزينة»), and no other's.
   // The two status columns are the vault's board's, in «الحالة»'s place; every other board keeps
   // the one.
+  // Round 33 C — «رقم الإيصال» is «الشحنات المسلَّمة»'s alone.
   const boardColumns = everyColumn.filter(
     (column) =>
       column.key !== (secured ? 'type' : 'deliveryDate') &&
       (column.key !== 'select' || selection !== undefined) &&
+      (column.key !== 'receiptNumber' || delivered) &&
       (splitStatus ? column.key !== 'status' : !SPLIT_STATUS_COLUMNS.includes(column.key)),
   );
   // A screen that offers this reader nothing to do on a row (the vault queue, read by a treasurer
@@ -1149,6 +1270,8 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   const stageValue = filters.stage === '' ? [] : [filters.stage];
   const pickupValue = filters.pickup === '' ? [] : [filters.pickup];
   const vaultValue = filters.vault === '' ? [] : [filters.vault];
+  // Round 33 B — «الكل» is said in the box when nothing narrows it, as the owner listed it.
+  const confirmedValue = filters.confirmed === '' ? ['all'] : [filters.confirmed];
 
   return (
     <>
@@ -1283,7 +1406,8 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
         {/* The Fleet boards' dark bar: every filter's name written in its box, an icon at its start.
           «ارتب الفلاتر على حسب عواميد الجدول»: the filters in the table's column order — السيارة,
           اسم البنك, من فرع, إلى فرع, المنطقة, قائد الطاقم, (the history's من and إلى,) النوع,
-          الحالة, ملاحظات (the amount, the receipt image and the actions have nothing to type).
+          الحالة, ملاحظات — and on «الشحنات المسلَّمة» رقم الإيصال (Round 33 C) — (the amount, the
+          receipt image and the actions have nothing to type).
           Widths go on the WRAPPER — `Input` carries its own `w-full`, and `cn` does not merge a
           width passed to it; from 1024px the bar's row overrides them (`BAR_LAYOUT`). */}
         <div
@@ -1292,6 +1416,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
             '[&_[role=listbox]]:animate-menu-in',
             BAR_LAYOUT,
             datePickers.length > 0 && PERIOD_BAR_LAYOUT,
+            delivered && DELIVERED_BAR_LAYOUT,
           )}
           data-shipment-filters="true"
         >
@@ -1340,6 +1465,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
             >
               <Input
                 density={TIGHT}
+                {...barBox('bank')}
                 aria-label={t('operations.board.bank')}
                 placeholder={t('operations.board.bank')}
                 value={filters.bank}
@@ -1353,6 +1479,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
             >
               <Input
                 density={TIGHT}
+                {...barBox('origin')}
                 aria-label={t('operations.shipment.origin')}
                 placeholder={t('operations.shipment.origin')}
                 value={filters.origin}
@@ -1366,6 +1493,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
             >
               <Input
                 density={TIGHT}
+                {...barBox('destination')}
                 aria-label={t('operations.shipment.destination')}
                 placeholder={t('operations.shipment.destination')}
                 value={filters.destination}
@@ -1379,6 +1507,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
             >
               <Input
                 density={TIGHT}
+                {...barBox('area')}
                 aria-label={t('operations.shipment.area')}
                 placeholder={t('operations.shipment.area')}
                 value={filters.area}
@@ -1392,6 +1521,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
             >
               <Input
                 density={TIGHT}
+                {...barBox('captain')}
                 aria-label={t('operations.board.captain')}
                 placeholder={t('operations.board.captain')}
                 value={filters.captain}
@@ -1479,6 +1609,34 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
                   />
                 </FilterWithIcon>
               </>
+            ) : delivered ? (
+              // Round 33 B — «بانتظار التأكيد» / «مؤكَّدة» / «الكل», the confirmation's own box.
+              <FilterWithIcon
+                icon={FILTER_ICON.status}
+                tone="text-emerald-600 dark:text-emerald-400"
+              >
+                <MultiSelect
+                  fullWidth
+                  density={TIGHT}
+                  showSelectedValues
+                  label={t('operations.delivered.filter')}
+                  options={[
+                    { value: 'no', label: t('operations.delivered.filter.awaiting') },
+                    { value: 'yes', label: t('operations.delivered.filter.confirmed') },
+                    { value: 'all', label: t('operations.delivered.filter.all') },
+                  ]}
+                  value={confirmedValue}
+                  onChange={(next) => {
+                    const picked = pickOne(confirmedValue, next);
+                    setFilter({
+                      confirmed:
+                        picked === 'yes' || picked === 'no'
+                          ? (picked as DayBoardFilters['confirmed'])
+                          : '',
+                    });
+                  }}
+                />
+              </FilterWithIcon>
             ) : secured ? (
               <FilterWithIcon icon={FILTER_ICON.status} tone="text-slate-600 dark:text-slate-300">
                 <MultiSelect
@@ -1527,12 +1685,32 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
             >
               <Input
                 density={TIGHT}
+                {...barBox('notes')}
                 aria-label={t('operations.shipment.notes')}
                 placeholder={t('operations.shipment.notes')}
                 value={filters.notes}
                 onChange={(e) => setFilter({ notes: e.target.value })}
               />
             </FilterWithIcon>
+            {/* Round 33 C — «رقم الإيصال», «الشحنات المسلَّمة»'s alone, after the notes as its column
+              is: a fragment of the number finds it, folded, its separators ignored
+              (`matchesReceiptNumber`). */}
+            {delivered && (
+              <FilterWithIcon
+                icon={SHIPMENT_PATH.receipt}
+                tone="text-emerald-600 dark:text-emerald-400"
+                className="w-32 shrink-0"
+              >
+                <Input
+                  density={TIGHT}
+                  data-bar-box="receipt"
+                  aria-label={t('operations.delivered.receiptNo')}
+                  placeholder={t('operations.delivered.receiptNo')}
+                  value={filters.receipt}
+                  onChange={(e) => setFilter({ receipt: e.target.value })}
+                />
+              </FilterWithIcon>
+            )}
           </FilterBar>
         </div>
 
@@ -1542,7 +1720,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
           <BoardRefusal>{refusal}</BoardRefusal>
         ) : (
           <>
-            <div className={cn(SHIPMENTS_TABLE, splitStatus && VAULT_TABLE)}>
+            <div className={cn(SHIPMENTS_TABLE, (splitStatus || delivered) && VAULT_TABLE)}>
               <DataTable
                 columns={columns}
                 rows={shown?.rows ?? rows}
@@ -1590,7 +1768,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
         open={previewingReceipt !== null}
         onClose={() => setPreviewingReceipt(null)}
         row={previewingReceipt}
-        readOnly={!canEditRows}
+        readOnly={!canManageReceipts}
       />
 
       <OtherCurrenciesDialog

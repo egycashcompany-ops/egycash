@@ -292,6 +292,41 @@ export const ErrorCodes = {
    * already dispatched or completed.
    */
   OPERATIONS_SECURED_NOT_IN_VAULT: 'OPERATIONS_SECURED_NOT_IN_VAULT',
+
+  // ── «الشحنات المسلَّمة» — the delivery confirmed with its receipt (Round 33 B) ───────────────
+  /**
+   * 409 — the ✓ of «الشحنات المسلَّمة» on a shipment that has not reached its bank
+   * (`isOperationsShipmentDeliveredToBank`): its captain has not confirmed delivering it to the
+   * destination in the app, or — a محصنة — it has not left the vault for it.
+   */
+  OPERATIONS_SHIPMENT_NOT_DELIVERED: 'OPERATIONS_SHIPMENT_NOT_DELIVERED',
+  /** 409 — the ✓ on a delivery already confirmed (a colleague pressed it first). */
+  OPERATIONS_DELIVERY_ALREADY_CONFIRMED: 'OPERATIONS_DELIVERY_ALREADY_CONFIRMED',
+  /** 409 — «إلغاء التأكيد» on a delivery that is not confirmed (taken back already). */
+  OPERATIONS_DELIVERY_NOT_CONFIRMED: 'OPERATIONS_DELIVERY_NOT_CONFIRMED',
+  /**
+   * 422 — the ✓ with no receipt number («لازم يكون فيه رقم الايصال»): empty once trimmed. One
+   * detail: `field` 'receiptNumber', `code` 'REQUIRED'.
+   */
+  OPERATIONS_DELIVERY_RECEIPT_NUMBER_REQUIRED: 'OPERATIONS_DELIVERY_RECEIPT_NUMBER_REQUIRED',
+  /**
+   * 422 — a receipt number longer than `OPERATIONS_DELIVERY_RECEIPT_NUMBER_MAX` once trimmed. One
+   * detail: `field` 'receiptNumber', `code` 'MAX_LENGTH', `message` the most allowed.
+   */
+  OPERATIONS_DELIVERY_RECEIPT_NUMBER_TOO_LONG: 'OPERATIONS_DELIVERY_RECEIPT_NUMBER_TOO_LONG',
+  /**
+   * 422 — the ✓ without choosing whose bank is billed («يحدد البنك من او الى»). One detail: `field`
+   * 'billedSide', `code` 'REQUIRED'.
+   */
+  OPERATIONS_DELIVERY_BILLED_SIDE_REQUIRED: 'OPERATIONS_DELIVERY_BILLED_SIDE_REQUIRED',
+  /**
+   * 409 — Round 33 critic: an edit that moves the shipment's «من فرع» or «إلى فرع» while its
+   * delivery is CONFIRMED with its receipt. The bank billed for moving it was chosen between those
+   * two branches' banks at the ✓ (`deliveryConfirmation.billedBranchId` / `billedBankId`); moving
+   * either one would leave that record naming a branch the shipment no longer has. «إلغاء التأكيد»
+   * first, then the edit, then the ✓ again. Every other field still edits as before.
+   */
+  OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED: 'OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED',
   /**
    * 409 — Round 21b: the vault's receipt (`POST /operations/secured/:id/receive`) names a seal the
    * vault STILL HOLDS on another محصنة. The owner: «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت
@@ -639,6 +674,86 @@ export const ErrorCodes = {
    * `{ code: 'NEXT_READING', message: <that reading> }` and `{ code: 'NEXT_AT', message: <its time> }`.
    */
   IT_CONSUMABLE_COUNTER_ABOVE_NEXT: 'IT_CONSUMABLE_COUNTER_ABOVE_NEXT',
+
+  // ── Administrative Affairs: master data (docs/12-planning/administration-module-design-flows.md §5.15)
+  /**
+   * 422 — an item category's parent is refused; nothing was written. One detail, `field`
+   * 'parentId', `code` one of `ADMINISTRATION_CATEGORY_PARENT_PROBLEMS`: 'self' (the category
+   * itself), 'cycle' (one of its own subcategories), 'tooDeep' (a subcategory: two levels, OD-06),
+   * 'inactive' (a retired parent) or 'hasChildren' (a category that has subcategories never moves
+   * under another).
+   */
+  ADMINISTRATION_CATEGORY_PARENT_INVALID: 'ADMINISTRATION_CATEGORY_PARENT_INVALID',
+  /**
+   * 409 — a live master row already holds this name, code or barcode; nothing was written. One
+   * detail whose `field` names what clashed: 'name' (compared folded, «قطعه» = «قطعة»: the
+   * `nameKey` of the Arabic name), 'code' or 'barcode' (an item's; its unique index is its only
+   * check). Retired rows still hold theirs: reactivate, never recreate. The answer to the
+   * service's own check and to a unique index that refused a racing write alike.
+   */
+  ADMINISTRATION_DUPLICATE: 'ADMINISTRATION_DUPLICATE',
+  /**
+   * 422 — an item's stock levels are out of order: where set, min ≤ reorder point ≤ max (OD-09),
+   * judged on the row the write would leave; nothing was written. One detail per field out of
+   * order, `field` one of `ADMINISTRATION_STOCK_LEVEL_FIELDS` and `code` 'outOfOrder': both ends
+   * of each comparison that fails.
+   */
+  ADMINISTRATION_STOCK_LEVELS_ORDER: 'ADMINISTRATION_STOCK_LEVELS_ORDER',
+  /**
+   * 422 — an item names a retired unit or category, or a supplier a retired item category, on a
+   * create or by changing it; nothing was written. A row that already names one keeps it. One
+   * detail per retired reference, `code` 'inactive': an item's `field` is 'unitId' or
+   * 'categoryId'; a supplier's is 'categoryIds', its `message` the retired category's id.
+   */
+  ADMINISTRATION_REFERENCE_INACTIVE: 'ADMINISTRATION_REFERENCE_INACTIVE',
+  /**
+   * 422 — an item names a category that has active subcategories: it names one of those instead
+   * (OD-06 (i)), on a create or by changing its category; nothing was written. An item whose
+   * category gained its first subcategory later keeps it. One detail, `field` 'categoryId', `code`
+   * 'subcategoryRequired'.
+   */
+  ADMINISTRATION_SUBCATEGORY_REQUIRED: 'ADMINISTRATION_SUBCATEGORY_REQUIRED',
+  /**
+   * 422 — a warehouse is given a keeper whom HR answers as having left (IT's rule: a positive
+   * `exited` only; an id the directory cannot read passes); nothing was written. A warehouse whose
+   * keeper left later keeps them until the keeper is changed. One detail, `field`
+   * 'responsibleEmployeeId', `code` 'exited'.
+   */
+  ADMINISTRATION_EMPLOYEE_EXITED: 'ADMINISTRATION_EMPLOYEE_EXITED',
+  /**
+   * 422 — a warehouse is retired while something still holds it (OD-70 B): stock on hand or in
+   * transit, or a document not yet ended that names it; nothing was written. One detail per hold,
+   * `field` 'isActive', `code` one of `ADMINISTRATION_DEACTIVATION_PROBLEMS`: 'holdsStock' or
+   * 'openDocument'. Nothing can hold a warehouse before stock and documents exist (P5), so the
+   * code is first met then.
+   */
+  ADMINISTRATION_DEACTIVATION_BLOCKED: 'ADMINISTRATION_DEACTIVATION_BLOCKED',
+  /**
+   * 422 — a typed attachment list already holds `ADMINISTRATION_MAX_LIST_ATTACHMENTS` (20) entries
+   * (a supplier's papers, design §11.4); the file was not linked and nothing of it is kept (an
+   * upload that raced past the check is withdrawn). One detail, `field` 'attachments', `code`
+   * 'limit'. Remove a paper first.
+   */
+  ADMINISTRATION_ATTACHMENT_LIMIT: 'ADMINISTRATION_ATTACHMENT_LIMIT',
+
+  // ── Compliance and Risks: the files page (docs/12-planning/compliance-files-design.md §8)
+  /**
+   * 409 — another live folder already has this name, compared through the shared `foldName`
+   * («عقود الموردين» and «عقود  الموردين», «أ» and «ا» are one name); nothing was written. One
+   * detail, `field` 'name', `code` 'taken'.
+   */
+  COMPLIANCE_FOLDER_NAME_TAKEN: 'COMPLIANCE_FOLDER_NAME_TAKEN',
+  /**
+   * 422 — a folder is shared with an account that is not an active employee login; nothing was
+   * written. One detail per refused id, `field` 'viewerUserIds', `code` 'notEligible', `message`
+   * the id. A person already on the list whose account was since suspended stays on it.
+   */
+  COMPLIANCE_VIEWER_INVALID: 'COMPLIANCE_VIEWER_INVALID',
+  /**
+   * 422 — the file's contents are not what its name says (a renamed picture called «.pdf»);
+   * nothing was stored. One detail, `field` 'file', `code` 'contentMismatch'.
+   */
+  COMPLIANCE_FILE_CONTENT_MISMATCH: 'COMPLIANCE_FILE_CONTENT_MISMATCH',
 
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */

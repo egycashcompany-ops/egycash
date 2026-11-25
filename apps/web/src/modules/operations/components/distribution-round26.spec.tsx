@@ -542,7 +542,10 @@ describe('B — the van’s card', () => {
     expect(HOVER).toContain("| 'secured-van'");
   });
 
-  it('never opens while a drag is on, over an open «نقل إلى…» menu, or on the captain’s own name', () => {
+  // Round 33 C — REWRITTEN from «never opens while a drag is on, over an open «نقل إلى…» menu, or on
+  // the captain’s own name»: the tap path asks one thing more, the head's own act (`onAct` — the
+  // vault's «طباعة» icon), which is pure and tested in `lib/van-card.spec.ts`.
+  it('never opens while a drag is on, over an open «نقل إلى…» menu, or on the captain’s own name — nor on the head’s own act', () => {
     expect(PARTS).toContain(
       'when: () => vanHoverAllowed({ dragging: dragOn, menuOpen: moveMenuOpen(), onPerson: false }),',
     );
@@ -559,7 +562,7 @@ describe('B — the van’s card', () => {
     // A tap on a phone opens it too — R26 critic: but not on the captain's own name (his card):
     // a tap there closes the van's card if it was open, and leaves the name to open his.
     expect(PARTS).toMatch(
-      /onClick=\{\(event\) => \{\s*(?:\/\/[^\n]*\n\s*)?const onPerson = onPersonName\(event\.target\);\s*if \(onPerson\) setTapped\(false\);\s*if \(!vanTapAllowed\(\{ touch: pointer\.current === 'touch', onPerson \}\)\) return;\s*setTapped\(\(open\) => !open\);/,
+      /onClick=\{\(event\) => \{\s*(?:\/\/[^\n]*\n\s*)?const onPerson = onPersonName\(event\.target\);\s*if \(onPerson\) setTapped\(false\);\s*(?:\/\/[^\n]*\n\s*)?const onAct = onHeadAction\(event\.target\);\s*if \(!vanTapAllowed\(\{ touch: pointer\.current === 'touch', onPerson, onAct \}\)\) return;\s*setTapped\(\(open\) => !open\);/,
     );
   });
 

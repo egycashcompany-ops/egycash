@@ -25,6 +25,11 @@
 // `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`, checked before any shipment): the record is read only on
 // the server, whatever a client sends.
 //
+// ROUND 33 — «انا عاوزك تفتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط زى ما عملنا فى شاشة
+// توزيع المحصنات»: the vault's screen reads the same record, with who handed each محصنة over and when
+// (`handovers`). Nothing new is written: the dispatch refuses a past day's van as before (422
+// `OPERATIONS_DISPATCH_NOT_TODAY`, secured.service.ts `assertTodaysVan`).
+//
 // A SHIPMENT IS "ON A VAN" THROUGH ITS DELIVERY LEG and nothing else — the leg «صرف الخزينة»'s assign
 // dialog wrote (secured.service.ts `assignDeliveryLeg`), the one the dispatch checks, the captain's
 // phone reads and the captain report attributes. So distributing changes exactly the fact every
@@ -82,6 +87,7 @@ import { operationsShiftTypeRepository } from '../shift-types/shift-type.reposit
 import { type OperationsShipmentAssignmentDoc } from '../shipments/shipment-assignment.model';
 import { type OperationsShipmentDoc } from '../shipments/shipment.model';
 import { DISTRIBUTION_RESCHEDULE_MARKER } from '../shipments/shipment-log';
+import { userDisplayNames } from '../user-names';
 import {
   historyTooLarge,
   operationsShipmentService,
@@ -212,6 +218,13 @@ export interface DistributionView extends DayBoardView {
    * vault's holdings no longer carry what left on the day's vans.
    */
   packages: Map<string, { bags: number; cartons: number; boxes: number }>;
+  /**
+   * Round 33 — on a RECORD (`past`), shipment id → when the vault handed it over and who (the
+   * custody's release, the user named by the directory); empty on today and every later day, whose
+   * screens list only what has not left. A shipment still held, or whose receipt was cancelled, is
+   * absent.
+   */
+  handovers: Map<string, { at: Date; byName: string | null }>;
   /** shipment id → its LIVE delivery leg. */
   deliveryLeg: Map<string, OperationsShipmentAssignmentDoc>;
   /** shipment id → the vans of the day its area's direction names (see the contract). */
@@ -300,6 +313,10 @@ class OperationsDistributionService {
    * crew rows by the same rule as a day to come. A record proposes nothing: every
    * `directionVanIds` is empty. What it cannot show is said in the contract
    * (`OperationsSecuredDistributionDto.past`).
+   *
+   * Round 33 — «انا عاوزك تفتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط»: «تسليم المحصنات»
+   * opens the same record, and reads beside it what the vault handed over and when and by whom
+   * (`handovers` — the custody's release). Its «تسليم» stays today's (`assertTodaysVan`).
    */
   async view(date: Date | undefined, now: Date = new Date()): Promise<DistributionView> {
     const { day, today, past } = this.dayOf(date, now);
@@ -388,6 +405,18 @@ class OperationsDistributionService {
     ];
     // Proposals by direction point at the «محصنة» rows only — a kept row takes no new shipment.
     const proposable = vans.filter((van) => van.securedType);
+    // Round 33 — «تسليم المحصنات» on a past day: what the vault handed over, when and by whom. One
+    // directory read for the day (a handful of vault users press «تسليم»). Today's and later days'
+    // screens list nothing that has left, so they ask nothing of the directory.
+    const released = past
+      ? [...custody.values()].filter(
+          (view): view is typeof view & { releasedAt: Date } =>
+            view.state === 'released' && view.releasedAt !== null,
+        )
+      : [];
+    const releasers = await userDisplayNames(
+      released.flatMap((view) => (view.releasedById === null ? [] : [view.releasedById])),
+    );
 
     return {
       ...board,
@@ -400,6 +429,19 @@ class OperationsDistributionService {
         [...custody].map(
           ([id, view]) =>
             [id, { bags: view.bagCount, cartons: view.cartonCount, boxes: view.boxCount }] as const,
+        ),
+      ),
+      handovers: new Map(
+        released.map(
+          (view) =>
+            [
+              view.shipmentId,
+              {
+                at: view.releasedAt,
+                byName:
+                  view.releasedById === null ? null : (releasers.get(view.releasedById) ?? null),
+              },
+            ] as const,
         ),
       ),
       deliveryLeg: new Map(

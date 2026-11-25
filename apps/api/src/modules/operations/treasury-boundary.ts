@@ -64,7 +64,9 @@ export interface VaultReceiptInput {
  *     bags, boxes and cartons per bank (contad_app.js:1437-1447) and the captain and bank reports
  *     totalled them (:5006-5023);
  *   · Round 18 — the note counts of each denomination and the seals-per-bag choice of the legacy
- *     receive form, which the receipt print («إيصال») and the vault inventory show.
+ *     receive form, which the receipt print («إيصال») and the vault inventory show;
+ *   · Round 33 — who handed it over (`releasedById`, beside `releasedAt`), which the record of a past
+ *     day on «تسليم المحصنات» names.
  *
  * WHO RECEIVED IT changed in Round 18. A receipt now records ONE person, the signed-in user
  * (`receivedById`) — the owner: «انا مش عاوز اى اسماء». A receipt taken before named two treasurers
@@ -83,6 +85,11 @@ export interface VaultCustodyView {
   receiptNumber: string | null;
   receivedAt: Date;
   releasedAt: Date | null;
+  /**
+   * Round 33 — who handed it over (the dispatch's signed-in user, from the token), or null while it
+   * is held. «تسليم المحصنات»'s record of a past day names him beside `releasedAt`.
+   */
+  releasedById: string | null;
   bagCount: number;
   cartonCount: number;
   boxCount: number;

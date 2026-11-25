@@ -1,8 +1,9 @@
 // An item's trail (design §10.2, §19.6): the literal ref the realtime registry scans for; a `create`
 // row carrying the generated code; `update` rows that broadcast themselves; `activate` and
 // `deactivate` rows, which do not, each followed by one explicit organization-wide `update`
-// signal; and nothing for an edit that changed nothing. The `consumable-history.spec.ts` posture:
-// the platform's audit and realtime mocked.
+// signal; and nothing for an edit that changed nothing. The item's kind (OD-14 C) is one of its
+// facts, and a row older than the kind is a stock item to the trail as to every reader. The
+// `consumable-history.spec.ts` posture: the platform's audit and realtime mocked.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -111,6 +112,42 @@ describe('an item edited', () => {
     await auditItemEdited(item(), item({ __v: 1 }));
     expect(mocks.record).not.toHaveBeenCalled();
     expect(mocks.publish).not.toHaveBeenCalled();
+  });
+});
+
+describe('the item’s kind (OD-14 C)', () => {
+  it('is in the `create` row, a stock item or not', async () => {
+    await auditItemCreated(item({ stockTracked: true }));
+    await auditItemCreated(item({ stockTracked: false }));
+    const [stock, service] = recorded();
+    expect(stock?.changes).toContainEqual({ field: 'stockTracked', old: null, new: true });
+    expect(service?.changes).toContainEqual({ field: 'stockTracked', old: null, new: false });
+  });
+
+  it('a change of kind is one `update` row naming it', async () => {
+    await auditItemEdited(item({ stockTracked: true }), item({ stockTracked: false, __v: 1 }));
+    expect(recorded()).toEqual([
+      expect.objectContaining({
+        action: 'update',
+        changes: [{ field: 'stockTracked', old: true, new: false }],
+      }),
+    ]);
+  });
+
+  it('reads a row older than the kind as a stock item — the change is from true', async () => {
+    // The fixture's row has no `stockTracked`, as one written before P2.1 has none.
+    expect(item()).not.toHaveProperty('stockTracked');
+    await auditItemEdited(item(), item({ stockTracked: false, __v: 1 }));
+    expect(recorded()).toEqual([
+      expect.objectContaining({
+        changes: [{ field: 'stockTracked', old: true, new: false }],
+      }),
+    ]);
+  });
+
+  it('writes nothing when an older row is told what it already was', async () => {
+    await auditItemEdited(item(), item({ stockTracked: true, __v: 1 }));
+    expect(mocks.record).not.toHaveBeenCalled();
   });
 });
 

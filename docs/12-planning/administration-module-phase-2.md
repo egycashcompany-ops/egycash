@@ -642,7 +642,7 @@ page at most 100 rows (design §19.3). The bodies are §5's schemas, all `.stric
 
 | Method and path | Gate | Body or query | Slice |
 |---|---|---|---|
-| `GET /purchase-requests` | `administrationPurchaseRequest.view` | the list query (§5): `page`, `pageSize`; `sortBy` (`number`, `createdAt`, `submittedAt`, `neededBy`; default `createdAt`) and `sortDir` (default `desc`); `search`, the start of a number as typed, matched from its first character without regard to case (`PR-2026-00` finds every number that begins so); `status`, a comma-separated list (`listQuery`, `packages/contracts/src/common/index.ts:39-48`); `departmentIds`, a comma-separated list of department copies, at most 200, which only narrows: a copy outside the caller's reach adds no row and is not refused, because a company department picked in the filter sends every copy it has, other branches' included (`expandOrgUnitSelection`, `packages/contracts/src/platform/org-unit-groups.ts:100-110`; §9.4); `requesterUserId`; `from` and `to`, Cairo dates `YYYY-MM-DD`, both inclusive, bounding `createdAt` from `cairoDayStart(from)` to before the start of the day after `to` (`packages/contracts/src/common/cairo-date.ts:147-151`). `orderStatus` joins the filters in P4, when a line can first be ordered | P2.2 |
+| `GET /purchase-requests` | `administrationPurchaseRequest.view` | the list query (§5): `page`, `pageSize`; `sortBy` (`number`, `createdAt`, `submittedAt`, `neededBy`; default `createdAt`) and `sortDir` (default `desc`); `search`, the start of a number as typed, matched from its first character without regard to case (`PR-2026-00` finds every number that begins so); `status`, a comma-separated list (`listQuery`, `packages/contracts/src/common/index.ts:39-48`); `departmentIds`, a comma-separated list of department copies, at most 200, which only narrows: a copy outside the caller's reach adds no row and is not refused, because a company department picked in the filter sends every copy it has, other branches' included (`expandOrgUnitSelection`, `packages/contracts/src/platform/org-unit-groups.ts:100-110`; §9.4); `requesterUserId`; `from` and `to`, Cairo dates `YYYY-MM-DD`, both inclusive, bounding `createdAt` from `cairoDayStart(from)` to before the start of the day after `to` (`packages/contracts/src/common/cairo-date.ts:148-152`). `orderStatus` joins the filters in P4, when a line can first be ordered | P2.2 |
 | `GET /purchase-requests/summary` | `.view` | the list's filters; answers `AdministrationPurchaseRequestSummaryDto` (§6.5), counts by status, by department copy and by Cairo month (design §14.5's grouping) | P2.7 |
 | `GET /purchase-requests/awaiting-decision` | `.approve` | paging; every PR in the `APPROVAL_PENDING` set (`pendingApproval`) that the caller's `.approve` grant reaches, read through that key's scope selector (design §5.14, §13.4). It is not "mine to decide now": a holder whose own rung is already settled still sees the PR, as does a holder of a higher rung, who may decide early (ADR-041 decision 3); the record's panel says whether the reader may decide | P2.4 |
 | `GET /purchase-requests/:id` | `authorizeAny(.view, .approve)` | — ; the detail DTO. Each key is tried with its own scope, `.view` first, and the first that finds the PR wins; `widestScopeSelector` is not used (design §11.3) | P2.2 |
@@ -792,7 +792,7 @@ is its requester.
 |---|---|
 | `packages/contracts/src/modules/administration.ts` | `ADMINISTRATION_DOCUMENT_KINDS = ['purchaseRequest']`, their prefixes (`PR`) and `ADMINISTRATION_DOCUMENT_DIGITS = 6`; `formatAdministrationNumber(kind, year, seq)` and `parseAdministrationNumber(number)`, which read only the formatter's own spelling, as the master-code pair does (`:38-68`); `ADMINISTRATION_MAX_DOCUMENT_LINES = 100`; `AdministrationAvailableActionDto { key, permission, enabled, reason }`, recruitment's shape (design §5.1.4); `ADMINISTRATION_ITEM_UNIT_LOCKS = ['purchaseRequestLine']`, the unit-lock checkers' answers (§6.2); `AdministrationEvents`, one flat `as const` with the four P2 names, and their `…PayloadV1` schemas (§10.3); `AdministrationTemplates`, the template keys of §11.1, HR leave's shape (`packages/contracts/src/modules/hr-leave.ts:554-564`); `ADMINISTRATION_REQUEST_ATTACHMENTS_FILE_CATEGORY` and its MIME list |
 | `packages/contracts/src/modules/administration-procurement.ts` | `ADMINISTRATION_PURCHASE_REQUEST_STATUSES` (six) and `…_ORDER_STATUSES` (three); the guard sets `PR_SOURCEABLE`, `APPROVAL_PENDING`, `CONTENT_EDITABLE` and `PR_CANCELLABLE`, each a `Readonly<Record<status, boolean>>` (design §5.14); `CreateAdministrationPurchaseRequestSchema { neededBy?, justification?, notes?, lines }`, each line `{ itemId, qty, notes? }`, 0 to 100 lines, `qty` an integer from 1 to 1,000,000 (design §2.1, Quantities), `neededBy` a `YYYY-MM-DD` date (`isYmd`, `packages/contracts/src/common/cairo-date.ts:89`), past dates allowed, since a returned draft may carry one; `UpdateAdministrationPurchaseRequestSchema` with `version`, `null` clearing a field and `lines` replacing the list, each line `{ lineId?, itemId, qty, notes? }` (§4.2); `SubmitAdministrationPurchaseRequestSchema { version }`; `ListAdministrationPurchaseRequestsQuerySchema`, `PaginationQuerySchema` extended with §4.1's filters, `status` as `listQuery(status)` and `departmentIds` as `listQuery(objectId(), 200)`; `ADMINISTRATION_PURCHASE_REQUEST_ACTIONS` and `…_ACTION_REASONS`, §4.4's keys and reasons; `DecideAdministrationPurchaseRequestSchema`, the platform's `DecideApprovalSchema` (`packages/contracts/src/platform/approvals.ts:212-217`) plus `version` and `cuts?: { lineId, qty }[]`, at most 100 with distinct `lineId`s, each `qty` an integer from 1 to 1,000,000 that the service bounds by the line's open quantity (§7.3), refusing cuts on a rejection; `ReturnAdministrationPurchaseRequestSchema { version, reason }` and `CancelAdministrationPurchaseRequestSchema { version, reason? }`, a reason being 1 to 1,000 characters; `AddAdministrationPurchaseRequestAttachmentSchema` and `AdministrationPurchaseRequestAttachmentVersionQuerySchema`, as the supplier's (`administration-procurement.ts:100-117`); the list, detail, summary and attachment DTOs (§6.5) |
-| `packages/contracts/src/modules/administration-catalog.ts` | `stockTracked` on the item create (default `true`), update and DTO (`:223, 254, 270`); the item list's `stockTracked` filter is not added |
+| `packages/contracts/src/modules/administration-catalog.ts` | `stockTracked` on the item create (default `true`), update and DTO (`:223, 254, 270`); `CreateAdministrationItemInput` (`z.input`), the client's create type, in which `stockTracked` may be left out (P2.1); the item list's `stockTracked` filter is not added |
 | `packages/contracts/src/errors/index.ts` | eight codes, the seven of design §5.15 and one more: `ADMINISTRATION_INVALID_TRANSITION`, `…_TRANSITION_BLOCKED`, `…_REASON_REQUIRED`, `…_APPROVAL_CHAIN_MISSING`, `…_APPROVAL_NOT_PENDING`, `…_APPROVAL_NOT_YOUR_STEP` (422) and `…_SEPARATION_OF_DUTIES` (403); and `ADMINISTRATION_ITEM_UNIT_LOCKED` (422, §1.2 item 21). Each ships in the slice that first raises it, with its doc comment naming its details (§4.4). An exited requester reuses Phase 1's `ADMINISTRATION_EMPLOYEE_EXITED`, whose comment gains the PR's case |
 | `packages/contracts/src/events/catalog.ts` | `ADMINISTRATION_EVENT_PAYLOAD_SCHEMAS`, `ADMINISTRATION_EVENT_SOURCE` appended to `buildEventCatalog` (`:1486-1492`), `EVENT_MODULE_NAMES.administration` (`:657-664`) and the entity word `purchaseRequest` (design §8.3). Every action word exists |
 | `packages/contracts/src/platform/notification-target.ts` (P2.W1) | `'administration/purchaseRequest': (id) => '/administration/purchase-requests/' + id` in `ENTITY_ROUTES` (`:36-42`), in the slice that mounts the route, since every entry must be a route the client declares (`:33-34`); until then a PR notice opens the inbox (`:56-57`) |
@@ -910,9 +910,11 @@ RK-03; design §2.1 note 10). No index carries `departmentId` with uniqueness (d
 - The floor read. `highestCodePipeline` and `floorFrom` read the `code` field and master codes
   (`shared/document-number.ts:52-70`), so `shared/document-number.ts` adds `DocumentNumberSeries { kind, year, key,
   prefix }`, `highestNumberPipeline(series)` and `numberFloorFrom(series, rows)`. The pipeline's `$match` reads
-  `number: { $type: 'string', $regex: '^PR-2026-(?:[0-9]{6}|[1-9][0-9]{6,})$' }`, the `$type` being `ux_number`'s
-  partial filter, so the planner can use that index; the floor parses with `parseAdministrationNumber` and counts a
-  number of another kind or year as none.
+  `number: { $type: 'string', $regex: '^PR-2026-(?:[0-9]{6}|[1-9][0-9]{6,})(?![\s\S])' }`, the `$type` being
+  `ux_number`'s partial filter, so the planner can use that index; the floor parses with `parseAdministrationNumber`
+  and counts a number of another kind or year as none. The pattern ends in `(?![\s\S])`, not `$`: MongoDB reads
+  `$regex` with PCRE, whose `$` also matches before a final newline, which would let a hand-typed number ending in a
+  newline through as the longest top, one the parser refuses (P2.1; design §22, P2.1 built).
 
 ### 6.4 Census rows
 
@@ -1470,7 +1472,7 @@ Feature specs sit beside their files in the PR feature, `procurement/purchase-re
 | contracts `administration.spec.ts` | M | P2.1; P2.2–P2.7 | `PR-2026-000001` formats and parses; widths past six; 0, negatives, fractions, unknown kinds and other spellings refused (P2.1); the unit-lock vocabulary (P2.2); the events and templates constants, as each slice adds its own |
 | contracts `administration-procurement.spec.ts` | M | P2.2–P2.6 | strict schemas; 101 lines refused; `qty` 0 and 1,000,001 refused; a `neededBy` that is not `YYYY-MM-DD` refused; `status` and `departmentIds` read as comma lists, 201 departments refused; cuts on a rejection, two cuts on one line and 101 cuts refused; a reason over 1,000 refused; each guard set's members, one reason per status (spec 8); the attachment schemas (P2.6) |
 | contracts `administration-catalog.spec.ts` | M | P2.1 | `stockTracked` defaults to `true` on create and is optional on update |
-| `shared/document-number.spec.ts` | M | P2.1 | the yearly key and its year from one instant: 2026-12-31T21:59:59.999Z keys 2026 and 2026-12-31T22:00:00.000Z keys 2027 (RK-13); `highestNumberPipeline`'s `$match`, with `$type: 'string'` and the yearly pattern, and its grouping by length; a hand-typed `PR-2026-0000042` never outgrows `PR-2026-000500`; `numberFloorFrom` counts another year's or kind's number as none |
+| `shared/document-number.spec.ts` | M | P2.1 | the yearly key and its year from one instant: 2026-12-31T21:59:59.999Z keys 2026 and 2026-12-31T22:00:00.000Z keys 2027 (RK-13); `highestNumberPipeline`'s `$match`, with `$type: 'string'` and the yearly pattern, and its grouping by length; a hand-typed `PR-2026-0000042` never outgrows `PR-2026-000500`, and a trailing newline is refused also when `$` is read as loosely as PCRE reads it; `numberFloorFrom` counts another year's or kind's number as none |
 | `shared/lifecycle.spec.ts` | C | P2.2 | `findTransition`, `availableActions`, `statusesWhere`, `reachableFrom` |
 | `purchase-request-lifecycle.spec.ts` | C, M | P2.2; P2.5 | design §5.16 specs 1–7 over the nine rows, spec 5 with its list of keys not yet declared, which P2.5 empties and removes (§7); `submitProblem` with each detail code, `cancelProblem`, `orderStatusOf` (zero lines, cuts), `closeCondition` |
 | `purchase-request-rules.spec.ts` | C, M | P2.2; P2.3–P2.5 | the requester refusals and their details, and the draft's ownership; a cut's bounds (1 to the open quantity, once per line, a known line), a cut to 0, and never every line at 0; the return's fold, a line cut to nothing removed; "before a decision"; the cancel table of §7.4; pairs A1 and B1 over every round shape, B1 refusing an override's second empty rung; the rungs left and the stuck audience they choose; `availableActions` for each status, with each `enabled` and `reason` of §4.4 |
@@ -1549,6 +1551,7 @@ This table gives every count P2's pull requests pin, from its value on `de38fd71
 | `packages/contracts/src/events/catalog.spec.ts:147, :181` | each event in `ALL_SCHEMAS` and the "invents nothing" set | P2.3–P2.5 |
 | `packages/contracts/src/platform/notification-target.spec.ts` | the PR route's case: a PR notice's target is its record | P2.W1 |
 | `administration-catalog.spec.ts` (integration) | `stockTracked`; the widened read gate | P2.1, P2.2 |
+| contracts `administration-catalog.spec.ts`; `administration-indexes.spec.ts`; `apps/web/src/modules/administration/screen-fixtures.tsx` | the create-parse case expects `stockTracked: true`, the contract's default; the item service's input and the web's item fixture carry `stockTracked: true`, type-only. No page-registry, navigation or census count changes in P2.1 | P2.1 |
 | `apps/web/src/modules/administration/administration-employee-picker.spec.ts:78-83` | the no-access case reads `ReferencePicker.tsx` for `if (!allowed)`, and holds `EmployeePicker.tsx` to passing `allowed`, `usePeopleSearch` and `administration.people.noAccess`; the keeper-only case (`:113-116`) stays | P2.W0 |
 | `seed-navigation.spec.ts:84`; `auth-seed-login.spec.ts:40, :299-308, :325`; `apps/api/src/seed-navigation-administration.spec.ts:39, :127` | 145 → 146 rows; the breakdown's Administrative Affairs 5 → 6; the groups stay 9; the row ⇄ route ⇄ key ⇄ icon; the icon list gains `clipboard`; `ROWLESS` gains `purchase-requests/new` and `purchase-requests/:id/edit` (P2.W1) and `purchase-requests/awaiting-decision` (P2.W2), each with the page that links to it | P2.W1, P2.W2 |
 | `apps/web/src/modules/administration/administration-routes.spec.ts:207-223` | the PR tile on `.view`, under its row; the untiled routes gain `/new`, `/:id` and `/:id/edit` (P2.W1) and `/awaiting-decision` (P2.W2) | P2.W1, P2.W2 |
@@ -1576,7 +1579,7 @@ listed, then modified.
 |---|---|---|---|
 | `packages/contracts/src/modules/administration.ts` + spec | M | P2.1; P2.2–P2.7 | numbering; lines cap; available actions; the unit-lock vocabulary; events; templates; the request-attachments category |
 | `packages/contracts/src/modules/administration-procurement.ts` + spec | M | P2.2–P2.6 | PR statuses, guard sets, schemas, DTOs, action keys and reasons |
-| `packages/contracts/src/modules/administration-catalog.ts` + spec | M | P2.1 | `stockTracked` |
+| `packages/contracts/src/modules/administration-catalog.ts` + spec | M | P2.1 | `stockTracked`; `CreateAdministrationItemInput` |
 | `packages/contracts/src/errors/index.ts` | M | P2.2–P2.5 | §5's eight codes; `ADMINISTRATION_EMPLOYEE_EXITED`'s comment |
 | `packages/contracts/src/events/catalog.ts` + `catalog.spec.ts` | M | P2.3–P2.5 | the module's source, name and word |
 | `packages/contracts/src/platform/notification-target.ts` + spec | M | P2.W1 | `ENTITY_ROUTES` |
@@ -1590,7 +1593,7 @@ listed, then modified.
 | `administration.module.ts` + `.spec.ts` | M | P2.2–P2.7 | keys, page, routes, collection, the file authorizer (P2.6), `scheduledTasks` (P2.7) |
 | `administration.seed.ts` | M | P2.2–P2.7 | the year's counter (P2.2); each template in its slice (P2.3–P2.5, P2.7); the request-attachments category (P2.6) |
 | `administration.seed.spec.ts` | C, M | P2.3; P2.4, P2.5, P2.7 | every sent template seeded |
-| `administration-indexes.ts` + `administration-indexes.spec.ts` | M | P2.2 | the PR model |
+| `administration-indexes.ts` + `administration-indexes.spec.ts` | M | P2.1 (the spec), P2.2 | the item input's parsed `stockTracked` (P2.1); the PR model |
 | `administration-roles.ts` | M | P2.2, P2.5 | §9.3 |
 | `administration.mappers.ts` | M | P2.1; P2.2 | `stockTracked ?? true` on the item DTO; the PR DTOs |
 | `administration-scope-guards.spec.ts` | M | P2.2 | the PR repository's fields |
@@ -1647,7 +1650,8 @@ listed, then modified.
 | `apps/web/src/platform/localization/i18n.ts` | M | P2.0; P2.W0–P2.W2 | the verb's labels; `administration.purchaseRequests.*`, `administration.nav.purchaseRequests`, `ReferencePicker`'s texts |
 | `routes.tsx` | M | P2.W1, P2.W2 | §9.2, and its header table |
 | `api/administration-keys.ts` | M | P2.W1 | `purchaseRequests` and its keys |
-| `api/catalog-queries.ts` | M | P2.W1 | `useItemSearch` (§9.4) |
+| `api/catalog-api.ts` | M | P2.1 | `createItem` takes `CreateAdministrationItemInput` |
+| `api/catalog-queries.ts` | M | P2.1, P2.W1 | the create call's input type (P2.1); `useItemSearch` (§9.4) |
 | `api/purchase-requests-{api,queries}.ts` | C, M | P2.W1; P2.W2 | calls and hooks |
 | `pages/{PurchaseRequestsPage,PurchaseRequestDetailPage,PurchaseRequestEditorPage}.tsx`; `pages/{purchase-requests,purchase-request-detail,purchase-request-editor}-screen.spec.tsx` | C | P2.W1 | §9.2, §9.5 |
 | `pages/AwaitingDecisionPage.tsx`; `pages/awaiting-decision-screen.spec.tsx` | C | P2.W2 | §9.2, §9.5 |
@@ -1657,12 +1661,13 @@ listed, then modified.
 | `components/ItemPicker.tsx` | C | P2.W1 | §9.4 |
 | `components/PurchaseRequestActionDialogs.tsx` | C | P2.W1 | submit, decide (with cuts), return, cancel (§9.5) |
 | `components/PurchaseRequestAttachments.tsx` | C | P2.W2 | after `SupplierDocuments.tsx` |
-| `components/ItemFormDialog.tsx`, `lib/item-form.ts` + spec | M | P2.W2 | the item's kind |
+| `components/ItemFormDialog.tsx`, `lib/item-form.ts` + spec | M | P2.1 (`lib/item-form.ts`), P2.W2 | the create body's type (P2.1); the item's kind |
 | `lib/purchase-request-form.ts` + spec | C | P2.W1 | form state mirroring the contracts |
 | `lib/refusals.ts` + spec | M | P2.W1 | the new refusal fields and details (§4.4) |
 | `apps/web/src/shared/lib/errors.ts` + `errors.spec.ts` | M | P2.W1 | `FRIENDLY`, en and ar |
 | `apps/web/src/shared/lib/remembered-filters-coverage.spec.ts` | M | P2.W1, P2.W2 | the new pages |
 | `administration-routes.spec.ts`, `administration-{i18n,api-contract,realtime}.spec.ts` | M | P2.W1, P2.W2 | the guard specs (§12.3) |
+| `screen-fixtures.tsx` | M | P2.1 | the item fixture's `stockTracked` |
 
 **Docs**
 

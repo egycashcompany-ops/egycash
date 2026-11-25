@@ -11,8 +11,8 @@ import {
   type AdministrationItemCategoryDto,
   type AdministrationItemDto,
   type CreateAdministrationCatalogItem,
-  type CreateAdministrationItem,
   type CreateAdministrationItemCategory,
+  type CreateAdministrationItemInput,
   type UpdateAdministrationCatalogItem,
   type UpdateAdministrationItem,
   type UpdateAdministrationItemCategory,
@@ -197,7 +197,10 @@ export const useAdministrationItem = (id: string) =>
   });
 
 export const useCreateItem = () =>
-  useAdministrationWrite((body: CreateAdministrationItem) => api.createItem(body), ITEM_SUBTREES);
+  useAdministrationWrite(
+    (body: CreateAdministrationItemInput) => api.createItem(body),
+    ITEM_SUBTREES,
+  );
 
 export const useUpdateItem = () =>
   useAdministrationWrite(

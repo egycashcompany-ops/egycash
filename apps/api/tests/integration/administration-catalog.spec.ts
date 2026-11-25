@@ -7,7 +7,8 @@
 // children; the item code taken inside a real transaction, so concurrent creates get consecutive
 // numbers and a create a unique index refuses gives its number back; every refusal answered with
 // its own code (§5.15); the writes held to organization scope (OD-04 A) while the reads are not;
-// the trail's verbs; and the seed's indexes, its counter and its ready-made roles.
+// the trail's verbs; the seed's indexes, its counter and its ready-made roles; and the item's
+// kind (P2.1, OD-14 C), read as a stock item on a stored row older than the field.
 import type request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Types } from 'mongoose';
@@ -895,6 +896,77 @@ describe('items (§2.3.4; OD-05 A codes)', () => {
     const res = await api.get(`/items/${String(new Types.ObjectId())}`);
     expect(res.status).toBe(404);
     expect(refusal(res).code).toBe('NOT_FOUND');
+  });
+
+  describe('the item’s kind: stock or non-stock (OD-14 C)', () => {
+    it('makes a stock item unless the create says otherwise, and keeps what it says', async () => {
+      const stock = await item();
+      expect(stock.stockTracked).toBe(true);
+      const service = await item({ stockTracked: false });
+      expect(service.stockTracked).toBe(false);
+      const stored = await AdministrationItemModel.findById(service.id).lean().exec();
+      expect(stored?.stockTracked).toBe(false);
+      expect(data<AdministrationItemDto>(await api.get(`/items/${service.id}`))).toEqual(service);
+
+      const [row] = await trail('item', service.id);
+      expect(row?.changes).toContainEqual({ field: 'stockTracked', old: null, new: false });
+
+      const refused = await api.post('/items', body({ stockTracked: 'no' }));
+      expect(refused.status).toBe(400);
+      expect(refusal(refused).code).toBe('VALIDATION_FAILED');
+    });
+
+    it('changes on an edit with its version, audited as an `update`; never to null', async () => {
+      const created = await item();
+      const edited = await api.patch(`/items/${created.id}`, { stockTracked: false, version: 0 });
+      expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+      expect(data<AdministrationItemDto>(edited)).toMatchObject({
+        stockTracked: false,
+        version: 1,
+      });
+      const rows = await trail('item', created.id);
+      expect(rows.map((row) => row.action)).toEqual(['create', 'update']);
+      expect(rows[1]?.changes).toEqual([{ field: 'stockTracked', old: true, new: false }]);
+
+      const cleared = await api.patch(`/items/${created.id}`, { stockTracked: null, version: 1 });
+      expect(cleared.status).toBe(400);
+    });
+
+    it('reads a row written before the kind existed as a stock item, and never rewrites it', async () => {
+      const created = await item();
+      // A row as P1a.2 wrote it: no `stockTracked` at all.
+      await AdministrationItemModel.collection.updateOne(
+        { _id: new Types.ObjectId(created.id) },
+        { $unset: { stockTracked: '' } },
+      );
+      const older = await AdministrationItemModel.findById(created.id).lean().exec();
+      expect(older).not.toHaveProperty('stockTracked');
+
+      expect(data<AdministrationItemDto>(await api.get(`/items/${created.id}`)).stockTracked).toBe(
+        true,
+      );
+      const listed = data<AdministrationItemDto[]>(
+        await api.get(`/items?search=${encodeURIComponent(created.code)}`),
+      );
+      expect(listed.find((row) => row.id === created.id)?.stockTracked).toBe(true);
+
+      // An edit of anything else leaves the row without the field, and the trail without it.
+      const noted = await api.patch(`/items/${created.id}`, { notes: 'kept', version: 0 });
+      expect(noted.status, JSON.stringify(noted.body)).toBe(200);
+      expect(data<AdministrationItemDto>(noted).stockTracked).toBe(true);
+      const after = await AdministrationItemModel.findById(created.id).lean().exec();
+      expect(after, 'no row is rewritten').not.toHaveProperty('stockTracked');
+
+      // Told what it already was, the trail records nothing new; told otherwise, a change from true.
+      const same = await api.patch(`/items/${created.id}`, { stockTracked: true, version: 1 });
+      expect(same.status).toBe(200);
+      const off = await api.patch(`/items/${created.id}`, { stockTracked: false, version: 2 });
+      expect(off.status).toBe(200);
+      const rows = await trail('item', created.id);
+      expect(rows.map((row) => row.action)).toEqual(['create', 'update', 'update']);
+      expect(rows[1]?.changes).toEqual([{ field: 'notes', old: null, new: 'kept' }]);
+      expect(rows[2]?.changes).toEqual([{ field: 'stockTracked', old: true, new: false }]);
+    });
   });
 
   describe('the stock levels: 422 ADMINISTRATION_STOCK_LEVELS_ORDER (OD-09)', () => {

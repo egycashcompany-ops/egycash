@@ -2,8 +2,9 @@
 // strict, so an unknown key — a client-sent `nameKey` or `code`, a stock figure, a moved `kind` — is
 // refused instead of dropped; a name needs both languages, and an Arabic one that folds to
 // something; an update carries its version; a unit list names its kind, and a category list asks
-// one question of the tree; an item's levels are whole numbers from 0 (OD-08). And the refusal
-// vocabularies the screens word are exactly §5.15's.
+// one question of the tree; an item's levels are whole numbers from 0 (OD-08), and it is a stock
+// item unless a write says otherwise (OD-14 C). And the refusal vocabularies the screens word are
+// exactly §5.15's.
 import { describe, expect, it } from 'vitest';
 import { ErrorCodes } from '../errors/index.js';
 import {
@@ -213,7 +214,20 @@ describe('items', () => {
   const item = { name: paper, categoryId: oid(1), unitId: oid(2) };
 
   it('creates an item from a name, a category and a unit — nothing else is required', () => {
-    expect(CreateAdministrationItemSchema.parse(item)).toEqual(item);
+    expect(CreateAdministrationItemSchema.parse(item)).toEqual({ ...item, stockTracked: true });
+  });
+
+  it('makes a stock item unless the body says otherwise (OD-14 C)', () => {
+    expect(CreateAdministrationItemSchema.parse(item).stockTracked).toBe(true);
+    expect(CreateAdministrationItemSchema.parse({ ...item, stockTracked: false })).toMatchObject({
+      stockTracked: false,
+    });
+    for (const kind of [null, 'false', 0, 'service']) {
+      expect(
+        CreateAdministrationItemSchema.safeParse({ ...item, stockTracked: kind }).success,
+        JSON.stringify(kind),
+      ).toBe(false);
+    }
   });
 
   it('takes a barcode, levels, a description and notes, trimmed', () => {
@@ -291,6 +305,21 @@ describe('items', () => {
     );
   });
 
+  it('changes the kind on an update only when it is sent, and never to null (OD-14 C)', () => {
+    expect(UpdateAdministrationItemSchema.parse({ version: 1 })).toEqual({ version: 1 });
+    expect(UpdateAdministrationItemSchema.parse({ stockTracked: false, version: 1 })).toEqual({
+      stockTracked: false,
+      version: 1,
+    });
+    expect(UpdateAdministrationItemSchema.parse({ stockTracked: true, version: 1 })).toEqual({
+      stockTracked: true,
+      version: 1,
+    });
+    expect(
+      UpdateAdministrationItemSchema.safeParse({ stockTracked: null, version: 1 }).success,
+    ).toBe(false);
+  });
+
   it('lists by search, category, unit and status, its page capped at 100', () => {
     expect(
       ListAdministrationItemsQuerySchema.parse({
@@ -311,6 +340,10 @@ describe('items', () => {
     expect(ListAdministrationItemsQuerySchema.safeParse({ pageSize: 101 }).success).toBe(false);
     expect(ListAdministrationItemsQuerySchema.safeParse({ branchId: oid(3) }).success).toBe(false);
     expect(ListAdministrationItemsQuerySchema.safeParse({ categoryId: 'x' }).success).toBe(false);
+    expect(
+      ListAdministrationItemsQuerySchema.safeParse({ stockTracked: 'false' }).success,
+      'no filter by kind in P2',
+    ).toBe(false);
   });
 });
 

@@ -12,7 +12,7 @@ import {
   ADMINISTRATION_STOCK_LEVEL_MAX,
   type AdministrationItemDto,
   type AdministrationStockLevelField,
-  type CreateAdministrationItem,
+  type CreateAdministrationItemInput,
   type UpdateAdministrationItem,
 } from '@ecms/contracts';
 
@@ -113,8 +113,8 @@ export const barcodeOk = (text: string): boolean => {
 
 const orNull = (value: string): string | null => (value.trim() === '' ? null : value.trim());
 
-export const itemCreateBody = (form: ItemForm): CreateAdministrationItem => {
-  const body: CreateAdministrationItem = {
+export const itemCreateBody = (form: ItemForm): CreateAdministrationItemInput => {
+  const body: CreateAdministrationItemInput = {
     name: { ar: form.nameAr.trim(), en: form.nameEn.trim() },
     categoryId: form.categoryId,
     unitId: form.unitId,

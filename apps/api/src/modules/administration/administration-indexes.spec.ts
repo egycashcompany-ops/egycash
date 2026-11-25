@@ -435,10 +435,12 @@ describe('a repository’s first write waits for its collection (RK-03)', () => 
       userId: String(new Types.ObjectId()),
       permissions: { 'administrationItem.create': 'organization' },
     } as unknown as AuthContext;
+    // The body as the route hands it over, its schema's default applied.
     const input = {
       name: { ar: 'ورق تصوير', en: 'Copy paper' },
       categoryId: String(new Types.ObjectId()),
       unitId: String(new Types.ObjectId()),
+      stockTracked: true,
     };
 
     it('a failed item build refuses the write before a number is taken; the next goes in', async () => {

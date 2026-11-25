@@ -144,6 +144,7 @@ describe('seed → password login (regression)', () => {
     // Gold Vault module says the same at 27 — between IT (25) and Administration (30), the
     // ported ATM module at 28 — between Gold Vault and Administration, and Administrative Affairs
     // at 29 — between ATM and System Administration, whose English name it must never take.
+    // Compliance and Risks comes last, at 31: no whole number is free between 29 and 30.
     expect(groups.map((g) => g.name.en)).toEqual([
       'HR',
       'Fleet',
@@ -154,6 +155,7 @@ describe('seed → password login (regression)', () => {
       'ATM',
       'Administrative Affairs',
       'Administration',
+      'Compliance and Risks',
     ]);
     // Applications map to the app's real client routes, granted directly to the admin.
     // Every page of every module — grouped or not. The default sections moved most of HR into
@@ -325,8 +327,9 @@ describe('seed → password login (regression)', () => {
       }
     ).data;
     // B7 added Operations beside HR, Fleet, Organization, IT and Admin; the gold port adds a
-    // seventh, the ATM port an eighth and Administrative Affairs a ninth.
-    expect(groups).toHaveLength(9);
+    // seventh, the ATM port an eighth, Administrative Affairs a ninth and Compliance and Risks a
+    // tenth.
+    expect(groups).toHaveLength(10);
     // Counted across sections too: re-seeding must not duplicate a row, wherever it is grouped.
     expect(
       groups.reduce(

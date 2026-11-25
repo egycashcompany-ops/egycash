@@ -22,6 +22,7 @@ import {
   type ApprovalStep,
   type ApprovalTrailDto,
   type ApprovalWorkflowDto,
+  type AuditChange,
   type SetApprovalWorkflow,
 } from '@ecms/contracts';
 import { BusinessRuleError } from '../../shared/errors';
@@ -45,7 +46,11 @@ import {
 import { approversFor, hasApprovers, ownStepsOf, type Unit } from './approver-lookup';
 import { approvalWorkflowRepository } from './workflow.repository';
 import { type ApprovalWorkflowDoc } from './workflow.model';
-import { getApprovalRequestType, listApprovalRequestTypes } from './request-type.registry';
+import {
+  auditModeOf,
+  getApprovalRequestType,
+  listApprovalRequestTypes,
+} from './request-type.registry';
 import { APPROVAL_OVERRIDE_KEY, overrideReaches } from './override-reach';
 
 export { APPROVAL_OVERRIDE_KEY } from './override-reach';
@@ -203,18 +208,30 @@ class ApprovalService {
   }
 
   /**
-   * Record one decision, and return the entries the host module must append.
+   * Decide one rung for the actor, and return the entries the host module must append and the
+   * changes the decision's audit row carries.
    *
-   * The service does not save them: the host owns its aggregate, and a request whose status,
+   * The service does not save the entries: the host owns its aggregate, and a request whose status,
    * balance and notifications all move together must move them in one write of its own. Handing
    * back the entries keeps that possible; writing them here would force every host into a second
    * transaction it did not ask for.
+   *
+   * The audit row follows the type's registration (ADR-041 decision 7). For an `'engine'` type,
+   * the default and leave's, it is recorded here, before the host writes, so a host that refuses
+   * afterwards leaves it behind. For a `'host'` type the host records it, on its own document and
+   * after its own commit, so a decision its host refused leaves no row. `auditChanges` comes back
+   * either way: the facts the engine's row carries, which a host's own row must carry too.
    */
   async decide(
     subject: ApprovalSubject,
     actor: AuthContext,
     input: { decision: ApprovalDecision; comment: string | null },
-  ): Promise<{ entries: DecidedEntry[]; status: ChainStatus; stepIndex: number }> {
+  ): Promise<{
+    entries: DecidedEntry[];
+    status: ChainStatus;
+    stepIndex: number;
+    auditChanges: AuditChange[];
+  }> {
     const chain = await this.chainOf(subject);
     // The chain's status first, then the actor: one answer per case (ADR-041 decision 3). A
     // request with no staffed rung left is still waiting, so it falls through to «not your step»
@@ -257,28 +274,31 @@ class ApprovalService {
     );
     const status = statusOf(chain.steps, [...subject.decisions, ...entries]);
 
-    await auditService.record({
-      entityRef: {
-        moduleId: 'platform',
-        entityType: 'approval',
-        entityId: `${subject.requestType}:${stepIndex}`,
-      },
-      action: 'update',
-      changes: [
-        { field: 'decision', old: null, new: input.decision },
-        { field: 'step', old: null, new: String(stepIndex) },
-        { field: 'level', old: null, new: chain.steps[stepIndex]?.level ?? null },
-        { field: 'permissionKey', old: null, new: chain.steps[stepIndex]?.permissionKey ?? null },
-        ...(overriddenWith === null
-          ? []
-          : [{ field: 'overriddenWith', old: null, new: overriddenWith }]),
-        ...(mine !== null && mine.covers.length > 0
-          ? [{ field: 'covers', old: null, new: mine.covers.join(',') }]
-          : []),
-      ],
-    });
+    const auditChanges: AuditChange[] = [
+      { field: 'decision', old: null, new: input.decision },
+      { field: 'step', old: null, new: String(stepIndex) },
+      { field: 'level', old: null, new: chain.steps[stepIndex]?.level ?? null },
+      { field: 'permissionKey', old: null, new: chain.steps[stepIndex]?.permissionKey ?? null },
+      ...(overriddenWith === null
+        ? []
+        : [{ field: 'overriddenWith', old: null, new: overriddenWith }]),
+      ...(mine !== null && mine.covers.length > 0
+        ? [{ field: 'covers', old: null, new: mine.covers.join(',') }]
+        : []),
+    ];
+    if (auditModeOf(subject.requestType) === 'engine') {
+      await auditService.record({
+        entityRef: {
+          moduleId: 'platform',
+          entityType: 'approval',
+          entityId: `${subject.requestType}:${stepIndex}`,
+        },
+        action: 'update',
+        changes: auditChanges,
+      });
+    }
 
-    return { entries, status, stepIndex };
+    return { entries, status, stepIndex, auditChanges };
   }
 
   /** Who is standing on the rung a request is waiting for — the notification list, read live. */
@@ -307,9 +327,9 @@ class ApprovalService {
    * Three things are refused rather than stored, because each one gives a chain that LOOKS
    * configured and does not run as written: an unregistered request type, whose chain no host ever
    * reads; a permission key no module declares, whose rung resolves to «nobody holds this», so it
-   * is only ever passed over, and with no staffed rung above it a request that reaches it waits
-   * `unstaffed` for an override; and a rung repeated at the same level, which would ask one person
-   * twice.
+   * is passed when a staffed rung above it is decided, and with no staffed rung above it a request
+   * that reaches it waits `unstaffed` until an override within reach decides it; and a rung
+   * repeated at the same level, which would ask one person twice.
    */
   async setWorkflow(input: SetApprovalWorkflow, actor: AuthContext): Promise<ApprovalWorkflowDto> {
     if (getApprovalRequestType(input.requestType) === null) {
@@ -317,10 +337,10 @@ class ApprovalService {
     }
     // Checked against the registry this deployment actually booted with rather than a compile-time
     // list: a key from a module nobody enabled here is exactly the kind that resolves to «nobody
-    // holds this»: its rung is only ever passed over, and with nothing staffed above it the request
-    // waits `unstaffed` for an override, on a chain that looks configured. Empty means the boot
-    // sync has not run (a CLI process, a test); then nothing is refused, because refusing
-    // everything would be worse than refusing nothing.
+    // holds this»: its rung is passed when a staffed rung above it is decided, and with nothing
+    // staffed above it the request waits `unstaffed` until an override within reach decides it, on
+    // a chain that looks configured. Empty means the boot sync has not run (a CLI process, a test);
+    // then nothing is refused, because refusing everything would be worse than refusing nothing.
     const known = new Set(rbacService.registeredPermissionKeys());
     const seen = new Set<string>();
     for (const step of input.steps) {

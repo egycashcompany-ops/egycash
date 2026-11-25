@@ -168,6 +168,8 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'The keeper chosen has left — choose somebody who works here today.',
     ADMINISTRATION_DEACTIVATION_BLOCKED:
       'This warehouse cannot be retired while it holds stock or a document not yet ended names it.',
+    ADMINISTRATION_ATTACHMENT_LIMIT:
+      'This list already holds 20 documents, as many as it takes — remove one before adding another.',
     RATE_LIMITED: 'Too many requests — please slow down.',
     FILE_TOO_LARGE: 'That file is too large.',
     PAYLOAD_TOO_LARGE: 'What was sent is too large to save at once.',
@@ -281,6 +283,8 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'ترك أمين المخزن المختار العمل — اختر أحدًا ممن يعملون لدينا اليوم.',
     ADMINISTRATION_DEACTIVATION_BLOCKED:
       'لا يمكن إيقاف هذا المخزن ما دام فيه رصيد أو يشير إليه مستند لم يُغلق بعد.',
+    ADMINISTRATION_ATTACHMENT_LIMIT:
+      'تضم هذه القائمة عشرين مستندًا، وهو أقصى ما تتسع له — أزِل أحدها قبل إضافة غيره.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',
     PAYLOAD_TOO_LARGE: 'حجم البيانات المُرسَلة أكبر من أن تُحفظ دفعة واحدة.',

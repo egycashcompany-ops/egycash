@@ -11,6 +11,37 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **The approvals engine: the after-commit audit is opt-in per request type.** This is PX-1.5 of
+  PX-1, which hardens the platform approvals engine before Administrative Affairs' money approvals
+  run on it (`docs/12-planning/administration-module-phase-px1.md` §3 and §6.6; ADR-041 decision
+  7). It fixes R5 of the engine defects the design lists
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §15.2.1): `decide` recorded
+  every decision as `platform/approval` before the host's own write, so a decision the host then
+  refused left its row behind, and the row's only link to the host's document was the HTTP request
+  id.
+  - **The option.** `registerApprovalRequestType(type, { audit: 'host' })` declares, for one
+    request type, that its host records each decision; the default is `'engine'`, and one module
+    may register types of both kinds. The request-type registry keeps the option beside the type:
+    `getApprovalRequestType` and `listApprovalRequestTypes`, which feed the chain screen, return the
+    type as before, without it. Re-registering a type replaces its option.
+  - **What `decide` returns.** It always returns `auditChanges` as well: the decision, its rung's
+    index, level and key, `overriddenWith` and the rungs it covers, the change rows the engine's own
+    row carries. For a `'host'` type it records nothing, and the host records one row on its own
+    document, with its own verb, after its commit, so a decision its host refused leaves no row. A
+    process that stops between that commit and the record leaves the decision with no audit row,
+    and the document's own trail is then its record (ADR-041 Consequences). For an `'engine'` type
+    it records as before.
+  - **For HR leave,** the engine's only host: nothing changes. Leave registers without the option,
+    so the engine still writes its `platform/approval` row before leave's write, beside leave's own
+    `leaveDecision` row, and a decision leave then refuses can still leave that row behind. Moving
+    leave onto the option is a separate HR slice (design §18.3.1 item 5). No host registers
+    `'host'` yet; Administrative Affairs' types will, from P2.
+  - `approval.service.spec.ts` gains the `'host'` cases, run through a stub host that commits and
+    then records, and `request-type.registry.spec.ts` the option's. The registry's comment no longer
+    says that a chain built on a key nobody holds approves everything.
+  - Rollback (RK-30): reverting removes the option and `auditChanges` and leaves nothing stored
+    behind; no host registers `'host'` yet, so every decision is audited as it is now.
+
 - **The approvals engine: a request is decided on the chain it was submitted on.** This is PX-1.4
   of PX-1, which hardens the platform approvals engine before Administrative Affairs' money
   approvals run on it (`docs/12-planning/administration-module-phase-px1.md` §3, §5, §6.5 and §10;

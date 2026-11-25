@@ -22,6 +22,7 @@ import {
   type ApprovalStep,
   type ApprovalTrailDto,
   type ApprovalWorkflowDto,
+  type AuditChange,
   type SetApprovalWorkflow,
 } from '@ecms/contracts';
 import { BusinessRuleError } from '../../shared/errors';
@@ -45,7 +46,11 @@ import {
 import { approversFor, hasApprovers, ownStepsOf, type Unit } from './approver-lookup';
 import { approvalWorkflowRepository } from './workflow.repository';
 import { type ApprovalWorkflowDoc } from './workflow.model';
-import { getApprovalRequestType, listApprovalRequestTypes } from './request-type.registry';
+import {
+  auditModeOf,
+  getApprovalRequestType,
+  listApprovalRequestTypes,
+} from './request-type.registry';
 import { APPROVAL_OVERRIDE_KEY, overrideReaches } from './override-reach';
 
 export { APPROVAL_OVERRIDE_KEY } from './override-reach';
@@ -209,12 +214,23 @@ class ApprovalService {
    * balance and notifications all move together must move them in one write of its own. Handing
    * back the entries keeps that possible; writing them here would force every host into a second
    * transaction it did not ask for.
+   *
+   * The audit row follows the type's registration (ADR-041 decision 7). For an `'engine'` type,
+   * the default and leave's, it is recorded here, before the host writes, so a host that refuses
+   * afterwards leaves it behind. For a `'host'` type the host records it, on its own document and
+   * after its own commit, so a decision its host refused leaves no row. `auditChanges` comes back
+   * either way: the facts the engine's row carries, which a host's own row must carry too.
    */
   async decide(
     subject: ApprovalSubject,
     actor: AuthContext,
     input: { decision: ApprovalDecision; comment: string | null },
-  ): Promise<{ entries: DecidedEntry[]; status: ChainStatus; stepIndex: number }> {
+  ): Promise<{
+    entries: DecidedEntry[];
+    status: ChainStatus;
+    stepIndex: number;
+    auditChanges: AuditChange[];
+  }> {
     const chain = await this.chainOf(subject);
     // The chain's status first, then the actor: one answer per case (ADR-041 decision 3). A
     // request with no staffed rung left is still waiting, so it falls through to «not your step»
@@ -257,28 +273,31 @@ class ApprovalService {
     );
     const status = statusOf(chain.steps, [...subject.decisions, ...entries]);
 
-    await auditService.record({
-      entityRef: {
-        moduleId: 'platform',
-        entityType: 'approval',
-        entityId: `${subject.requestType}:${stepIndex}`,
-      },
-      action: 'update',
-      changes: [
-        { field: 'decision', old: null, new: input.decision },
-        { field: 'step', old: null, new: String(stepIndex) },
-        { field: 'level', old: null, new: chain.steps[stepIndex]?.level ?? null },
-        { field: 'permissionKey', old: null, new: chain.steps[stepIndex]?.permissionKey ?? null },
-        ...(overriddenWith === null
-          ? []
-          : [{ field: 'overriddenWith', old: null, new: overriddenWith }]),
-        ...(mine !== null && mine.covers.length > 0
-          ? [{ field: 'covers', old: null, new: mine.covers.join(',') }]
-          : []),
-      ],
-    });
+    const auditChanges: AuditChange[] = [
+      { field: 'decision', old: null, new: input.decision },
+      { field: 'step', old: null, new: String(stepIndex) },
+      { field: 'level', old: null, new: chain.steps[stepIndex]?.level ?? null },
+      { field: 'permissionKey', old: null, new: chain.steps[stepIndex]?.permissionKey ?? null },
+      ...(overriddenWith === null
+        ? []
+        : [{ field: 'overriddenWith', old: null, new: overriddenWith }]),
+      ...(mine !== null && mine.covers.length > 0
+        ? [{ field: 'covers', old: null, new: mine.covers.join(',') }]
+        : []),
+    ];
+    if (auditModeOf(subject.requestType) === 'engine') {
+      await auditService.record({
+        entityRef: {
+          moduleId: 'platform',
+          entityType: 'approval',
+          entityId: `${subject.requestType}:${stepIndex}`,
+        },
+        action: 'update',
+        changes: auditChanges,
+      });
+    }
 
-    return { entries, status, stepIndex };
+    return { entries, status, stepIndex, auditChanges };
   }
 
   /** Who is standing on the rung a request is waiting for — the notification list, read live. */

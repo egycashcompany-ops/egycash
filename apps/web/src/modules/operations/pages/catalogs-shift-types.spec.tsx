@@ -24,7 +24,7 @@ import { uiSlice } from '../../../store/uiSlice';
 import { translate } from '../../../platform/localization/i18n';
 import { listKey } from '../../../shared/lib/query-keys';
 import { SHIFT_TYPE_LIST } from '../lib/crew-plan';
-import { ShiftTypeDialog, freeShiftTypeColour } from '../components/CatalogDialogs';
+import { ShiftTypeDialog } from '../components/CatalogDialogs';
 import { CatalogsPage } from './CatalogsPage';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -188,21 +188,27 @@ describe('the «أنواع التشغيل» tab without the catalog grant', () =
 });
 
 describe('the type’s form — the board’s palette (Round 24b), each colour named', () => {
-  const formHtml = (shiftType: OperationsShiftTypeDto | null): string =>
+  const formHtmlOf = (
+    shiftType: OperationsShiftTypeDto | null,
+    types: readonly OperationsShiftTypeDto[],
+  ): string =>
     renderToStaticMarkup(
       <Provider store={store(['operationsCatalog.manage'])}>
         <QueryClientProvider client={new QueryClient()}>
-          <ShiftTypeDialog
-            open
-            shiftType={shiftType}
-            types={SERVER_ORDER}
-            onClose={() => undefined}
-          />
+          <ShiftTypeDialog open shiftType={shiftType} types={types} onClose={() => undefined} />
         </QueryClientProvider>
       </Provider>,
     );
+  const formHtml = (shiftType: OperationsShiftTypeDto | null): string =>
+    formHtmlOf(shiftType, SERVER_ORDER);
   const swatchesOf = (html: string): (string | undefined)[] =>
     [...html.matchAll(/role="radio" data-colour="([a-z]+)"/g)].map((m) => m[1]);
+  /** The palette's swatches checked (at most one). */
+  const checkedSwatches = (html: string): (string | undefined)[] =>
+    [...html.matchAll(/role="radio" data-colour="([a-z]+)" aria-checked="true"/g)].map((m) => m[1]);
+  /** The «بدون لون» radio's own tag. */
+  const offOf = (html: string): string =>
+    html.match(/<button[^>]*data-colour-off="true"[^>]*>/)?.[0] ?? '';
   const html = formHtml(null);
 
   it('offers a NEW type the palette for the live types and itself — each a named swatch — and draws the type as it will read', () => {
@@ -242,13 +248,34 @@ describe('the type’s form — the board’s palette (Round 24b), each colour n
     ]);
   });
 
-  it('starts a new type on the first shown colour no ACTIVE type wears — an archived one’s is free', () => {
-    // rose, teal and violet are worn; indigo is worn by «أسوان», archived. Shown: rose, emerald,
-    // violet, teal.
-    expect(freeShiftTypeColour(SERVER_ORDER)).toBe('emerald');
-    expect(
-      freeShiftTypeColour(OPERATIONS_SHIFT_TYPE_COLOURS.map((c, i) => shiftType(c, c, c, i))),
-    ).toBe('rose');
+  // Round 34 F — «ممكن عملية تكون من غير لون مش لازم ان يومى او محصنة تبقى واخده لون اجبارى».
+  it('opens a NEW type on «بدون لون» — no colour forced on it; the palette, a free colour among it, one press away', () => {
+    // «بدون لون» is the one choice checked; no swatch of the palette is.
+    expect(offOf(html)).toContain('aria-checked="true"');
+    expect(checkedSwatches(html)).toEqual([]);
+    // Drawn as it will read: the neutral tag, no tint.
+    const preview = html.slice(html.indexOf('data-shift-type-preview="true"'));
+    expect(preview).toContain('data-type-tag="none"');
+    expect(preview).not.toMatch(/bg-[a-z]+-500\/15/);
+    // rose, teal and violet are worn; indigo is worn by «أسوان», archived. Offered: rose, emerald
+    // (nobody live wears it), violet, teal — each one press.
+    expect(swatchesOf(html)).toContain('emerald');
+    // Every colour worn: still none — the new type may share one by hand.
+    const full = formHtmlOf(
+      null,
+      OPERATIONS_SHIFT_TYPE_COLOURS.map((c, i) => shiftType(c, c, c, i)),
+    );
+    expect(offOf(full)).toContain('aria-checked="true"');
+    expect(checkedSwatches(full)).toEqual([]);
+  });
+
+  it('opens an EDITED type on the colour it has — or on «بدون لون» when it has none', () => {
+    const daily = formHtml(SERVER_ORDER[0] as OperationsShiftTypeDto);
+    expect(offOf(daily)).toContain('aria-checked="false"');
+    expect(checkedSwatches(daily)).toEqual(['rose']);
+    const bare = formHtml({ ...(SERVER_ORDER[0] as OperationsShiftTypeDto), colour: null });
+    expect(offOf(bare)).toContain('aria-checked="true"');
+    expect(checkedSwatches(bare)).toEqual([]);
   });
 });
 
@@ -329,8 +356,15 @@ describe('Round 34 C — a type with no colour, on the tab and in its form', () 
       'violet',
       'teal',
     ]);
-    // A new type still starts on a free colour of the palette — «بدون لون» one press away.
-    expect(freeShiftTypeColour(WITH_BARE)).toBe('emerald');
+    // A new type starts on «بدون لون» (Round 34 F) — the free colour (emerald) one press away.
+    const adding = formHtml(null);
+    expect(adding.match(/<button[^>]*data-colour-off="true"[^>]*>/)?.[0]).toContain(
+      'aria-checked="true"',
+    );
+    expect(adding).not.toMatch(/role="radio" data-colour="[a-z]+" aria-checked="true"/);
+    expect([...adding.matchAll(/role="radio" data-colour="([a-z]+)"/g)].map((m) => m[1])).toContain(
+      'emerald',
+    );
   });
 
   it('the form keeps a type’s «بدون لون» when it opens on it, and sends null for it', () => {
@@ -338,9 +372,10 @@ describe('Round 34 C — a type with no colour, on the tab and in its form', () 
       fileURLToPath(new URL('../components/CatalogDialogs.tsx', import.meta.url)),
       'utf8',
     );
-    expect(source).toContain(
-      'setColour(shiftType === null ? freeShiftTypeColour(types) : shiftType.colour);',
-    );
+    // Round 34 F: a new type opens on none — no free colour handed to it.
+    expect(source).toContain('setColour(shiftType === null ? null : shiftType.colour);');
+    expect(source).toContain('() => shiftType?.colour ?? null,');
+    expect(source).not.toContain('freeShiftTypeColour');
     expect(source).toContain('onClick={() => setColour(null)}');
     expect(source).toContain('aria-checked={colour === null}');
     expect(source).toContain('const core = { name: name.trim(), nameEn: orNull(nameEn), colour };');

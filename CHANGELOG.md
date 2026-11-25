@@ -355,8 +355,8 @@ its entry here in the same PR.
 
 - **Administrative Affairs («الشئون الإدارية»), second slice: items, and the «ITM-» code.** The
   item master every store, request and order will name, with the «Category / Subcategory» the
-  owner's request lists among an item's fields, typed on the screens as he asked («لأ خلينا من غير
-  شيتات او بيانات دلوقتى»), so nothing is loaded at deploy. This is P1a.2 of the design
+  owner's request lists among an item's fields, typed on the screens as the owner asked
+  («لأ خلينا من غير شيتات او بيانات دلوقتى»), so nothing is loaded at deploy. This is P1a.2 of the design
   (`docs/12-planning/administration-module-decisions-and-phases.md` §19.1): the API only; the
   Items screen arrives with P1a.W.
   - **Three keys and a page:** `administrationItem.view`, `.create` and `.edit` («عرض الأصناف»,

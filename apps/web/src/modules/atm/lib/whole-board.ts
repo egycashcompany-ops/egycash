@@ -40,6 +40,9 @@ export const isBoardCutShort = (meta: { totalPages: number }): boolean =>
 export const boardPageCount = (totalPages: number): number =>
   Math.min(Math.max(totalPages, 0), MAX_BOARD_PAGES);
 
+/** How many page reads one walk keeps in flight at a time. */
+export const WHOLE_BOARD_CONCURRENCY = 4;
+
 /**
  * How many times one board read may walk the pages when a write keeps landing between them. Past
  * that, the last walk is shown; the next refresh reads it again.
@@ -71,11 +74,19 @@ const walkBoard = async <T extends { id: string }>(
   const pages = boardPageCount(first.meta.totalPages);
   if (pages <= 1) return { board: first, steady: true };
   stopIfAborted(signal);
-  const rest = await Promise.all(
-    Array.from({ length: pages - 1 }, async (_unused, index) =>
-      fetchPage(index + 2, MAX_PAGE_SIZE, signal),
-    ),
-  );
+  // At most `WHOLE_BOARD_CONCURRENCY` pages in flight — never every page at once: the done pages'
+  // walk of 2026-11-25 put two hundred reads on the database together and the system hung.
+  const rest: Paginated<T>[] = new Array<Paginated<T>>(pages - 1);
+  let nextIndex = 0;
+  const lane = async (): Promise<void> => {
+    while (nextIndex < pages - 1) {
+      const index = nextIndex;
+      nextIndex += 1;
+      stopIfAborted(signal);
+      rest[index] = await fetchPage(index + 2, MAX_PAGE_SIZE, signal);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(WHOLE_BOARD_CONCURRENCY, pages - 1) }, lane));
   const seen = new Set<string>();
   const items: T[] = [];
   for (const row of [...first.items, ...rest.flatMap((page) => page.items)]) {

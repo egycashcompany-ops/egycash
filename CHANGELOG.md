@@ -35,6 +35,24 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **ATM done pages no longer hang the system (2026-11-25).** «السيستم كان مهنج». From 12:00 Cairo a
+  done-maintenance page over 1–25 November for one branch (29,500 closed rows) asked for up to 200
+  pages at once, and each page sorted the whole range in memory on the database (Atlas slow log:
+  29,500 keys and documents examined per 100-row page), so every screen waited behind it.
+  - Indexes in the done pages' own order on both operation logs (`ix_branch_done_range`,
+    `ix_done_range`), built at boot.
+  - `GET /atm/{replenishments,maintenances}/done/range` reads the range in chunks of 5,000, each
+    continuing where the last stopped; the done pages read the whole range that way, with no cap
+    («عايز إمكانية إنى أستخرجهم كلهم»), so the Excel and PDF are the whole period.
+  - The done tables and the mail log show 100 rows a page (50–500); the column filters, the sort and
+    the files still cover every row («تظهرهم عادى على صفحات فى الجدول»).
+  - The remaining whole-list walks (mail log, machine export) keep at most 4 pages in flight.
+  - Two guards that hold whatever a browser does: the done reads (the chunked one, and the paged
+    one a tab still on the old bundle asks for until it reloads) give up after 15 s instead of
+    running on for minutes after the browser left; and a database error while checking a request's
+    user is answered as the error it is — no longer as 401 «User no longer exists», which sent every
+    open tab to refresh at once and got thirteen sessions revoked as token reuse.
+
 - **The approvals engine: the after-commit audit is opt-in per request type.** This is PX-1.5 of
   PX-1, which hardens the platform approvals engine before Administrative Affairs' money approvals
   run on it (`docs/12-planning/administration-module-phase-px1.md` §3 and §6.6; ADR-041 decision

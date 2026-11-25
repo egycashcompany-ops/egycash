@@ -2,7 +2,8 @@
 // docs/12-planning/administration-module-phase-px1.md §7).
 //
 // Every case passes on today's code. A case that pins a defect a later pull request fixes names it
-// (R2, R4, R5, R9), so that pull request can show the case flip; the rest is behavior the fixes
+// (R2, R4, R9), so that pull request can show the case flip. R5's case is the 'engine' default,
+// which PX-1.5 keeps for leave and sets its 'host' cases beside; the rest is behavior the fixes
 // keep. The seams are mocked — the chain rows, the approver lookup, names, places, the permission
 // registry and audit — while `approval-chain` and `approval-trail` run for real, because the rules
 // are theirs and this service only joins them to one request. A real leave request through the
@@ -211,31 +212,51 @@ describe('which chain applies (chainFor)', () => {
     expect(mocks.hasApprovers).toHaveBeenCalledTimes(2);
     await approvalService.chainFor('hr.leave', UNIT);
     expect(mocks.hasApprovers).toHaveBeenCalledTimes(4);
+
+    // Two keys at one level are two questions: a memo keyed by level alone would hand the second
+    // rung the first one's answer. The type declares both keys, so no later key rule touches it.
+    mocks.hasApprovers.mockReset();
+    registerApprovalRequestType({
+      key: 'spec.twoKeys',
+      moduleId: 'spec',
+      name: { ar: 'نوع اختبار بمفتاحين', en: 'Spec type with two keys' },
+      permissionKeys: ['first.approve', 'second.approve'],
+    });
+    mocks.findActiveForType.mockResolvedValue([
+      row([rung('unit', 'first.approve'), rung('unit', 'second.approve')], {
+        requestType: 'spec.twoKeys',
+      }),
+    ]);
+    mocks.hasApprovers.mockImplementation((key: string) =>
+      Promise.resolve(key === 'first.approve'),
+    );
+    const mixed = await approvalService.chainFor('spec.twoKeys', UNIT);
+    expect(mocks.hasApprovers).toHaveBeenCalledTimes(2);
+    expect(mixed.steps.map((s) => s.staffed)).toEqual([true, false]);
   });
 });
 
 describe('deciding (decide)', () => {
-  it('decides the waiting rung for its holder; R5 (today): audits it itself before returning', async () => {
+  it('decides the waiting rung for its holder, and audits it itself before returning (R5: the engine default PX-1.5 keeps)', async () => {
     chain(LADDER);
     mocks.ownStepsOf.mockResolvedValue([0]);
     const outcome = await approvalService.decide(subject(), actor(), {
       decision: 'approved',
       comment: 'موافق',
     });
-    expect(outcome).toEqual({
-      entries: [
-        {
-          stepIndex: 0,
-          outcome: 'approved',
-          deciderUserId: 'u-actor',
-          decidedAt: expect.any(Date),
-          comment: 'موافق',
-          overriddenWith: null,
-        },
-      ],
-      status: 'pending',
-      stepIndex: 0,
-    });
+    expect(outcome.entries).toEqual([
+      {
+        stepIndex: 0,
+        outcome: 'approved',
+        deciderUserId: 'u-actor',
+        decidedAt: expect.any(Date),
+        comment: 'موافق',
+        overriddenWith: null,
+      },
+    ]);
+    // Matched rather than equal, so the `auditChanges` PX-1.5 adds to the result leaves this
+    // 'engine' case standing; the row below is what it guards.
+    expect(outcome).toMatchObject({ status: 'pending', stepIndex: 0 });
     expect(mocks.ownStepsOf).toHaveBeenCalledWith('u-actor', expect.any(Array), UNIT);
     // Written before the host's own write, so a host refusing afterwards leaves it behind. It names
     // the type and the rung, not the host's document; the HTTP request id is its only link.
@@ -262,7 +283,14 @@ describe('deciding (decide)', () => {
       [2, 'approved', 'u-actor'],
     ]);
     expect(outcome).toMatchObject({ status: 'approved', stepIndex: 2 });
-    expect(auditedChanges()).toContainEqual({ field: 'covers', old: null, new: '0,1' });
+    // The row names the rung decided, not the one that was waiting.
+    expect(auditedChanges()).toEqual([
+      { field: 'decision', old: null, new: 'approved' },
+      { field: 'step', old: null, new: '2' },
+      { field: 'level', old: null, new: 'organization' },
+      { field: 'permissionKey', old: null, new: 'leave.approve' },
+      { field: 'covers', old: null, new: '0,1' },
+    ]);
   });
 
   it('refuses approvals.notYourStep to someone on no rung at or above the waiting one', async () => {
@@ -331,6 +359,29 @@ describe('deciding (decide)', () => {
       [1, 'approved', null],
     ]);
   });
+
+  it('an organization-scope override decides the waiting rung, not an empty rung below it', async () => {
+    chain(LADDER, ['department', 'organization']);
+    const outcome = await approvalService.decide(
+      subject(),
+      actor({ 'approval.override': 'organization' }),
+      APPROVE,
+    );
+    expect(outcome.entries.map((e) => [e.stepIndex, e.outcome, e.overriddenWith])).toEqual([
+      [0, 'skipped', null],
+      [1, 'approved', 'approval.override'],
+    ]);
+    expect(outcome).toMatchObject({ status: 'pending', stepIndex: 1 });
+  });
+});
+
+describe('where a request stands (statusFor)', () => {
+  it('reads the host’s entries against the chain', async () => {
+    chain(LADDER);
+    expect(await approvalService.statusFor(subject([entry(0, 'approved')]))).toBe('pending');
+    expect(await approvalService.statusFor(subject(ALL_APPROVED))).toBe('approved');
+    expect(await approvalService.statusFor(subject([entry(0, 'rejected')]))).toBe('rejected');
+  });
 });
 
 describe('the trail and what its reader may do (trailFor)', () => {
@@ -369,6 +420,12 @@ describe('the trail and what its reader may do (trailFor)', () => {
       viewerStep: 2,
       viewerCovers: [0, 1],
     });
+    expect(mocks.ownStepsOf).toHaveBeenLastCalledWith('u-actor', expect.any(Array), UNIT);
+
+    // The waiting rung is the first STAFFED one: an empty rung below it is not where the request waits.
+    chain(LADDER, ['department', 'organization']);
+    mocks.ownStepsOf.mockResolvedValue([]);
+    expect((await approvalService.trailFor(subject(), actor())).currentStep).toBe(1);
   });
 
   it('R4 (today): offers the override at any scope to a reader on no rung, never on a finished chain', async () => {

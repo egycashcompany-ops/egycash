@@ -1,8 +1,8 @@
 // The approvals engine against a real database (R12's baseline, PX-1.1 of
 // docs/12-planning/administration-module-phase-px1.md §7; exit criteria 3 and 5): a chain written
 // through `PUT /api/v1/platform/approvals`, and an HR leave request — the engine's only host —
-// driven through it to approved and to rejected, over today's behavior. PX-1.2 to PX-1.6 add their
-// cases here.
+// driven through it to approved and to rejected, over today's behavior. PX-1.2, PX-1.3, PX-1.4 and
+// PX-1.6 add their cases here; PX-1.5 keeps the audit case green.
 //
 // The leave suite's helpers are copied rather than shared, because exit criterion 5 keeps
 // `hr-leave.spec.ts` unchanged. Nobody here holds `super-admin`: the boot sync hands that role every

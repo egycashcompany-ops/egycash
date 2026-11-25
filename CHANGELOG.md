@@ -268,14 +268,15 @@ its entry here in the same PR.
   show the case it changes. `apps/api/src/platform/approvals/approval.service.spec.ts`, the
   service's first spec, mocks its seams and covers which chain applies and the staffing memo, a
   rung's holder deciding and deciding early, the refusals `approvals.notYourStep` and
-  `approvals.alreadyDecided`, the override, the trail's flags, the notification list and the chain
-  save's three refusals. `apps/api/tests/integration/approvals.spec.ts` writes a two-rung `hr.leave`
-  chain through `PUT /api/v1/platform/approvals` and takes a leave request through `pendingApproval`
-  to approved and to rejected, each decision writing leave's `leaveDecision` row and the engine's
-  own. A case that pins a defect PX-1.2 to PX-1.6 fix names it: today a chain with nobody on any
+  `approvals.alreadyDecided`, the override, where a request stands, the trail's flags, the
+  notification list and the chain save's three refusals. `apps/api/tests/integration/approvals.spec.ts`
+  writes a two-rung `hr.leave` chain through `PUT /api/v1/platform/approvals` and takes a leave
+  request through `pendingApproval` to approved and to rejected, each decision writing leave's
+  `leaveDecision` row and the engine's own. A case that pins a defect PX-1.2 to PX-1.6 fix names it: today a chain with nobody on any
   rung, or no chain at all, reads approved (R2), an `approval.override` held at any scope decides
-  (R4), the engine records its row before leave's own write (R5), and a save accepts any registered
-  key under the version the server just read (R9). An `approval.override` that has expired already
+  (R4), and a save accepts any registered key under the version the server just read (R9). The
+  engine still records its own row before leave's write; PX-1.5 keeps that for leave, which stays
+  an 'engine' type, and a case pins it (R5). An `approval.override` that has expired already
   decides nothing, and a guard case keeps it so. Nothing changes for HR leave or for anyone else: no
   source file, route, key, setting or row changes. Rollback: reverting it removes the two spec
   files and leaves nothing behind (RK-30).

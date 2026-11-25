@@ -12853,9 +12853,8 @@ const en: Record<string, string> = {
   'operations.crewPlan.title': 'Crew board',
   'operations.crewPlan.fileStem': 'crew-board',
   'operations.crewPlan.day': 'Operating day',
-  'operations.crewPlan.hint':
-    'Press «+ Choose» in a slot, or drag a name onto a vehicle’s row or a slot. Drag it back onto a list to free it.',
   'operations.crewPlan.viewOnly': 'You can view the plan; planning needs the crew-planning permission.',
+  'operations.crewPlan.viewOnlyMark': 'View only',
   // Round 32 — a past day opens as its record, view only.
   'operations.crewPlan.record.title': 'Record of {{day}} — view only, it cannot be changed',
   'operations.crewPlan.record.body':
@@ -12947,7 +12946,7 @@ const en: Record<string, string> = {
   'operations.crewPlan.typeAll': 'All types',
   'operations.crewPlan.counts': 'Rows by type',
   'operations.crewPlan.total': 'Total',
-  'operations.crewPlan.workshop': 'In the workshop',
+  'operations.crewPlan.workshop': 'Workshop',
   'operations.crewPlan.workshopHint': 'Vehicles in the workshop: {{codes}}',
   'operations.crewPlan.workshopNone': 'No vehicle is in the workshop on this day',
   'operations.crewPlan.noneOfType': 'No row of this type',
@@ -12970,7 +12969,7 @@ const en: Record<string, string> = {
   // only the words around them live here.
   'operations.crewPlan.type.choose': 'Choose',
   'operations.crewPlan.type.clear': 'No type',
-  'operations.crewPlan.type.untyped': 'No type yet',
+  'operations.crewPlan.type.untyped': 'No type',
   'operations.crewPlan.type.archived': 'Archived',
   'operations.crewPlan.type.archivedHint':
     'archived on the reference screen — this row keeps it, a new row cannot be given it',
@@ -13032,7 +13031,7 @@ const en: Record<string, string> = {
   'operations.crewPlan.typeColours.open': 'Type colours',
   'operations.crewPlan.typeColours.title': 'Type colours',
   'operations.crewPlan.typeColours.subtitle':
-    'A colour for each type, from the palette ({{count}}) — two types may share one',
+    'A colour for each type from the palette ({{count}}), or none — two types may share one',
   'operations.crewPlan.typeColours.type': 'Type',
   'operations.crewPlan.typeColours.pick': '{{type}} in {{colour}}',
   'operations.crewPlan.typeColours.pickNone': '{{type}} with no colour',
@@ -13220,6 +13219,7 @@ const en: Record<string, string> = {
   'operations.crewPlan.filter.direction': 'Direction',
   'operations.crewPlan.filter.noDirection': 'No direction',
   'operations.crewPlan.filter.shown': 'Showing {{shown}} of {{total}}',
+  'operations.crewPlan.filter.shownShort': '{{shown}} of {{total}}',
   'operations.crewPlan.filter.clear': 'Clear filters',
   'operations.crewPlan.countsHint': 'Counts every row of the day, whatever the filters show',
   // ── Operations B4 — the four secured screens
@@ -29068,9 +29068,8 @@ const ar: Record<string, string> = {
   'operations.crewPlan.title': 'لوحة التشغيلة',
   'operations.crewPlan.fileStem': 'لوحة-التشغيلة',
   'operations.crewPlan.day': 'يوم التشغيلة',
-  'operations.crewPlan.hint':
-    'اضغط «+ اختيار» في الخانة، أو اسحب الاسم إلى صف السيارة أو إلى الخانة. أعِده إلى القائمة لإخلائه.',
   'operations.crewPlan.viewOnly': 'يمكنك الاطلاع على التشغيلة؛ أما التوزيع فيحتاج صلاحية تخطيط الطاقم.',
+  'operations.crewPlan.viewOnlyMark': 'للعرض فقط',
   // Round 32 — «لما بجيب السجل فى لوحة التشغيل بيخلى اعدل وانا عاوزها اظهار فقط».
   'operations.crewPlan.record.title': 'سجل يوم {{day}} — للعرض فقط، لا يمكن التعديل',
   'operations.crewPlan.record.body':
@@ -29240,7 +29239,7 @@ const ar: Record<string, string> = {
   'operations.crewPlan.typeColours.open': 'ألوان الأنواع',
   'operations.crewPlan.typeColours.title': 'ألوان الأنواع',
   'operations.crewPlan.typeColours.subtitle':
-    'لكل نوع لون من ألوان اللوحة ({{count}})، ويجوز أن يشترك نوعان في لون واحد',
+    'لكل نوع لون من ألوان اللوحة ({{count}}) أو «بدون لون»، ويجوز أن يشترك نوعان في لون واحد',
   'operations.crewPlan.typeColours.type': 'النوع',
   'operations.crewPlan.typeColours.pick': '{{type}} باللون {{colour}}',
   'operations.crewPlan.typeColours.pickNone': '{{type}} بدون لون',
@@ -29423,6 +29422,7 @@ const ar: Record<string, string> = {
   'operations.crewPlan.filter.direction': 'الاتجاه',
   'operations.crewPlan.filter.noDirection': 'بدون اتجاه',
   'operations.crewPlan.filter.shown': 'المعروض {{shown}} من {{total}}',
+  'operations.crewPlan.filter.shownShort': '{{shown}} من {{total}}',
   'operations.crewPlan.filter.clear': 'مسح التصفية',
   'operations.crewPlan.countsHint': 'تَعُدّ كل صفوف اليوم أيًّا كانت التصفية',
   // ── العمليات B4 — شاشات المحصنات الأربع

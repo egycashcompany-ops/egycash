@@ -24,6 +24,11 @@
 // a row's colour has three states (`rowColour`): null «لون النوع» (its type's, or none when the type
 // has none), a palette colour picked by hand, or `'none'` «بدون لون» picked by hand — which wins over
 // the type's colour (`resolveRowColour`). A colour once given can be taken off, by either way.
+//
+// Round 34 F — «ممكن عملية تكون من غير لون مش لازم ان يومى او محصنة تبقى واخده لون اجبارى»: NO TYPE IS
+// GIVEN A COLOUR it was not given by hand. A new type starts with none (the catalog's form opens on
+// «بدون لون»; Round 24b's «the first free colour» is gone), and nothing here hands one back to a type
+// that has none — the palette counts it and leaves it bare.
 import {
   OPERATIONS_CREW_ROW_NO_COLOUR,
   OPERATIONS_SHIFT_TYPE_COLOURS,
@@ -166,16 +171,6 @@ export const inPalette = (
   palette: readonly PaletteColour[],
   colour: PaletteColour | null,
 ): boolean => colour === null || palette.includes(colour);
-
-/**
- * The first colour of the shown palette no live type wears yet — a NEW type starts told apart from
- * the others; all worn (or shared), the first of the palette. The palette a new type sees counts it
- * already (N + 1), so it always holds an unworn colour while the palette has one.
- */
-export const freeColourFor = (types: readonly OperationsShiftTypeDto[]): PaletteColour => {
-  const worn = wornColours(types);
-  return paletteFor(types, 1).find((colour) => !worn.has(colour)) ?? PALETTE[0] ?? 'rose';
-};
 
 /**
  * What a press on a swatch of «ألوان الأنواع» does — a swatch, or (Round 34 C) its «بدون لون», null:

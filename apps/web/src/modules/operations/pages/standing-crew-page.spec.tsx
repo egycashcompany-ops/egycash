@@ -143,9 +143,11 @@ describe('Round 27 — the page is built from the board’s own pieces', () => {
     ]) {
       expect(PAGE, piece).toContain(piece);
     }
-    // The board itself draws the same frame pieces — one source, so the two cannot drift.
+    // The board itself draws the same frame pieces — one source, so the two cannot drift. Its bar is
+    // the same bar kept on ONE line from 1280 (Round 34 E: the totals left it for the toolbar).
     for (const piece of [
-      'className={CREW_PLAN_BAR} data-crew-plan-bar="true"',
+      'className={CREW_PLAN_BAR_LINE} data-crew-plan-bar="true"',
+      "const CREW_PLAN_BAR_LINE = cn(CREW_PLAN_BAR, 'min-[1280px]:flex-nowrap min-[1280px]:gap-x-2');",
       'className={CREW_PLAN_GRID} data-crew-plan-grid="true"',
       '<CrewPlanHand',
       '<FilteredCount',

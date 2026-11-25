@@ -47,7 +47,7 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { ApiError } from '../../../shared/lib/api-client';
 import { useAppSelector } from '../../../store';
 import { NoColourSwatch, SHIFT_TYPE_TONE, ShiftTypeTag } from './shift-type-look';
-import { freeColourFor, paletteFor } from '../lib/type-colours';
+import { paletteFor } from '../lib/type-colours';
 import { branchSaveErrorKey } from '../lib/shipment-form';
 import {
   useCreateOperationsArea,
@@ -713,15 +713,6 @@ export const AreaDialog = ({
 };
 
 /**
- * The first colour of the palette SHOWN to a new type no ACTIVE type wears yet — a new type starts
- * told apart from the others on the board's strip, and the planner can still pick any of the shown
- * colours. All worn: the palette's first (`freeColourFor`, Round 24b).
- */
-export const freeShiftTypeColour = (
-  types: readonly OperationsShiftTypeDto[],
-): OperationsShiftTypeColour => freeColourFor(types);
-
-/**
  * The swatches the type's form offers — Round 24b, «عاوز pallett الالوان يكون على عدد الالوان يكون نفس
  * عدد النوع»: the board's palette (`paletteFor` — every colour a live type wears, then the first
  * unworn ones), as many colours as there are live types — counting the one being added — and an
@@ -746,8 +737,11 @@ export const shiftTypeFormPalette = (
  * is not here: the tab's own button says it in one click (`isActive`), as the server takes it.
  *
  * Round 34 C — «مش لازم نوع يكون واخد اجبارى لون»: «بدون لون» is the first choice (`colour: null`);
- * a type saved with a colour can be set back to it, and a colour given again. A new type still opens
- * on a free colour of the palette (`freeShiftTypeColour`), «بدون لون» one press away.
+ * a type saved with a colour can be set back to it, and a colour given again.
+ *
+ * Round 34 F — «ممكن عملية تكون من غير لون مش لازم ان يومى او محصنة تبقى واخده لون اجبارى»: a NEW type
+ * opens on «بدون لون» and is saved with none unless a colour is pressed — the palette beside it, a
+ * colour nobody wears among it, one press away. An edited type opens on the colour it has, or none.
  */
 export const ShiftTypeDialog = ({
   open,
@@ -757,7 +751,7 @@ export const ShiftTypeDialog = ({
 }: {
   open: boolean;
   shiftType: OperationsShiftTypeDto | null;
-  /** The catalog — the palette it shows (one swatch a live type) and a new type's free colour. */
+  /** The catalog — the palette the form shows (one swatch a live type, and one for the new type). */
   types: readonly OperationsShiftTypeDto[];
   onClose: () => void;
 }): JSX.Element => {
@@ -768,8 +762,13 @@ export const ShiftTypeDialog = ({
 
   const [name, setName] = useState('');
   const [nameEn, setNameEn] = useState('');
-  /** The colour picked — or null, «بدون لون» (Round 34 C). */
-  const [colour, setColour] = useState<OperationsShiftTypeColour | null>('rose');
+  /**
+   * The colour picked — or null, «بدون لون» (Round 34 C). A new type starts on none (Round 34 F); an
+   * edited one on its own — from the first paint, and again on every opening (below).
+   */
+  const [colour, setColour] = useState<OperationsShiftTypeColour | null>(
+    () => shiftType?.colour ?? null,
+  );
   /** A name another type holds (409) — said on the name's own box. */
   const [taken, setTaken] = useState(false);
 
@@ -777,10 +776,9 @@ export const ShiftTypeDialog = ({
     if (!open) return;
     setName(shiftType?.name ?? '');
     setNameEn(shiftType?.nameEn ?? '');
-    setColour(shiftType === null ? freeShiftTypeColour(types) : shiftType.colour);
+    // Round 34 F: no colour is forced on a type — a new one opens on «بدون لون».
+    setColour(shiftType === null ? null : shiftType.colour);
     setTaken(false);
-    // `types` is left out on purpose: the catalog is read once per opening, so a refetch behind
-    // an open form never moves the colour the planner is looking at.
   }, [open, shiftType]);
 
   const submit = async (event: FormEvent): Promise<void> => {

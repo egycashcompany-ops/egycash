@@ -25,6 +25,12 @@
 // palette (`data-swatch-off`), takes the type's colour off (the catalog's PATCH with `colour: null`);
 // a swatch gives one back. It is no colour of the palette, so the palette's columns and count are as
 // before. A type with no colour is never «خارج اللوحة».
+//
+// Round 34 F — «ممكن عملية تكون من غير لون مش لازم ان يومى او محصنة تبقى واخده لون اجبارى»: taking a
+// type's colour off is one press here, and SAID, not only drawn: the column's head carries the words
+// «بدون لون» under its struck ring (`data-swatch-off-word`), and on a phone the type's first choice is
+// the ring WITH its words, a pill, as the catalog's form draws it. The subtitle says a type may have
+// none.
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { type Locale, type OperationsShiftTypeDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -260,7 +266,16 @@ export const TypeColoursCard = ({
           sheet
             ? 'dark:focus-visible:ring-offset-slate-900'
             : 'dark:focus-visible:ring-offset-[#121c3f]',
-          canEdit ? 'hover:scale-110' : 'cursor-default',
+          // A phone has no column head to name it: the ring and its words, a pill (Round 34 F).
+          sheet
+            ? cn(
+                'h-9 gap-1.5 border pe-3 ps-0.5 text-[12.5px] font-bold text-slate-700 dark:text-slate-200',
+                on
+                  ? 'border-slate-900 dark:border-white'
+                  : 'border-dashed border-slate-300 dark:border-slate-600',
+              )
+            : canEdit && 'hover:scale-110',
+          !canEdit && 'cursor-default',
           on &&
             cn(
               'ring-2 ring-slate-900 ring-offset-2 dark:ring-white',
@@ -270,6 +285,11 @@ export const TypeColoursCard = ({
         )}
       >
         <NoColourSwatch size={sheet ? 'xl' : 'lg'} />
+        {sheet && (
+          <span aria-hidden data-swatch-off-word="true">
+            {t('operations.crewPlan.colour.none')}
+          </span>
+        )}
       </button>
     );
   };
@@ -433,11 +453,17 @@ export const TypeColoursCard = ({
                   scope="col"
                   data-swatch-off-head="true"
                   title={t('operations.crewPlan.colour.none')}
-                  className="px-1 pb-2"
+                  className="px-1 pb-2 align-bottom"
                 >
-                  <span className="sr-only">{t('operations.crewPlan.colour.none')}</span>
-                  <span aria-hidden className="mx-auto flex justify-center">
+                  {/* Round 34 F — said in words, not only drawn: «بدون لون» under its ring. */}
+                  <span className="mx-auto flex flex-col items-center gap-1">
                     <NoColourSwatch size="sm" />
+                    <span
+                      data-swatch-off-word="true"
+                      className="whitespace-nowrap text-[10.5px] font-black leading-none text-slate-600 dark:text-slate-300"
+                    >
+                      {t('operations.crewPlan.colour.none')}
+                    </span>
                   </span>
                 </th>
                 {palette.map((colour) => (

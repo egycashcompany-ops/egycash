@@ -260,6 +260,27 @@ its entry here in the same PR.
 
 ### Added
 
+- **The approvals engine's baseline: its tests over today's behavior.** This is PX-1.1, the first
+  code slice of PX-1, which hardens the platform approvals engine before Administrative Affairs'
+  money approvals run on it (`docs/12-planning/administration-module-phase-px1.md` §3; ADR-041). It
+  ships tests only, the coverage the design's R12 asks for
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §15.2.1), so each later fix can
+  show the case it changes. `apps/api/src/platform/approvals/approval.service.spec.ts`, the
+  service's first spec, mocks its seams and covers which chain applies and the staffing memo, a
+  rung's holder deciding and deciding early, the refusals `approvals.notYourStep` and
+  `approvals.alreadyDecided`, the override, where a request stands, the trail's flags, the
+  notification list and the chain save's three refusals. `apps/api/tests/integration/approvals.spec.ts`
+  writes a two-rung `hr.leave` chain through `PUT /api/v1/platform/approvals` and takes a leave
+  request through `pendingApproval` to approved and to rejected, each decision writing leave's
+  `leaveDecision` row and the engine's own. A case that pins a defect PX-1.2 to PX-1.6 fix names it: today a chain with nobody on any
+  rung, or no chain at all, reads approved (R2), an `approval.override` held at any scope decides
+  (R4), and a save accepts any registered key under the version the server just read (R9). The
+  engine still records its own row before leave's write; PX-1.5 keeps that for leave, which stays
+  an 'engine' type, and a case pins it (R5). An `approval.override` that has expired already
+  decides nothing, and a guard case keeps it so. Nothing changes for HR leave or for anyone else: no
+  source file, route, key, setting or row changes. Rollback: reverting it removes the two spec
+  files and leaves nothing behind (RK-30).
+
 - **Administrative Affairs («الشئون الإدارية») on screen: the suppliers — closing Phase 1.** The
   supplier register and each supplier's record over P1b.1's API, typed in by hand as the owner asked
   («لأ خلينا من غير شيتات او بيانات دلوقتى»). This is P1b.W, the last Phase 1 pull request of the
@@ -286,8 +307,8 @@ its entry here in the same PR.
     status until OD-29 gives its values, no bank data — with its contact people as rows (at most
     20), its categories picked from both levels, and Active to retire it on an edit. Save stays
     pressable and names what is missing; an e-mail that is no address is marked before a round trip.
-    A save that meets a newer version of the supplier shows it as it now is, overwriting nothing, so
-    the next Save goes through.
+    A save that meets a newer version of the supplier shows it as it now is with the reader's own
+    changes kept over it, so the next Save goes through and undoes nothing the other person saved.
   - **Refusals worded for every record that meets them:** `ADMINISTRATION_ATTACHMENT_LIMIT` (a full
     documents list) gains its words in both languages, `ADMINISTRATION_REFERENCE_INACTIVE` now says
     «a unit or category chosen» — a supplier's retired category as well as an item's — and
@@ -332,7 +353,8 @@ its entry here in the same PR.
     `_REFERENCE_INACTIVE`, `_SUBCATEGORY_REQUIRED`, `_EMPLOYEE_EXITED`, `_DEACTIVATION_BLOCKED`), and
     each dialog also says, beside the field a refusal names, what to change. Save stays pressable and
     names what is missing. A save refused because someone saved the record meanwhile shows the record
-    as it now is, so the next Save is taken.
+    as it now is with the reader's own changes kept over it, so the next Save is taken and undoes
+    nothing the other person saved.
 
 - **Administrative Affairs («الشئون الإدارية»), third slice: warehouses, and the keeper picker.** The
   stores of each branch, «المخازن», with the «Warehouse manager / responsible person» the owner's

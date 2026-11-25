@@ -260,6 +260,51 @@ its entry here in the same PR.
 
 ### Added
 
+- **Administrative Affairs («الشئون الإدارية»), third slice: warehouses, and the keeper picker.** The
+  stores of each branch, «المخازن», with the «Warehouse manager / responsible person» the owner's
+  request lists in a warehouse's master data, typed on the screens as the owner asked («لأ خلينا من
+  غير شيتات او بيانات دلوقتى»). This is P1a.3 of the design
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §19.1): the API only; the
+  Warehouses screen arrives with P1a.W.
+  - **Three keys and a page:** `administrationWarehouse.view`, `.create` and `.edit` («عرض المخازن»,
+    «إنشاء المخازن», «تعديل المخازن») on «المخازن», over `/api/v1/administration/warehouses` and
+    `/warehouses/:id`. Several stores per branch, each typed main, branch or sub (OD-10 A), with a
+    code unique in the company, a name unique in its branch (compared folded, under a unique index,
+    so two spellings typed at the same moment make one store); either clash answers 409
+    `ADMINISTRATION_DUPLICATE` naming the field (`code` or `name`). A store may name an owning
+    department of its own branch, which grants nothing, a location and notes. The branch is set once,
+    at the create, and never edited.
+  - **Read fail-closed, written in reach.** Every read goes through the shared branch rule: the
+    organization reads everything, narrowed by the top bar; a branch holder their branches; a
+    department or section holder, or a department copy by role or by delegation, the branch it sits in;
+    `own` nothing. A `branchId` filter outside the reader's reach is 400 `OUT_OF_REACH`, and a store
+    outside it 404. A create needs `.create` over the body's branch, an edit `.edit` over the store's,
+    which no department grant gives; a create files under the top bar's branch, so another branch is
+    400 `OUT_OF_REACH` on `body.branchId` (ADR-028); every row says whether its reader may edit it (`canEdit`), and
+    says so only when the edit would find it under the top bar's branch. A write outside the key's
+    reach is 403. A closed or unknown branch, or a department that is not an active copy in the
+    store's own branch, is 404. An edit that sends a branch is 400 `VALIDATION_FAILED`. An edit sent
+    with an old `version` answers 409 `STALE_DOCUMENT` before any rule judges it.
+  - **The branch options:** `GET /warehouses/branch-options` lists every active branch as the top
+    bar's switcher names and orders them, each with `canView` and `canCreate` for its reader, so the
+    screen's filter and create dialog offer only what the server would accept.
+  - **The keeper,** «أمين المخزن» (OD-10 keeper (i)), picked from `GET /api/v1/administration/people`
+    (and `/people/:employeeId`), which whoever may create or edit a warehouse reads through the
+    platform directory, never HR: the people who work here today, in the keys' reach, with seven
+    facts each. A keeper a save names must be one the picker would offer its writer: anybody outside
+    the keys' reach is 404, as the picker's by-id read answers, whatever their status. A keeper HR
+    answers as having left is refused, 422 `ADMINISTRATION_EMPLOYEE_EXITED`. The keeper is stored as
+    an id and named from HR at every read, so no name is copied onto the store.
+  - **Retiring** is `isActive: false`, refused while stock, transit or an open document holds the
+    store (OD-70 B, 422 `ADMINISTRATION_DEACTIVATION_BLOCKED`); nothing can hold one before stock
+    exists, so in this phase a store retires freely.
+  - **A workforce reset keeps the warehouses** (OD-64 A): a store outlives its keeper, whose id then
+    names nobody until another is named.
+  - Audited as `create`, `update`, `activate` and `deactivate`, each followed by one signal carrying
+    the store's branch, so branch-scoped screens refresh too. The six ready-made roles gain the
+    warehouse keys §6.5 gives them: the view key for «أمين المخزن», «موظف المشتريات», «مدير المشتريات»,
+    «مدير الشئون الإدارية» and «المراجع الداخلي», all three for «مسؤول البيانات الأساسية».
+
 - **Administrative Affairs («الشئون الإدارية»), second slice: items, and the «ITM-» code.** The
   item master every store, request and order will name, with the «Category / Subcategory» the
   owner's request lists among an item's fields, typed on the screens as he asked («لأ خلينا من غير

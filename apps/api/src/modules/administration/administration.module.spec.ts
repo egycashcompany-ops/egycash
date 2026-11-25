@@ -2,7 +2,9 @@
 // registers cleanly, and its surface is exactly what the shipped slices claim. The pin-the-numbers
 // block moves with every slice of design §19.1 — P1a.1: one key, one page, two routes, two
 // collections, the units and the item categories; P1a.2: the items' three keys and page, their
-// route, their collection and the counter's, their topic and the five bundles their key opens.
+// route, their collection and the counter's, their topic and the five bundles their key opens;
+// P1a.3: the warehouses' three keys and page, their route and the people's, their collection,
+// their topic, and the warehouse keys in the six bundles §6.5 gives them.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +21,7 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const read = (relative: string): string => readFileSync(join(HERE, relative), 'utf8');
 
-describe('administration module manifest (Administrative Affairs, P1a.2)', () => {
+describe('administration module manifest (Administrative Affairs, P1a.3)', () => {
   it('passes kernel manifest validation', () => {
     expect(() => {
       validateManifest(administrationModule);
@@ -38,21 +40,30 @@ describe('administration module manifest (Administrative Affairs, P1a.2)', () =>
       'administrationItem.create',
       'administrationItem.edit',
       'administrationItem.view',
+      'administrationWarehouse.create',
+      'administrationWarehouse.edit',
+      'administrationWarehouse.view',
     ]);
+    // §6.3's order: the warehouses first (10), then the items (20) and the catalogs (30).
     expect(administrationPages.map((p) => p.id)).toEqual([
+      'administration.warehouses',
       'administration.items',
       'administration.catalogs',
     ]);
+    expect(administrationPages.map((p) => p.sortOrder)).toEqual([10, 20, 30]);
     expect(administrationModule.routes.map((r) => r.prefix).sort()).toEqual([
       '/administration/catalog-items',
       '/administration/item-categories',
       '/administration/items',
+      '/administration/people',
+      '/administration/warehouses',
     ]);
     expect([...administrationModule.collections].sort()).toEqual([
       'administration_catalog_items',
       'administration_counters',
       'administration_item_categories',
       'administration_items',
+      'administration_warehouses',
     ]);
     expect(administrationModule.eventSubscriptions).toEqual([]);
     expect(administrationModule.scheduledTasks ?? []).toEqual([]);
@@ -123,17 +134,31 @@ describe('the ready-made roles (OD-78 A, D-20)', () => {
 
   it('gives each bundle §6.5’s P1a keys, as far as they have shipped', () => {
     expect(bundle('administration-storekeeper')?.permissionKeys).toEqual([
+      'administrationWarehouse.view',
       'administrationItem.view',
     ]);
     expect(bundle('administration-procurement-officer')?.permissionKeys).toEqual([
       'administrationItem.view',
+      'administrationWarehouse.view',
     ]);
     expect(bundle('administration-master-data')?.permissionKeys).toEqual([
+      'administrationWarehouse.view',
+      'administrationWarehouse.create',
+      'administrationWarehouse.edit',
       'administrationItem.view',
       'administrationItem.create',
       'administrationItem.edit',
       'administrationCatalog.manage',
     ]);
+  });
+
+  it('gives the warehouse writes to the master-data administrator alone (§6.5)', () => {
+    const writers = ADMINISTRATION_ROLE_BUNDLES.filter((b) =>
+      b.permissionKeys.some(
+        (key) => key === 'administrationWarehouse.create' || key === 'administrationWarehouse.edit',
+      ),
+    ).map((b) => b.key);
+    expect(writers).toEqual(['administration-master-data']);
   });
 
   it('the procurement manager holds every key of the officer’s', () => {
@@ -180,6 +205,12 @@ describe('the ready-made roles (OD-78 A, D-20)', () => {
 });
 
 describe('the realtime topics (§19.6)', () => {
+  it('classifies warehouses on their view key — a branch record, signalled with its branch', () => {
+    expect(REALTIME_TOPICS['administration.warehouse']).toEqual({
+      permission: 'administrationWarehouse.view',
+    });
+  });
+
   it('classifies items, and moves units and categories to the item key — the wider of their reads', () => {
     for (const topic of [
       'administration.item',
@@ -195,7 +226,12 @@ describe('the realtime topics (§19.6)', () => {
       Object.keys(REALTIME_TOPICS)
         .filter((topic) => topic.startsWith('administration.'))
         .sort(),
-    ).toEqual(['administration.catalogItem', 'administration.item', 'administration.itemCategory']);
+    ).toEqual([
+      'administration.catalogItem',
+      'administration.item',
+      'administration.itemCategory',
+      'administration.warehouse',
+    ]);
   });
 });
 
@@ -214,5 +250,51 @@ describe('the catalog reads (§19.3)', () => {
     expect(writes.length).toBe(2);
     for (const write of writes)
       expect(write).toContain("authorize('administrationCatalog.manage')");
+  });
+});
+
+describe('the warehouse routes (§19.3)', () => {
+  const source = read('warehouses/warehouses/warehouse.routes.ts');
+  const routes = [
+    ...source.matchAll(/router\.(get|post|patch)\(\s*'([^']*)'([\s\S]*?)\n {2}\);/g),
+  ].map((m) => ({ method: m[1], path: m[2], body: m[3] ?? '' }));
+
+  it('reads under the view key, creates under the create key and edits under the edit key', () => {
+    expect(routes.map((r) => `${r.method ?? ''} ${r.path ?? ''}`)).toEqual([
+      'get /',
+      'get /branch-options',
+      'get /:id',
+      'post /',
+      'patch /:id',
+    ]);
+    const gate = (method: string, path: string) =>
+      routes.find((r) => r.method === method && r.path === path)?.body ?? '';
+    for (const path of ['/', '/branch-options', '/:id']) {
+      expect(gate('get', path), path).toContain("authorize('administrationWarehouse.view')");
+    }
+    expect(gate('post', '/')).toContain("authorize('administrationWarehouse.create')");
+    expect(gate('patch', '/:id')).toContain("authorize('administrationWarehouse.edit')");
+  });
+
+  it('declares the branch options before `/:id`, so the segment is never read as an id', () => {
+    const at = (path: string) => routes.findIndex((r) => r.method === 'get' && r.path === path);
+    expect(at('/branch-options')).toBeGreaterThanOrEqual(0);
+    expect(at('/branch-options')).toBeLessThan(at('/:id'));
+  });
+
+  it('opens the keeper picker to the warehouse writers only (§7.8)', () => {
+    const people = read('people/people.service.ts');
+    expect(people).toMatch(
+      /ADMINISTRATION_PEOPLE_GRANTS[^=]*=\s*\[\s*'administrationWarehouse\.create',\s*'administrationWarehouse\.edit',\s*\]/,
+    );
+    const peopleRoutes = read('people/people.routes.ts');
+    expect(peopleRoutes.match(/authorizeAny\(\.\.\.ADMINISTRATION_PEOPLE_GRANTS\)/g)).toHaveLength(
+      2,
+    );
+    expect(peopleRoutes).not.toMatch(/router\.(post|patch|put|delete)\(/);
+  });
+
+  it('keeps the warehouse keys off the organization-only list — a warehouse is a branch record (§6.7)', () => {
+    expect(read('shared/org-authority.ts')).not.toContain('administrationWarehouse');
   });
 });

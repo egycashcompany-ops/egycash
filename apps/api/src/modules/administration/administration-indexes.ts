@@ -16,11 +16,13 @@ import { AdministrationCatalogItemModel } from './catalog/catalog-items/catalog-
 import { AdministrationItemCategoryModel } from './catalog/item-categories/item-category.model';
 import { AdministrationItemModel } from './catalog/items/item.model';
 import { AdministrationCounterModel } from './shared/counter.model';
+import { AdministrationWarehouseModel } from './warehouses/warehouses/warehouse.model';
 
 export const administrationModels: Model<never>[] = [
   AdministrationCatalogItemModel,
   AdministrationItemCategoryModel,
   AdministrationItemModel,
+  AdministrationWarehouseModel,
   AdministrationCounterModel,
   // A list of differently typed models is what the shared sync takes: it reads only their schemas
   // and collections, so the documents' types do not matter to it.

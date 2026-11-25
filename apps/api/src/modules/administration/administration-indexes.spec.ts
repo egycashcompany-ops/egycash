@@ -20,11 +20,29 @@ const mocks = vi.hoisted(() => ({
   units: { ready: vi.fn(), create: vi.fn(), byNameKey: vi.fn(), byCode: vi.fn() },
   categories: { ready: vi.fn(), create: vi.fn(), byNameKey: vi.fn(), byCode: vi.fn() },
   items: { ready: vi.fn(), create: vi.fn(), byNameKey: vi.fn(), highest: vi.fn() },
+  warehouses: { ready: vi.fn(), create: vi.fn(), byNameKey: vi.fn(), byCode: vi.fn() },
+  activeBranchIds: vi.fn(),
+  signal: vi.fn(),
   counter: { ensure: vi.fn(), next: vi.fn() },
   references: { unit: vi.fn(), category: vi.fn(), subcategories: vi.fn() },
 }));
 
 vi.mock('../../platform/audit', () => ({ auditService: { record: mocks.audit } }));
+// The warehouse's branch signal: the realtime layer's own guards are not what is pinned here.
+vi.mock('../../platform/realtime', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  publishAuditedChange: mocks.signal,
+}));
+// The company's active branches, which a warehouse create is filed in one of.
+vi.mock('./shared/branch-scope', () => ({ activeBranchIds: mocks.activeBranchIds }));
+vi.mock('./warehouses/warehouses/warehouse.repository', () => ({
+  administrationWarehouseRepository: {
+    ensureCollection: mocks.warehouses.ready,
+    create: mocks.warehouses.create,
+    findLiveByBranchAndNameKey: mocks.warehouses.byNameKey,
+    findLiveByCode: mocks.warehouses.byCode,
+  },
+}));
 // The item create's transaction, run once with a stand-in session: what is pinned here is the
 // order of the guards before it, not the database's transaction.
 vi.mock('../../platform/kernel/unit-of-work', () => ({
@@ -80,6 +98,8 @@ const { administrationCatalogItemService } =
 const { administrationItemCategoryService } =
   await import('./catalog/item-categories/item-category.service');
 const { administrationItemService } = await import('./catalog/items/item.service');
+const { administrationWarehouseService } =
+  await import('./warehouses/warehouses/warehouse.service');
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const read = (file: string): string => readFileSync(join(HERE, file), 'utf8');
@@ -236,7 +256,19 @@ describe('a repository’s first write waits for its collection (RK-03)', () => 
     expect(read(repository)).toContain(`readonly ensureCollection = collectionReady(${model});`);
   });
 
-  it.each(files('.service.ts'))('%s awaits it inside every method that writes', (service) => {
+  /** Each service over one of the module's repositories — a read-only service (people) has none. */
+  const writingServices = (): string[] =>
+    files('.repository.ts').map((repository) =>
+      repository.replace('.repository.ts', '.service.ts'),
+    );
+
+  it('finds the read-only services and only them outside that list', () => {
+    const others = files('.service.ts').filter((service) => !writingServices().includes(service));
+    expect(others).toEqual(['people/people.service.ts']);
+    expect(read('people/people.service.ts')).not.toMatch(/repository|\.create\(|updateById/);
+  });
+
+  it.each(writingServices())('%s awaits it inside every method that writes', (service) => {
     const source = read(service);
     const writes = [...source.matchAll(/repository\.(create|updateById)\(/g)];
     expect(writes.length, 'the scan found writes at all').toBeGreaterThan(0);
@@ -259,7 +291,7 @@ describe('a repository’s first write waits for its collection (RK-03)', () => 
 
   beforeEach(() => {
     vi.resetAllMocks();
-    for (const repository of [mocks.units, mocks.categories, mocks.items]) {
+    for (const repository of [mocks.units, mocks.categories, mocks.items, mocks.warehouses]) {
       repository.byNameKey.mockResolvedValue(null);
       repository.create.mockImplementation(async (row: object) => ({
         _id: new Types.ObjectId(),
@@ -269,6 +301,7 @@ describe('a repository’s first write waits for its collection (RK-03)', () => 
     }
     mocks.units.byCode.mockResolvedValue(null);
     mocks.categories.byCode.mockResolvedValue(null);
+    mocks.warehouses.byCode.mockResolvedValue(null);
     mocks.items.highest.mockResolvedValue(0);
     mocks.counter.ensure.mockResolvedValue(undefined);
     mocks.counter.next.mockResolvedValue(1);
@@ -297,6 +330,33 @@ describe('a repository’s first write waits for its collection (RK-03)', () => 
     await administrationItemCategoryService.create(input, ctx);
     expect(mocks.categories.ready).toHaveBeenCalledTimes(2);
     expect(mocks.categories.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('a warehouse: the same — `ux_code` and `ux_branch_name_key` before its first row', async () => {
+    const branchId = String(new Types.ObjectId());
+    mocks.activeBranchIds.mockResolvedValue([branchId]);
+    const warehouseCtx = {
+      userId: String(new Types.ObjectId()),
+      permissions: { 'administrationWarehouse.create': 'organization' },
+      // The fields the create reads; the rest of a session's context is not what is pinned here.
+    } as unknown as AuthContext;
+    const input = {
+      code: 'MAIN',
+      name: { ar: 'المخزن الرئيسي', en: 'Main store' },
+      branchId,
+      type: 'main' as const,
+    };
+    await expect(administrationWarehouseService.create(input, warehouseCtx)).rejects.toBe(
+      failedBuild,
+    );
+    expect(mocks.warehouses.create).not.toHaveBeenCalled();
+    expect(mocks.audit).not.toHaveBeenCalled();
+    expect(mocks.signal).not.toHaveBeenCalled();
+
+    await administrationWarehouseService.create(input, warehouseCtx);
+    expect(mocks.warehouses.ready).toHaveBeenCalledTimes(2);
+    expect(mocks.warehouses.create).toHaveBeenCalledTimes(1);
+    expect(mocks.signal).toHaveBeenCalledWith(expect.objectContaining({ branchId }));
   });
 
   describe('an item: its collection AND the counter, before the transaction', () => {

@@ -3391,6 +3391,19 @@ Repository-wide findings outside this module are listed for the owner in
   (these documents, with platform core §11's rewrite) to PX-1.6, and records one question for the owner about HR
   leave, PXQ-1, which PX-1 does not wait for. Their design review (Full preset, 2026-11-25) is recorded in the
   re-detail's §13; it is the gate before PX-1.1, which also waits for Phase 1 to close.
+- **Phase 1 closed** (2026-11-25). Its seven pull requests are merged: P1a.1 (#780), P1a.2 (#781), the supplier-registry
+  ADR-040 (#782, accepted before P1b.1), P1a.3 (#783), P1b.1 (#785), P1a.W (#786) and P1b.W (#787), each green in CI.
+  §19.10's criteria 1 to 8 were checked on merged main (`4c6457d4`) by running the specs they name: the page registry
+  rose by 4 pages and 10 keys (117 → 121 pages, 431 → 441 keys), the super-admin sees the module's five rows, and the
+  scope, concurrency, realtime, language and docs criteria hold. Criterion 9, the owner's acceptance on staging with real
+  item families typed in by hand, is the one left; its date and the owner's words are recorded here when it is given.
+  - *The permission-matrix section* (§19.2) is not adopted: §6.2 is the module's matrix, as the owner's brief item 5
+    asks, and no module since Recruitment keeps a section in `docs/06-security/permission-matrix.md`.
+  - *Gaps the check found, none against a criterion:* a role holding only `administrationItem.view` or only
+    `administrationCatalog.manage` is checked by the seed spec's row-to-key mapping, not over
+    `GET /platform/me/applications`; the §7.2 rows for several listed branches and for section scope are covered by the
+    shared rule's unit specs, not by a warehouse integration case; and no spec pins the module's label in the role
+    matrix (§6.1 says nothing catches the omission; the label is present today).
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

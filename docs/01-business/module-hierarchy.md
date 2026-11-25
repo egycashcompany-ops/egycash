@@ -72,7 +72,7 @@ everything uses `audit`).
 | `vault` | Vault Management | *(designed later)* |
 | `gold` | Gold Vault | `companies`, `representatives`, `floors`, `vaults`, `bars`, `receiving`, `delivery`, `transfers`, `keys`, `dashboard`, `reports`, `portal`, `portal-accounts` |
 | `contracts` | Contracts | *(designed later)* |
-| `administration` | Administrative Affairs (الشئون الإدارية) | `catalog`, `warehouses`, `procurement` — [design](../12-planning/administration-module-design.md); P1a.1–P1a.3 (units, item categories, items, warehouses) delivered |
+| `administration` | Administrative Affairs (الشئون الإدارية) | `catalog`, `warehouses`, `procurement` — [design](../12-planning/administration-module-design.md); Phase 1 delivered: units, item categories, items, warehouses and suppliers, with their screens (P1a.1–P1b.W), awaiting the owner's acceptance on staging |
 | `accounting` | Accounting | *(designed later)* |
 | `security` | Security | *(designed later)* |
 | `it` | Information Technology | *(designed later)* |

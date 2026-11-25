@@ -12,11 +12,14 @@ import {
   type ListAtmOpenOperationsQuery,
   type OpenAtmMaintenances,
   type UpdateAtmMaintenance,
+  type AtmDoneRangeQuery,
+  type AtmMaintenanceDoneChunkDto,
 } from '@ecms/contracts';
 import { ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
 import { toAtmMaintenanceDto } from '../atm.mappers';
 import { atmMaintenanceService } from './maintenance.service';
+import { formatDoneRangeCursor } from '../shared/operation-log.repository';
 
 type IdParam = { id: string };
 
@@ -47,6 +50,17 @@ export const maintenanceFacets = async (req: Request, res: Response): Promise<vo
 export const listDoneMaintenances = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListAtmDoneOperationsQuery>(req);
   okPage(res, await atmMaintenanceService.listDone(query, authContext(req)), toAtmMaintenanceDto);
+};
+
+/** One chunk of a done range and the cursor of the next (`GET /atm/maintenances/done/range`). */
+export const doneMaintenanceRange = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, AtmDoneRangeQuery>(req);
+  const chunk = await atmMaintenanceService.doneRange(query, authContext(req));
+  const body: AtmMaintenanceDoneChunkDto = {
+    items: chunk.items.map(toAtmMaintenanceDto),
+    next: chunk.next === null ? null : formatDoneRangeCursor(chunk.next),
+  };
+  ok(res, body);
 };
 
 export const maintenanceLeaderOptions = async (_req: Request, res: Response): Promise<void> => {

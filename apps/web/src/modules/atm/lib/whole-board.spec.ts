@@ -7,6 +7,7 @@ import { MAX_PAGE_SIZE, type Paginated } from '@ecms/contracts';
 import {
   MAX_BOARD_PAGES,
   MAX_BOARD_WALKS,
+  WHOLE_BOARD_CONCURRENCY,
   boardPageCount,
   fetchWholeBoard,
   isBoardCutShort,
@@ -194,5 +195,32 @@ describe('a board cut short by the request bound', () => {
     expect(isBoardCutShort({ totalPages: MAX_BOARD_PAGES + 1 })).toBe(true);
     expect(isBoardCutShort({ totalPages: MAX_BOARD_PAGES })).toBe(false);
     expect(isBoardCutShort({ totalPages: 0 })).toBe(false);
+  });
+});
+
+describe('a walk keeps only a few pages in flight', () => {
+  it(`never asks for more than ${String(WHOLE_BOARD_CONCURRENCY)} pages at once, and still reads them all`, async () => {
+    const all = rows(3000);
+    let inFlight = 0;
+    let most = 0;
+    const fetchPage = async (page: number, pageSize: number): Promise<Paginated<Row>> => {
+      inFlight += 1;
+      most = Math.max(most, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight -= 1;
+      return {
+        items: all.slice((page - 1) * pageSize, page * pageSize),
+        meta: {
+          page,
+          pageSize,
+          totalItems: all.length,
+          totalPages: Math.ceil(all.length / pageSize),
+        },
+      };
+    };
+    const board = await fetchWholeBoard(fetchPage);
+    expect(board.items).toHaveLength(3000);
+    expect(most).toBeLessThanOrEqual(WHOLE_BOARD_CONCURRENCY);
+    expect(most).toBeGreaterThan(1);
   });
 });

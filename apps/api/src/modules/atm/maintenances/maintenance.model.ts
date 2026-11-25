@@ -16,6 +16,13 @@ import {
   openBoardIndexFilter,
   openBoardIndexKeys,
 } from '../shared/open-board-index';
+import {
+  BRANCH_DONE_RANGE_INDEX_NAME,
+  branchDoneRangeIndexKeys,
+  DONE_RANGE_INDEX_NAME,
+  doneRangeIndexFilter,
+  doneRangeIndexKeys,
+} from '../shared/done-board-index';
 
 export interface AtmMaintenanceDoc extends BaseDocFields {
   branchId: Types.ObjectId;
@@ -94,6 +101,16 @@ const maintenanceSchema = new Schema<AtmMaintenanceDoc>(
 
 maintenanceSchema.index({ branchId: 1, closedAt: 1, area: -1 }, { name: 'ix_branch_open_area' });
 maintenanceSchema.index({ branchId: 1, closedAt: -1 }, { name: 'ix_branch_closed' });
+// The done pages' range in their own order (shared/done-board-index.ts): without it every done
+// read sorted the whole range in memory — the hang of 2026-11-25. Built at boot by atm-indexes.ts.
+maintenanceSchema.index(doneRangeIndexKeys(), {
+  name: DONE_RANGE_INDEX_NAME,
+  partialFilterExpression: doneRangeIndexFilter(),
+});
+maintenanceSchema.index(branchDoneRangeIndexKeys(), {
+  name: BRANCH_DONE_RANGE_INDEX_NAME,
+  partialFilterExpression: doneRangeIndexFilter(),
+});
 maintenanceSchema.index({ branchId: 1, area: 1, openedAt: 1 }, { name: 'ix_branch_area_opened' });
 // The open board read whole (`listOpenBoard`, GET /atm/{kind}/board): the open, live rows in the
 // board order. `ix_branch_open_area` leads with the branch, so a caller with NO branch filter — an

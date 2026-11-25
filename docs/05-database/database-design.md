@@ -245,6 +245,11 @@ on `at` has one order for them. The audit collection uses a restricted DB role (
 ```
 
 ### approval_chains / approval_requests / approval_decisions
+
+> **Not built.** Approvals are one collection, `approval_workflows` (one chain per request type and
+> place), and the engine stores no request and no decision: each host stores its own trail.
+> See [ADR-041](../03-decisions/ADR-041-money-approvals-on-the-platform-engine.md).
+
 ```jsonc
 { // approval_chains — definition
   "key": "hr.offer-approval", "steps": [

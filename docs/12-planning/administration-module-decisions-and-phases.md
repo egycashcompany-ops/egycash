@@ -3374,6 +3374,23 @@ Repository-wide findings outside this module are listed for the owner in
     server decides), and every contact person listed needs a name, as the missing-fields banner says.
   - *§19.10.2's case* for suppliers runs in the suppliers suite: an `administrationSupplier.view` holder's whole
     sidebar is the Suppliers row; the warehouses suite's super-admin case now reads five rows.
+- **PX-1 re-detailed** (2026-11-25). The platform slice is re-detailed in
+  [administration-module-phase-px1.md](administration-module-phase-px1.md), as §18 and §21 ask, under the owner's
+  adoption of OD-19 A, OD-20 A and OD-69 (i) (§16.12). §20's "Money approvals on the platform engine" is written as
+  [ADR-041](../03-decisions/ADR-041-money-approvals-on-the-platform-engine.md), Proposed until its documentation
+  pull request merges. §20's "the next free number is **ADR-039**" was overtaken again: ADR-039 and ADR-040 are taken
+  (`docs/03-decisions/README.md`), so this ADR is ADR-041. The ADR settles the shape §15.2.1 proposed, with three
+  departures from the plan of record. The host keeps `approvalWorkflowId` and `approvalChainShape`, and the engine
+  stays stateless, but the shape holds the rungs as subdocuments in the chain row's own schema rather than
+  `string[]` of `permissionKey@level` (§2.1 left the type to the ADR): the strings served OD-20 B's compare, and under
+  OD-20 A they would need a parser and a second read for captions. R5's after-commit audit is opt-in per request
+  type rather than per host (§15.2.1, §18.3.1 item 5, §20), so one host may register types of both kinds. And
+  value bands are not added to the ADR later, as §20 planned: OD-18 A needs no engine change, an engine condition
+  (OD-18 B) would be a new ADR, and ADRs are immutable (`docs/README.md` rule 2). The ADR also drops the engine's closing of empty rungs above an approval, as
+  §15.2.1 R2's fix ("at every decision, never as 'approved'") asks. The re-detail plans seven pull requests, PX-1.0
+  (these documents, with platform core §11's rewrite) to PX-1.6, and records one question for the owner about HR
+  leave, PXQ-1, which PX-1 does not wait for. Their design review (Full preset, 2026-11-25) is recorded in the
+  re-detail's §13; it is the gate before PX-1.1, which also waits for Phase 1 to close.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

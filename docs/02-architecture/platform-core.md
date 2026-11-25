@@ -182,13 +182,31 @@ Three distinct streams:
 
 ## 11. Approval Engine (`approvals`)
 
-**Responsibility:** "who must say yes" — used by workflow transitions and directly by modules.
+**Responsibility:** "who must say yes" to a module's request, rung by rung, over a chain stored as
+data. The contract is [ADR-041](../03-decisions/ADR-041-money-approvals-on-the-platform-engine.md);
+what PX-1 (the approval-engine slice) adds is marked "from PX-1".
 
-- **Approval chains:** sequential/parallel steps; approver resolution by role, job title,
-  org unit manager, or explicit user; quorum rules (all / any / n-of-m).
-- **Delegation** (out-of-office), **escalation** (SLA breach → next approver), full decision
-  trail (approve/reject/return with comment).
-- Emits events (`platform.approval.completed`) that the workflow engine consumes.
+- **Chains** are rows of `approval_workflows`: a request type, a place (a company department and a
+  branch, null meaning any) and an ordered list of rungs, each a permission key and a level (`unit`,
+  `department`, `branch`, `organization`). The most specific row that matches a request wins.
+- **Nobody is stored.** Who stands on a rung is read from roles, role assignments and delegated
+  grants at every call; from PX-1, only grants in force and only `active` accounts count. A rung
+  nobody holds is stepped over; from PX-1, only on the way to a staffed rung above it.
+- **The host owns the request.** A module registers its request types, stores its trail (and, from
+  PX-1, the chain pinned at submission), owns its status and its write, and decides on its own
+  routes. The engine is stateless and returns the entries to append. There is no quorum, no
+  escalation and no approval event.
+- **Audit.** The engine records each decision as `platform/approval` before the host writes; from
+  PX-1, a request type may register `audit: 'host'`, and its host then records the decision on its
+  own document after its commit.
+- **Status** is `pending`, `approved` or `rejected`; from PX-1 also `unstaffed` and `noChain`, which
+  are never read as approved.
+- **Override.** `approval.override` lets a person who is not on the chain decide, recorded as
+  `overriddenWith`; from PX-1, only within its own reach, by the rung's level.
+- **Configuration** is `GET`, `PUT` and `DELETE` on `/api/v1/platform/approvals` under
+  `approval.configure`. From PX-1, a save names only its request type's permission keys and the
+  chain row and version it replaces (`basedOn`), and a stored rung with another key counts as
+  unstaffed.
 
 ## 12. Dashboard Engine (`dashboards`)
 
@@ -268,7 +286,7 @@ Three distinct streams:
 | files | `files`, `file_groups`, `file_categories` |
 | audit | `audit_logs`, `activity_logs` |
 | workflow | `workflow_definitions`, `workflow_instances`, `workflow_transitions` |
-| approvals | `approval_chains`, `approval_requests`, `approval_decisions` |
+| approvals | `approval_workflows` (ADR-041; hosts store their own trails) |
 | dashboards | `dashboards`, `dashboard_widgets` |
 | reports | `report_schedules` |
 | sequences | `sequence_counters` |

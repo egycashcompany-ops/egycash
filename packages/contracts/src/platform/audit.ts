@@ -212,6 +212,18 @@ export const AUDIT_ACTIONS = [
   // applicant would tell every open applicant screen that the candidate had been deleted, which
   // is the one thing this act does not do.
   'applicantFolderDeleted',
+  // A decision on one rung of an approval chain (Administrative Affairs, OD-82 A;
+  // docs/12-planning/administration-module-phase-2.md §10.2), by the rung's holder or by an
+  // override. Its own verb, the `leaveDecision` precedent, rather than `statusChange` or `update`:
+  // only the rung that settles the chain moves the document's status, so a status filter misses
+  // every rung below it, and «who decided which rung, under what authority» is what a dispute
+  // filters the trail on. The host writes it after its own commit, carrying the engine's
+  // `auditChanges` (ADR-041 decision 7). Not in `REALTIME_BROADCAST_ACTIONS`: the document's own
+  // branch signal refreshes its screens.
+  //
+  // It ships at least a release ahead of its first writer, or with the api and the worker deployed
+  // together, because a worker that predates the verb refuses the audit job (RK-29).
+  'approvalDecision',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

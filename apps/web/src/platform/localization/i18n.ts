@@ -10994,6 +10994,8 @@ const en: Record<string, string> = {
   // ATM branch links — one row per run that moves a linked branch's ATM data to its target.
   'systemAdmin.users.audit.atmBranchMove': 'Moved ATM data between linked branches',
   'systemAdmin.users.audit.applicantFolderDeleted': "Emptied an applicant's documents folder",
+  // One rung of an approval chain decided (OD-82 A): the event catalog's `approvalDecided` words.
+  'systemAdmin.users.audit.approvalDecision': 'Approval decided',
   'systemAdmin.users.audit.unlock': 'Unlocked',
   'systemAdmin.users.audit.employeeLinked': 'Employee linked',
   'systemAdmin.users.audit.employeeUnlinked': 'Employee unlinked',
@@ -27298,6 +27300,8 @@ const ar: Record<string, string> = {
   // ATM branch links — one row per run that moves a linked branch's ATM data to its target.
   'systemAdmin.users.audit.atmBranchMove': 'نقل بيانات الصراف الآلي بين فرعين مرتبطين',
   'systemAdmin.users.audit.applicantFolderDeleted': 'إفراغ مجلد مستندات أحد المتقدمين',
+  // One rung of an approval chain decided (OD-82 A): the event catalog's `approvalDecided` words.
+  'systemAdmin.users.audit.approvalDecision': 'البت في اعتماد',
   'systemAdmin.users.audit.unlock': 'إلغاء القفل',
   'systemAdmin.users.audit.employeeLinked': 'ربط موظف',
   'systemAdmin.users.audit.employeeUnlinked': 'فك ربط موظف',

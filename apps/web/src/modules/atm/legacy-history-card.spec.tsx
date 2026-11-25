@@ -5,7 +5,9 @@
 //     copies — and none for a source with no branch;
 //   · the preview held back unless it found rows, decided both kinds' times and has rows to copy,
 //     and the body a typed cut makes;
-//   · a run's progress counted from the rows it read.
+//   · a run's progress counted from the rows it read;
+//   · what the preview leaves unsaid (a reason no row met) and how long its code list grows;
+//   · the refusals worded in the reader's language, and a busy step told apart from a failure.
 //
 // Every id, code and name below is synthetic.
 import { type ReactNode } from 'react';
@@ -16,6 +18,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import {
+  ErrorCodes,
   type AtmLegacyImportPreviewDto,
   type AtmLegacyImportRunDto,
   type AtmLegacyKindPreviewDto,
@@ -27,18 +30,21 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
+import { ApiError } from '../../shared/lib/api-client';
+import { LegacyHistoryCard } from './components/settings/LegacyHistoryCard';
 import {
-  LegacyHistoryCard,
+  cutoverFromLocal,
+  isStepBusy,
+  legacyErrorText,
+  legacyImportAllowed,
+  legacyImportBody,
   legacyRunProgress,
   legacySourceStatus,
   percentOf,
-} from './components/settings/LegacyHistoryCard';
-import {
-  cutoverFromLocal,
-  legacyImportAllowed,
-  legacyImportBody,
+  shownSkipReasons,
   unclearKinds,
-} from './components/settings/LegacyHistoryDialog';
+  unresolvedCodesText,
+} from './components/settings/legacy-history-view';
 import { atmLegacySourcesKey } from './api/settings-queries';
 
 const t = (key: string, params?: Record<string, string | number>): string =>
@@ -150,7 +156,7 @@ describe('the legacy history card', () => {
         copiedRows: 43_900,
       }),
     ]);
-    expect(html).toContain(t('atm.settings.legacy.cardTitle'));
+    expect(html).toContain(t('atm.settings.legacy.title'));
     expect(rowOf(html, 'alex')).toContain(
       t('atm.settings.legacy.row', { source: 'alex', branch: 'الاسكندرية' }),
     );
@@ -175,6 +181,16 @@ describe('the legacy history card', () => {
     expect(actions('tanta')).toEqual(['preview', 'undo']);
     // A paused run is carried on, never started over beside itself.
     expect(actions('wsal')).toEqual(['resume']);
+    // Each button names its source to a screen reader, its visible word first.
+    expect(rowOf(html, 'tanta')).toContain(
+      `aria-label="${t('atm.settings.legacy.previewFor', { source: 'tanta' })}"`,
+    );
+    expect(rowOf(html, 'tanta')).toContain(
+      `aria-label="${t('atm.settings.legacy.undoFor', { source: 'tanta' })}"`,
+    );
+    expect(rowOf(html, 'wsal')).toContain(
+      `aria-label="${t('atm.settings.legacy.resumeFor', { source: 'wsal' })}"`,
+    );
   });
 
   it('a source with no branch cannot be previewed', () => {
@@ -239,10 +255,38 @@ describe('the preview and the body', () => {
     ).toBe(false);
   });
 
+  it('shows only the reasons that left a row out', () => {
+    const quiet = preview({
+      replenishment: kindPreview({
+        skipped: { deleted: 0, noOpenTime: 0, open: 2, afterCutover: 0, unresolved: 0 },
+      }),
+      maintenance: kindPreview({
+        skipped: { deleted: 1, noOpenTime: 0, open: 0, afterCutover: 0, unresolved: 0 },
+      }),
+    });
+    expect(shownSkipReasons(quiet)).toEqual(['deleted', 'open']);
+  });
+
+  it('lists ten unresolved codes, then how many more', () => {
+    const codes = (from: number, count: number) =>
+      Array.from({ length: count }, (_, i) => ({ code: `90${String(from + i)}`, rows: 1 }));
+    const few = preview({ replenishment: kindPreview({ unresolvedCodes: codes(10, 3) }) });
+    expect(unresolvedCodesText(few, t, 'en')).toBe('9010 (1), 9011 (1), 9012 (1)');
+    const many = preview({
+      replenishment: kindPreview({ unresolvedCodes: codes(10, 8) }),
+      maintenance: kindPreview({ unresolvedCodes: codes(30, 5) }),
+    });
+    const text = unresolvedCodesText(many, t, 'ar');
+    expect(text).toContain('9031');
+    expect(text).not.toContain('9032');
+    expect(text.endsWith(t('atm.settings.move.more', { count: '٣' }))).toBe(true);
+    expect(unresolvedCodesText(preview(), t, 'en')).toBe('');
+  });
+
   it('every string the card and its dialog say resolves in both languages', () => {
     for (const locale of ['ar', 'en'] as const) {
       for (const key of [
-        'atm.settings.legacy.cardTitle',
+        'atm.settings.legacy.title',
         'atm.settings.legacy.hint',
         'atm.settings.legacy.row',
         'atm.settings.legacy.noBranch',
@@ -255,6 +299,16 @@ describe('the preview and the body', () => {
         'atm.settings.legacy.preview',
         'atm.settings.legacy.resume',
         'atm.settings.legacy.undo',
+        'atm.settings.legacy.previewFor',
+        'atm.settings.legacy.resumeFor',
+        'atm.settings.legacy.undoFor',
+        'atm.settings.legacy.undoStopped',
+        'atm.settings.legacy.noneToCopy',
+        'atm.settings.legacy.error.running',
+        'atm.settings.legacy.error.state',
+        'atm.settings.legacy.error.busy',
+        'atm.settings.legacy.error.unreadable',
+        'atm.settings.legacy.error.moveRunning',
         'atm.settings.legacy.progress.run',
         'atm.settings.legacy.progress.undo',
         'atm.settings.legacy.done',
@@ -262,7 +316,7 @@ describe('the preview and the body', () => {
         'atm.settings.legacy.undone',
         'atm.settings.legacy.undoTitle',
         'atm.settings.legacy.undoBody',
-        'atm.settings.legacy.title',
+        'atm.settings.legacy.dialogTitle',
         'atm.settings.legacy.intro',
         'atm.settings.legacy.keeps',
         'atm.settings.legacy.cutover',
@@ -289,5 +343,27 @@ describe('the preview and the body', () => {
         expect(translate(locale, key), `${locale} ${key}`).not.toBe(key);
       }
     }
+  });
+});
+
+describe('a refusal', () => {
+  it('is worded in the reader’s language; anything else as the shared helper says it', () => {
+    const refused = (code: string) => new ApiError(code, 'server sentence', 409);
+    expect(legacyErrorText(refused(ErrorCodes.ATM_LEGACY_IMPORT_RUNNING), t, 'ar')).toBe(
+      t('atm.settings.legacy.error.running'),
+    );
+    expect(legacyErrorText(refused(ErrorCodes.ATM_LEGACY_IMPORT_UNREADABLE), t, 'ar')).toBe(
+      t('atm.settings.legacy.error.unreadable'),
+    );
+    expect(legacyErrorText(refused(ErrorCodes.ATM_BRANCH_MOVE_RUNNING), t, 'ar')).toBe(
+      t('atm.settings.legacy.error.moveRunning'),
+    );
+    expect(legacyErrorText(refused('SOMETHING_ELSE'), t, 'ar')).not.toBe('');
+  });
+
+  it('a busy step is waited for, never a failure', () => {
+    expect(isStepBusy(new ApiError(ErrorCodes.ATM_LEGACY_IMPORT_STEP_BUSY, 'x', 409))).toBe(true);
+    expect(isStepBusy(new ApiError(ErrorCodes.ATM_LEGACY_IMPORT_STATE, 'x', 409))).toBe(false);
+    expect(isStepBusy(new Error('network'))).toBe(false);
   });
 });

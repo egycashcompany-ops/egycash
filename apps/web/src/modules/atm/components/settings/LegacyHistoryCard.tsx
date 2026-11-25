@@ -21,19 +21,34 @@ import { useT } from '../../../../platform/localization/useT';
 import { useCan } from '../../../../platform/rbac/Can';
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
 import { Button } from '../../../../shared/ui/Button';
+import { EyeIcon, PlayIcon, UndoIcon } from '../../../../shared/ui/icons';
 import { ErrorState } from '../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../shared/ui/toast/toast-store';
-import { errorMessage } from '../../../../shared/lib/errors';
 import { formatNumber, localized } from '../../../../shared/lib/format';
 import { stepLegacyImport, undoLegacySource } from '../../api/settings-api';
 import { useAtmLegacySources, useRestaleAtmLegacySources } from '../../api/settings-queries';
 import { ConfirmActionDialog } from '../ReplenishmentDialogs';
 import { LegacyHistoryDialog, type LegacyImportSubject } from './LegacyHistoryDialog';
+import {
+  isStepBusy,
+  legacyErrorText,
+  legacyRunProgress,
+  legacyRunSummary,
+  legacySourceStatus,
+  percentOf,
+} from './legacy-history-view';
 
 /** The key the page and the import answer to (the route guard's, `routes.tsx`). */
 const MANAGE = 'atmSettings.manage';
 
-type Translate = (key: string, params?: Record<string, string | number>) => string;
+/**
+ * A step another request holds (a second tab, a step still finishing) is tried again after a
+ * pause — the server's lease is two minutes, so this outwaits one left by a request that died.
+ */
+const BUSY_PAUSE_MS = 3_000;
+const BUSY_TRIES = 50;
+
+const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** A loop in progress on one source's row. */
 export interface LegacyBusy {
@@ -42,47 +57,6 @@ export interface LegacyBusy {
   done: number;
   total: number;
 }
-
-/** Legacy rows a run has read so far, of all it will read — the bar's numbers. */
-export const legacyRunProgress = (run: AtmLegacyImportRunDto): { done: number; total: number } => ({
-  done: run.replenishment.read + run.maintenance.read,
-  total: run.totals.replenishment + run.totals.maintenance,
-});
-
-/** Whole percent, 0–100; an empty total is done. */
-export const percentOf = (done: number, total: number): number =>
-  total <= 0 ? 100 : Math.min(100, Math.floor((done / total) * 100));
-
-/** What a source's row says under its name: its last run, and the copies it holds now. */
-export const legacySourceStatus = (
-  entry: AtmLegacySourceDto,
-  t: Translate,
-  locale: Locale,
-): string => {
-  const n = (value: number): string => formatNumber(value, locale);
-  if (entry.branchId === null) return t('atm.settings.legacy.noBranch');
-  const run = entry.lastRun;
-  const last =
-    run === null
-      ? t('atm.settings.legacy.never')
-      : run.state === 'running'
-        ? t('atm.settings.legacy.paused', {
-            done: n(legacyRunProgress(run).done),
-            total: n(legacyRunProgress(run).total),
-          })
-        : t(`atm.settings.legacy.last.${run.state}`);
-  return entry.copiedRows > 0
-    ? `${last} — ${t('atm.settings.legacy.copied', { count: n(entry.copiedRows) })}`
-    : last;
-};
-
-/** The success toast's summary: rows copied, and rows already there, per kind. */
-export const legacyRunSummary = (run: AtmLegacyImportRunDto, t: Translate, locale: Locale) =>
-  t('atm.settings.legacy.summary', {
-    replenishment: formatNumber(run.replenishment.written, locale),
-    maintenance: formatNumber(run.maintenance.written, locale),
-    existing: formatNumber(run.replenishment.existing + run.maintenance.existing, locale),
-  });
 
 const Progress = ({ busy }: { busy: LegacyBusy }): JSX.Element => {
   const t = useT();
@@ -138,13 +112,25 @@ export const LegacyHistoryCard = (): JSX.Element => {
   const branchOf = (name: LocalizedString | null): string =>
     name === null ? t('atm.settings.unknownBranch') : localized(name, locale);
 
+  /** One step; a busy run is waited for and tried again, never shown as a failure. */
+  const stepOf = async (runId: string): Promise<AtmLegacyImportRunDto> => {
+    for (let tries = 1; ; tries += 1) {
+      try {
+        return await stepLegacyImport(runId);
+      } catch (error) {
+        if (!isStepBusy(error) || tries >= BUSY_TRIES || !alive.current) throw error;
+        await pause(BUSY_PAUSE_MS);
+      }
+    }
+  };
+
   const runLoop = async (first: AtmLegacyImportRunDto): Promise<void> => {
     let run = first;
     setBusy({ source: run.source, kind: 'run', ...legacyRunProgress(run) });
     try {
       while (run.state === 'running' && alive.current) {
-        run = await stepLegacyImport(run.id);
-        setBusy({ source: run.source, kind: 'run', ...legacyRunProgress(run) });
+        run = await stepOf(run.id);
+        if (alive.current) setBusy({ source: run.source, kind: 'run', ...legacyRunProgress(run) });
       }
       if (run.state === 'done') {
         toast.success(
@@ -153,7 +139,7 @@ export const LegacyHistoryCard = (): JSX.Element => {
         );
       }
     } catch (error) {
-      toast.error(errorMessage(error, locale));
+      toast.error(legacyErrorText(error, t, locale));
     } finally {
       if (alive.current) setBusy(null);
       restale();
@@ -168,14 +154,24 @@ export const LegacyHistoryCard = (): JSX.Element => {
       while (remaining > 0 && alive.current) {
         const result = await undoLegacySource(entry.source);
         remaining = result.remaining;
-        setBusy({ source: entry.source, kind: 'undo', done: total - remaining, total });
+        if (alive.current) {
+          setBusy({ source: entry.source, kind: 'undo', done: total - remaining, total });
+        }
+        // A batch that removed nothing while rows remain would loop for ever: stop and say so.
         if (result.removed === 0 && remaining > 0) break;
       }
       if (remaining === 0) {
         toast.success(t('atm.settings.legacy.undone', { source: entry.source }));
+      } else if (alive.current) {
+        toast.warning(
+          t('atm.settings.legacy.undoStopped', {
+            source: entry.source,
+            count: formatNumber(remaining, locale),
+          }),
+        );
       }
     } catch (error) {
-      toast.error(errorMessage(error, locale));
+      toast.error(legacyErrorText(error, t, locale));
     } finally {
       if (alive.current) setBusy(null);
       restale();
@@ -186,7 +182,7 @@ export const LegacyHistoryCard = (): JSX.Element => {
   return (
     <Card>
       <CardHeader
-        title={t('atm.settings.legacy.cardTitle')}
+        title={t('atm.settings.legacy.title')}
         description={t('atm.settings.legacy.hint')}
       />
       <CardBody className="space-y-4">
@@ -199,7 +195,8 @@ export const LegacyHistoryCard = (): JSX.Element => {
             {rows.map((entry) => {
               const branch = branchOf(entry.branchName);
               const mine = busy?.source === entry.source ? busy : null;
-              const running = entry.lastRun?.state === 'running';
+              const paused = entry.lastRun?.state === 'running' ? entry.lastRun : null;
+              const names = { source: entry.source };
               return (
                 <li
                   key={entry.source}
@@ -212,35 +209,39 @@ export const LegacyHistoryCard = (): JSX.Element => {
                       {legacySourceStatus(entry, t, locale)}
                     </span>
                   </span>
-                  {may && running && entry.lastRun !== null && (
+                  {may && paused !== null && (
                     <Button
                       variant="secondary"
                       size="sm"
+                      leftIcon={<PlayIcon className="h-4 w-4" />}
                       disabled={busy !== null}
+                      aria-label={t('atm.settings.legacy.resumeFor', names)}
                       data-legacy-action="resume"
-                      onClick={() => {
-                        if (entry.lastRun !== null) void runLoop(entry.lastRun);
-                      }}
+                      onClick={() => void runLoop(paused)}
                     >
                       {t('atm.settings.legacy.resume')}
                     </Button>
                   )}
-                  {may && !running && (
+                  {may && paused === null && (
                     <Button
                       variant="secondary"
                       size="sm"
+                      leftIcon={<EyeIcon className="h-4 w-4" />}
                       disabled={busy !== null || entry.branchId === null}
+                      aria-label={t('atm.settings.legacy.previewFor', names)}
                       data-legacy-action="preview"
                       onClick={() => setOpening({ source: entry.source, branch })}
                     >
                       {t('atm.settings.legacy.preview')}
                     </Button>
                   )}
-                  {may && !running && entry.copiedRows > 0 && (
+                  {may && paused === null && entry.copiedRows > 0 && (
                     <Button
                       variant="ghost-danger"
                       size="sm"
+                      leftIcon={<UndoIcon className="h-4 w-4" />}
                       disabled={busy !== null}
+                      aria-label={t('atm.settings.legacy.undoFor', names)}
                       data-legacy-action="undo"
                       onClick={() => setUndoing(entry)}
                     >
@@ -257,10 +258,7 @@ export const LegacyHistoryCard = (): JSX.Element => {
       <LegacyHistoryDialog
         subject={may ? opening : null}
         onClose={() => setOpening(null)}
-        onStarted={(run) => {
-          restale();
-          void runLoop(run);
-        }}
+        onStarted={(run) => void runLoop(run)}
       />
       <ConfirmActionDialog
         open={undoing !== null}

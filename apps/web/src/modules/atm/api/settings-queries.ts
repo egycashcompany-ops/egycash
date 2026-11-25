@@ -209,10 +209,10 @@ export const useSaveAtmDisplay = () => {
 };
 
 // ── The legacy history ──────────────────────────────────────────────────────
-// A run and an undo are LOOPS the card drives (one step, one batch per request), so they are plain
-// calls (`settings-api.ts`), not mutations: the card re-reads its sources when a loop ends or
-// stops. The preview is a read, kept per body: the dialog asks again when the cut or the
-// open-row switch changes.
+// The start is a mutation; the run's steps and an undo are LOOPS the card drives (one step, one
+// batch per request), so they are plain calls (`settings-api.ts`): the card re-reads its sources
+// when a loop ends or stops. The preview is a read, kept per body: the dialog asks again when the
+// cut or the open-row switch changes, and keeps the last numbers on screen (dimmed) meanwhile.
 export const useAtmLegacySources = (enabled = true) =>
   useQuery({ queryKey: atmLegacySourcesKey(), queryFn: () => api.getLegacySources(), enabled });
 
@@ -231,7 +231,25 @@ export const useAtmLegacyPreview = (body: AtmLegacyImportBody | null) =>
     queryFn: () => api.previewLegacyImport(body as AtmLegacyImportBody),
     enabled: body !== null,
     staleTime: 0,
+    // The last numbers stay while a changed cut is read — never another source's.
+    placeholderData: (previous) =>
+      previous !== undefined && previous.source === body?.source ? previous : undefined,
   });
+
+/**
+ * «استيراد» — starts a run; the card then steps it. It declares `onError`: the dialog words the
+ * refusal itself (another run, a move, an unreadable source), and the card re-reads either way —
+ * a 409 means the sources' rows are not what the card shows.
+ */
+export const useStartAtmLegacyImport = () => {
+  const client = useQueryClient();
+  const restale = (): void => void client.invalidateQueries({ queryKey: atmLegacySourcesKey() });
+  return useMutation({
+    mutationFn: (body: AtmLegacyImportBody) => api.startLegacyImport(body),
+    onSuccess: restale,
+    onError: restale,
+  });
+};
 
 /** Re-reads the card — after a loop ends, stops or fails. */
 export const useRestaleAtmLegacySources = () => {

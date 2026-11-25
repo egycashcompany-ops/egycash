@@ -2,16 +2,14 @@
 // (docs/12-planning/atm-legacy-history-import.md). The dialog IS the confirmation, as the move's
 // is (MoveBranchDataDialog): it opens on the server's PREVIEW — the rows the run would copy, each
 // row it would leave out under the first rule it fails, how the old system wrote each kind's
-// times — and «استيراد» stays held back until the preview allows it. The run itself steps in the
-// card, which shows its progress.
+// times — and «استيراد» stays held back until the preview allows it, with a sentence saying why.
+// The run itself steps in the card, which shows its progress.
 //
 // The cut is a MOMENT: the branch's first own row in ECMS, suggested by the server. A legacy row
 // closed at or after it is the branch's own work, entered in ECMS, and is not copied.
 import { useEffect, useState } from 'react';
 import {
   ATM_LEGACY_KINDS,
-  ATM_LEGACY_SKIP_REASONS,
-  type AtmLegacyImportBody,
   type AtmLegacyImportPreviewDto,
   type AtmLegacyImportRunDto,
   type AtmLegacyKind,
@@ -25,12 +23,24 @@ import { Dialog } from '../../../../shared/ui/Dialog';
 import { Checkbox, Field, Input } from '../../../../shared/ui/form';
 import { ErrorState } from '../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../shared/ui/toast/toast-store';
-import { errorMessage } from '../../../../shared/lib/errors';
+import { cn } from '../../../../shared/lib/cn';
 import { formatNumber } from '../../../../shared/lib/format';
-import { startLegacyImport } from '../../api/settings-api';
-import { useAtmLegacyCutover, useAtmLegacyPreview } from '../../api/settings-queries';
+import {
+  useAtmLegacyCutover,
+  useAtmLegacyPreview,
+  useStartAtmLegacyImport,
+} from '../../api/settings-queries';
 import { listSeparator } from '../../lib/register-import-view';
 import { toLocalInputValue } from '../ReplenishmentDialogs';
+import {
+  cutoverFromLocal,
+  legacyErrorText,
+  legacyImportAllowed,
+  legacyImportBody,
+  shownSkipReasons,
+  unclearKinds,
+  unresolvedCodesText,
+} from './legacy-history-view';
 
 /** The source being imported, as the card names it. */
 export interface LegacyImportSubject {
@@ -38,29 +48,6 @@ export interface LegacyImportSubject {
   /** The source's branch, as the card reads it. */
   branch: string;
 }
-
-/**
- * The moment a cut typed in the box names — empty is no cut. The box shows minutes; the server's
- * own suggestion is kept to the second until the box is changed.
- */
-export const cutoverFromLocal = (value: string): string | null =>
-  value === '' ? null : new Date(value).toISOString();
-
-export const legacyImportBody = (
-  source: AtmLegacySource,
-  cutoverAt: string | null,
-  includeOpen: boolean,
-): AtmLegacyImportBody => ({ source, cutoverAt, includeOpen });
-
-/** «استيراد» runs only on a preview that found rows, decided both modes, and has rows to copy. */
-export const legacyImportAllowed = (preview: AtmLegacyImportPreviewDto): boolean =>
-  preview.sourceFound &&
-  ATM_LEGACY_KINDS.every((kind) => preview[kind].timeModeClear) &&
-  ATM_LEGACY_KINDS.some((kind) => preview[kind].toImport > 0);
-
-/** The kinds whose rows leave the time mode undecided. */
-export const unclearKinds = (preview: AtmLegacyImportPreviewDto): AtmLegacyKind[] =>
-  ATM_LEGACY_KINDS.filter((kind) => !preview[kind].timeModeClear);
 
 const cell = 'px-2.5 py-1.5';
 
@@ -82,30 +69,22 @@ const PreviewBody = ({ preview }: { preview: AtmLegacyImportPreviewDto }): JSX.E
   }
 
   const unclear = unclearKinds(preview);
-  const codes = ATM_LEGACY_KINDS.flatMap((kind) =>
-    preview[kind].unresolvedCodes.map((entry) => `${entry.code} (${n(entry.rows)})`),
-  );
-  const row = (key: string, values: [number, number], strong = false) => (
+  const codes = unresolvedCodesText(preview, t, locale);
+  const nothingToCopy = ATM_LEGACY_KINDS.every((kind) => preview[kind].toImport === 0);
+  const row = (key: string, pick: (kind: AtmLegacyKind) => number) => (
     <tr
       key={key}
       className="border-t border-slate-100 first:border-t-0 dark:border-slate-800"
       data-legacy-count={key}
     >
       <td className={`${cell} text-start`}>{t(`atm.settings.legacy.count.${key}`)}</td>
-      {values.map((value, index) => (
-        <td
-          key={ATM_LEGACY_KINDS[index]}
-          className={`${cell} text-end ${strong ? 'font-semibold' : ''}`}
-        >
-          {n(value)}
+      {ATM_LEGACY_KINDS.map((kind) => (
+        <td key={kind} className={`${cell} text-end font-semibold`}>
+          {n(pick(kind))}
         </td>
       ))}
     </tr>
   );
-  const both = (pick: (kind: AtmLegacyKind) => number): [number, number] => [
-    pick('replenishment'),
-    pick('maintenance'),
-  ];
 
   return (
     <>
@@ -115,31 +94,23 @@ const PreviewBody = ({ preview }: { preview: AtmLegacyImportPreviewDto }): JSX.E
         </h4>
         <table className="w-full border-collapse text-[13px]">
           <thead>
-            <tr className="text-slate-500 dark:text-slate-400">
-              <th className={`${cell} text-start font-normal`} />
+            <tr className="text-xs text-slate-500 dark:text-slate-400">
+              <th className={`${cell} text-start font-medium`}>
+                <span className="sr-only">{t('atm.settings.legacy.counts')}</span>
+              </th>
               {ATM_LEGACY_KINDS.map((kind) => (
-                <th key={kind} className={`${cell} text-end font-normal`}>
+                <th key={kind} className={`${cell} text-end font-medium`}>
                   {t(`atm.settings.legacy.kind.${kind}`)}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {row(
-              'total',
-              both((kind) => preview[kind].total),
+            {row('total', (kind) => preview[kind].total)}
+            {shownSkipReasons(preview).map((reason) =>
+              row(reason, (kind) => preview[kind].skipped[reason]),
             )}
-            {ATM_LEGACY_SKIP_REASONS.map((reason) =>
-              row(
-                reason,
-                both((kind) => preview[kind].skipped[reason]),
-              ),
-            )}
-            {row(
-              'toImport',
-              both((kind) => preview[kind].toImport),
-              true,
-            )}
+            {row('toImport', (kind) => preview[kind].toImport)}
           </tbody>
         </table>
       </section>
@@ -165,18 +136,18 @@ const PreviewBody = ({ preview }: { preview: AtmLegacyImportPreviewDto }): JSX.E
         </ul>
       </section>
 
-      {codes.length > 0 && (
+      {codes !== '' && (
         <div
           role="status"
           className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
           data-legacy-unresolved="true"
         >
           <p>{t('atm.settings.legacy.unresolved')}</p>
-          <p className="text-xs">{codes.join(listSeparator(locale))}</p>
+          <p className="text-xs">{codes}</p>
         </div>
       )}
 
-      {unclear.length > 0 && (
+      {unclear.length > 0 ? (
         <section
           role="alert"
           className="space-y-1 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-red-800 dark:border-red-800 dark:bg-red-950/60 dark:text-red-200"
@@ -188,6 +159,15 @@ const PreviewBody = ({ preview }: { preview: AtmLegacyImportPreviewDto }): JSX.E
               .join(listSeparator(locale)),
           })}
         </section>
+      ) : (
+        nothingToCopy && (
+          <p
+            className="rounded-lg bg-slate-50 px-3 py-2 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            data-legacy-none-to-copy="true"
+          >
+            {t('atm.settings.legacy.noneToCopy')}
+          </p>
+        )
       )}
     </>
   );
@@ -206,10 +186,10 @@ export const LegacyHistoryDialog = ({
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const suggested = useAtmLegacyCutover(subject?.source ?? null);
+  const start = useStartAtmLegacyImport();
   /** The cut as a moment (ISO) — `undefined` until the server's suggestion has answered. */
   const [cutover, setCutover] = useState<string | null | undefined>(undefined);
   const [includeOpen, setIncludeOpen] = useState(false);
-  const [starting, setStarting] = useState(false);
 
   // A fresh dialog starts from the server's suggestion, once it has answered.
   useEffect(() => {
@@ -218,8 +198,9 @@ export const LegacyHistoryDialog = ({
   }, [subject?.source]);
   useEffect(() => {
     if (cutover !== undefined || suggested.data === undefined) return;
+    if (suggested.data.source !== subject?.source) return;
     setCutover(suggested.data.suggestedCutoverAt);
-  }, [cutover, suggested.data]);
+  }, [cutover, suggested.data, subject?.source]);
 
   const body =
     subject === null || cutover === undefined
@@ -230,18 +211,17 @@ export const LegacyHistoryDialog = ({
     preview.data !== undefined &&
     !preview.isFetching &&
     !preview.isError &&
+    !preview.isPlaceholderData &&
     legacyImportAllowed(preview.data);
 
   const confirm = async (): Promise<void> => {
     if (body === null || !allowed) return;
-    setStarting(true);
     try {
-      onStarted(await startLegacyImport(body));
+      onStarted(await start.mutateAsync(body));
       onClose();
     } catch (error) {
-      toast.error(errorMessage(error, locale));
-    } finally {
-      setStarting(false);
+      // The hook declares `onError`, so the global toast stays quiet: this is the one message.
+      toast.error(legacyErrorText(error, t, locale));
     }
   };
 
@@ -251,16 +231,16 @@ export const LegacyHistoryDialog = ({
       open={subject !== null}
       onClose={onClose}
       size="lg"
-      title={t('atm.settings.legacy.title', names)}
+      title={t('atm.settings.legacy.dialogTitle', names)}
       // A preview of tens of thousands of rows takes seconds; a stray click must not lose it.
       dismissOnOutsideClick={false}
       footer={
         <>
-          <Button variant="secondary" disabled={starting} onClick={onClose}>
+          <Button variant="secondary" disabled={start.isPending} onClick={onClose}>
             {t('atm.common.cancel')}
           </Button>
           <Button
-            loading={starting}
+            loading={start.isPending}
             disabled={!allowed}
             data-legacy-action="confirm"
             onClick={() => void confirm()}
@@ -278,36 +258,43 @@ export const LegacyHistoryDialog = ({
         <p className="text-xs text-slate-500 dark:text-slate-400">
           {t('atm.settings.legacy.keeps')}
         </p>
-        <div className="flex flex-wrap items-end gap-3">
-          <Field
-            label={t('atm.settings.legacy.cutover')}
-            htmlFor="atm-legacy-cutover"
-            hint={t('atm.settings.legacy.cutoverHint')}
-          >
-            <Input
-              id="atm-legacy-cutover"
-              type="datetime-local"
-              value={cutover === undefined || cutover === null ? '' : toLocalInputValue(cutover)}
-              disabled={cutover === undefined}
-              onChange={(e) => setCutover(cutoverFromLocal(e.target.value))}
-            />
-          </Field>
-          <div className="pb-2" data-legacy-field="includeOpen">
-            <Checkbox
-              label={t('atm.settings.legacy.includeOpen')}
-              checked={includeOpen}
-              onChange={() => setIncludeOpen((value) => !value)}
-            />
-          </div>
+        <Field
+          label={t('atm.settings.legacy.cutover')}
+          htmlFor="atm-legacy-cutover"
+          hint={t('atm.settings.legacy.cutoverHint')}
+        >
+          <Input
+            id="atm-legacy-cutover"
+            type="datetime-local"
+            value={cutover === undefined || cutover === null ? '' : toLocalInputValue(cutover)}
+            disabled={cutover === undefined || start.isPending}
+            onChange={(e) => setCutover(cutoverFromLocal(e.target.value))}
+          />
+        </Field>
+        <div data-legacy-field="includeOpen">
+          <Checkbox
+            label={t('atm.settings.legacy.includeOpen')}
+            checked={includeOpen}
+            disabled={start.isPending}
+            onChange={() => setIncludeOpen((value) => !value)}
+          />
         </div>
         {suggested.isError ? (
           <ErrorState error={suggested.error} onRetry={() => void suggested.refetch()} />
-        ) : preview.isLoading || cutover === undefined ? (
+        ) : cutover === undefined || preview.isLoading ? (
           <p className="text-slate-500 dark:text-slate-400">{t('common.loading')}</p>
         ) : preview.isError ? (
           <ErrorState error={preview.error} onRetry={() => void preview.refetch()} />
         ) : preview.data !== undefined ? (
-          <PreviewBody preview={preview.data} />
+          <div
+            className={cn(
+              'flex flex-col gap-3.5 transition-opacity',
+              preview.isPlaceholderData && 'opacity-60',
+            )}
+            aria-busy={preview.isPlaceholderData || undefined}
+          >
+            <PreviewBody preview={preview.data} />
+          </div>
         ) : null}
       </div>
     </Dialog>

@@ -847,7 +847,7 @@ describe('a request keeps the chain it was submitted on (PX-1.4: R1)', () => {
 
   it('R1: a pinned request keeps its rungs and captions when its chain is edited, is decided on them, and is still decided to approved once the chain is deleted; a request filed after the delete takes the manager and HR path', async () => {
     const saved = await putChain([UNIT_RUNG, ORGANIZATION_RUNG]);
-    const created = await file(70);
+    const created = await file(91);
     expect(created.status).toBe('pendingApproval');
 
     // Edited in place to one rung nobody holds, under another caption. Read live, as before
@@ -908,7 +908,7 @@ describe('a request keeps the chain it was submitted on (PX-1.4: R1)', () => {
 
     // A new request finds no chain, so leave's own rule sends it down the manager and HR path;
     // this employee has no manager, so it waits on HR.
-    const after = await file(77);
+    const after = await file(98);
     expect(after.status).toBe('pendingHr');
     expect((await readAs(after.id, adminToken)).approvalTrail).toBeNull();
   });
@@ -916,7 +916,7 @@ describe('a request keeps the chain it was submitted on (PX-1.4: R1)', () => {
   it('criterion 4 guard: a request whose pin fields are unset, the shape of one filed before the deploy, reads the current chain', async () => {
     // Passes before PX-1.4 too, where no request has the fields: that is the behavior it keeps.
     await putChain([UNIT_RUNG, ORGANIZATION_RUNG]);
-    const created = await file(84);
+    const created = await file(105);
     const _id = new Types.ObjectId(created.id);
     await LeaveRequestModel.collection.updateOne(
       { _id },

@@ -81,7 +81,8 @@ describe('the seeded navigation catalog', () => {
     // 140 → 144: Administrative Affairs' first four rows — its home, the warehouses, the items, and
     //   the units and categories (administration-module-decisions-and-phases.md §19.5, P1a.W).
     // 144 → 145: its supplier register, «الموردون» (P1b.W), closing Phase 1.
-    expect(rows).toHaveLength(145);
+    // 145 → 146: Compliance and Risks' one page, «الملفات» (compliance-files-design.md §11).
+    expect(rows).toHaveLength(146);
   });
 
   /**

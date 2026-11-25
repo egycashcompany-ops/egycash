@@ -3,8 +3,9 @@
 //
 // One look, so one source: the table's and the bar's looks, a count chip, the page's grid (the table
 // at the start, the two pools at the end — on the left in Arabic), the toolbar's start (what the hand
-// holds, or the legend and the hint), the «المعروض N من M» pair, the pools' «إخراج …» button, and the
-// DOM half of the drop (`targetAt`). Both pages import them; neither redraws them.
+// holds, or the legend and the hint — on the board, since Round 34 E, the totals), the «المعروض N من
+// M» pair, the pools' «إخراج …» button, and the DOM half of the drop (`targetAt`). Both pages import
+// them; neither redraws them.
 //
 // The slot itself is `CrewPlanSlot`; the chips, the pools and the lists are the board's components,
 // told which screen they are on by `crew-plan-scope`.
@@ -16,7 +17,7 @@ import { formatNumber } from '../../../shared/lib/format';
 import { CloseIcon } from '../../../shared/ui/icons';
 import { useAppSelector } from '../../../store';
 import { BOARD_TABLE_FILL } from '../../fleet/components/board-scroll';
-import { BoardIcon } from '../../fleet/components/FuelCardBoard';
+import { BoardIcon, PATH } from '../../fleet/components/FuelCardBoard';
 import { targetFromMarks, type DropTarget } from '../lib/crew-drag';
 import { DAY_BAR } from './SecuredDistributionParts';
 import { BOARD_TABLE_LOOK } from './ShipmentsBoard';
@@ -56,6 +57,26 @@ export const CREW_PLAN_BAR = cn(
  */
 export const COUNT_CHIP =
   'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border px-1 py-1 text-[11.5px] font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 min-[1440px]:px-1.5';
+
+/**
+ * Round 34 E — the totals in the board's toolbar, where the legend and the hint were. The owner:
+ * «واسمح الحاجات اللى فوق دى وحط مكاناها الاجماليات». ONE line, never wrapped, the acts' height: the
+ * chips compact (`HEAD_CHIP`), and when the catalog outgrows the room the line scrolls sideways inside
+ * its own box — no scrollbar to take a height of its own; the edge that hides chips fades and a plain
+ * wheel moves it (`lib/side-scroll.ts`), a trackpad or a finger as ever, and a chip reached by Tab is
+ * brought clear of the edge and its fade (`followSide`'s focus — the browser alone leaves a partly
+ * seen chip under the fade). Every chip takes the focus, «صيانة» too, so Tab carries the line to its end.
+ */
+export const HEAD_STRIP =
+  'flex h-[34px] w-full min-w-0 flex-1 flex-nowrap items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
+
+/**
+ * A chip of the toolbar's totals — `COUNT_CHIP` tightened: 4px inside, 3px between the dot, the name
+ * and the number (beside it), 10.5px (11px from 1440). Its focus ring is drawn inside it: the strip's
+ * box clips what lies outside.
+ */
+export const HEAD_CHIP =
+  'inline-flex h-[26px] shrink-0 items-center gap-[3px] whitespace-nowrap rounded-lg border px-1 text-[10.5px] font-bold leading-none transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/60 min-[1440px]:text-[11px]';
 
 /** A count chip's face: pressed (the filter is on) or not, and dimmed at zero. */
 export const countChipTone = (on: boolean, count: number): string =>
@@ -126,38 +147,89 @@ export const targetAt = (node: EventTarget | null): DropTarget | null => {
   });
 };
 
+/** What the hand holds: the chip picked up, by name, with «إلغاء» (Escape puts it down too). */
+export const PickedPill = ({
+  name,
+  onCancel,
+  className,
+}: {
+  name: string;
+  onCancel: () => void;
+  className?: string;
+}): JSX.Element => {
+  const t = useT();
+  return (
+    <p
+      data-crew-picked="true"
+      className={cn(
+        'inline-flex max-w-full items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-[12.5px] font-bold text-amber-900 dark:border-amber-400/40 dark:bg-amber-400/10 dark:text-amber-100',
+        className,
+      )}
+    >
+      <span className="min-w-0 truncate">{t('operations.crewPlan.picked', { name })}</span>
+      <button
+        type="button"
+        data-crew-picked-cancel="true"
+        onClick={onCancel}
+        className="shrink-0 rounded-md bg-amber-200/70 px-2 py-0.5 text-[11.5px] font-black text-amber-900 hover:bg-amber-200 dark:bg-amber-400/20 dark:text-amber-100"
+      >
+        {t('operations.crewPlan.cancelPick')}
+      </button>
+    </p>
+  );
+};
+
 /**
  * The toolbar's start — what the hands do: a chip picked up, by name, with «إلغاء»; else the three
- * colours and the hint.
+ * colours and the hint (`hint` — «الطاقم الثابت»).
+ *
+ * Given `children` (the board, Round 34 E — its totals), the start shows THEM, on ONE line, and a
+ * chip picked up stands at that line's start, beside them: «بدل ما انت لما بختار حاجه بينزل سطر ل
+ * تحت». The pill is no taller than the line (34px) and takes at most 70% of it; the totals keep the
+ * rest — still seen, still pressed (a type chip narrows the rows while somebody is held), scrolling
+ * sideways inside their box when the room is short — so picking somebody moves nothing. The words
+ * are said aloud as before: the spoken region is there, empty, before anything is picked.
  */
 export const CrewPlanHand = ({
   pickedName,
   onCancel,
   hint,
+  children,
+  className,
 }: {
   pickedName: string | null;
   onCancel: () => void;
-  hint: ReactNode;
+  hint?: ReactNode;
+  children?: ReactNode;
+  className?: string;
 }): JSX.Element => {
-  const t = useT();
-  return (
-    <div aria-live="polite" className="min-w-0 flex-1">
-      {pickedName !== null ? (
-        <p
-          data-crew-picked="true"
-          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-[12.5px] font-bold text-amber-900 dark:border-amber-400/40 dark:bg-amber-400/10 dark:text-amber-100"
+  if (children !== undefined) {
+    const holding = pickedName !== null;
+    return (
+      <div className={cn('flex min-w-0 items-center', className)} data-crew-plan-head="true">
+        <div
+          aria-live="polite"
+          data-crew-plan-head-hand="true"
+          className={cn('flex min-w-0 items-center', holding && 'max-w-[70%] shrink-0 pe-2')}
         >
-          <span className="min-w-0 truncate">
-            {t('operations.crewPlan.picked', { name: pickedName })}
-          </span>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="shrink-0 rounded-md bg-amber-200/70 px-2 py-0.5 text-[11.5px] font-black text-amber-900 hover:bg-amber-200 dark:bg-amber-400/20 dark:text-amber-100"
-          >
-            {t('operations.crewPlan.cancelPick')}
-          </button>
-        </p>
+          {holding && (
+            <PickedPill
+              name={pickedName}
+              onCancel={onCancel}
+              className="h-[30px] min-w-0 !py-0 shadow-sm"
+            />
+          )}
+        </div>
+        <div className="flex min-w-0 flex-1 items-center gap-2" data-crew-plan-head-idle="true">
+          {children}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div aria-live="polite" className={cn('min-w-0 flex-1', className)}>
+      {pickedName !== null ? (
+        <PickedPill name={pickedName} onCancel={onCancel} />
       ) : (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <RoleLegend />
@@ -168,18 +240,41 @@ export const CrewPlanHand = ({
   );
 };
 
-/** What the filters leave, beside the chips that count everything — and one press to show all. */
+/**
+ * Where the board draws «المعروض N من M». From 1280 the toolbar is one line and the bar keeps room at
+ * its end (Round 34 E): `bar`. Below it, from about 1060px, the bar's five filters fill its first line
+ * and the count wrapped onto a line of its own — the table moved on every choice, «لما بختار حاجه بينزل
+ * سطر ل تحت» (Round 34 verifier). There it stands at the END OF THE TOTALS' line (`head`): that line
+ * never wraps — the totals give way and scroll inside their box — so the count can never add a line,
+ * at any width, a phone's included; the acts' line keeps its whole width for the acts' words, and on
+ * a phone the type's box keeps the bar's (Round 34 critic).
+ */
+export const filteredCountAt = (width: {
+  /** From 1280: the totals and the acts on ONE toolbar line. */
+  oneLineHead: boolean;
+}): 'bar' | 'head' => (width.oneLineHead ? 'bar' : 'head');
+
+/**
+ * What the filters leave, beside the chips that count everything — and one press to show all.
+ * `compact` (a phone): the figures alone, «٩ من ٢٦٥», and «مسح التصفية» an ✕ — each keeps its whole
+ * words as its name and its tooltip — so the totals beside them keep some room.
+ */
 export const FilteredCount = ({
   shown,
   total,
   onClear,
+  compact = false,
 }: {
   shown: number;
   total: number;
   onClear: () => void;
+  compact?: boolean;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
+  const figures = { shown: formatNumber(shown, locale), total: formatNumber(total, locale) };
+  const words = t('operations.crewPlan.filter.shown', figures);
+  const clear = t('operations.crewPlan.filter.clear');
   return (
     <span className="flex shrink-0 items-center gap-1.5" data-crew-plan-filtered="true">
       <span
@@ -188,24 +283,56 @@ export const FilteredCount = ({
           'border-brand-300 bg-brand-50 text-brand-800 dark:border-brand-500/40 dark:bg-brand-500/10 dark:text-brand-100',
         )}
         data-shown-count={String(shown)}
+        title={compact ? words : undefined}
       >
-        {t('operations.crewPlan.filter.shown', {
-          shown: formatNumber(shown, locale),
-          total: formatNumber(total, locale),
-        })}
+        {compact ? (
+          <>
+            <span aria-hidden>{t('operations.crewPlan.filter.shownShort', figures)}</span>
+            <span className="sr-only">{words}</span>
+          </>
+        ) : (
+          words
+        )}
       </span>
       <button
         type="button"
         data-crew-plan-clear-filters="true"
         onClick={onClear}
+        aria-label={compact ? clear : undefined}
+        title={compact ? clear : undefined}
         className={cn(
           COUNT_CHIP,
           'border-slate-200 bg-white text-slate-700 hover:border-rose-300 hover:text-rose-700 dark:border-slate-700 dark:bg-[#0a1233] dark:text-slate-200 dark:hover:text-rose-300',
+          compact && 'h-[26px] w-[26px] justify-center !px-0',
         )}
       >
         <CloseIcon className="h-3 w-3" />
-        {t('operations.crewPlan.filter.clear')}
+        {!compact && clear}
       </button>
+    </span>
+  );
+};
+
+/**
+ * A reader without the planning grant (Round 34 E — no line of words over the totals): a lock and
+ * «للعرض فقط» in words, seen on a phone and by the keyboard as by the mouse (Round 34 critic — a lock
+ * alone said it only in a hover's tooltip). Why, in full, is its tooltip and what a screen reader
+ * says: «يمكنك الاطلاع على التشغيلة؛ أما التوزيع فيحتاج صلاحية تخطيط الطاقم.»
+ */
+export const ViewOnlyMark = ({ className }: { className?: string }): JSX.Element => {
+  const t = useT();
+  return (
+    <span
+      data-crew-view-only="true"
+      title={t('operations.crewPlan.viewOnly')}
+      className={cn(
+        'inline-flex shrink-0 cursor-help items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] font-black text-slate-600 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:border-slate-700 dark:bg-[#0a1233] dark:text-slate-300',
+        className,
+      )}
+    >
+      <BoardIcon d={[...PATH.lock]} className="h-3.5 w-3.5" />
+      <span aria-hidden>{t('operations.crewPlan.viewOnlyMark')}</span>
+      <span className="sr-only">{t('operations.crewPlan.viewOnly')}</span>
     </span>
   );
 };

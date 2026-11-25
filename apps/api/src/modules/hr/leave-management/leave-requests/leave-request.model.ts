@@ -29,7 +29,9 @@ export interface LeaveApprovalStep {
  * make every existing row need a rung index it never had, and would make the reader of a
  * four-year-old request guess which shape he was looking at.
  *
- * A request carries one or the other, never both, and which one is settled at submission.
+ * A request starts with one list or the other, and which one is settled at submission. A request
+ * the chain handed to HR after engine decisions carries both: the engine's entries up to the
+ * hand-over here, then HR's decision in `approvals` (leave design §16.2 item 4).
  */
 export interface LeaveApprovalEntry {
   stepIndex: number;
@@ -59,13 +61,17 @@ export interface LeaveRequestDoc extends BaseDocFields {
   reason: string | null;
   attachments: Types.ObjectId[];
   approvals: LeaveApprovalStep[];
-  /** The engine's trail. Empty on a request the two-desk machine is running. */
+  /**
+   * The engine's trail. Empty on a request the two-desk machine is running, a request that took
+   * that path at submission because nobody staffed its chain included.
+   */
   approvalSteps: LeaveApprovalEntry[];
   /**
    * The chain a request on the engine was submitted on (ADR-041 decision 4): the row's id, and
    * its rungs in order with their captions. Written in the create that stamps `pendingApproval` and
    * never again, because a leave request has one round. Optional because a request submitted
-   * before leave pinned has neither, and reads its chain live; a two-desk request has them empty.
+   * before leave pinned has neither, and reads its chain live; a two-desk request has them empty,
+   * a request routed off a chain nobody staffs included. A request handed to HR keeps its own.
    */
   approvalWorkflowId?: Types.ObjectId | null;
   approvalChainShape?: ApprovalStep[];

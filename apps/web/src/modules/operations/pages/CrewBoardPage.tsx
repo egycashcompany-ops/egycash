@@ -8,10 +8,11 @@
 // ميكونش ليه عربيه واضيف كل البيانات برضو».
 //
 // THE SCREEN, in the boards' look (ShipmentsBoard's pieces — dark and light, RTL):
-//   · the toolbar: what to do with the keyboard and where things stand; then the acts — the standing
-//     crew, «إضافة صف بدون سيارة», «Excel», «تراجع», «حفظ (n)» (one batch, only with changes);
-//   · the bar: the day, the type filter, and a chip per type counting the rows (the legacy strip:
-//     إجمالي، يومي، احتياطي … and صيانة — the vans Fleet has in the workshop that day). The types are
+//   · the toolbar: the strip counting the rows by type (the legacy strip: إجمالي، يومي، احتياطي … and
+//     صيانة — the vans Fleet has in the workshop that day; Round 34 E moved it up here), then the acts
+//     — the standing crew, «إضافة صف بدون سيارة», «Excel», «تراجع», «حفظ (n)» (one batch, only with
+//     changes);
+//   · the bar: the day, the van, the person, the direction and the type filter. The types are
 //     «أنواع التشغيل» on the reference screen — «انا عاوز النوع يكون بيضاف من البيانات المرجعيه» — so
 //     the filter, the strip and every row's list follow that catalog: its active types in its order;
 //   · the TABLE: السيارة (the van's code opens the round-4 card — its drivers, its crew, its
@@ -91,13 +92,29 @@
 //
 // ROUND 32 C — «انا عاوز بقى اقدر اعمل اسوابنج بين عربيتين واقدر احدد هنقل ايه بالظبط للعربيه
 // التانيه»: a row's «⇄» opens «تبديل بين سيارتين» (`CrewSwapDialog`) — the two vans' cards side by
-// side, every person and field ticked to cross or not, «تبديل المحدد ⇄» or «نقل المحدد» one way, and
-// the two cards after the change before «تطبيق». The board's rules hold (`lib/crew-swap.ts`); it is
+// side, every person and field ticked to cross or not, and three arrows between them that MOVE the
+// ticked items on the window's working copy (Round 34 D): one way, or both ways for the swap, press
+// after press, «تراجع عن آخر نقل» inside. The board's rules hold (`lib/crew-swap.ts`); «تطبيق» is
 // ONE operation on the draft for «تراجع», saved by «حفظ» like any other. Not on a record.
+//
+// ROUND 34 E — «واسمح الحاجات اللى فوق دى وحط مكاناها الاجماليات بدل ما انت لما بختار حاجه بينزل سطر ل
+// تحت»: the legend and the hint left the toolbar's start and the TOTALS took it, on the acts' line
+// (the acts their icons below 1760, «حفظ» in words); the bar is one line from 1280. Nothing picked
+// or chosen takes a line of its own: a chip picked up lies over the totals in their box, «المعروض N
+// من M» comes at the bar's end in room the line keeps, and the totals scroll sideways inside their
+// box — the hidden edge fading — rather than wrap.
 //
 // `?date=` is the only thing in the URL: empty means TOMORROW, resolved by the server — crews are
 // planned a day ahead (the legacy default).
-import { useEffect, useMemo, useRef, useState, type DragEvent, type HTMLAttributes } from 'react';
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type HTMLAttributes,
+} from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   CREW_SLOT_CAPACITY,
@@ -143,7 +160,6 @@ import {
 import { CrewVehicleHoverCode } from '../components/BoardCrewCards';
 import { CrewPlanChip } from '../components/CrewPlanChip';
 import {
-  COUNT_CHIP,
   CREW_PLAN_BAR,
   CREW_PLAN_CELLS,
   CREW_PLAN_GRID,
@@ -153,8 +169,12 @@ import {
   CREW_PLAN_TABLE_SIDE,
   CrewPlanHand,
   FilteredCount,
+  filteredCountAt,
+  HEAD_CHIP,
+  HEAD_STRIP,
   PlainDot,
   ReturnPickedButton,
+  ViewOnlyMark,
   countChipTone,
   targetAt,
   unknownMember,
@@ -216,7 +236,7 @@ import {
   vehiclelessRow,
   wrongSlotOf,
   type CrewRole,
-  type CrewRowColour,
+  type CrewRowColourSetting,
   type CrewSlot,
   type PlanRefusal,
   type PlanPool,
@@ -267,11 +287,10 @@ import {
 } from '../lib/crew-undo';
 import { giveVehicle, vanName, vehicleChoices, type VehicleChoice } from '../lib/crew-vehicles';
 import {
-  applySwapToDraft,
-  swapOperation,
-  type SwapMode,
-  type SwapPicks,
+  applySwapStepsToDraft,
+  swapStepsOperation,
   type SwapRules,
+  type SwapStep,
 } from '../lib/crew-swap';
 import { isCrewRecord } from '../lib/crew-record';
 import { useCairoToday } from '../lib/use-cairo-today';
@@ -279,12 +298,14 @@ import {
   catalogStateOf,
   colourWearers,
   paletteFor,
+  NO_ROW_COLOUR,
   resolveRowColour,
   rowColourChoices,
   typeColourOf,
   type PaletteColour,
 } from '../lib/type-colours';
 import { saveReportWorkbook } from '../lib/report-export';
+import { sideFade, useSideScroll } from '../lib/side-scroll';
 
 /** `?date=` empty means TOMORROW, resolved by the server — the legacy planning default. */
 export const resolveCrewDate = (raw: string | null): string | null =>
@@ -308,6 +329,33 @@ const PLAN_TABLE = cn(
   '[&_tr[data-row-colour]_[data-crew-chip]:is([data-selected],[data-refused],[data-away],[data-wrong-slot])]:shadow-[0_0_0_3px_#fff]',
   'dark:[&_tr[data-row-colour]_[data-crew-chip]:is([data-selected],[data-refused],[data-away],[data-wrong-slot])]:shadow-[0_0_0_3px_#0b1226]',
 );
+
+/**
+ * Round 34 E — the board's bar on ONE line from 1280 (8px between its boxes): the day, the van, the
+ * person, the direction, the type and — at its end, when the filters narrow — «المعروض N من M». The
+ * totals left it for the toolbar; «الطاقم الثابت» keeps the shared bar as it was.
+ */
+const CREW_PLAN_BAR_LINE = cn(CREW_PLAN_BAR, 'min-[1280px]:flex-nowrap min-[1280px]:gap-x-2');
+
+/**
+ * Round 34 E — the acts beside the totals. From 1280 to 1759 the totals share the acts' ONE line, and
+ * each act but «حفظ» is its icon in a 34px square, its word still its name (`ACT_WORD`, read by a
+ * screen reader) and its tooltip: eleven types, «الإجمالي», «بدون نوع» and «صيانة» in 2–3 figures
+ * beside the six labelled acts asked 1,600px of a 1440 screen's 1,320. From 1760 every act keeps its
+ * word, as before.
+ *
+ * Round 34 critic — and only there. From 820 to 1279 the totals have a line of their own and the acts
+ * keep their words on the next (in English 709px, «Save (n)» 30 more, of the 772px an 820 screen
+ * gives the board). Below 820 the words do not fit one line (English at 768: 720px), so the acts are
+ * their icons again — in 44px squares there, a finger's size: a phone and a tablet held upright.
+ */
+const ICON_ACT =
+  'max-[819px]:h-11 max-[819px]:w-11 max-[819px]:justify-center max-[819px]:!px-0 min-[1280px]:max-[1759px]:h-[34px] min-[1280px]:max-[1759px]:w-[34px] min-[1280px]:max-[1759px]:justify-center min-[1280px]:max-[1759px]:!px-0';
+const ACT_WORD = 'max-[819px]:sr-only min-[1280px]:max-[1759px]:sr-only';
+/** An act in words — «حفظ», a past day's mark and «العودة إلى اليوم» — below 820 as high as the icons. */
+const WORD_ACT = 'max-[819px]:h-11';
+/** A total's figure, beside its name: 11px (11.5 from 1440), the figures' face. */
+const HEAD_FIGURE = 'text-[11px] font-black min-[1440px]:text-[11.5px]';
 
 export const CrewBoardPage = (): JSX.Element => {
   const t = useT();
@@ -575,6 +623,12 @@ export const CrewBoardPage = (): JSX.Element => {
   // was pressed. A phone gets Fleet's bottom sheet. The slot (its zone) places it; what opened it
   // takes the focus back on Escape.
   const phone = !useMinWidth(640);
+  // «المعروض N من M»: at the bar's end from 1280; below it at the end of the totals' line, which
+  // never wraps (Round 34 verifier and critic — there the bar's filters fill its first line) — on a
+  // phone in figures only (`compact`).
+  const countAt = filteredCountAt({ oneLineHead: useMinWidth(1280) });
+  /** «صيانة»'s codes, read with the chip when Tab reaches it (Round 34 critic). */
+  const workshopWordsId = useId();
   const [picker, setPicker] = useState<{ key: string; slot: CrewSlot } | null>(null);
   const pickerAnchor = useRef<HTMLElement | null>(null);
   const pickerTrigger = useRef<HTMLElement | null>(null);
@@ -603,6 +657,8 @@ export const CrewBoardPage = (): JSX.Element => {
   const [vanPicker, setVanPicker] = useState<string | null>(null);
   const vanAnchor = useRef<HTMLElement | null>(null);
   const vanTrigger = useRef<HTMLElement | null>(null);
+  /** The toolbar's totals (Round 34 E) — read for the fade over the edge that hides chips. */
+  const stripRef = useRef<HTMLDivElement>(null);
   const openVanPicker = (key: string, from: HTMLElement): void => {
     if (vanPicker === key) {
       setVanPicker(null);
@@ -851,14 +907,17 @@ export const CrewBoardPage = (): JSX.Element => {
         )
       : undefined;
   /**
-   * The row's colour picked by hand — or (null) taken off, back to its type's. ONE operation for
-   * «تراجع», said with the colour: «تلوين الصف 150 باللون كحلي» / «إعادة الصف 150 إلى لون نوعه».
+   * The row's colour picked by hand — or (null) taken off, back to its type's, or (Round 34 C,
+   * `'none'`) taken off altogether, «بدون لون» over its type's. ONE operation for «تراجع», said with
+   * the colour: «تلوين الصف 150 باللون كحلي» / «إعادة الصف 150 إلى لون نوعه» / «إزالة لون الصف 150».
    */
-  const recolour = (key: string, rowColour: CrewRowColour | null): void =>
+  const recolour = (key: string, rowColour: CrewRowColourSetting | null): void =>
     applyRows(
       rowColour === null
         ? { kind: 'colourAuto', vars: { row: nameOfRow(key) } }
-        : { kind: 'colour', vars: { row: nameOfRow(key), colour: colourName(rowColour) } },
+        : rowColour === NO_ROW_COLOUR
+          ? { kind: 'colourNone', vars: { row: nameOfRow(key) } }
+          : { kind: 'colour', vars: { row: nameOfRow(key), colour: colourName(rowColour) } },
       (current) => patchRow(current, key, { rowColour }),
     );
 
@@ -1123,13 +1182,16 @@ export const CrewBoardPage = (): JSX.Element => {
     setVanPicker(null);
     setSwapFrom(key);
   };
-  const swapRows = (bKey: string, picks: SwapPicks, mode: SwapMode): void => {
+  // Round 34 D — the window's arrows MOVE the ticked items on a working copy; «تطبيق» hands over
+  // its presses, replayed here on the draft as it is NOW (another desk's save since the window
+  // opened is judged again by the same rules) — ONE operation of «تراجع», whatever the count.
+  const swapRows = (bKey: string, steps: readonly SwapStep[]): void => {
     if (!canPlan || swapFrom === null) return;
     const aKey = swapFrom;
-    // Round 32 critic — a one-way move is said as one («نقل المحدد من 213 إلى 255»), never as a
-    // swap; and the standing crew's toggle lets go of the two rows (`applySwapToDraft`).
-    const what = swapOperation(mode, { a: nameOfRow(aKey), b: nameOfRow(bKey) });
-    apply(what, (draft) => applySwapToDraft(draft, aKey, bKey, picks, mode, swapRules));
+    // Round 32 critic — one way throughout is said as a move («نقل المحدد من 213 إلى 255»), never
+    // as a swap; and the standing crew's toggle lets go of the two rows (`applySwapStepsToDraft`).
+    const what = swapStepsOperation(steps, { a: nameOfRow(aKey), b: nameOfRow(bKey) });
+    apply(what, (draft) => applySwapStepsToDraft(draft, aKey, bKey, steps, swapRules));
     setSwapFrom(null);
     // What the last save said about either row no longer describes it.
     setRefusal((current) => (current?.key === aKey || current?.key === bKey ? null : current));
@@ -1677,6 +1739,7 @@ export const CrewBoardPage = (): JSX.Element => {
               rowKey={row.key}
               value={row.rowColour}
               typeColour={typeColourOf(shiftTypes, row.shiftTypeId)}
+              hasType={row.shiftTypeId !== null}
               choices={rowColourChoices(palette, row.rowColour)}
               wornBy={wornBy}
               catalog={typesCatalog}
@@ -1711,9 +1774,19 @@ export const CrewBoardPage = (): JSX.Element => {
 
   // ── The page ─────────────────────────────────────────────────────────────────────────────────
   const workshop = board.data?.workshopVehicles ?? [];
+  const workshopWords =
+    workshop.length === 0
+      ? t('operations.crewPlan.workshopNone')
+      : t('operations.crewPlan.workshopHint', {
+          codes: workshop.map((van) => van.vehicleCode).join('، '),
+        });
   const typeValue = typeFilter === '' ? [] : [typeFilter];
   const pickedName = selected === null ? null : shownMember(selected).fullNameAr;
   const selectedSeated = selected !== null && seatOf(rows, selected) !== null;
+
+  // Round 34 E — the totals' line scrolls sideways when it outgrows its room: the hidden edge fades.
+  const stripEdges = useSideScroll(stripRef);
+  const stripFade = sideFade(stripEdges, locale === 'ar');
 
   const countChip = (
     filter: ShiftTypeFilter,
@@ -1733,14 +1806,14 @@ export const CrewBoardPage = (): JSX.Element => {
         title={archived ? `${label} — ${t('operations.crewPlan.type.archivedHint')}` : undefined}
         onClick={() => setTypeFilter(on && filter !== '' ? '' : filter)}
         className={cn(
-          COUNT_CHIP,
+          HEAD_CHIP,
           countChipTone(on, count),
           archived && !on && 'border-dashed border-amber-400 dark:border-amber-500/60',
         )}
       >
         {dot}
         {label}
-        <span className={cn(NUM, 'text-[12.5px] font-black text-slate-900 dark:text-white')}>
+        <span className={cn(NUM, HEAD_FIGURE, 'text-slate-900 dark:text-white')}>
           {formatNumber(count, locale)}
         </span>
       </button>
@@ -1750,30 +1823,106 @@ export const CrewBoardPage = (): JSX.Element => {
   return (
     <PageContainer fullHeight>
       <div className={BOARD_FRAME} data-crew-plan="true" {...boardDrop}>
-        {/* The toolbar: what the hands do at the start; the acts at the end. */}
+        {/* The toolbar (Round 34 E): the TOTALS at the start, where the legend and the hint were — the
+            owner: «واسمح الحاجات اللى فوق دى وحط مكاناها الاجماليات» — and the acts at the end, on ONE
+            line from 1280 (the totals on a line of their own below). A chip picked up stands at the
+            totals' start, on their line: «بدل ما انت لما بختار حاجه بينزل سطر ل تحت» — nothing moves.
+            The role colours are on the chips and the pools' heads; how to seat somebody, on every
+            empty slot («+ اختيار»). */}
         <div
-          className="flex flex-wrap items-center justify-between gap-2"
+          className="flex flex-wrap items-center gap-2 min-[1280px]:flex-nowrap"
           data-crew-plan-toolbar="true"
         >
           <CrewPlanHand
             pickedName={pickedName}
             onCancel={() => setSelected(null)}
-            hint={
-              isRecord
-                ? null
-                : canPlan
-                  ? t('operations.crewPlan.hint')
-                  : t('operations.crewPlan.viewOnly')
-            }
-          />
-          <span className="ms-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
+            className="basis-full min-[1280px]:basis-0 min-[1280px]:flex-1"
+          >
+            <div
+              ref={stripRef}
+              role="group"
+              aria-label={t('operations.crewPlan.counts')}
+              title={t('operations.crewPlan.countsHint')}
+              className={HEAD_STRIP}
+              style={{ maskImage: stripFade, WebkitMaskImage: stripFade }}
+              data-type-counts="true"
+              data-strip-more={
+                stripEdges.start || stripEdges.end
+                  ? [stripEdges.start && 'start', stripEdges.end && 'end'].filter(Boolean).join(' ')
+                  : undefined
+              }
+            >
+              {countChip(
+                '',
+                t('operations.crewPlan.total'),
+                strip.total,
+                <PlainDot tone="bg-brand-500" />,
+              )}
+              {strip.chips.map(({ type, count }) =>
+                countChip(
+                  type.id,
+                  shiftTypeName(type, locale),
+                  count,
+                  <ShiftTypeDot colour={type.colour} size="sm" />,
+                  !type.isActive,
+                ),
+              )}
+              {strip.none > 0 &&
+                countChip(
+                  NO_SHIFT_TYPE,
+                  t('operations.crewPlan.type.untyped'),
+                  strip.none,
+                  <PlainDot tone="bg-slate-400" />,
+                )}
+              {/* صيانة — the vans in the workshop: not rows of this board, so a figure, not a filter.
+                  It takes the focus (Round 34 critic), so Tab carries the line to its end and a
+                  screen reader says its codes; the mouse reads them in its tooltip. */}
+              <span
+                data-workshop-count={String(workshop.length)}
+                tabIndex={0}
+                aria-describedby={workshopWordsId}
+                title={workshopWords}
+                className={cn(
+                  HEAD_CHIP,
+                  'cursor-help border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200',
+                )}
+              >
+                <BoardIcon d={PLAN_ICON.wrench} className="h-3 w-3" />
+                {t('operations.crewPlan.workshop')}
+                <span className={cn(NUM, HEAD_FIGURE)}>
+                  {formatNumber(workshop.length, locale)}
+                </span>
+              </span>
+            </div>
+            <span id={workshopWordsId} className="sr-only">
+              {workshopWords}
+            </span>
+            {/* Below 1280: what the filters leave, at the end of the totals' line — the bar's first
+                line is full there; this line never wraps (the totals give way), so the count can
+                never take a line of its own. */}
+            {filtering && countAt === 'head' && (
+              <FilteredCount
+                shown={shown.length}
+                total={rows.length}
+                onClear={clearFilters}
+                compact={phone}
+              />
+            )}
+          </CrewPlanHand>
+          <span className="ms-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 min-[1280px]:flex-nowrap">
+            {/* Without the planning grant: the board is read only — said by a lock and «للعرض فقط»,
+                why in full in its tooltip (Round 34 E: no line of words over the totals). */}
+            {!canPlan && !isRecord && <ViewOnlyMark className={WORD_ACT} />}
             {/* Round 32 — a record has no acts: the day says it is one, and the way back to today (a
                 move between days, not a change — for every reader). */}
             {isRecord && (
               <>
                 <span
                   data-crew-record-mark="true"
-                  className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-[11px] font-black text-sky-800 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:border-sky-400/30 dark:bg-sky-400/10 dark:text-sky-200"
+                  className={cn(
+                    'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-[11px] font-black text-sky-800 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:border-sky-400/30 dark:bg-sky-400/10 dark:text-sky-200',
+                    WORD_ACT,
+                  )}
                 >
                   <BoardIcon d={[...PATH.lock]} className="h-3.5 w-3.5" />
                   {t('operations.crewPlan.record.mark')}
@@ -1785,7 +1934,7 @@ export const CrewBoardPage = (): JSX.Element => {
                   title={t('operations.crewPlan.record.todayHint', {
                     day: dayText(`${liveToday}T00:00:00.000Z`),
                   })}
-                  className={BRAND_BUTTON}
+                  className={cn(BRAND_BUTTON, WORD_ACT)}
                 >
                   <BoardIcon d={[...SHIPMENT_PATH.calendar]} className="h-3.5 w-3.5" />
                   {t('operations.crewPlan.record.today')}
@@ -1803,22 +1952,23 @@ export const CrewBoardPage = (): JSX.Element => {
                   standingKeys === null && (standingSources.length === 0 || areaNames.isPending)
                 }
                 aria-busy={standingKeys === null && areaNames.isPending}
-                title={
+                title={`${t('operations.crewPlan.standing')} — ${
                   standingSources.length === 0
                     ? t('operations.crew.standing.none')
                     : standingKeys === null && areaNames.isPending
                       ? t('operations.crew.standing.areasLoading')
                       : t('operations.crew.standing.hint')
-                }
+                }`}
                 onClick={toggleStanding}
                 className={cn(
                   BRAND_BUTTON,
+                  ICON_ACT,
                   'disabled:cursor-not-allowed disabled:opacity-50',
                   standingKeys !== null && '!bg-brand-500 !text-white',
                 )}
               >
                 <BoardIcon d={PLAN_ICON.layers} className="h-3.5 w-3.5" />
-                {t('operations.crewPlan.standing')}
+                <span className={ACT_WORD}>{t('operations.crewPlan.standing')}</span>
               </button>
             )}
             {/* Round 24b — «فوق خالص جمب الطاقم الثابت لما ادوس عليها يفتح كارد زى جدول اقدر ادى كل
@@ -1829,35 +1979,42 @@ export const CrewBoardPage = (): JSX.Element => {
               data-type-colours-open="true"
               aria-haspopup="dialog"
               aria-expanded={typeColoursOpen}
+              title={t('operations.crewPlan.typeColours.open')}
               onClick={() => setTypeColoursOpen(true)}
-              className={BRAND_BUTTON}
+              className={cn(BRAND_BUTTON, ICON_ACT)}
             >
               <BoardIcon d={PLAN_ICON.palette} className="h-3.5 w-3.5" />
-              {t('operations.crewPlan.typeColours.open')}
+              <span className={ACT_WORD}>{t('operations.crewPlan.typeColours.open')}</span>
             </button>
             {canPlan && (
               <button
                 type="button"
                 data-add-loose-row="true"
+                title={t('operations.crewPlan.addRow')}
                 onClick={addRow}
-                className={BRAND_BUTTON}
+                className={cn(BRAND_BUTTON, ICON_ACT)}
               >
                 <BoardIcon d={PATH.plus} className="h-3.5 w-3.5" width={2.5} />
-                {t('operations.crewPlan.addRow')}
+                <span className={ACT_WORD}>{t('operations.crewPlan.addRow')}</span>
               </button>
             )}
             <button
               type="button"
               data-crew-plan-excel="true"
               disabled={rows.length === 0}
+              title="Excel"
               onClick={exportExcel}
-              className={cn(BRAND_BUTTON, 'disabled:cursor-not-allowed disabled:opacity-50')}
+              className={cn(
+                BRAND_BUTTON,
+                ICON_ACT,
+                'disabled:cursor-not-allowed disabled:opacity-50',
+              )}
             >
               <BoardIcon
                 d={PATH.excel}
                 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
               />
-              Excel
+              <span className={ACT_WORD}>Excel</span>
             </button>
             {canPlan && (
               // «تراجع» — the LAST operation only (Round 24); its tooltip says which.
@@ -1878,10 +2035,14 @@ export const CrewBoardPage = (): JSX.Element => {
                 }
                 aria-keyshortcuts="Control+Z Meta+Z"
                 onClick={undoLast}
-                className={cn(BRAND_BUTTON, 'disabled:cursor-not-allowed disabled:opacity-50')}
+                className={cn(
+                  BRAND_BUTTON,
+                  ICON_ACT,
+                  'disabled:cursor-not-allowed disabled:opacity-50',
+                )}
               >
                 <BoardIcon d={SHIPMENT_PATH.undo} className="h-3.5 w-3.5" />
-                {t('operations.crewPlan.discard')}
+                <span className={ACT_WORD}>{t('operations.crewPlan.discard')}</span>
               </button>
             )}
             {canPlan && (
@@ -1893,6 +2054,7 @@ export const CrewBoardPage = (): JSX.Element => {
                 onClick={() => void save()}
                 className={cn(
                   dirty ? ADD_BUTTON : BRAND_BUTTON,
+                  WORD_ACT,
                   'disabled:cursor-not-allowed disabled:opacity-50',
                 )}
               >
@@ -1909,9 +2071,9 @@ export const CrewBoardPage = (): JSX.Element => {
           </span>
         </div>
 
-        {/* The day, the van, the person, the direction (Round 24), the type, and the strip counting
-            the rows by type. */}
-        <div className={CREW_PLAN_BAR} data-crew-plan-bar="true">
+        {/* The day, the van, the person, the direction (Round 24) and the type — ONE line from 1280
+            (Round 34 E), «المعروض N من M» at its end when the filters narrow, in room the line keeps. */}
+        <div className={CREW_PLAN_BAR_LINE} data-crew-plan-bar="true">
           {/* Any day, a past one too — it opens as its record (Round 32). */}
           <DayBox label={t('operations.crewPlan.day')} value={day} min="" onChange={setDay} />
           {/* «يفلتر ب كود عربيه»: the board's vans by code, and «بدون سيارة». */}
@@ -1938,7 +2100,7 @@ export const CrewBoardPage = (): JSX.Element => {
           <FilterWithIcon
             icon={FILTER_ICON.person}
             tone="text-sky-600 dark:text-sky-400"
-            className="w-full shrink-0 sm:w-56"
+            className="w-full shrink-0 sm:w-56 min-[1280px]:max-[1365px]:w-48"
           >
             <Input
               type="search"
@@ -1996,64 +2158,13 @@ export const CrewBoardPage = (): JSX.Element => {
               }
             />
           </FilterWithIcon>
-          {/* What the filters leave, beside the chips that count the WHOLE day — and one press
-              to show every row again. */}
-          {filtering && (
-            <FilteredCount shown={shown.length} total={rows.length} onClear={clearFilters} />
-          )}
-          <div
-            role="group"
-            aria-label={t('operations.crewPlan.counts')}
-            title={t('operations.crewPlan.countsHint')}
-            // Round 24 — on a line of its own under the five filters until 1900: beside them it was
-            // squeezed into three lines of chips at 1440, and the table lost their height.
-            className="flex w-full min-w-0 flex-wrap items-center gap-1 min-[1360px]:gap-0.5 min-[1440px]:gap-1 min-[1900px]:w-auto min-[1900px]:flex-1"
-            data-type-counts="true"
-          >
-            {countChip(
-              '',
-              t('operations.crewPlan.total'),
-              strip.total,
-              <PlainDot tone="bg-brand-500" />,
-            )}
-            {strip.chips.map(({ type, count }) =>
-              countChip(
-                type.id,
-                shiftTypeName(type, locale),
-                count,
-                <ShiftTypeDot colour={type.colour} size="sm" />,
-                !type.isActive,
-              ),
-            )}
-            {strip.none > 0 &&
-              countChip(
-                NO_SHIFT_TYPE,
-                t('operations.crewPlan.type.untyped'),
-                strip.none,
-                <PlainDot tone="bg-slate-400" />,
-              )}
-            {/* صيانة — the vans in the workshop: not rows of this board, so a figure, not a filter. */}
-            <span
-              data-workshop-count={String(workshop.length)}
-              title={
-                workshop.length === 0
-                  ? t('operations.crewPlan.workshopNone')
-                  : t('operations.crewPlan.workshopHint', {
-                      codes: workshop.map((van) => van.vehicleCode).join('، '),
-                    })
-              }
-              className={cn(
-                COUNT_CHIP,
-                'cursor-help border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200',
-              )}
-            >
-              <BoardIcon d={PLAN_ICON.wrench} className="h-3.5 w-3.5" />
-              {t('operations.crewPlan.workshop')}
-              <span className={cn(NUM, 'text-[13px] font-black')}>
-                {formatNumber(workshop.length, locale)}
-              </span>
+          {/* From 1280: what the filters leave, at the bar's end in room the line keeps — and one
+              press to show every row again. Below 1280 it is the totals' line's (`countAt`). */}
+          {filtering && countAt === 'bar' && (
+            <span className="flex shrink-0 min-[1280px]:ms-auto">
+              <FilteredCount shown={shown.length} total={rows.length} onClear={clearFilters} />
             </span>
-          </div>
+          )}
         </div>
 
         {/* Round 32 — a past day: the record's notice, calm, under the bar. */}
@@ -2154,10 +2265,13 @@ export const CrewBoardPage = (): JSX.Element => {
                 rowProps={(row) => {
                   const { colour, source } = colourOfRow(row);
                   const marks: Record<string, string> = { 'data-plan-row': row.key };
-                  // Where its colour comes from: picked on the row, or its type's.
+                  // Where its colour comes from: picked on the row, or its type's — or (Round 34 C)
+                  // that «بدون لون» was picked on it, over its type's: drawn as a plain row.
                   if (colour !== null) {
                     marks['data-row-colour'] = colour;
                     marks['data-row-colour-source'] = source ?? 'type';
+                  } else if (source === 'none') {
+                    marks['data-row-colour-source'] = 'none';
                   }
                   if (refusal?.key === row.key) marks['data-row-refused'] = refusal.field;
                   return marks as HTMLAttributes<HTMLTableRowElement>;

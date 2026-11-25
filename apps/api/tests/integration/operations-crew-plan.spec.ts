@@ -2528,3 +2528,428 @@ describe('Round 24 — «بدون سيارة» offers every car without a crew, 
     expect((await board(BARE)).vehiclelessRows.map((row) => row.id)).toContain(heldId);
   });
 });
+
+// Round 34 C — «والشاشة بتاعت لوحة التشغيلة عاوز اقدر بعد ما اضيف لون اقدر اشيله عادي … انا عاوز ان انا
+// ممكن اضيف محصنة بس الصف بتاعها ما يكونش ملون عادي», then «ما انا عاوز مش لازم نوع يكون واخد اجبارى
+// لون فاهم ولو انا مثبت لون للنوع ممكن لو تندى صف اشيل لونه عادى». A type may have NO colour, and a row
+// may be «بدون لون» (`rowColour: 'none'`) over its type's — while null stays «لون النوع», so every row
+// saved before keeps wearing its type's colour. Its own day, with its own roster.
+describe('Round 34 C — colours are optional: a type without one, a row «بدون لون»', () => {
+  const R34 = shift(130);
+  const patchType = (id: string, body: Record<string, unknown>): request.Test =>
+    request(app)
+      .patch(`/api/v1/operations/shift-types/${id}`)
+      .set('Authorization', `Bearer ${catalogToken}`)
+      .send(body);
+  const crewOf = (dto: OperationsCrewBoardDto, vehicleId: string) => vanRow(dto, vehicleId)?.crew;
+  const secured = async (): Promise<OperationsShiftTypeDto> => typeNamed('محصنة');
+
+  beforeAll(async () => {
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: R34,
+        rows: [
+          { vehicleId: van1, notes: 'r34c' },
+          { vehicleId: van2, notes: 'r34c' },
+          { vehicleId: van3, notes: 'r34c' },
+        ],
+      });
+    expect(roster.status, JSON.stringify(roster.body)).toBe(200);
+  });
+
+  it('a type may be added with no colour, and a colour once given can be taken off and given back', async () => {
+    const before = await types();
+    // Left out on create is none; null is none too.
+    const bare = await request(app)
+      .post('/api/v1/operations/shift-types')
+      .set('Authorization', `Bearer ${catalogToken}`)
+      .send({ name: 'بلا لون', nameEn: 'Uncoloured' });
+    expect(bare.status, JSON.stringify(bare.body)).toBe(201);
+    const bareDto = data<OperationsShiftTypeDto>(bare);
+    expect(bareDto).toMatchObject({ name: 'بلا لون', colour: null, isActive: true });
+    expect((await OperationsShiftTypeModel.findById(bareDto.id).lean().exec())?.colour).toBeNull();
+    const nulled = await request(app)
+      .post('/api/v1/operations/shift-types')
+      .set('Authorization', `Bearer ${catalogToken}`)
+      .send({ name: 'بلا لون ٢', colour: null });
+    expect(nulled.status, JSON.stringify(nulled.body)).toBe(201);
+    expect(data<OperationsShiftTypeDto>(nulled).colour).toBeNull();
+
+    // «محصنة» wears slate since the seed; the owner takes it off…
+    const type = await secured();
+    expect(type.colour).toBe('slate');
+    const off = await patchType(type.id, { colour: null, version: type.version });
+    expect(off.status, JSON.stringify(off.body)).toBe(200);
+    expect(data<OperationsShiftTypeDto>(off)).toMatchObject({ colour: null });
+    expect((await secured()).colour).toBeNull();
+    // …a rename without `colour` leaves it as it is (none), never brings one back…
+    const renamed = await patchType(type.id, {
+      nameEn: 'Secured',
+      version: data<OperationsShiftTypeDto>(off).version,
+    });
+    expect(renamed.status, JSON.stringify(renamed.body)).toBe(200);
+    expect(data<OperationsShiftTypeDto>(renamed).colour).toBeNull();
+    // …and gives it back. `none` is the row's word, never a type's: refused, nothing written.
+    expect(
+      (
+        await patchType(type.id, {
+          colour: 'none',
+          version: data<OperationsShiftTypeDto>(renamed).version,
+        })
+      ).status,
+    ).toBe(400);
+    const back = await patchType(type.id, {
+      colour: 'slate',
+      version: data<OperationsShiftTypeDto>(renamed).version,
+    });
+    expect(back.status, JSON.stringify(back.body)).toBe(200);
+    expect((await secured()).colour).toBe('slate');
+
+    // No migration: every type that had a colour still has it.
+    const after = await types();
+    for (const was of before) {
+      expect(after.find((one) => one.id === was.id)?.colour, was.name).toBe(was.colour);
+    }
+    // Tidy: the two are archived (no delete), so the cases below meet the catalog as it was.
+    for (const res of [bare, nulled]) {
+      const dto = data<OperationsShiftTypeDto>(res);
+      expect((await patchType(dto.id, { isActive: false, version: dto.version })).status).toBe(200);
+    }
+  });
+
+  it('a row «بدون لون» is saved and read as `none` — beside a row of the same type that keeps «لون النوع» (null)', async () => {
+    const type = await secured();
+    const res = await saved(
+      {
+        rows: [
+          {
+            vehicleId: van1,
+            captainEmployeeIds: [cap1],
+            specialist1EmployeeIds: [spec1],
+            shiftTypeId: type.id,
+            rowColour: 'none',
+          },
+          { vehicleId: van2, captainEmployeeIds: [cap2], shiftTypeId: type.id, rowColour: null },
+          { vehicleId: van3, captainEmployeeIds: [cap3], shiftTypeId: type.id, rowColour: 'navy' },
+        ],
+      },
+      R34,
+    );
+    expect(res.changedCount).toBe(3);
+    expect(crewOf(res, van1)).toMatchObject({ shiftTypeId: type.id, rowColour: 'none' });
+    expect(crewOf(res, van2)).toMatchObject({ shiftTypeId: type.id, rowColour: null });
+    expect(crewOf(res, van3)).toMatchObject({ shiftTypeId: type.id, rowColour: 'navy' });
+    // Stored as written: `none`, never folded into null (which would hand the type's colour back).
+    const stored = await OperationsCrewAssignmentModel.findById(crewOf(res, van1)?.id)
+      .lean()
+      .exec();
+    expect(stored?.rowColour).toBe('none');
+    // Read again from scratch: the same three states.
+    const read = await board(R34);
+    expect([van1, van2, van3].map((van) => crewOf(read, van)?.rowColour)).toEqual([
+      'none',
+      null,
+      'navy',
+    ]);
+
+    // The same row sent again is a no-op — `none` compares as itself.
+    const row1 = (rowColour: unknown) => ({
+      vehicleId: van1,
+      captainEmployeeIds: [cap1],
+      specialist1EmployeeIds: [spec1],
+      shiftTypeId: type.id,
+      rowColour,
+    });
+    expect((await saved({ rows: [row1('none')] }, R34)).changedCount).toBe(0);
+    // A colour once added can be taken off again, either way: to «لون النوع» or to «بدون لون».
+    const auto = await saved({ rows: [row1(null)] }, R34);
+    expect(auto.changedCount).toBe(1);
+    expect(crewOf(auto, van1)?.rowColour).toBeNull();
+    const painted = await saved({ rows: [row1('crimson')] }, R34);
+    expect(crewOf(painted, van1)?.rowColour).toBe('crimson');
+    const none = await saved({ rows: [row1('none')] }, R34);
+    expect(crewOf(none, van1)?.rowColour).toBe('none');
+    // Anything else is still refused, nothing written.
+    for (const wrong of ['None', 'transparent', '']) {
+      const bad = await save({ rows: [row1(wrong)] }, R34);
+      expect(bad.status, wrong).toBe(400);
+    }
+    expect(crewOf(await board(R34), van1)?.rowColour).toBe('none');
+  });
+
+  it('a row with nothing but «بدون لون» is still a row, as a row with only a colour is', async () => {
+    const res = await saved({ rows: [{ vehicleId: null, rowColour: 'none', notes: 'r34c' }] }, R34);
+    const row = res.vehiclelessRows.find((one) => one.notes === 'r34c');
+    expect(row?.rowColour).toBe('none');
+    const id = row?.id as string;
+    const bare = await saved(
+      { rows: [{ vehicleId: null, crewAssignmentId: id, rowColour: 'none' }] },
+      R34,
+    );
+    expect(bare.vehiclelessRows.find((one) => one.id === id)?.rowColour).toBe('none');
+    // Removed, so the cases below meet only the vans.
+    await saved({ rows: [], removeCrewAssignmentIds: [id] }, R34);
+  });
+
+  it('old rows keep wearing their type: a row saved with null, or written before Round 20 with no field at all, reads null', async () => {
+    const type = await secured();
+    const vanRowNow = crewOf(await board(R34), van2);
+    expect(vanRowNow?.rowColour).toBeNull();
+    // Its type still has its colour — null is «لون النوع», the board draws the row in slate.
+    expect(type.colour).toBe('slate');
+    // A row from before Round 20 has no `rowColour` field at all: read as null too.
+    await OperationsCrewAssignmentModel.collection.updateOne(
+      { _id: new Types.ObjectId(vanRowNow?.id) },
+      { $unset: { rowColour: '' } },
+    );
+    expect(
+      (
+        await OperationsCrewAssignmentModel.collection.findOne({
+          _id: new Types.ObjectId(vanRowNow?.id),
+        })
+      )?.rowColour,
+    ).toBeUndefined();
+    expect(crewOf(await board(R34), van2)?.rowColour).toBeNull();
+  });
+
+  it('a type with no colour: its rows read as they are saved — null, `none` or a colour of their own', async () => {
+    const type = await secured();
+    const off = await patchType(type.id, { colour: null, version: type.version });
+    expect(off.status, JSON.stringify(off.body)).toBe(200);
+    const read = await board(R34);
+    expect([van1, van2, van3].map((van) => crewOf(read, van)?.rowColour)).toEqual([
+      'none',
+      null,
+      'navy',
+    ]);
+    expect([van1, van2, van3].every((van) => crewOf(read, van)?.shiftTypeId === type.id)).toBe(
+      true,
+    );
+    // A row newly given the uncoloured type is saved like any other.
+    const loose = await saved(
+      { rows: [{ vehicleId: null, shiftTypeId: type.id, notes: 'r34c-bare' }] },
+      R34,
+    );
+    const row = loose.vehiclelessRows.find((one) => one.notes === 'r34c-bare');
+    expect(row).toMatchObject({ shiftTypeId: type.id, rowColour: null });
+    await saved({ rows: [], removeCrewAssignmentIds: [row?.id as string] }, R34);
+    const back = await patchType(type.id, {
+      colour: 'slate',
+      version: data<OperationsShiftTypeDto>(off).version,
+    });
+    expect(back.status).toBe(200);
+  });
+
+  it('«تحميل الطاقم الثابت» onto a row «بدون لون» keeps it: the standing crew holds no colour, the row its own', async () => {
+    const standing = await request(app)
+      .put('/api/v1/operations/standing-crew')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        rows: [
+          {
+            vehicleId: van2,
+            captainEmployeeIds: [cap2],
+            specialist1EmployeeIds: [spec2],
+            direction: 'المعادي',
+          },
+        ],
+      });
+    expect(standing.status, JSON.stringify(standing.body)).toBe(200);
+    const read = await request(app)
+      .get('/api/v1/operations/standing-crew')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(read.status).toBe(200);
+    const template = data<{ rows: Record<string, unknown>[] }>(read).rows.find(
+      (row) => row.vehicleId === van2,
+    );
+    // The template has no type and no colour to give: what the day row holds is the day row's.
+    expect(template).toBeDefined();
+    expect(template).not.toHaveProperty('rowColour');
+    expect(template).not.toHaveProperty('shiftTypeId');
+
+    const type = await secured();
+    // The day's row of van 2 is set «بدون لون», with its type, and nobody on it yet…
+    const empty = await saved(
+      { rows: [{ vehicleId: van2, shiftTypeId: type.id, rowColour: 'none' }] },
+      R34,
+    );
+    expect(crewOf(empty, van2)).toMatchObject({ rowColour: 'none', captainEmployeeIds: [] });
+    // …then filled from the standing crew, as the board's load sends it: the template's people and
+    // direction, the row's own type and colour.
+    const loaded = await saved(
+      {
+        rows: [
+          {
+            vehicleId: van2,
+            captainEmployeeIds: template?.captainEmployeeIds,
+            specialist1EmployeeIds: template?.specialist1EmployeeIds,
+            direction: template?.direction,
+            shiftTypeId: type.id,
+            rowColour: 'none',
+          },
+        ],
+      },
+      R34,
+    );
+    expect(crewOf(loaded, van2)).toMatchObject({
+      captainEmployeeIds: [cap2],
+      specialist1EmployeeIds: [spec2],
+      direction: 'المعادي',
+      shiftTypeId: type.id,
+      rowColour: 'none',
+    });
+    expect(crewOf(await board(R34), van2)?.rowColour).toBe('none');
+  });
+});
+
+// Round 34 F — «و اسمحلى برضو ان ممكن عملية تكون من غير لون مش لازم ان يومى او محصنة تبقى واخده لون
+// اجبارى». No colour is ever put back on a type that has none: not by the boot (the module's seed —
+// the grants, the data migrations, the legacy nine), not by an edit that leaves `colour` out, not by
+// an archive and a restore, not by the catalog's order, not by a crew save. «يومي» and «محصنة» — two of
+// the nine the boot seeded with a colour — taken off, the first as «ألوان الأنواع» sends it, the second
+// as the catalog's form does.
+describe('Round 34 F — no type is forced to wear a colour: «يومي» and «محصنة» stay bare across a boot', () => {
+  const R34F = shift(131);
+  const patchType = (id: string, body: Record<string, unknown>): request.Test =>
+    request(app)
+      .patch(`/api/v1/operations/shift-types/${id}`)
+      .set('Authorization', `Bearer ${catalogToken}`)
+      .send(body);
+  const stored = async (id: string) =>
+    (await OperationsShiftTypeModel.findById(id).lean().exec())?.colour;
+
+  beforeAll(async () => {
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: R34F,
+        rows: [
+          { vehicleId: van1, notes: 'r34f' },
+          { vehicleId: van2, notes: 'r34f' },
+        ],
+      });
+    expect(roster.status, JSON.stringify(roster.body)).toBe(200);
+  });
+
+  it('taken off, they stay off — through the boot, an edit that leaves the colour out, an archive and back, the order and a save', async () => {
+    const before = await types();
+    const daily = await typeNamed('يومي');
+    const secured = await typeNamed('محصنة');
+    // The boot seeded both with a colour.
+    expect(daily.colour).toBe('rose');
+    expect(secured.colour).toBe('slate');
+
+    // «ألوان الأنواع»: `{ colour: null, version }`.
+    const dailyOff = await patchType(daily.id, { colour: null, version: daily.version });
+    expect(dailyOff.status, JSON.stringify(dailyOff.body)).toBe(200);
+    // The catalog's form: the whole type, `colour: null`.
+    const securedOff = await patchType(secured.id, {
+      name: secured.name,
+      nameEn: secured.nameEn,
+      colour: null,
+      version: secured.version,
+    });
+    expect(securedOff.status, JSON.stringify(securedOff.body)).toBe(200);
+    expect(await stored(daily.id)).toBeNull();
+    expect(await stored(secured.id)).toBeNull();
+
+    // THE BOOT: Operations' own step, exactly as `bootPlatform` runs it — twice (the api and the
+    // worker). The legacy nine are keyed and `$setOnInsert`: nothing inserted, nothing recoloured.
+    const operations = moduleManifests.find((manifest) => manifest.id === 'operations');
+    expect(operations?.seed).toBeDefined();
+    await operations?.seed?.();
+    await operations?.seed?.();
+    expect(await seedOperationsShiftTypes()).toEqual({ inserted: 0, skipped: [] });
+    expect(await stored(daily.id)).toBeNull();
+    expect(await stored(secured.id)).toBeNull();
+    const booted = await types();
+    expect(booted.find((type) => type.id === daily.id)?.colour).toBeNull();
+    expect(booted.find((type) => type.id === secured.id)?.colour).toBeNull();
+    // Every other type keeps the colour it had.
+    for (const was of before) {
+      if (was.id === daily.id || was.id === secured.id) continue;
+      expect(booted.find((type) => type.id === was.id)?.colour, was.name).toBe(was.colour);
+    }
+
+    // An edit that leaves `colour` out leaves it none; so do an archive and a restore.
+    let version = data<OperationsShiftTypeDto>(dailyOff).version;
+    const renamed = await patchType(daily.id, { nameEn: 'Daily run', version });
+    expect(renamed.status, JSON.stringify(renamed.body)).toBe(200);
+    expect(data<OperationsShiftTypeDto>(renamed).colour).toBeNull();
+    version = data<OperationsShiftTypeDto>(renamed).version;
+    const archived = await patchType(daily.id, { isActive: false, version });
+    expect(data<OperationsShiftTypeDto>(archived).colour).toBeNull();
+    const restored = await patchType(daily.id, {
+      isActive: true,
+      nameEn: 'Daily',
+      version: data<OperationsShiftTypeDto>(archived).version,
+    });
+    expect(restored.status, JSON.stringify(restored.body)).toBe(200);
+    expect(data<OperationsShiftTypeDto>(restored).colour).toBeNull();
+
+    // The catalog's order, turned round and put back: no colour comes with it.
+    const order = (await types()).map((type) => type.id);
+    for (const ids of [[...order].reverse(), order]) {
+      const put = await request(app)
+        .put('/api/v1/operations/shift-types/order')
+        .set('Authorization', `Bearer ${catalogToken}`)
+        .send({ ids });
+      expect(put.status, JSON.stringify(put.body)).toBe(204);
+    }
+    expect(await stored(daily.id)).toBeNull();
+    expect(await stored(secured.id)).toBeNull();
+
+    // A day of rows of both, «لون النوع» kept (null): saved and read with no colour of their own, and
+    // their types with none — so the board draws them plain.
+    const day = await saved(
+      {
+        rows: [
+          { vehicleId: van1, captainEmployeeIds: [cap1], shiftTypeId: daily.id, rowColour: null },
+          { vehicleId: van2, captainEmployeeIds: [cap2], shiftTypeId: secured.id, rowColour: null },
+        ],
+      },
+      R34F,
+    );
+    expect(day.changedCount).toBe(2);
+    const read = await board(R34F);
+    expect(vanRow(read, van1)?.crew).toMatchObject({ shiftTypeId: daily.id, rowColour: null });
+    expect(vanRow(read, van2)?.crew).toMatchObject({ shiftTypeId: secured.id, rowColour: null });
+    await operations?.seed?.();
+    const after = await types();
+    expect(after.find((type) => type.id === daily.id)?.colour).toBeNull();
+    expect(after.find((type) => type.id === secured.id)?.colour).toBeNull();
+
+    // A NEW type left without a colour has none; an older client that still sends one keeps it.
+    const bare = await request(app)
+      .post('/api/v1/operations/shift-types')
+      .set('Authorization', `Bearer ${catalogToken}`)
+      .send({ name: 'نوع بلا لون', nameEn: 'No colour yet' });
+    expect(bare.status, JSON.stringify(bare.body)).toBe(201);
+    expect(data<OperationsShiftTypeDto>(bare).colour).toBeNull();
+    expect(await stored(data<OperationsShiftTypeDto>(bare).id)).toBeNull();
+    const older = await request(app)
+      .post('/api/v1/operations/shift-types')
+      .set('Authorization', `Bearer ${catalogToken}`)
+      .send({ name: 'نوع بلون', colour: 'plum' });
+    expect(older.status, JSON.stringify(older.body)).toBe(201);
+    expect(data<OperationsShiftTypeDto>(older).colour).toBe('plum');
+    await operations?.seed?.();
+    expect(await stored(data<OperationsShiftTypeDto>(bare).id)).toBeNull();
+
+    // Tidy: the two new ones archived, the two seeded ones given their colours back by hand.
+    for (const res of [bare, older]) {
+      const dto = data<OperationsShiftTypeDto>(res);
+      expect((await patchType(dto.id, { isActive: false, version: dto.version })).status).toBe(200);
+    }
+    for (const [id, colour] of [
+      [daily.id, 'rose'],
+      [secured.id, 'slate'],
+    ] as const) {
+      const now = (await types()).find((type) => type.id === id) as OperationsShiftTypeDto;
+      expect((await patchType(id, { colour, version: now.version })).status).toBe(200);
+    }
+  });
+});

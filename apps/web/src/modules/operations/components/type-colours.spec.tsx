@@ -23,6 +23,7 @@ import {
   OPERATIONS_LEGACY_CREW_ROW_COLOURS,
   OPERATIONS_SHIFT_TYPE_COLOURS,
   type Locale,
+  type OperationsShiftTypeColour,
   type OperationsShiftTypeDto,
 } from '@ecms/contracts';
 import { localeSlice } from '../../../store/localeSlice';
@@ -32,7 +33,15 @@ import { patchRow, type PlanRow } from '../lib/crew-plan';
 import { catalogStateOf, paletteFor, rowColourChoices, swatchPress } from '../lib/type-colours';
 import { RowColourPicker, RowColourSwatches } from './CrewPlanControls';
 import { TypeColoursCard } from './TypeColoursCard';
-import { ON_TINT, ROW_BAR, SHIFT_TYPE_TONE, rowTint } from './shift-type-look';
+import {
+  NO_COLOUR_TONE,
+  ON_TINT,
+  ROW_BAR,
+  SHIFT_TYPE_TONE,
+  ShiftTypeDot,
+  ShiftTypeTag,
+  rowTint,
+} from './shift-type-look';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -265,7 +274,10 @@ describe('on a phone — Fleet’s bottom sheet, the swatches wrapping under eac
 describe('a row’s «اللون» — the shown palette over the type’s colour', () => {
   const wornBy = (colour: string): string[] =>
     LIVE.filter((t) => t.colour === colour).map((t) => t.name);
-  const list = (value: PlanRow['rowColour'], typeColour: PlanRow['rowColour']): string =>
+  const list = (
+    value: PlanRow['rowColour'],
+    typeColour: OperationsShiftTypeColour | null,
+  ): string =>
     render(
       <RowColourSwatches
         value={value}
@@ -281,9 +293,11 @@ describe('a row’s «اللون» — the shown palette over the type’s colou
       tag: m[0],
     }));
 
-  it('offers exactly the swatches shown, then «لون النوع» — nothing from Round 20’s six', () => {
+  // Round 34 C — rewritten: «لون النوع» and «بدون لون» open the list, the palette after them (it
+  // was the palette, then «لون النوع»).
+  it('offers «لون النوع» and «بدون لون» first, then exactly the swatches shown — nothing from Round 20’s six', () => {
     const html = list(null, 'rose');
-    expect(swatches(html).map((s) => s.colour)).toEqual([...SHOWN, 'type']);
+    expect(swatches(html).map((s) => s.colour)).toEqual(['type', 'none', ...SHOWN]);
     expect(html).toContain(ar('operations.crewPlan.colour.palette', { count: '٤' }));
     for (const legacy of ['yellow', 'green', 'blue', 'red', 'purple']) {
       expect(html).not.toContain(`data-colour="${legacy}"`);
@@ -308,7 +322,8 @@ describe('a row’s «اللون» — the shown palette over the type’s colou
   it('a colour picked when the palette was larger: still offered, at the end, pressed and so named', () => {
     const html = list('navy', 'rose');
     const all = swatches(html);
-    expect(all.map((s) => s.colour)).toEqual([...SHOWN, 'navy', 'type']);
+    // Round 34 C — rewritten: «لون النوع» and «بدون لون» first; the kept colour still ends the palette.
+    expect(all.map((s) => s.colour)).toEqual(['type', 'none', ...SHOWN, 'navy']);
     const navy = all.find((s) => s.colour === 'navy')?.tag ?? '';
     expect(navy).toContain('aria-pressed="true"');
     expect(navy).toContain('data-colour-outside="true"');
@@ -324,7 +339,10 @@ describe('a row’s «اللون» — the shown palette over the type’s colou
   });
 
   it('the cell’s button shows what the row is drawn in, and where that comes from', () => {
-    const button = (value: PlanRow['rowColour'], typeColour: PlanRow['rowColour']): string =>
+    const button = (
+      value: PlanRow['rowColour'],
+      typeColour: OperationsShiftTypeColour | null,
+    ): string =>
       render(
         <RowColourPicker
           rowKey="van:v-1"
@@ -706,5 +724,353 @@ describe('the board wires it', () => {
     expect(read('./CrewPlanChip.tsx')).toContain(
       "refused && 'ring-4 ring-rose-600 dark:ring-rose-400'",
     );
+  });
+});
+
+// Round 34 C — «والشاشة بتاعت لوحة التشغيلة عاوز اقدر بعد ما اضيف لون اقدر اشيله عادي … انا عاوز ان انا
+// ممكن اضيف محصنة بس الصف بتاعها ما يكونش ملون عادي», then «ما انا عاوز مش لازم نوع يكون واخد اجبارى لون
+// فاهم ولو انا مثبت لون للنوع ممكن لو تندى صف اشيل لونه عادى».
+describe('Round 34 C — a row «بدون لون», and a type with no colour', () => {
+  const BARE = type('t-bare', 'بلا لون', null);
+  const WITH_BARE = [...TYPES, BARE];
+  const LIVE_BARE = WITH_BARE.filter((t) => t.isActive);
+  const wornBy = (colour: string): string[] =>
+    LIVE.filter((t) => t.colour === colour).map((t) => t.name);
+  const list = (
+    value: PlanRow['rowColour'],
+    typeColour: OperationsShiftTypeColour | null,
+    hasType?: boolean,
+  ): string =>
+    render(
+      <RowColourSwatches
+        value={value}
+        typeColour={typeColour}
+        {...(hasType === undefined ? {} : { hasType })}
+        choices={rowColourChoices(paletteFor(TYPES), value)}
+        wornBy={wornBy}
+        onPick={() => undefined}
+      />,
+    );
+  const options = (html: string) =>
+    [...html.matchAll(/<button[^>]*data-colour="([a-z]+)"[^>]*>/g)].map((m) => ({
+      colour: m[1],
+      tag: m[0],
+    }));
+  const button = (
+    value: PlanRow['rowColour'],
+    typeColour: OperationsShiftTypeColour | null,
+    hasType?: boolean,
+  ): string =>
+    render(
+      <RowColourPicker
+        rowKey="van:v-1"
+        value={value}
+        typeColour={typeColour}
+        {...(hasType === undefined ? {} : { hasType })}
+        choices={rowColourChoices(paletteFor(TYPES), value)}
+        wornBy={wornBy}
+        catalog="ready"
+        onRetry={() => undefined}
+        disabled={false}
+        onChange={() => undefined}
+      />,
+    );
+
+  it('the row’s list opens on «لون النوع» (the type’s swatch) and «بدون لون», then the palette', () => {
+    const html = list(null, 'slate', true);
+    const all = options(html);
+    expect(all.map((o) => o.colour)).toEqual(['type', 'none', ...SHOWN]);
+    // In the source order too: the two ways a colour is taken off come before the palette's caption.
+    expect(html.indexOf('data-colour-off="true"')).toBeLessThan(
+      html.indexOf(ar('operations.crewPlan.colour.palette', { count: '٤' })),
+    );
+    expect(html).toContain(ar('operations.crewPlan.colour.none'));
+    expect(html).toContain(`title="${ar('operations.crewPlan.colour.noneHint')}"`);
+    // «لون النوع» shows the type's own swatch.
+    const auto = html.slice(html.indexOf('data-colour="type"'), html.indexOf('data-colour="none"'));
+    expect(auto).toContain('data-type-dot="slate"');
+  });
+
+  it('«بدون لون» picked: it alone is pressed — not «لون النوع», not a swatch, no dashed type swatch', () => {
+    const all = options(list('none', 'slate', true));
+    expect(all.find((o) => o.colour === 'none')?.tag).toContain('aria-pressed="true"');
+    expect(all.find((o) => o.colour === 'type')?.tag).toContain('aria-pressed="false"');
+    expect(all.filter((o) => o.tag.includes('aria-pressed="true"'))).toHaveLength(1);
+    expect(all.some((o) => o.tag.includes('data-colour-type'))).toBe(false);
+  });
+
+  it('a colour picked by hand can go back to either: «لون النوع» and «بدون لون» both on offer, neither pressed', () => {
+    const all = options(list('indigo', 'slate', true));
+    expect(all.find((o) => o.colour === 'indigo')?.tag).toContain('aria-pressed="true"');
+    for (const off of ['type', 'none']) {
+      expect(all.find((o) => o.colour === off)?.tag, off).toContain('aria-pressed="false"');
+    }
+  });
+
+  it('a type with no colour: «لون النوع» says «بدون لون» with the type’s neutral ring; a row with no type says so', () => {
+    const typed = list(null, null, true);
+    const auto = typed.slice(
+      typed.indexOf('data-colour="type"'),
+      typed.indexOf('data-colour="none"'),
+    );
+    expect(auto).toContain('data-type-dot="none"');
+    expect(auto).toContain('data-colour-type-none="true"');
+    expect(auto).toContain(`(${ar('operations.crewPlan.colour.none')})`);
+    expect(auto).not.toContain(ar('operations.crewPlan.colour.noType'));
+    const untyped = list(null, null, false);
+    expect(untyped).toContain(`(${ar('operations.crewPlan.colour.noType')})`);
+    expect(untyped).not.toContain('data-colour-type-none');
+  });
+
+  it('the cell’s button: «بدون لون» picked shows the struck ring as the row’s own, named «بدون لون»', () => {
+    const none = button('none', 'slate', true);
+    expect(none).toContain('data-colour-source="row"');
+    expect(none).toContain('data-colour-value="none"');
+    expect(none).toContain('data-colour-shown="none"');
+    expect(none).toContain('data-no-colour-swatch="true"');
+    expect(none).toContain(
+      `aria-label="${ar('operations.crewPlan.colour.open')}: ${ar('operations.crewPlan.colour.none')}"`,
+    );
+    // Never the type's slate behind it.
+    expect(none).not.toContain('data-colour-shown="slate"');
+    // «لون النوع» of a type with no colour: nothing drawn, and named so.
+    const auto = button(null, null, true);
+    expect(auto).toContain('data-colour-source="none"');
+    expect(auto).toContain('data-colour-value="type"');
+    expect(auto).toContain(
+      ar('operations.crewPlan.colour.autoOf', { colour: ar('operations.crewPlan.colour.none') }),
+    );
+    // The old states as before.
+    expect(button(null, 'slate', true)).toContain('data-colour-shown="slate"');
+    expect(button('navy', 'slate', true)).toContain('data-colour-shown="navy"');
+  });
+
+  it('a type with no colour is drawn neutral: a hollow ring for its dot, an untinted tag', () => {
+    const dot = render(<ShiftTypeDot colour={null} size="sm" />);
+    expect(dot).toContain('data-type-dot="none"');
+    expect(dot).toContain(NO_COLOUR_TONE.dot);
+    expect(dot).not.toMatch(/bg-[a-z]+-\d{3}\b/);
+    const tag = render(<ShiftTypeTag type={BARE} locale="ar" />);
+    expect(tag).toContain('data-type-tag="none"');
+    expect(tag).toContain('بلا لون');
+    expect(tag).toContain(NO_COLOUR_TONE.tag);
+    // No tint of any palette colour on it.
+    for (const colour of OPERATIONS_SHIFT_TYPE_COLOURS) {
+      expect(tag, colour).not.toContain(SHIFT_TYPE_TONE[colour].tag);
+    }
+    // A coloured type is as before.
+    expect(
+      render(<ShiftTypeTag type={TYPES[0] as OperationsShiftTypeDto} locale="ar" />),
+    ).toContain(SHIFT_TYPE_TONE.rose.tag);
+  });
+
+  it('the neutral ring is legible in light and dark — a graphic’s 3:1 at least', () => {
+    const lum = (value: string): number => {
+      const [r, g, b] = [1, 3, 5].map((at) => parseInt(value.slice(at, at + 2), 16) / 255);
+      const ch = (v: number): number => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * ch(r as number) + 0.7152 * ch(g as number) + 0.0722 * ch(b as number);
+    };
+    const ratio = (a: string, b: string): number => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x) as [number, number];
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    expect(NO_COLOUR_TONE.dot).toContain('border-slate-500');
+    expect(NO_COLOUR_TONE.dot).toContain('dark:border-slate-400');
+    expect(ratio(colors.slate[500], '#ffffff')).toBeGreaterThanOrEqual(3);
+    for (const ground of ['#0b1226', '#111827', '#121c3f']) {
+      expect(ratio(colors.slate[400], ground), ground).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('«ألوان الأنواع»: «بدون لون» first on every type’s line — pressed for a type with none, its colour off', () => {
+    const html = card({ types: WITH_BARE, listed: LIVE_BARE });
+    expect(html).toContain('data-swatch-off-head="true"');
+    // The off column comes before the palette's.
+    expect(html.indexOf('data-swatch-off-head="true"')).toBeLessThan(
+      html.indexOf('data-swatch-head="'),
+    );
+    const offOf = (id: string): string => {
+      const start = html.indexOf(`data-type-row="${id}"`);
+      const next = html.indexOf('data-type-row="', start + 1);
+      const slice = html.slice(start, next < 0 ? undefined : next);
+      return slice.match(/<button[^>]*data-swatch-off="true"[^>]*>/)?.[0] ?? '';
+    };
+    expect(offOf('t-bare')).toContain('aria-pressed="true"');
+    expect(offOf('t-bare')).toContain('tabindex="0"');
+    expect(offOf('t-bare')).toContain(
+      `aria-label="${ar('operations.crewPlan.typeColours.pickNone', { type: 'بلا لون' })}"`,
+    );
+    expect(offOf('t-daily')).toContain('aria-pressed="false"');
+    expect(offOf('t-daily')).toContain('tabindex="-1"');
+    // A type with no colour presses no swatch of the palette, and is never «خارج اللوحة».
+    expect(rowSwatches(html, 't-bare').some((sw) => sw.on)).toBe(false);
+    const at = html.indexOf('data-type-row="t-bare"');
+    const end = html.indexOf('data-type-row="', at + 1);
+    expect(html.slice(at, end < 0 ? undefined : end)).not.toContain('data-type-outside="true"');
+    // Its tag in the card is the neutral one.
+    expect(html.slice(at, end < 0 ? undefined : end)).toContain('data-type-tag="none"');
+  });
+
+  it('«ألوان الأنواع»: read only, the «بدون لون» is aria-disabled too; on a phone it leads the swatches', () => {
+    const readOnly = card({ types: WITH_BARE, listed: LIVE_BARE, canEdit: false });
+    const offs = [...readOnly.matchAll(/<button[^>]*data-swatch-off="true"[^>]*>/g)].map(
+      (m) => m[0],
+    );
+    expect(offs).toHaveLength(LIVE_BARE.length);
+    for (const off of offs) expect(off).toContain('aria-disabled="true"');
+    const sheet = card({ types: WITH_BARE, listed: LIVE_BARE, sheet: true });
+    const block = sheet.slice(sheet.indexOf('data-type-row="t-daily"'));
+    expect(block.indexOf('data-swatch-off="true"')).toBeLessThan(block.indexOf('data-swatch="'));
+    expect(block).toContain('h-9 w-9');
+  });
+
+  it('«تراجع»: «بدون لون» is ONE step, said so, and one press puts the row back as it was', () => {
+    const row: PlanRow = {
+      key: 'van:v-213',
+      vehicleId: 'v-213',
+      vehicleCode: '213',
+      onRoster: true,
+      crewId: null,
+      drivers: [],
+      slots: { captain: [], specialist1: [], specialist2: [] },
+      direction: null,
+      plannedTime: null,
+      shiftTypeId: 't-secured',
+      rowColour: 'navy',
+      notes: null,
+    };
+    const start = startHistory<CrewDraft>({ rows: [row], standingKeys: null });
+    const after = record(
+      start,
+      { rows: patchRow(start.now.rows, row.key, { rowColour: 'none' }), standingKeys: null },
+      { kind: 'colourNone', vars: { row: '213' } },
+      { same: sameCrewDraft },
+    );
+    expect(after.past).toHaveLength(1);
+    expect(after.now.rows[0]?.rowColour).toBe('none');
+    expect(
+      ar(`operations.crewPlan.undo.kind.${after.past[0]?.what.kind}`, after.past[0]?.what.vars),
+    ).toBe('إزالة لون الصف 213');
+    expect(undo(after).now.rows[0]?.rowColour).toBe('navy');
+    // And «لون النوع» after «بدون لون» is a change of its own.
+    const back = record(
+      after,
+      { rows: patchRow(after.now.rows, row.key, { rowColour: null }), standingKeys: null },
+      { kind: 'colourAuto', vars: { row: '213' } },
+      { same: sameCrewDraft },
+    );
+    expect(back.past).toHaveLength(2);
+    expect(back.now.rows[0]?.rowColour).toBeNull();
+  });
+
+  it('the board: «بدون لون» recorded as its own step, the row marked and drawn plain, the type’s presence handed in', () => {
+    const page = read('../pages/CrewBoardPage.tsx');
+    expect(page).toMatch(/rowColour === NO_ROW_COLOUR\s*\?\s*\{ kind: 'colourNone'/);
+    expect(page).toContain('hasType={row.shiftTypeId !== null}');
+    expect(page).toContain("marks['data-row-colour-source'] = 'none';");
+    // Drawn as an uncoloured row: only a colour gives a tint.
+    expect(page).toContain('return colour === null ? undefined : rowTint(colour);');
+  });
+});
+
+// Round 34 F — «و اسمحلى برضو ان ممكن عملية تكون من غير لون مش لازم ان يومى او محصنة تبقى واخده لون
+// اجبارى». Taking a type's colour off on the board is ONE press in «ألوان الأنواع», and said in words —
+// on a computer the column's head, on a phone the choice itself; the board draws such a type neutral.
+describe('Round 34 F — no type is forced to wear a colour: «بدون لون» one press, said in words', () => {
+  // «يومي» and «محصنة» both taken off; «احتياطي» keeps emerald.
+  const PLAIN = [
+    type('t-daily', 'يومي', null),
+    type('t-reserve', 'احتياطي', 'emerald'),
+    type('t-secured', 'محصنة', null),
+  ];
+  const offTagOf = (html: string, id: string): string => {
+    const start = html.indexOf(`data-type-row="${id}"`);
+    const next = html.indexOf('data-type-row="', start + 1);
+    return (
+      html
+        .slice(start, next < 0 ? undefined : next)
+        .match(/<button[^>]*data-swatch-off="true"[^>]*>[\s\S]*?<\/button>/)?.[0] ?? ''
+    );
+  };
+
+  it('the table: the «بدون لون» column’s head SAYS «بدون لون» — visible words, before the palette’s heads', () => {
+    const html = card({ types: PLAIN, listed: PLAIN });
+    const head = html.slice(
+      html.indexOf('data-swatch-off-head="true"'),
+      html.indexOf('data-swatch-head="'),
+    );
+    expect(head).toContain('data-no-colour-swatch="true"');
+    expect(head).toMatch(
+      new RegExp(`data-swatch-off-word="true"[^>]*>${ar('operations.crewPlan.colour.none')}<`),
+    );
+    // Seen, not only read aloud: no sr-only around the words.
+    expect(head).not.toContain('sr-only');
+    // English too.
+    const en = card({ types: PLAIN, listed: PLAIN }, 'en');
+    expect(en).toContain(`>${translate('en', 'operations.crewPlan.colour.none')}<`);
+  });
+
+  it('«يومي» and «محصنة» with no colour: their «بدون لون» pressed, no swatch pressed; «احتياطي» keeps its colour', () => {
+    const html = card({ types: PLAIN, listed: PLAIN });
+    for (const id of ['t-daily', 't-secured']) {
+      expect(offTagOf(html, id), id).toContain('aria-pressed="true"');
+      expect(
+        rowSwatches(html, id).some((sw) => sw.on),
+        id,
+      ).toBe(false);
+      // The tag in the card is the neutral one.
+      const at = html.indexOf(`data-type-row="${id}"`);
+      expect(html.slice(at, html.indexOf('data-swatch-off="true"', at))).toContain(
+        'data-type-tag="none"',
+      );
+    }
+    expect(offTagOf(html, 't-reserve')).toContain('aria-pressed="false"');
+    expect(rowSwatches(html, 't-reserve').filter((sw) => sw.on)).toEqual([
+      { colour: 'emerald', on: true },
+    ]);
+    // Each one is ONE press, named for its type — enabled for a manager.
+    expect(offTagOf(html, 't-reserve')).toContain(
+      `aria-label="${ar('operations.crewPlan.typeColours.pickNone', { type: 'احتياطي' })}"`,
+    );
+    expect(offTagOf(html, 't-reserve')).not.toContain('disabled');
+  });
+
+  it('a phone: each type’s first choice is the ring WITH its words, a pill — pressed for a type with none', () => {
+    const sheet = card({ types: PLAIN, listed: PLAIN, sheet: true });
+    for (const id of ['t-daily', 't-reserve', 't-secured']) {
+      const off = offTagOf(sheet, id);
+      expect(off, id).toContain('data-no-colour-swatch="true"');
+      expect(off, id).toMatch(
+        new RegExp(`data-swatch-off-word="true">${ar('operations.crewPlan.colour.none')}<`),
+      );
+      expect(off, id).toContain('h-9');
+    }
+    expect(offTagOf(sheet, 't-daily')).toContain('aria-pressed="true"');
+    expect(offTagOf(sheet, 't-reserve')).toContain('aria-pressed="false"');
+    // The words stay on the computer's head, not on every line of the table.
+    const table = card({ types: PLAIN, listed: PLAIN });
+    expect(offTagOf(table, 't-daily')).not.toContain('data-swatch-off-word');
+  });
+
+  it('the card’s subtitle says a type may have none', () => {
+    expect(ar('operations.crewPlan.typeColours.subtitle', { count: '٣' })).toContain(
+      ar('operations.crewPlan.colour.none'),
+    );
+    expect(translate('en', 'operations.crewPlan.typeColours.subtitle', { count: '3' })).toContain(
+      'or none',
+    );
+  });
+
+  it('the board’s totals in the toolbar: a type with no colour is the neutral ring, never a palette dot', () => {
+    // The strip hands each chip its type's own colour — null included — and the dot draws null neutral.
+    const page = read('../pages/CrewBoardPage.tsx');
+    const strip = page.slice(page.indexOf('data-type-counts="true"'));
+    expect(strip.slice(0, strip.indexOf('NO_SHIFT_TYPE'))).toContain(
+      '<ShiftTypeDot colour={type.colour} size="sm" />',
+    );
+    const dot = render(<ShiftTypeDot colour={null} size="sm" />);
+    expect(dot).toContain('data-type-dot="none"');
+    expect(dot).toContain(NO_COLOUR_TONE.dot);
+    expect(dot).not.toMatch(/bg-[a-z]+-500/);
   });
 });

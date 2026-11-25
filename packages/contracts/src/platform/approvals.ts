@@ -42,8 +42,8 @@ export const ApprovalStepSchema = z
     permissionKey: PermissionKeySchema,
     level: ApprovalLevelSchema,
     /**
-     * What the screen calls this rung. Optional, and never authoritative — it is a caption for
-     * people, and the engine ignores it. Left empty, the screen says «من عنده <key> على <level>».
+     * What the screen calls this rung: optional, never authoritative, a caption for people that
+     * the engine ignores. Left empty, the approval panel names the rung's level, never its key.
      */
     label: z.object({ ar: z.string().max(80), en: z.string().max(80) }).nullable().default(null),
   })

@@ -157,6 +157,8 @@ with the numbers, before PX-1.2 deploys.
   responsible for leave still decides.
 - **Answered** (2026-11-25, design §16.12): option 1, the recommendation, «موافق على كل التوصيات، كمّل». It is applied in an
   HR slice of its own after PX-1.6, as below; PX-1 does not carry it, and option 3 holds until that slice ships.
+  Applied by [leave design §16](leave-management-design.md), in its pull request (its number is
+  added when it opens).
 - **Until the owner answers.** Option 3.
 - **Arabic.** إذا وصل طلب إجازة إلى مرحلة لا يوجد فيها من يستطيع اعتماد الخطوات الباقية في مسار
   اعتماده، سواء من البداية أو بعد اعتماد خطوات سابقة، فماذا يحدث؟ (١) يُحوَّل إلى الموارد البشرية

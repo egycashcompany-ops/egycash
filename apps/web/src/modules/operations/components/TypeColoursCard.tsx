@@ -20,6 +20,17 @@
 //
 // A COMPUTER gets the board's dialog with the table; a PHONE gets Fleet's bottom sheet, each type a
 // block of its own with its swatches wrapping under its name — no table wider than the screen.
+//
+// Round 34 C — «ما انا عاوز مش لازم نوع يكون واخد اجبارى لون»: a column «بدون لون» FIRST, before the
+// palette (`data-swatch-off`), takes the type's colour off (the catalog's PATCH with `colour: null`);
+// a swatch gives one back. It is no colour of the palette, so the palette's columns and count are as
+// before. A type with no colour is never «خارج اللوحة».
+//
+// Round 34 F — «ممكن عملية تكون من غير لون مش لازم ان يومى او محصنة تبقى واخده لون اجبارى»: taking a
+// type's colour off is one press here, and SAID, not only drawn: the column's head carries the words
+// «بدون لون» under its struck ring (`data-swatch-off-word`), and on a phone the type's first choice is
+// the ring WITH its words, a pill, as the catalog's form draws it. The subtitle says a type may have
+// none.
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { type Locale, type OperationsShiftTypeDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -46,7 +57,7 @@ import {
   type PaletteColour,
 } from '../lib/type-colours';
 import { PLAN_ICON } from './crew-plan-icons';
-import { SHIFT_TYPE_TONE, ShiftTypeTag, shiftTypeName } from './shift-type-look';
+import { NoColourSwatch, SHIFT_TYPE_TONE, ShiftTypeTag, shiftTypeName } from './shift-type-look';
 
 /** The dialog's width, by how many swatches a row carries: never wider than the table needs. */
 const widthFor = (swatches: number): 'xl' | '2xl' | '3xl' | '4xl' =>
@@ -57,8 +68,11 @@ const widthFor = (swatches: number): 'xl' | '2xl' | '3xl' | '4xl' =>
  * ends — the table's rows are separate groups, as a radio group is.
  */
 const walkSwatches = (event: KeyboardEvent<HTMLElement>): void => {
+  // «بدون لون» (Round 34 C) is the line's first stop, then the palette's swatches.
   const buttons = Array.from(
-    event.currentTarget.querySelectorAll<HTMLButtonElement>('button[data-swatch]'),
+    event.currentTarget.querySelectorAll<HTMLButtonElement>(
+      'button[data-swatch-off], button[data-swatch]',
+    ),
   );
   const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
   if (at < 0) return;
@@ -127,7 +141,11 @@ export const TypeColoursCard = ({
         });
   };
 
-  const give = (type: OperationsShiftTypeDto, colour: PaletteColour): void => {
+  /** The colour by name — a swatch's, or «بدون لون» (null, Round 34 C). */
+  const shownName = (colour: PaletteColour | null): string =>
+    colour === null ? t('operations.crewPlan.colour.none') : colourName(colour);
+
+  const give = (type: OperationsShiftTypeDto, colour: PaletteColour | null): void => {
     const press = swatchPress(type.colour, colour, { canEdit, busy: saving !== null });
     if (press === 'none') return;
     if (press === 'reread') {
@@ -152,7 +170,7 @@ export const TypeColoursCard = ({
           toast.success(
             t('operations.crewPlan.typeColours.saved', {
               type: shiftTypeName(type, locale),
-              colour: colourName(colour),
+              colour: shownName(colour),
             }),
           ),
         // A version another desk moved on since the card read it: said in words (the list is read
@@ -217,6 +235,60 @@ export const TypeColoursCard = ({
           >
             <path d="M5 12.5l4.5 4.5L19 7.5" />
           </svg>
+        )}
+      </button>
+    );
+  };
+
+  /**
+   * Round 34 C — the type's «بدون لون»: pressed when the type has no colour; a press takes its colour
+   * off. The line's first stop, as «لون النوع» and «بدون لون» open a row's «اللون» list.
+   */
+  const offSwatch = (type: OperationsShiftTypeDto): JSX.Element => {
+    const on = type.colour === null;
+    const label = t('operations.crewPlan.typeColours.pickNone', {
+      type: shiftTypeName(type, locale),
+    });
+    return (
+      <button
+        key="none"
+        type="button"
+        data-swatch-off="true"
+        aria-pressed={on}
+        aria-label={label}
+        title={label}
+        aria-disabled={!canEdit || undefined}
+        disabled={saving !== null && saving !== type.id}
+        tabIndex={on ? 0 : -1}
+        onClick={() => give(type, null)}
+        className={cn(
+          'relative inline-flex shrink-0 items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2',
+          sheet
+            ? 'dark:focus-visible:ring-offset-slate-900'
+            : 'dark:focus-visible:ring-offset-[#121c3f]',
+          // A phone has no column head to name it: the ring and its words, a pill (Round 34 F).
+          sheet
+            ? cn(
+                'h-9 gap-1.5 border pe-3 ps-0.5 text-[12.5px] font-bold text-slate-700 dark:text-slate-200',
+                on
+                  ? 'border-slate-900 dark:border-white'
+                  : 'border-dashed border-slate-300 dark:border-slate-600',
+              )
+            : canEdit && 'hover:scale-110',
+          !canEdit && 'cursor-default',
+          on &&
+            cn(
+              'ring-2 ring-slate-900 ring-offset-2 dark:ring-white',
+              sheet ? 'dark:ring-offset-slate-900' : 'dark:ring-offset-[#121c3f]',
+            ),
+          saving !== null && !on && 'opacity-60',
+        )}
+      >
+        <NoColourSwatch size={sheet ? 'xl' : 'lg'} />
+        {sheet && (
+          <span aria-hidden data-swatch-off-word="true">
+            {t('operations.crewPlan.colour.none')}
+          </span>
         )}
       </button>
     );
@@ -340,6 +412,7 @@ export const TypeColoursCard = ({
                 onKeyDown={walkSwatches}
                 className="flex flex-wrap gap-2.5"
               >
+                {offSwatch(type)}
                 {palette.map((colour) => swatch(type, colour))}
               </div>
             </section>
@@ -356,7 +429,8 @@ export const TypeColoursCard = ({
       title={title}
       subtitle={subtitle}
       icon={PLAN_ICON.palette}
-      width={widthFor(palette.length)}
+      // The palette's columns and «بدون لون» before them.
+      width={widthFor(palette.length + 1)}
       dense
       panelProps={{ 'data-type-colours': 'dialog' }}
       footer={<DesignCancel onClick={onClose} label={t('common.close')} />}
@@ -374,6 +448,23 @@ export const TypeColoursCard = ({
                   className="sticky start-0 z-[1] bg-white pb-2 pe-3 text-start text-[12px] font-black text-slate-500 dark:bg-[#121c3f] dark:text-slate-400"
                 >
                   {t('operations.crewPlan.typeColours.type')}
+                </th>
+                <th
+                  scope="col"
+                  data-swatch-off-head="true"
+                  title={t('operations.crewPlan.colour.none')}
+                  className="px-1 pb-2 align-bottom"
+                >
+                  {/* Round 34 F — said in words, not only drawn: «بدون لون» under its ring. */}
+                  <span className="mx-auto flex flex-col items-center gap-1">
+                    <NoColourSwatch size="sm" />
+                    <span
+                      data-swatch-off-word="true"
+                      className="whitespace-nowrap text-[10.5px] font-black leading-none text-slate-600 dark:text-slate-300"
+                    >
+                      {t('operations.crewPlan.colour.none')}
+                    </span>
+                  </span>
                 </th>
                 {palette.map((colour) => (
                   <th
@@ -410,6 +501,7 @@ export const TypeColoursCard = ({
                   >
                     {typeCell(type)}
                   </th>
+                  <td className="px-1 py-2 text-center">{offSwatch(type)}</td>
                   {palette.map((colour) => (
                     <td key={colour} className="px-1 py-2 text-center">
                       {swatch(type, colour)}

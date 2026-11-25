@@ -45,6 +45,8 @@ import {
   normalizeAtmMachineCode,
   joinAtmNameList,
   type AtmMachineSyncDto,
+  type AtmMaintenanceDoneChunkDto,
+  type AtmReplenishmentDoneChunkDto,
 } from '@ecms/contracts';
 import {
   buildQuery,
@@ -300,6 +302,14 @@ export const replenishmentBoard = (
   signal?: AbortSignal,
 ): Promise<AtmReplenishmentBoardDto> =>
   get<AtmReplenishmentBoardDto>(`/atm/replenishments/board${buildQuery(params)}`, { signal });
+/** One chunk of the done replenishment range — as `doneMaintenanceRange`. */
+export const doneReplenishmentRange = (
+  params: { from: string; to: string; cursor?: string },
+  signal?: AbortSignal,
+): Promise<AtmReplenishmentDoneChunkDto> =>
+  get<AtmReplenishmentDoneChunkDto>(`/atm/replenishments/done/range${buildQuery(params)}`, {
+    signal,
+  });
 export const replenishmentFacets = (banks: readonly string[]): Promise<AtmOperationFacetsDto> =>
   get<AtmOperationFacetsDto>(
     `/atm/replenishments/facets${banks.length === 0 ? '' : buildQuery({ banks: joinAtmNameList(banks) })}`,
@@ -366,6 +376,15 @@ export const maintenanceBoard = (
   signal?: AbortSignal,
 ): Promise<AtmMaintenanceBoardDto> =>
   get<AtmMaintenanceBoardDto>(`/atm/maintenances/board${buildQuery(params)}`, { signal });
+/**
+ * One chunk of the done maintenance range (`GET /atm/maintenances/done/range`) — the done page reads
+ * the range whole, chunk after chunk (`lib/done-range.ts`); `cursor` is the previous chunk's `next`.
+ */
+export const doneMaintenanceRange = (
+  params: { from: string; to: string; cursor?: string },
+  signal?: AbortSignal,
+): Promise<AtmMaintenanceDoneChunkDto> =>
+  get<AtmMaintenanceDoneChunkDto>(`/atm/maintenances/done/range${buildQuery(params)}`, { signal });
 export const maintenanceFacets = (banks: readonly string[]): Promise<AtmOperationFacetsDto> =>
   get<AtmOperationFacetsDto>(
     `/atm/maintenances/facets${banks.length === 0 ? '' : buildQuery({ banks: joinAtmNameList(banks) })}`,
@@ -397,13 +416,17 @@ export const openMaintenances = (body: {
       openedAt: body.openedAt,
     }),
   );
+/** `leaderEmployeeId` only when a row names no crew leader — it is written on those rows only. */
 export const closeMaintenances = async (
   ids: string[],
-  leaderEmployeeId: string,
+  leaderEmployeeId?: string,
 ): Promise<AtmMaintenanceDto[]> =>
   (
     await inBulkBatches(ids, (batch) =>
-      post<AtmMaintenanceDto[]>('/atm/maintenances/close', { ids: batch, leaderEmployeeId }),
+      post<AtmMaintenanceDto[]>('/atm/maintenances/close', {
+        ids: batch,
+        ...(leaderEmployeeId === undefined ? {} : { leaderEmployeeId }),
+      }),
     )
   ).flat();
 export const reopenMaintenance = (id: string, version: number): Promise<AtmMaintenanceDto> =>

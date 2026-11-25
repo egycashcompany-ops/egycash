@@ -890,6 +890,51 @@ export const ListAtmDoneOperationsQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListAtmDoneOperationsQuery = z.infer<typeof ListAtmDoneOperationsQuerySchema>;
 
+/**
+ * The done pages' range, read WHOLE — every operation closed in it, however many — in consecutive
+ * chunks (`GET /atm/{kind}/done/range`), one after the other, in close order. Each chunk names the
+ * `cursor` that continues it, or `next: null` when the range is done.
+ *
+ * It replaces a walk that asked for every page of the range AT ONCE. On 2026-11-25 one branch's
+ * month (29,500 closed maintenances) was up to 200 paged reads in flight together, each of which
+ * sorted the whole range in memory to skip to its page; the database spent minutes on it and every
+ * screen of the system waited behind it. A chunk continues where the last one stopped, in an
+ * index's own order: no sort, no skip over the rows before it, no count — and no cap on the range
+ * («عايز إمكانية إنى أستخرجهم كلهم»).
+ */
+export const ATM_DONE_RANGE_CHUNK_ROWS = 5000;
+
+/**
+ * Where a chunk continues: the close time of the previous chunk's last row, and how many rows of
+ * that very instant were already handed over (ties are ordered by id, so skipping them is exact).
+ * Opaque to the screen, which only hands back what the server gave it.
+ */
+export const ATM_DONE_RANGE_CURSOR_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z~\d{1,7}$/;
+
+/** The done range's query: the day range and where to continue. A `page` is refused. */
+export const AtmDoneRangeQuerySchema = z
+  .object({
+    from: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+    to: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+    cursor: z.string().regex(ATM_DONE_RANGE_CURSOR_PATTERN).optional(),
+  })
+  .strict();
+export type AtmDoneRangeQuery = z.infer<typeof AtmDoneRangeQuerySchema>;
+
+/** One chunk of a done range: its rows, and the cursor of the next chunk (null: the range ends). */
+export interface AtmDoneRangeChunkDto<T> {
+  items: T[];
+  next: string | null;
+}
+export type AtmReplenishmentDoneChunkDto = AtmDoneRangeChunkDto<AtmReplenishmentDto>;
+export type AtmMaintenanceDoneChunkDto = AtmDoneRangeChunkDto<AtmMaintenanceDto>;
+
 // ── Replenishment (legacy `atm_rep_log`) ────────────────────────────────────────────────────────
 
 export interface AtmReplenishmentDto {
@@ -1067,11 +1112,28 @@ export interface OpenAtmMaintenancesResultDto {
   alreadyOpenCodes: string[];
 }
 
-/** Close: single or checked set, always with the assigned employee (contad_app.js:1963-1983). */
+/**
+ * Whether a maintenance row already names its crew leader (قائد الطاقم): any character but ASCII
+ * spacing. One pattern for the close dialog and for the database filter of the close — the
+ * characters are spelled out because `\s` means different things to JavaScript and to MongoDB.
+ */
+export const ATM_LEADER_NAMED = /[^\t\n\f\r ]/;
+
+export function atmLeaderNamed(name: string | null | undefined): boolean {
+  return typeof name === 'string' && ATM_LEADER_NAMED.test(name);
+}
+
+/**
+ * Close: single or checked set (contad_app.js:1963-1983). The legacy asked for the employee on
+ * every close; since 2026-11-25 (owner: «عايز اسم الموظف دا يجي تلقائي من قائد الطاقم فى الجدول لو
+ * مُعين .. لو لأ خليه يدخله هو») a row that already names its crew leader closes under that name,
+ * and `leaderEmployeeId` is written only on the rows that name none — it is required while any
+ * open row of `ids` names none, which the server checks.
+ */
 export const CloseAtmMaintenancesSchema = z
   .object({
     ids: z.array(objectId()).min(1).max(ATM_BULK_MAX_IDS),
-    leaderEmployeeId: objectId(),
+    leaderEmployeeId: objectId().optional(),
   })
   .strict();
 export type CloseAtmMaintenances = z.infer<typeof CloseAtmMaintenancesSchema>;

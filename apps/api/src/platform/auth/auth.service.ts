@@ -1012,8 +1012,15 @@ class AuthService {
     let snapshot: UserSnapshot;
     try {
       snapshot = await this.userSnapshot(claims.sub);
-    } catch {
-      throw new UnauthenticatedError(ErrorCodes.AUTH_TOKEN_INVALID, 'User no longer exists');
+    } catch (error) {
+      // Only an account that is not there makes the token invalid. A database that did not answer
+      // says nothing about the user: answering 401 then (2026-11-25, while the primary was
+      // unreachable) sent every open tab to refresh at once, the parallel rotations read as token
+      // reuse, and thirteen sessions were revoked. The error goes on as the error it is.
+      if (error instanceof NotFoundError) {
+        throw new UnauthenticatedError(ErrorCodes.AUTH_TOKEN_INVALID, 'User no longer exists');
+      }
+      throw error;
     }
     if (snapshot.status !== 'active') {
       throw new UnauthenticatedError(ErrorCodes.AUTH_ACCOUNT_NOT_ACTIVE, 'Account is not active');

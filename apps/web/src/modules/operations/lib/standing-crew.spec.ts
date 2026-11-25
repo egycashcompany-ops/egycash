@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../shared/lib/api-client';
 import {
   CREW_SLOT_CAPACITY,
+  SetOperationsStandingCrewRowSchema,
   type OperationsCrewMemberDto,
   type OperationsStandingCrewRowDto,
 } from '@ecms/contracts';
@@ -849,5 +850,26 @@ describe('Round 27 review — a refused PUT, read as the board reads its own', (
       field: 'slot',
       person: { employeeId: 'cap-z', reason: 'notCaptain' },
     });
+  });
+});
+
+// Round 34 C — «عاوز اقدر بعد ما اضيف لون اقدر اشيله عادي»: the standing crew holds no type and no colour
+// (as since Round 27), so it can give a day's row none — the day's «بدون لون» is the day's own.
+describe('Round 34 C — the standing crew has no colour to give', () => {
+  it('its rows read «لون النوع» (null) with no type, and its save sends no colour at all', () => {
+    for (const one of SERVER) {
+      expect([one.shiftTypeId, one.rowColour], one.key).toEqual([null, null]);
+    }
+    const [payload] = toStandingPayloadRows(SERVER.map(standingBoardRow));
+    expect(payload).toBeDefined();
+    expect(payload).not.toHaveProperty('rowColour');
+    expect(payload).not.toHaveProperty('shiftTypeId');
+    // The contract's standing row refuses one outright — it is no field of it.
+    expect(
+      SetOperationsStandingCrewRowSchema.safeParse({
+        vehicleId: '0123456789abcdef01234567',
+        rowColour: 'none',
+      }).success,
+    ).toBe(false);
   });
 });

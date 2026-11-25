@@ -3,6 +3,8 @@
 // currencies' tab is (catalogs-currency-order.spec.tsx): the whole list in the catalog's order, each
 // type drawn as the board draws it; for a manager a grip, draggable rows, the arrows, and archive /
 // restore in one click; the form's palette is the contract's, every swatch named.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -22,7 +24,7 @@ import { uiSlice } from '../../../store/uiSlice';
 import { translate } from '../../../platform/localization/i18n';
 import { listKey } from '../../../shared/lib/query-keys';
 import { SHIFT_TYPE_LIST } from '../lib/crew-plan';
-import { ShiftTypeDialog, freeShiftTypeColour } from '../components/CatalogDialogs';
+import { ShiftTypeDialog } from '../components/CatalogDialogs';
 import { CatalogsPage } from './CatalogsPage';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -129,7 +131,10 @@ describe('the «أنواع التشغيل» tab — the crew board’s «الن�
     const at = SERVER_ORDER.map((type) => html.indexOf(`data-shift-type-actions="${type.id}"`));
     expect(at.every((index) => index > -1)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
-    // One page: a list cannot be dragged into order across pages.
+    // One page: a list cannot be dragged into order across pages. (Round 34 B: the screen's pager
+    // is the boards' numbered one in the table's frame — `data-catalog-pager`, `common.pager`.)
+    expect(html).not.toContain('data-catalog-pager');
+    expect(html).not.toContain(ar('common.pager.perPage'));
     expect(html).not.toContain(ar('common.pagination.perPage'));
   });
 
@@ -183,21 +188,27 @@ describe('the «أنواع التشغيل» tab without the catalog grant', () =
 });
 
 describe('the type’s form — the board’s palette (Round 24b), each colour named', () => {
-  const formHtml = (shiftType: OperationsShiftTypeDto | null): string =>
+  const formHtmlOf = (
+    shiftType: OperationsShiftTypeDto | null,
+    types: readonly OperationsShiftTypeDto[],
+  ): string =>
     renderToStaticMarkup(
       <Provider store={store(['operationsCatalog.manage'])}>
         <QueryClientProvider client={new QueryClient()}>
-          <ShiftTypeDialog
-            open
-            shiftType={shiftType}
-            types={SERVER_ORDER}
-            onClose={() => undefined}
-          />
+          <ShiftTypeDialog open shiftType={shiftType} types={types} onClose={() => undefined} />
         </QueryClientProvider>
       </Provider>,
     );
+  const formHtml = (shiftType: OperationsShiftTypeDto | null): string =>
+    formHtmlOf(shiftType, SERVER_ORDER);
   const swatchesOf = (html: string): (string | undefined)[] =>
     [...html.matchAll(/role="radio" data-colour="([a-z]+)"/g)].map((m) => m[1]);
+  /** The palette's swatches checked (at most one). */
+  const checkedSwatches = (html: string): (string | undefined)[] =>
+    [...html.matchAll(/role="radio" data-colour="([a-z]+)" aria-checked="true"/g)].map((m) => m[1]);
+  /** The «بدون لون» radio's own tag. */
+  const offOf = (html: string): string =>
+    html.match(/<button[^>]*data-colour-off="true"[^>]*>/)?.[0] ?? '';
   const html = formHtml(null);
 
   it('offers a NEW type the palette for the live types and itself — each a named swatch — and draws the type as it will read', () => {
@@ -237,12 +248,136 @@ describe('the type’s form — the board’s palette (Round 24b), each colour n
     ]);
   });
 
-  it('starts a new type on the first shown colour no ACTIVE type wears — an archived one’s is free', () => {
-    // rose, teal and violet are worn; indigo is worn by «أسوان», archived. Shown: rose, emerald,
-    // violet, teal.
-    expect(freeShiftTypeColour(SERVER_ORDER)).toBe('emerald');
-    expect(
-      freeShiftTypeColour(OPERATIONS_SHIFT_TYPE_COLOURS.map((c, i) => shiftType(c, c, c, i))),
-    ).toBe('rose');
+  // Round 34 F — «ممكن عملية تكون من غير لون مش لازم ان يومى او محصنة تبقى واخده لون اجبارى».
+  it('opens a NEW type on «بدون لون» — no colour forced on it; the palette, a free colour among it, one press away', () => {
+    // «بدون لون» is the one choice checked; no swatch of the palette is.
+    expect(offOf(html)).toContain('aria-checked="true"');
+    expect(checkedSwatches(html)).toEqual([]);
+    // Drawn as it will read: the neutral tag, no tint.
+    const preview = html.slice(html.indexOf('data-shift-type-preview="true"'));
+    expect(preview).toContain('data-type-tag="none"');
+    expect(preview).not.toMatch(/bg-[a-z]+-500\/15/);
+    // rose, teal and violet are worn; indigo is worn by «أسوان», archived. Offered: rose, emerald
+    // (nobody live wears it), violet, teal — each one press.
+    expect(swatchesOf(html)).toContain('emerald');
+    // Every colour worn: still none — the new type may share one by hand.
+    const full = formHtmlOf(
+      null,
+      OPERATIONS_SHIFT_TYPE_COLOURS.map((c, i) => shiftType(c, c, c, i)),
+    );
+    expect(offOf(full)).toContain('aria-checked="true"');
+    expect(checkedSwatches(full)).toEqual([]);
+  });
+
+  it('opens an EDITED type on the colour it has — or on «بدون لون» when it has none', () => {
+    const daily = formHtml(SERVER_ORDER[0] as OperationsShiftTypeDto);
+    expect(offOf(daily)).toContain('aria-checked="false"');
+    expect(checkedSwatches(daily)).toEqual(['rose']);
+    const bare = formHtml({ ...(SERVER_ORDER[0] as OperationsShiftTypeDto), colour: null });
+    expect(offOf(bare)).toContain('aria-checked="true"');
+    expect(checkedSwatches(bare)).toEqual([]);
+  });
+});
+
+// Round 34 C — «ما انا عاوز مش لازم نوع يكون واخد اجبارى لون»: a type may have no colour.
+describe('Round 34 C — a type with no colour, on the tab and in its form', () => {
+  const BARE = shiftType('secured', 'محصنة', null, 4);
+  const WITH_BARE = [...SERVER_ORDER, BARE];
+  const renderWith = (types: OperationsShiftTypeDto[]): string => {
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
+    });
+    qc.setQueryData(listKey('operations', 'shiftTypes', SHIFT_TYPE_LIST), {
+      items: types,
+      meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: types.length, totalPages: 1 },
+    });
+    return renderToStaticMarkup(
+      <Provider store={store(['operationsCatalog.manage'])}>
+        <QueryClientProvider client={qc}>
+          <MemoryRouter initialEntries={['/operations/catalogs?kind=shiftTypes']}>
+            <Routes>
+              <Route path="/operations/catalogs" element={<CatalogsPage />} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </Provider>,
+    );
+  };
+  const formHtml = (type: OperationsShiftTypeDto | null): string =>
+    renderToStaticMarkup(
+      <Provider store={store(['operationsCatalog.manage'])}>
+        <QueryClientProvider client={new QueryClient()}>
+          <ShiftTypeDialog open shiftType={type} types={WITH_BARE} onClose={() => undefined} />
+        </QueryClientProvider>
+      </Provider>,
+    );
+
+  it('the tab names it «بدون لون» and draws it neutral — never a raw key, never a tint', () => {
+    const html = renderWith(WITH_BARE);
+    const row = rowOf(html, 'secured');
+    expect(row).toContain('>محصنة<');
+    expect(row).toContain('data-type-tag="none"');
+    expect(row).toContain('data-shift-type-colour="none"');
+    expect(row).toContain(ar('operations.catalogs.shiftType.noColour'));
+    expect(row).not.toContain('operations.catalogs.shiftType.colours.');
+    expect(row).not.toMatch(/bg-[a-z]+-500\/15/);
+    // The coloured ones as before.
+    expect(rowOf(html, 'daily')).toContain('bg-rose-500');
+  });
+
+  it('the form offers «بدون لون» FIRST, a radio of its own beside the palette, named and explained', () => {
+    const html = formHtml(null);
+    const group = html.slice(html.indexOf('data-shift-type-palette="true"'));
+    const off = group.match(/<button[^>]*data-colour-off="true"[^>]*>/)?.[0] ?? '';
+    expect(off).toContain('role="radio"');
+    expect(off).toContain(`aria-label="${ar('operations.catalogs.shiftType.noColour')}"`);
+    expect(off).toContain(`title="${ar('operations.catalogs.shiftType.noColourHint')}"`);
+    expect(group.indexOf('data-colour-off="true"')).toBeLessThan(group.indexOf('data-colour="'));
+    expect(group).toContain('data-no-colour-swatch="true"');
+    // The palette's swatches are the palette's: «بدون لون» is no colour of it. Four live types (one
+    // of them «محصنة», with none) and the new one: five — the three worn (rose, violet, teal), then
+    // the first two nobody wears (emerald, indigo), in the palette's order.
+    expect([...html.matchAll(/role="radio" data-colour="([a-z]+)"/g)].map((m) => m[1])).toEqual([
+      'rose',
+      'emerald',
+      'indigo',
+      'violet',
+      'teal',
+    ]);
+  });
+
+  it('a type with no colour counts in the palette and never adds a swatch of its own', () => {
+    // Editing «محصنة» itself: four live types, four swatches — the three worn, then the first one
+    // nobody wears (emerald). `paletteFor` counts «محصنة» though it wears none, and adds nothing for it.
+    const editing = formHtml(BARE);
+    expect([...editing.matchAll(/role="radio" data-colour="([a-z]+)"/g)].map((m) => m[1])).toEqual([
+      'rose',
+      'emerald',
+      'violet',
+      'teal',
+    ]);
+    // A new type starts on «بدون لون» (Round 34 F) — the free colour (emerald) one press away.
+    const adding = formHtml(null);
+    expect(adding.match(/<button[^>]*data-colour-off="true"[^>]*>/)?.[0]).toContain(
+      'aria-checked="true"',
+    );
+    expect(adding).not.toMatch(/role="radio" data-colour="[a-z]+" aria-checked="true"/);
+    expect([...adding.matchAll(/role="radio" data-colour="([a-z]+)"/g)].map((m) => m[1])).toContain(
+      'emerald',
+    );
+  });
+
+  it('the form keeps a type’s «بدون لون» when it opens on it, and sends null for it', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('../components/CatalogDialogs.tsx', import.meta.url)),
+      'utf8',
+    );
+    // Round 34 F: a new type opens on none — no free colour handed to it.
+    expect(source).toContain('setColour(shiftType === null ? null : shiftType.colour);');
+    expect(source).toContain('() => shiftType?.colour ?? null,');
+    expect(source).not.toContain('freeShiftTypeColour');
+    expect(source).toContain('onClick={() => setColour(null)}');
+    expect(source).toContain('aria-checked={colour === null}');
+    expect(source).toContain('const core = { name: name.trim(), nameEn: orNull(nameEn), colour };');
   });
 });

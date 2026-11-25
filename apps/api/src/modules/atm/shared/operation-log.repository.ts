@@ -5,10 +5,16 @@ import { Types, type ClientSession, type FilterQuery, type UpdateQuery } from 'm
 import { BaseRepository } from '../../../shared/base/base.repository';
 import { type BaseDocFields } from '../../../shared/base/base.model';
 import { type ScopeSelector } from '../../../shared/types';
-import { ATM_OPEN_BOARD_MAX_ROWS, type Paginated } from '@ecms/contracts';
+import {
+  ATM_DONE_RANGE_CHUNK_ROWS,
+  ATM_OPEN_BOARD_MAX_ROWS,
+  MAX_PAGE_SIZE,
+  type Paginated,
+} from '@ecms/contracts';
 import { cairoDayRange, cairoShiftWindow } from './cairo-time';
 import { boardNames, storedSpellingsOf } from './board-filter';
 import { OPEN_BOARD_ORDER } from './open-board-index';
+import { DONE_ORDER } from './done-board-index';
 
 /** The lifecycle fields both operation kinds carry. */
 export interface AtmOperationLogFields extends BaseDocFields {
@@ -82,6 +88,37 @@ export const leaderCascadeGroups = <
   }
   return groups;
 };
+
+/** Where a done-range chunk continues: the last row's close time, and how many rows of it were read. */
+export interface DoneRangeCursor {
+  at: Date;
+  seen: number;
+}
+
+/** `ATM_DONE_RANGE_CURSOR_PATTERN`'s text, read back — or null for a cursor that is not one. */
+export const parseDoneRangeCursor = (text: string | undefined): DoneRangeCursor | null => {
+  if (text === undefined) return null;
+  const [iso, count] = text.split('~');
+  const at = new Date(iso ?? '');
+  const seen = Number(count);
+  if (Number.isNaN(at.getTime()) || !Number.isInteger(seen) || seen < 0) return null;
+  return { at, seen };
+};
+
+/** The text the screen hands back for the next chunk. */
+export const formatDoneRangeCursor = (cursor: DoneRangeCursor): string =>
+  `${cursor.at.toISOString()}~${String(cursor.seen)}`;
+
+/**
+ * The longest a done read may hold the database. On 2026-11-25 a page the browser had long given up
+ * on (499) still ran for up to 170 s; a read this bounded is refused instead, and the screen offers
+ * to try again. An indexed chunk takes a fraction of it.
+ */
+export const DONE_READ_TIME_LIMIT_MS = 15_000;
+
+/** A done row's close time, in milliseconds (a done row always has one). */
+const closedAtOf = (row: unknown): number =>
+  new Date((row as { closedAt: Date | string | null }).closedAt ?? 0).getTime();
 
 export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends BaseRepository<T> {
   /**
@@ -275,15 +312,70 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
   }): Promise<Paginated<T>> {
     const { start } = cairoDayRange(params.from);
     const { end } = cairoDayRange(params.to);
-    return this.list({
-      filter: { closedAt: { $gte: start, $lt: end } } as FilterQuery<T>,
-      page: params.page,
-      pageSize: params.pageSize,
-      sortBy: 'closedAt',
-      sortDir: 'asc',
-      sortableFields: ['closedAt'],
-      scope: params.scope,
-    });
+    // Read here rather than through `list()`, for the time bound: a browser still running the
+    // bundle that walked every page at once (until it reloads) asks for exactly this read.
+    const filter = this.baseFilter(params.scope, {
+      closedAt: { $gte: start, $lt: end },
+    } as FilterQuery<T>);
+    const pageSize = Math.min(params.pageSize, MAX_PAGE_SIZE);
+    const page = Math.max(1, params.page);
+    const [items, totalItems] = await Promise.all([
+      this.model
+        .find(filter)
+        .sort(DONE_ORDER)
+        .skip((page - 1) * pageSize)
+        .limit(pageSize)
+        .maxTimeMS(DONE_READ_TIME_LIMIT_MS)
+        .lean<T[]>()
+        .exec(),
+      this.model.countDocuments(filter).maxTimeMS(DONE_READ_TIME_LIMIT_MS).exec(),
+    ]);
+    return {
+      items,
+      meta: {
+        page,
+        pageSize,
+        totalItems,
+        totalPages: Math.max(1, Math.ceil(totalItems / pageSize)),
+      },
+    };
+  }
+
+  /**
+   * One chunk of a done range, read WHOLE chunk after chunk (`GET /atm/{kind}/done/range`): the rows
+   * closed in the Cairo day range, in the done order, from `cursor` on. Each read walks the
+   * `ix_*done_range` index from where the last one stopped — no in-memory sort, no skip over the
+   * rows before it (only over the few already handed over at the cursor's own instant), no count.
+   * `next` is the cursor of the following chunk, or null when the range ends.
+   */
+  async listDoneChunk(
+    params: { from: string; to: string; scope: ScopeSelector; cursor: DoneRangeCursor | null },
+    size: number = ATM_DONE_RANGE_CHUNK_ROWS,
+  ): Promise<{ items: T[]; next: DoneRangeCursor | null }> {
+    const { start } = cairoDayRange(params.from);
+    const { end } = cairoDayRange(params.to);
+    const cursor = params.cursor;
+    // A cursor never reaches before the range: one from elsewhere reads this range from its start.
+    const resume = cursor !== null && cursor.at.getTime() >= start.getTime() ? cursor : null;
+    const lower = resume?.at ?? start;
+    const rows = await this.model
+      .find(
+        this.baseFilter(params.scope, { closedAt: { $gte: lower, $lt: end } } as FilterQuery<T>),
+      )
+      .sort(DONE_ORDER)
+      .skip(resume?.seen ?? 0)
+      .limit(size + 1)
+      .maxTimeMS(DONE_READ_TIME_LIMIT_MS)
+      .lean<T[]>()
+      .exec();
+    if (rows.length <= size) return { items: rows, next: null };
+    const items = rows.slice(0, size);
+    const last = closedAtOf(items[items.length - 1]);
+    // Rows of the last instant handed over so far: this chunk's, and the earlier chunks' when the
+    // chunk began at that same instant (a run of ties longer than a chunk).
+    let seen = items.filter((row) => closedAtOf(row) === last).length;
+    if (resume !== null && resume.at.getTime() === last) seen += resume.seen;
+    return { items, next: { at: new Date(last), seen } };
   }
 
   /**

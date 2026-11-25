@@ -4,6 +4,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
+  AtmDoneRangeQuerySchema,
   AtmOpenBoardQuerySchema,
   AtmOperationFacetsQuerySchema,
   AtmOperationIdsSchema,
@@ -24,6 +25,7 @@ import {
   closeMaintenances,
   deleteMaintenances,
   listDoneMaintenances,
+  doneMaintenanceRange,
   listOpenMaintenances,
   maintenanceBoard,
   maintenanceFacets,
@@ -66,6 +68,14 @@ export const buildAtmMaintenancesRouter = (): Router => {
     authorize('atmMaintenance.view'),
     validate({ query: ListAtmDoneOperationsQuerySchema }),
     asyncHandler(listDoneMaintenances),
+  );
+  // The done page's read: the range whole, chunk after chunk (the hang of 2026-11-25).
+  router.get(
+    '/done/range',
+    authenticate,
+    authorize('atmMaintenance.view'),
+    validate({ query: AtmDoneRangeQuerySchema }),
+    asyncHandler(doneMaintenanceRange),
   );
   // The close modal needs the list before any close happens, so it rides `view`, not `complete`.
   router.get(

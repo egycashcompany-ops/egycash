@@ -1940,6 +1940,7 @@ words in «». An answer that changes this design is applied as a revision (§22
 | Phase 1's readings (the close report of 2026-11-25; §22, "P1a.2 built" to "Phase 1 closed") | kept as built: a retire or bring-back re-files no item; stock levels whole numbers 0 to 1,000,000 in order; the item unit editable until P2 or P5; no new warehouse in a closed branch; a warehouse names an active department of its own branch; a keeper from another branch allowed; top-bar filing (ADR-028); tax numbers compared as typed and a repeat only warned; VAT status hidden until OD-29; a retired supplier's papers list open; role titles §6.5's candidates (OD-67) | 2026-11-25 | «موافق على كل التوصيات، كمّل» |
 | PXQ-1 (PX-1 re-detail §2), a leave request nobody can approve | (1): it goes to HR, down leave's manager and HR path at submission and to HR for the remaining steps after earlier approvals; applied in an HR slice of its own after PX-1.6, option 3 holding until then | 2026-11-25 | «موافق على كل التوصيات، كمّل» |
 | PRQ-1 to PRQ-4 (P2 re-detail §2) | each its recommendation: PRQ-1 (1), a returned PR keeps the lowered quantities and a line cut to nothing is removed; PRQ-2 (a) 1 and (b) 1, the procurement manager hears of approvals and the override holders who reach every rung left and can open the PR hear of a stuck one; PRQ-3 (1), no PR roles in production before P4; PRQ-4 (1), a different person settles each empty level | 2026-11-25 | «موافق على كل التوصيات، كمّل» |
+| Delivery (Status, §18), after Phase 1 | PX-1 and P2 carried through to their merge with Phase 1's criterion 9 (the owner's acceptance on staging) still owed; the work stops after P2 merges | 2026-11-25 | «كمل وخلص P2 وأدمجها وأقف عندها» |
 
 ---
 
@@ -3454,6 +3455,28 @@ Repository-wide findings outside this module are listed for the owner in
     not have (the organization's MongoDB Atlas access for AI clients is off). PX-1.2 and PX-1.6 shipped on the safe side
     the plan states (a request nobody can decide waits; an off-type rung is unstaffed), and the counts stay the owner's
     or an operator's to run.
+- **P2 engine drift check** (2026-11-25). The second drift check the P2 re-detail asks for before P2.0 (its §3) read
+  the engine PX-1 built, PX-1.1 to PX-1.6, on `a4434d00`, PX-1.6's head, and its hosts as they now stand: HR leave's
+  service and model, and the chain screen at `/system/approvals` with its source scan. It compared them with the
+  re-detail's §1.2 A items 1–5 and 17, its Terms, §4.4, §8, §10.2 and §12's engine-facing cases. The engine is as
+  ADR-041 leaves it, and nothing asks for an engine change. The re-detail, now v0.4, records nine differences as its
+  §1.2 E, items 23 to 31, each folded into the sections it names:
+  - *Rules.* Off `pendingApproval` the detail's trail also clears `currentStep`, as leave's does, so a cancelled PR
+    marks no rung as waiting. The subject maps each stored entry to the engine's `DecidedEntry`, the decider's id as a
+    string, and the append turns it back into an ObjectId, as leave's do. The submission's conditional write sets both
+    pin fields from one `pinOf` result, since the pin's own check runs only at create and save. The record's earlier
+    rounds name a rung by its caption, else "Step n", since the chain screen writes no caption and an entry stores no
+    level; settled as an engineering choice, its alternatives recorded in the re-detail's item 27.
+  - *Wording.* The `approvalDecision` row carries the engine's own fields, `permissionKey` and `covers` among them, with
+    `overriddenWith` and `covers` only where the engine writes them. The trail's `currentStep` gives the live rung to a
+    host that holds an `AuthContext`; the stuck audience is still chosen by the rungs left, after a decision and in the
+    sweep alike. The audit option is checked through a mock of the platform barrel, and the chain screen's source scan
+    joins the specs that stay.
+  - *Pins.* The engine, leave and chain-screen lines PX-1 moved are re-pinned, and so are the re-detail's citations of
+    this file past §16.12's log, which moved three lines when the owner's answers of 2026-11-25 were logged.
+  - *Next.* Nothing in the engine holds P2 back: P2.0 may open once PX-1.6 and this docs pull request have merged.
+    Phase 1's criterion 9 (the owner's acceptance on staging) is still owed; it does not hold P2, under the owner's
+    instruction of 2026-11-25 to finish P2 and stop there (§16.12).
 - **P2.1 built** (2026-11-25). Phase 2's first module pull request ships as the P2 re-detail's §3 row says
   ([administration-module-phase-2.md](administration-module-phase-2.md)), under the owner's answers (§16.12): the yearly
   formatter and parser in the contracts, the yearly series and its floor in `shared/document-number.ts`,

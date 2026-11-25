@@ -20,6 +20,7 @@ import {
   type AdministrationItemCategoryDto,
   type AdministrationSupplierDetailDto,
   type AdministrationSupplierDto,
+  type MyApplicationCategoryDto,
 } from '@ecms/contracts';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
 import { FileCategoryModel } from '../../src/platform/files/file-category.model';
@@ -30,6 +31,7 @@ import { AdministrationSupplierModel } from '../../src/modules/administration/pr
 import { administrationSupplierRepository } from '../../src/modules/administration/procurement/suppliers/supplier.repository';
 import { AdministrationCounterModel } from '../../src/modules/administration/shared/counter.model';
 import { seedAdministration } from '../../src/modules/administration/administration.seed';
+import { syncNavigationCatalog } from '../../src/seed-navigation';
 import {
   administrationApi,
   bootAdministration,
@@ -1061,5 +1063,28 @@ describe('the papers (OD-11 A; §11.3–§11.5)', () => {
     refused(await platform(branchHolder.token).file(), 403, 'FORBIDDEN');
     expect(await filesUnder(filed.id), 'the refused upload stored nothing').toBe(1);
     expect((await platform(companyEditor.token).file()).status).toBe(201);
+  });
+});
+
+// From P1b.W (§19.7, §19.10.2): the supplier register's row is the sidebar of a reader who holds
+// its key and nothing else — the warehouses suite's case, over the seeded catalog.
+describe('the sidebar', () => {
+  beforeAll(async () => {
+    await syncNavigationCatalog();
+  });
+
+  it('a role holding only `administrationSupplier.view` gets exactly the Suppliers row', async () => {
+    const res = await request(world.app)
+      .get('/api/v1/platform/me/applications')
+      .set('Authorization', `Bearer ${world.supplierViewerToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const sidebar = data<MyApplicationCategoryDto[]>(res).map((group) => [
+      group.name.en,
+      [
+        ...group.applications.map((a) => a.route),
+        ...group.sections.flatMap((section) => section.applications.map((a) => a.route)),
+      ],
+    ]);
+    expect(sidebar).toEqual([['Administrative Affairs', ['/administration/suppliers']]]);
   });
 });

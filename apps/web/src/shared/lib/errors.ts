@@ -160,8 +160,10 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'This category cannot go under that parent: categories have two levels, and a category with subcategories stays at the top.',
     ADMINISTRATION_STOCK_LEVELS_ORDER:
       'The stock levels are out of order: where set, minimum ≤ reorder point ≤ maximum.',
+    // An item's unit or category, or one of a supplier's categories (P1b.1): said of whatever the
+    // record names, never of one kind of record.
     ADMINISTRATION_REFERENCE_INACTIVE:
-      'The unit or category chosen is retired — choose an active one.',
+      'A unit or category chosen is retired, so no record can be given it anew — choose an active one.',
     ADMINISTRATION_SUBCATEGORY_REQUIRED:
       'The category chosen has subcategories — file the item under one of them.',
     ADMINISTRATION_EMPLOYEE_EXITED:
@@ -277,7 +279,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     ADMINISTRATION_STOCK_LEVELS_ORDER:
       'حدود المخزون غير مرتبة: عند تحديدها يكون الحد الأدنى ≤ حد إعادة الطلب ≤ الحد الأقصى.',
     ADMINISTRATION_REFERENCE_INACTIVE:
-      'الوحدة أو التصنيف المختار موقوف — اختر وحدة أو تصنيفًا نشطًا.',
+      'وحدة أو تصنيف مما اخترته موقوف، فلا يُسنَد إلى أي سجل من جديد — اختر بديلًا نشطًا.',
     ADMINISTRATION_SUBCATEGORY_REQUIRED: 'للتصنيف المختار تصنيفات فرعية — أدرج الصنف تحت أحدها.',
     ADMINISTRATION_EMPLOYEE_EXITED:
       'ترك أمين المخزن المختار العمل — اختر أحدًا ممن يعملون لدينا اليوم.',

@@ -36,7 +36,8 @@ let app: Express;
 // 139 → 140: «الشحنات المسلَّمة» (Operations, Round 33 B), beneath the day board.
 // 140 → 144: Administrative Affairs' first four rows (P1a.W): its home, warehouses, items, and the
 // units and categories.
-const SEEDED_APPLICATIONS = 144;
+// 144 → 145: its supplier register, «الموردون» (P1b.W).
+const SEEDED_APPLICATIONS = 145;
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
@@ -292,13 +293,14 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/atm/map');
     // P-HR-REQ — the request to hire, beside the offer it may end in.
     expect(routes).toContain('/job-requisitions');
-    // Administrative Affairs' Phase 1 screens (P1a.W).
+    // Administrative Affairs' Phase 1 screens (P1a.W, P1b.W).
     expect(routes).toContain('/administration');
     expect(routes).toContain('/administration/warehouses');
+    expect(routes).toContain('/administration/suppliers');
     // 31 (HR) + 24 (Fleet) + 19 (Operations) + 7 (Organization) + 18 (IT) + 12 (Gold Vault)
-    //   + 18 (ATM) + 4 (Administrative Affairs) + 11 (Administration) = 144 — Administrative
-    //   Affairs' four rows (P1a.W); Operations 19 since «الشحنات المسلَّمة» (Round 33 B), which the
-    //   last breakdown missed. Re-counted from `seed-navigation.ts`, because an
+    //   + 18 (ATM) + 5 (Administrative Affairs) + 11 (Administration) = 145 — Administrative
+    //   Affairs' five Phase 1 rows (four in P1a.W, the suppliers in P1b.W); Operations 19 since
+    //   «الشحنات المسلَّمة» (Round 33 B). Re-counted from `seed-navigation.ts`, because an
     //   earlier breakdown said 103 while the constant beside it said 116 — it had
     //   drifted by fourteen rows and nothing added it up, which is the exact failure the note
     //   above it was written about. A breakdown that does not sum to the constant is worse than

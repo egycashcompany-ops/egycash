@@ -1341,6 +1341,15 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'tag',
         permission: 'administrationCatalog.manage',
       },
+      // The supplier register (P1b.W) — the parties the company buys from, opened organization-wide
+      // to its readers; each supplier's record is opened from it and has no row.
+      {
+        en: 'Suppliers',
+        ar: 'الموردون',
+        route: '/administration/suppliers',
+        icon: 'company',
+        permission: 'administrationSupplier.view',
+      },
     ],
   },
   {

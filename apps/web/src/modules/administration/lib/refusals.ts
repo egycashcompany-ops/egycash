@@ -25,6 +25,7 @@ export type RefusalField =
   | 'maxQty'
   | 'unitId'
   | 'categoryId'
+  | 'categoryIds'
   | 'branchId'
   | 'responsibleEmployeeId'
   | 'isActive';
@@ -56,8 +57,11 @@ const wording = (code: string, detail: ApiErrorDetail): [RefusalField, string] |
       return isOneOf(ADMINISTRATION_STOCK_LEVEL_FIELDS, detail.field)
         ? [detail.field, 'administration.refusals.levelsOutOfOrder']
         : null;
+    // An item's unit or category, or one of a supplier's categories (P1b.W).
     case ErrorCodes.ADMINISTRATION_REFERENCE_INACTIVE:
-      return detail.field === 'unitId' || detail.field === 'categoryId'
+      return detail.field === 'unitId' ||
+        detail.field === 'categoryId' ||
+        detail.field === 'categoryIds'
         ? [detail.field, `administration.refusals.inactive.${detail.field}`]
         : null;
     case ErrorCodes.ADMINISTRATION_SUBCATEGORY_REQUIRED:
@@ -102,6 +106,7 @@ export const REFUSAL_FIELD_KEYS: readonly string[] = [
   'administration.refusals.levelsOutOfOrder',
   'administration.refusals.inactive.unitId',
   'administration.refusals.inactive.categoryId',
+  'administration.refusals.inactive.categoryIds',
   'administration.refusals.subcategoryRequired',
   'administration.refusals.keeperExited',
   ...ADMINISTRATION_DEACTIVATION_PROBLEMS.map(

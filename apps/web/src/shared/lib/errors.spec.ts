@@ -193,6 +193,7 @@ describe('errorMessage', () => {
         ErrorCodes.ADMINISTRATION_SUBCATEGORY_REQUIRED,
         ErrorCodes.ADMINISTRATION_EMPLOYEE_EXITED,
         ErrorCodes.ADMINISTRATION_DEACTIVATION_BLOCKED,
+        ErrorCodes.ADMINISTRATION_ATTACHMENT_LIMIT,
       ]),
     );
     for (const locale of ['ar', 'en'] as const) {
@@ -208,6 +209,24 @@ describe('errorMessage', () => {
     expect(
       errorMessage(new ApiError(ErrorCodes.ADMINISTRATION_DUPLICATE, 'taken', 409), 'ar'),
     ).toContain('تفعيله');
+  });
+
+  // P1b.W — the supplier screens meet two of them: a full papers list, and a retired category. The
+  // retired reference is no longer an item's alone (a supplier names categories too, P1b.1), so its
+  // sentence names what was chosen and never one kind of record; the full list says what to do.
+  it('words a full papers list and a retired reference for every record that meets them', () => {
+    const inactive = (locale: 'ar' | 'en'): string =>
+      errorMessage(new ApiError(ErrorCodes.ADMINISTRATION_REFERENCE_INACTIVE, 'x', 422), locale);
+    expect(inactive('en')).not.toMatch(/\bitem/iu);
+    expect(inactive('en')).toMatch(/\bcategory\b/u);
+    expect(inactive('ar')).not.toContain('الصنف');
+    expect(inactive('ar')).toContain('تصنيف');
+    const full = (locale: 'ar' | 'en'): string =>
+      errorMessage(new ApiError(ErrorCodes.ADMINISTRATION_ATTACHMENT_LIMIT, 'x', 422), locale);
+    expect(full('en')).toContain('20');
+    expect(full('en')).toMatch(/\bremove\b/u);
+    expect(full('ar')).toContain('عشرين');
+    expect(full('ar')).toContain('أزِل');
   });
 });
 

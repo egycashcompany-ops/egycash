@@ -71,7 +71,9 @@ describe('the Administrative Affairs routes', () => {
   const paths = declaredPaths();
 
   it('declare the Phase 1 surface — and no create, edit or act as a route', () => {
-    expect([...paths].sort()).toEqual(['catalogs', 'items', 'items/:id', 'warehouses'].sort());
+    expect([...paths].sort()).toEqual(
+      ['catalogs', 'items', 'items/:id', 'suppliers', 'suppliers/:id', 'warehouses'].sort(),
+    );
     for (const act of ['new', 'edit', 'create']) {
       expect(
         paths.filter((p) => p.split('/').includes(act)),
@@ -95,6 +97,8 @@ describe('the Administrative Affairs routes', () => {
     expect(guardOf('items')).toEqual(['administrationItem.view']);
     expect(guardOf('items/:id')).toEqual(['administrationItem.view']);
     expect(guardOf('catalogs')).toEqual(['administrationCatalog.manage']);
+    expect(guardOf('suppliers')).toEqual(['administrationSupplier.view']);
+    expect(guardOf('suppliers/:id')).toEqual(['administrationSupplier.view']);
     for (const path of paths) {
       for (const key of guardOf(path)) expect(key, path).toMatch(/^administration[A-Z]/u);
     }
@@ -137,12 +141,13 @@ describe('the mount', () => {
 });
 
 describe('the sidebar rows match the routes that exist', () => {
-  it('finds the module’s four rows', () => {
+  it('finds the module’s five rows — the supplier register last (P1b.W)', () => {
     expect(NAV_ROWS.map((row) => row.route)).toEqual([
       '/administration',
       '/administration/warehouses',
       '/administration/items',
       '/administration/catalogs',
+      '/administration/suppliers',
     ]);
   });
 
@@ -172,6 +177,7 @@ describe('the sidebar rows match the routes that exist', () => {
       '/administration/warehouses': 'administration.nav.warehouses',
       '/administration/items': 'administration.nav.items',
       '/administration/catalogs': 'administration.nav.catalogs',
+      '/administration/suppliers': 'administration.nav.suppliers',
     };
     for (const row of NAV_ROWS) {
       const key = KEYS[row.route] as string;
@@ -207,11 +213,11 @@ describe('the home’s tiles, the routes, the guards and the rows', () => {
     },
   );
 
-  it('offers every routed screen a tile but the record, which its register opens', () => {
+  it('offers every routed screen a tile but the records, which their registers open', () => {
     const tiled = new Set(ADMINISTRATION_SHORTCUTS.map((card) => card.to));
     const untiled = declaredPaths()
       .map((p) => `/administration/${p}`)
       .filter((route) => !tiled.has(route));
-    expect(untiled).toEqual(['/administration/items/:id']);
+    expect(untiled).toEqual(['/administration/items/:id', '/administration/suppliers/:id']);
   });
 });

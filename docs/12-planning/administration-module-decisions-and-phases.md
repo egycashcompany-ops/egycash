@@ -3251,6 +3251,48 @@ Repository-wide findings outside this module are listed for the owner in
     master-data administrator writes suppliers.
   - *For P1b.W:* the supplier rows show category names, so the category topics' web rows gain `suppliers` with the
     screen that shows them; the new refusal code needs its en and ar `FRIENDLY` text then.
+- **P1b.W built** (2026-11-25). Phase 1's last pull request ships as §19.1 says, under the owner's answers
+  (§16.12), built on P1a.W and from the same UI checklist (its register, detail, documents-card and dialog lines):
+  the supplier register and record with the documents card (OD-11 A), the supplier form, the fifth row «الموردون»
+  on `administrationSupplier.view` with the existing `company` glyph (144 → 145), the home's supplier tile, the
+  `FRIENDLY` words for `ADMINISTRATION_ATTACHMENT_LIMIT`, `ADMINISTRATION_REFERENCE_INACTIVE` worded for any record
+  that names a unit or category, and §19.10.2's supplier sidebar case. With it every §19.10 criterion a pull request
+  can meet is met; §19.10.9, the owner's acceptance on staging, remains. Where the code had to choose what the design
+  leaves open:
+  - *Files beyond §19.8.* `lib/supplier-view.ts` (the phone mask, the papers' scan-state rules, the re-read backoff)
+    with its spec, `supplier-fixtures.ts`, and a screen spec for the record besides `suppliers-screen.spec.tsx`.
+  - *The phone mask* is the list shape `docs/06-security/security-architecture.md` writes (`298*******4567`): the
+    first three digits and the last four, every other digit a star, spaces, dashes and `+` kept; a number of seven
+    digits or fewer keeps only its last half, so no list shows a phone whole. The record shows it whole, and the
+    contact people's phones appear on the record only. The register's columns are the code, the name, the masked
+    phone, the e-mail, the categories and the status, after IT's vendor register less its contact count.
+  - *The category filter* shows only to a reader the categories' read admits (`authorizeAny` over the item, catalog
+    and supplier write keys, §19.3); for a `.view`-only reader, a remembered `category` is not sent either, so the
+    rows never narrow by a filter the screen does not show. The form picks the categories with the shared
+    `MultiSelect` (the contract takes a list) over both levels, the live ones and any already picked, a retired one
+    kept as `ItCatalogSelect` keeps it; the register's filter stays single-valued.
+  - *The tax-number warning* appears three ways and blocks none: a status panel on the record, each holder a link,
+    a retired one marked; the `Field` warning beside the box in the edit opened from the record while it holds the
+    record's number (a register row carries no matches); and a warning toast after any save whose answer names
+    other holders, the create included.
+  - *No VAT status anywhere.* Its list is empty until OD-29, so a field or fact would always read «—» or offer
+    nothing: under the no-placeholder rule (§13) it joins the screens with its values.
+  - *The papers.* Filing is the module's dialog frame with two required values, the paper's label (1–200) and its
+    file through the shared `FileUpload` (the category's PDF and images, 10 MB); at 20 papers the card stops offering
+    the add and says why, and a raced 21st meets `ADMINISTRATION_ATTACHMENT_LIMIT`. Removal is confirmed first and
+    says the file stays in the system's records (the link alone goes). While a paper is `pending` the record reads
+    itself again every 5 s, doubling to a minute, and stops when none is; a 422 on the bytes is read as the scan not
+    yet answered (§11.5, until PC-5) and re-reads the record. Each act carries the version the record was read at.
+  - *The home* gives the supplier register its tile and a live count, P1a.W's rule: a key that reads a register gets
+    its count.
+  - *Realtime.* Only `administration.itemCategory` gains `['administration', 'suppliers']`: no supplier names a unit,
+    so the unit topic does not refetch the supplier screens.
+  - *Refusals beside the field.* A supplier's retired category (`categoryIds`) is worded beside the categories box,
+    in general words; the detail's id is not turned into a name, since the select offers only live categories and
+    only a race reaches it. An e-mail that is no address is marked on Save before a round trip (a loose check; the
+    server decides), and every contact person listed needs a name, as the missing-fields banner says.
+  - *§19.10.2's case* for suppliers runs in the suppliers suite: an `administrationSupplier.view` holder's whole
+    sidebar is the Suppliers row; the warehouses suite's super-admin case now reads five rows.
 - **P1a.W built** (2026-11-25). Phase 1's fourth pull request ships as §19.1 says, under the owner's answers
   (§16.12): the `/administration/*` mount, the home, the item register and record, the warehouse register, units and
   categories, the category «الشئون الإدارية» with its four rows (140 → 144) and the `box` and `warehouse` glyphs, every

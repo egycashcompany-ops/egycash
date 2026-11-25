@@ -20,9 +20,10 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { ShortcutCard } from '../../../shared/ui/ShortcutCard';
 import { StatCard } from '../../../shared/ui/StatCard';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
-import { BoxIcon, TagIcon, WarehouseIcon } from '../../../shared/ui/icons';
+import { BoxIcon, BuildingIcon, TagIcon, WarehouseIcon } from '../../../shared/ui/icons';
 import { formatNumber } from '../../../shared/lib/format';
 import { useAdministrationItems } from '../api/catalog-queries';
+import { useAdministrationSuppliers } from '../api/suppliers-queries';
 import { useAdministrationWarehouses } from '../api/warehouses-queries';
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
@@ -58,6 +59,13 @@ export const ADMINISTRATION_SHORTCUTS: Shortcut[] = [
     icon: TagIcon,
     permission: 'administrationCatalog.manage',
   },
+  {
+    to: '/administration/suppliers',
+    titleKey: 'administration.nav.suppliers',
+    descKey: 'administration.home.cards.suppliers',
+    icon: BuildingIcon,
+    permission: 'administrationSupplier.view',
+  },
 ];
 
 /** The live rows of a register: only `meta.totalItems` is wanted. */
@@ -71,6 +79,7 @@ const COUNT_PARAMS = { page: 1, pageSize: 1, isActive: true } as const;
 export const COUNT_LINKS = {
   warehouses: '/administration/warehouses?active=true',
   items: '/administration/items?active=true',
+  suppliers: '/administration/suppliers?active=true',
 } as const;
 
 /** A count tile's figure, its loading, or the caption that says it could not be read. */
@@ -89,10 +98,19 @@ const useCountTile = (query: {
   };
 };
 
-const Counts = ({ warehouses, items }: { warehouses: boolean; items: boolean }): JSX.Element => {
+const Counts = ({
+  warehouses,
+  items,
+  suppliers,
+}: {
+  warehouses: boolean;
+  items: boolean;
+  suppliers: boolean;
+}): JSX.Element => {
   const t = useT();
   const warehouseCount = useCountTile(useAdministrationWarehouses(COUNT_PARAMS, warehouses));
   const itemCount = useCountTile(useAdministrationItems(COUNT_PARAMS, items));
+  const supplierCount = useCountTile(useAdministrationSuppliers(COUNT_PARAMS, suppliers));
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-administration-counts="">
       {warehouses && (
@@ -111,6 +129,14 @@ const Counts = ({ warehouses, items }: { warehouses: boolean; items: boolean }):
           {...itemCount}
         />
       )}
+      {suppliers && (
+        <StatCard
+          label={t('administration.home.activeSuppliers')}
+          icon={BuildingIcon}
+          to={COUNT_LINKS.suppliers}
+          {...supplierCount}
+        />
+      )}
     </div>
   );
 };
@@ -121,6 +147,7 @@ export const AdministrationHomePage = (): JSX.Element => {
   const shortcuts = ADMINISTRATION_SHORTCUTS.filter((card) => can(card.permission));
   const countWarehouses = can('administrationWarehouse.view');
   const countItems = can('administrationItem.view');
+  const countSuppliers = can('administrationSupplier.view');
 
   return (
     <PageContainer>
@@ -132,8 +159,8 @@ export const AdministrationHomePage = (): JSX.Element => {
         />
       ) : (
         <div className="space-y-6">
-          {(countWarehouses || countItems) && (
-            <Counts warehouses={countWarehouses} items={countItems} />
+          {(countWarehouses || countItems || countSuppliers) && (
+            <Counts warehouses={countWarehouses} items={countItems} suppliers={countSuppliers} />
           )}
           <div className="grid gap-4 sm:grid-cols-2">
             {shortcuts.map((card) => (

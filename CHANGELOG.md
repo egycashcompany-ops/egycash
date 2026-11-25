@@ -260,6 +260,36 @@ its entry here in the same PR.
 
 ### Added
 
+- **Administrative Affairs («الشئون الإدارية») on screen: the suppliers — closing Phase 1.** The
+  supplier register and each supplier's record over P1b.1's API, typed in by hand as the owner asked
+  («لأ خلينا من غير شيتات او بيانات دلوقتى»). This is P1b.W, the last Phase 1 pull request of the
+  design (`docs/12-planning/administration-module-decisions-and-phases.md` §19.1, §19.5, §19.10).
+  - **A fifth row,** «الموردون» / Suppliers, on `administrationSupplier.view`, wearing the existing
+    building glyph; a reader holding only that key sees exactly that row. The home gains its tile
+    and the live suppliers' count. 144 → 145 seeded rows.
+  - **The supplier register** (`/administration/suppliers`), in the board frame: searched by code or
+    name, filtered by one category (a top-level one reads its subcategories' suppliers too) and the
+    status; the categories each supplier supplies by name. **A phone is masked in the list**
+    («010****5678») and shown whole only on the record; no phone travels in the address. A row opens
+    the record.
+  - **A supplier's record** (`/administration/suppliers/:id`): its names, registration numbers,
+    payment terms, categories, phone, e-mail, address and contact people. **A tax number another
+    supplier holds is a warning, never a block** (OD-11 (i)): the record names up to five other
+    holders, each a link, a retired one marked, and a save that lands on a shared number says so.
+  - **The supplier's documents** (OD-11 A): a paper is filed with what it is and its file (PDF or a
+    photo, up to 10 MB, at most 20), opened in the page — a photo inline, a PDF in a frame — and
+    removed from the list. Its virus-scan state is shown: «قيد الفحص» while scanned, the record
+    reading itself again until the scanner answers; «محظور» never opens; «الملف غير متاح» for a file
+    gone. Filing and removing take `administrationSupplier.edit`.
+  - **The form** adds or corrects a supplier — no code box (the server gives «SUP-00001»), no VAT
+    status until OD-29 gives its values, no bank data — with its contact people as rows (at most
+    20), its categories picked from both levels, and Active to retire it on an edit. Save stays
+    pressable and names what is missing; an e-mail that is no address is marked before a round trip.
+  - **Two refusals worded for every record that meets them:** `ADMINISTRATION_ATTACHMENT_LIMIT` (a full
+    papers list) gains its words in both languages, and `ADMINISTRATION_REFERENCE_INACTIVE` now says
+    «a unit or category chosen» — a supplier's retired category as well as an item's. A category
+    change refreshes the supplier screens too.
+
 - **Administrative Affairs («الشئون الإدارية») on screen: the home, the items, the warehouses, and the
   units and categories.** The Phase 1 screens over the three API slices before them, where master data
   is typed in by hand, as the owner asked («لأ خلينا من غير شيتات او بيانات دلوقتى»). This is P1a.W of

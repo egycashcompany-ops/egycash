@@ -2,7 +2,8 @@
 // (administration-module-decisions-and-phases.md §19.8): `['administration', feature, kind, params]`,
 // so a write invalidates exactly its own subtree. The realtime rows repeat the prefixes as literals
 // (`platform/realtime/invalidation-registry.ts` imports nothing): `catalogs` and `items` for the two
-// catalog topics, `items` for the item topic, `warehouses` for the warehouse topic.
+// catalog topics, `items` for the item topic, `warehouses` for the warehouse topic, `suppliers` for
+// the supplier topic and the item-category topic (a supplier row names its categories).
 import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
 
 export const ADMINISTRATION_MODULE = 'administration';
@@ -15,6 +16,8 @@ export const administrationKeys = {
   items: featureKey(ADMINISTRATION_MODULE, 'items'),
   /** The warehouse register. */
   warehouses: featureKey(ADMINISTRATION_MODULE, 'warehouses'),
+  /** The supplier register and each supplier's record, its papers included (P1b.W). */
+  suppliers: featureKey(ADMINISTRATION_MODULE, 'suppliers'),
 } as const;
 
 /** One page of a catalogs tab — `kind` keeps the two tabs apart. */
@@ -44,6 +47,12 @@ export const warehouseKey = (id: string): readonly unknown[] =>
  */
 export const warehouseBranchOptionsKey = (): readonly unknown[] =>
   listKey(ADMINISTRATION_MODULE, 'warehouseBranchOptions');
+
+export const supplierListKey = (params: object): readonly unknown[] =>
+  listKey(ADMINISTRATION_MODULE, 'suppliers', params);
+
+export const supplierKey = (id: string): readonly unknown[] =>
+  detailKey(ADMINISTRATION_MODULE, 'suppliers', id);
 
 /** The platform's department options, which name a warehouse's department (§19.8). */
 export const departmentOptionsKey = (): readonly unknown[] =>

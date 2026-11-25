@@ -78,10 +78,12 @@ type's balance; untracked types validate from history and write dated consumptio
 
 ## 3. Request lifecycle (`hr_leave_requests`)
 
-Statuses (C3 — final enum): `pendingManager | pendingHr | approved | active | completed |
-rejected | cancelled`. Submission creates the request directly in its first pending step
-(no draft/submitted state): `pendingManager`, or `pendingHr` when the employee has no manager or
-the manager step is vacant.
+Statuses (C3 — final enum): `pendingManager | pendingHr | pendingApproval | approved | active |
+completed | rejected | cancelled`. Submission creates the request directly in its first pending
+step (no draft/submitted state): `pendingManager`, or `pendingHr` when the employee has no manager
+or the manager step is vacant. `pendingApproval` is a request on a configured approval chain. A
+request starts on the chain only when a rung of it is staffed; otherwise it takes the manager and
+HR path (§16).
 
 - **Submit** (self via ESS, or HR on-behalf with `leave.requestForOthers`): validates
   eligibility, notice (soft, L8), overlap, per-year/occasion caps, attachment-at-submission when
@@ -95,7 +97,8 @@ the manager step is vacant.
 - **Decide**: step 1 = the employee's **current** manager (dynamic binding, R9b — a manager
   change re-routes the pending step; the daily reminder re-notifies the current holder); step 2
   (per type) = HR (`leave.approve`). HR may decide any pending step (override — prevents chain
-  deadlock). Decisions are status-conditional atomic updates with a `version` guard (R3).
+  deadlock). A request on the chain is decided by the approvals engine; when a decision leaves
+  nobody on the rungs that remain, it goes to HR's step (§16.2). Decisions are status-conditional atomic updates with a `version` guard (R3).
   The prohibition binds the **subject**: no one decides a request whose subject employee is
   themselves; an HR filer deciding a request they filed *for someone else* is allowed and
   audited (C7). The `approvals[]` array stores decided steps: `{step, deciderUserId, decision,
@@ -154,7 +157,8 @@ compute due-ness with the same utility.
 branchId/departmentId/sectionId (scoping) + `employeeUserId` (nullable — the own-scope owner
 field, C1-R), typeId, startDate, endDate, halfDayStart/End, frozen `days`, reason,
 `attachments: fileId[]`, status, `approvals[]` (the manager and HR path's decisions),
-`approvalSteps[]` (the approvals engine's trail, on a request a configured chain runs),
+`approvalSteps[]` (the approvals engine's trail, on a request a configured chain runs; a request
+handed to HR after engine decisions carries both lists),
 `approvalWorkflowId` and `approvalChainShape` (that request's pin: the chain row it was submitted
 on and its rungs, written at submission and never rewritten; null and empty otherwise, and missing
 on a request submitted before the pin shipped, which reads its chain live;
@@ -216,7 +220,8 @@ All scope-aware (own/section/department/branch/organization).
   Employee/manager recipients user-directed; HR permission-scoped.
 - **Audit** (closed-enum additions): `leaveRequest`, `leaveDecision` (step + verdict in changes),
   `leaveCancellation`, `leaveBalanceAdjustment`; catalogs use existing create/update/delete.
-  Requests immutable after decision; every ledger `adjust` pairs with an audit record.
+  Requests immutable after decision; every ledger `adjust` pairs with an audit record. A
+  submission on a chain nobody staffs adds the change `unstaffedChain` to its `leaveRequest` row.
 - **Events**: `hr.leave.requested` · `hr.leave.decided` · `hr.leave.cancelled` ·
   `hr.leave.started` / `hr.leave.ended` (payload: employeeId, code, typeId, dates, halfDay —
   the Attendance feed) · `hr.leave.balanceAdjusted`. Plus one EMPLOYEE-module event addition:
@@ -282,9 +287,10 @@ approval chains and per-type approval config lift onto definitions as data.
 
 ## 16. A leave request nobody on its chain can approve takes the manager and HR path (PXQ-1)
 
-**Status.** A plan for one HR pull request, written 2026-11-25. Not built. Its design review is the
-gate before the pull request opens. It changes §3's routing, so it is recorded here, as the frozen
-header asks for any deviation.
+**Status.** A plan for one HR pull request, written 2026-11-25. Built, in the pull request titled
+in 16.5; its number is added here when it opens. It carries LQ-1 to LQ-3 as each stands until the
+owner answers (16.3): no task change, today's rule for HR's step, and no LQ-3 routing. It changes
+§3's routing, so it is recorded here, as the frozen header asks for any deviation.
 
 **Source.** PXQ-1 asked what happens when nobody can approve the remaining steps of a leave request's
 chain, from the start or after earlier steps were approved

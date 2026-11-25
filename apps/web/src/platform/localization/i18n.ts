@@ -1989,6 +1989,9 @@ const en: Record<string, string> = {
   'leave.detail.statusDriveFailed': 'Status update failed — employee status unchanged',
   'leave.detail.approvals': 'Approval chain',
   'leave.detail.awaiting': 'awaiting decision',
+  'leave.detail.hrStep': 'HR step',
+  'leave.detail.handedToHr':
+    'Nobody on the approval chain could decide the remaining steps, so the request went to HR.',
   'leave.detail.comment': 'Comment (optional)',
   'leave.detail.attachments': 'Attachments',
   'leave.step.manager': 'Manager',
@@ -18360,6 +18363,9 @@ const ar: Record<string, string> = {
   'leave.detail.statusDriveFailed': 'فشل تحديث الحالة — حالة الموظف لم تتغير',
   'leave.detail.approvals': 'سلسلة الاعتماد',
   'leave.detail.awaiting': 'بانتظار القرار',
+  'leave.detail.hrStep': 'خطوة الموارد البشرية',
+  'leave.detail.handedToHr':
+    'لم يكن في مسار الموافقة من يستطيع البتّ في الخطوات الباقية، فحُوِّل الطلب إلى الموارد البشرية.',
   'leave.detail.comment': 'تعليق (اختياري)',
   'leave.detail.attachments': 'المرفقات',
   'leave.step.manager': 'المدير',

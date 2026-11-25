@@ -3725,7 +3725,8 @@ Repository-wide findings outside this module are listed for the owner in
       `catalog.spec.ts:147, :181` → `:152, :197`; the web `FRIENDLY` table `errors.ts:8-332` → `:8-345`; in the
       contracts' `administration.ts`, by one line, the master codes' width (`:24-28` on `de38fd71`, now `:27-31`),
       their pair (`:38-68`, now `:41-71`) and the attachment bound (`:112-120`, now `:189-197`), which P2.1 and
-      P2.2 had moved first; and the seed's code counters (`administration.seed.ts:35-44`, now `:62-71`, P2.2 first).
+      P2.2 had moved first; and the seed's code counters (`administration.seed.ts:35-44`, now `:66-75`, P2.2 and
+      P2.6 first).
     - Design §18.3.2's threshold is `administration-module-decisions-and-phases.md:2286-2288`, not `:2285-2286`
       (re-detail §16, criterion 8, corrected there).
     - One citation runs the other way: HR's frozen leave design cites the re-detail's `ui-consistency` pass at

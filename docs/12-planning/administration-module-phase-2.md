@@ -319,8 +319,8 @@ and P2.3's moves after them:
   and its "invents nothing" case `:197` (`:181`); in `packages/contracts/src/modules/administration.ts`, the master
   codes' width `:27-31` (`:24-28` on `de38fd71`), their pair `:41-71` (`:38-68`) and the attachment bound
   `ADMINISTRATION_MAX_LIST_ATTACHMENTS` `:189-197` (`:112-120`), each moved by P2.1 and P2.2 first; the seed's code
-  counters, `apps/api/src/modules/administration/administration.seed.ts:62-71` (`:35-44`), moved by P2.2 first; and
-  `FRIENDLY`, above.
+  counters, `apps/api/src/modules/administration/administration.seed.ts:66-75` (`:35-44`), moved by P2.2 and P2.6
+  first; and `FRIENDLY`, above.
 
 **E. The second drift check, on the engine PX-1 built** (2026-11-25, §3). It read `a4434d00`, PX-1.6's head, against
 §1.2 A items 1–5 and 17, Terms, §4.4, §8, §10.2 and §12's engine-facing cases, and against how HR leave now hosts the
@@ -920,7 +920,7 @@ RK-03; design §2.1 note 10). No index carries `departmentId` with uniqueness (d
   the highest number used, never at 0. Only the server writes PR numbers; the formatter-spelling rule is the master
   codes' (`shared/document-number.ts:8-16`), kept so the module has one floor read and a number written outside the
   server, by an operator's hand fix, cannot floor the series wrongly. The seed also ensures the current year's
-  counter, as it does the code counters (`administration.seed.ts:62-71`).
+  counter, as it does the code counters (`administration.seed.ts:66-75`).
 - A refused submission rolls its increment back, so the series has no gap (`apps/api/src/shared/base/counter.ts:7-12`).
   A returned PR keeps its number, and its next submission takes none.
 - Width: six digits; a number past them grows wider with no leading zero, as the master codes do
@@ -1612,7 +1612,7 @@ listed, then modified.
 | `administration.module.ts` + `.spec.ts` | M | P2.2–P2.7 | keys, page, routes, collection, the file authorizer (P2.6), `scheduledTasks` (P2.7) |
 | `administration.seed.ts` | M | P2.2–P2.7 | the year's counter (P2.2); each template in its slice (P2.3–P2.5, P2.7); the request-attachments category (P2.6) |
 | `administration.seed.spec.ts` | C, M | P2.3; P2.4, P2.5, P2.7 | every sent template seeded |
-| `administration-indexes.ts` + `administration-indexes.spec.ts` | M | P2.1 (the spec), P2.2, P2.6 (the spec) | the item input's parsed `stockTracked` (P2.1); the PR model; the seed's request-attachments step in its order (P2.6) |
+| `administration-indexes.ts` + `administration-indexes.spec.ts` | M | P2.1 (the spec), P2.2, P2.3 and P2.6 (the spec) | the item input's parsed `stockTracked` (P2.1); the PR model; the seed's templates step (P2.3) and request-attachments step (P2.6) in its order |
 | `administration-roles.ts` | M | P2.2, P2.5 | §9.3 |
 | `administration.mappers.ts` | M | P2.1; P2.2; P2.6 | `stockTracked ?? true` on the item DTO; the PR DTOs; the detail's files with their scan states (P2.6) |
 | `administration-scope-guards.spec.ts` | M | P2.2 | the PR repository's fields |

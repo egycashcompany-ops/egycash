@@ -3377,8 +3377,8 @@ Repository-wide findings outside this module are listed for the owner in
 - **PX-1 re-detailed** (2026-11-25). The platform slice is re-detailed in
   [administration-module-phase-px1.md](administration-module-phase-px1.md), as §18 and §21 ask, under the owner's
   adoption of OD-19 A, OD-20 A and OD-69 (i) (§16.12). §20's "Money approvals on the platform engine" is written as
-  [ADR-041](../03-decisions/ADR-041-money-approvals-on-the-platform-engine.md), Proposed until its documentation
-  pull request merges. §20's "the next free number is **ADR-039**" was overtaken again: ADR-039 and ADR-040 are taken
+  [ADR-041](../03-decisions/ADR-041-money-approvals-on-the-platform-engine.md), Accepted in its documentation
+  pull request (PX-1.0). §20's "the next free number is **ADR-039**" was overtaken again: ADR-039 and ADR-040 are taken
   (`docs/03-decisions/README.md`), so this ADR is ADR-041. The ADR settles the shape §15.2.1 proposed, with three
   departures from the plan of record. The host keeps `approvalWorkflowId` and `approvalChainShape`, and the engine
   stays stateless, but the shape holds the rungs as subdocuments in the chain row's own schema rather than

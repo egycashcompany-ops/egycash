@@ -1,7 +1,8 @@
 # ADR-041: Money approvals on the platform engine
 
-**Status:** Proposed · **Date:** 2026-11-25 (the owner adopted every recommended default on 2026-11-24,
-so OD-19 is A, OD-20 is A and OD-69's override sub-question is (i); design §16.12) · **Supersedes in
+**Status:** Accepted · **Date:** 2026-11-25 (the owner adopted every recommended default on 2026-11-24,
+so OD-19 is A, OD-20 is A and OD-69's override sub-question is (i); design §16.12; accepted after the
+design review recorded in the PX-1 re-detail's §13) · **Supersedes in
 part:** [ADR-011](ADR-011-workflow-engine.md)'s "Approval integration" bullet (decision 1) · **Relates
 to:** [platform core](../02-architecture/platform-core.md) §11,
 [ADR-026](ADR-026-role-administration-guards.md) SA-4 (effective permissions) and SA-6 (accounts that

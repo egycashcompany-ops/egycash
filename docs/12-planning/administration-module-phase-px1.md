@@ -5,7 +5,7 @@
 its design review is the gate before the phase's first pull request" (§21). §22 of
 [administration-module-decisions-and-phases.md](administration-module-decisions-and-phases.md)
 records this re-detail and points to its review. The decision it carries out is
-[ADR-041](../03-decisions/ADR-041-money-approvals-on-the-platform-engine.md), Proposed.
+[ADR-041](../03-decisions/ADR-041-money-approvals-on-the-platform-engine.md), Accepted with PX-1.0.
 
 The design is FROZEN v1.0, in four files: §0–§3 in [administration-module-design.md](administration-module-design.md),
 §4–§7 in [administration-module-design-flows.md](administration-module-design-flows.md), §8–§14 in

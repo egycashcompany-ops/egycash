@@ -1,8 +1,9 @@
 // TanStack Query hooks for the catalog (ADR-013): units, item categories and items. Every write
 // invalidates exactly the subtrees its row is shown in — a unit or category is named on every item
 // row and record (`unitName`, `categoryName`, `categoryParentName`), so its writes reach `items`
-// too — and a refusal for a moved `version` (409 `STALE_DOCUMENT`) re-reads them as well, so the
-// screen behind the dialog shows the row as it now is.
+// too, and a category is also named on every supplier row and record, so its writes reach
+// `suppliers` — and a refusal for a moved `version` (409 `STALE_DOCUMENT`) re-reads them as well,
+// so the screen behind the dialog shows the row as it now is.
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
   ErrorCodes,
@@ -138,8 +139,15 @@ export const useRereadItem = (): ((id: string) => Promise<AdministrationItemDto>
 
 // ── Catalog writes ──────────────────────────────────────────────────────────
 
-/** A unit or a category is named on every item row and record, so its writes reach `items` too. */
+/** A unit is named on every item row and record, so its writes reach `items` too. */
 export const CATALOG_SUBTREES = [administrationKeys.catalogs, administrationKeys.items] as const;
+
+/** A category is named on the supplier screens too (P1b.W); no supplier names a unit. */
+export const CATEGORY_SUBTREES = [
+  administrationKeys.catalogs,
+  administrationKeys.items,
+  administrationKeys.suppliers,
+] as const;
 
 /** An item is shown on the item screens only. */
 export const ITEM_SUBTREES = [administrationKeys.items] as const;
@@ -160,14 +168,14 @@ export const useUpdateUnit = () =>
 export const useCreateCategory = () =>
   useAdministrationWrite(
     (body: CreateAdministrationItemCategory) => api.createCategory(body),
-    CATALOG_SUBTREES,
+    CATEGORY_SUBTREES,
   );
 
 export const useUpdateCategory = () =>
   useAdministrationWrite(
     ({ id, body }: { id: string; body: UpdateAdministrationItemCategory }) =>
       api.updateCategory(id, body),
-    CATALOG_SUBTREES,
+    CATEGORY_SUBTREES,
   );
 
 // ── Items ───────────────────────────────────────────────────────────────────

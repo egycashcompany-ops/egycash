@@ -6,13 +6,14 @@
 //
 // A paper still being scanned is not signalled when the scanner answers (no audit row, so no
 // realtime signal, §11.5), so the record reads itself again with backoff while one is pending, and
-// stops once none is.
+// stops once none is. The backoff counts the reads since a paper was first seen pending, not every
+// read the record has had, so a paper filed late in a session is first re-read after five seconds.
 import { useQuery } from '@tanstack/react-query';
 import {
   type CreateAdministrationSupplier,
   type UpdateAdministrationSupplier,
 } from '@ecms/contracts';
-import { scanRecheckDelay } from '../lib/supplier-view';
+import { nextScanWait, scanRecheckDelay, type ScanWait } from '../lib/supplier-view';
 import { administrationKeys, supplierKey, supplierListKey } from './administration-keys';
 import { useAdministrationWrite } from './catalog-queries';
 import { type AdministrationListParams } from './catalog-api';
@@ -26,14 +27,25 @@ export const useAdministrationSuppliers = (params: AdministrationListParams, ena
     enabled,
   });
 
+/** Each cached record's scan wait, kept with its cache entry and dropped once none is pending. */
+const scanWaits = new WeakMap<object, ScanWait>();
+
 export const useAdministrationSupplier = (id: string) =>
   useQuery({
     queryKey: supplierKey(id),
     queryFn: () => api.getSupplier(id),
     enabled: id !== '',
     retry: false,
-    refetchInterval: (query) =>
-      scanRecheckDelay(query.state.data?.attachments, query.state.dataUpdateCount),
+    refetchInterval: (query) => {
+      const reads = query.state.dataUpdateCount;
+      const wait = nextScanWait(query.state.data?.attachments, reads, scanWaits.get(query));
+      if (wait === undefined) {
+        scanWaits.delete(query);
+        return false;
+      }
+      scanWaits.set(query, wait);
+      return scanRecheckDelay(query.state.data?.attachments, reads - wait.from + 1);
+    },
   });
 
 const SUPPLIER_SUBTREES = [administrationKeys.suppliers] as const;

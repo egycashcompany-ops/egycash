@@ -25,21 +25,27 @@ const SHOWN_START = 3;
 const SHOWN_END = 4;
 
 /**
+ * A digit in any script: a phone is stored as typed (the contract trims it, nothing more), and an
+ * Arabic keyboard types «٠١٠…» — `\d` reads only 0–9, even with the `u` flag.
+ */
+const DIGIT = /\p{Nd}/u;
+
+/**
  * A phone as the register shows it: its digits masked but the first three and the last four, its
  * spaces, dashes and `+` kept so it still reads as the number it is. A short number — seven digits
  * or fewer, where three and four would show it whole — keeps only its last half, so no phone is
- * ever shown in full in a list.
+ * ever shown in full in a list. Latin, Arabic-Indic and Persian digits are masked alike.
  */
 export const maskPhone = (phone: string): string => {
   const value = phone.trim();
-  const digits = [...value].filter((char) => /\d/u.test(char)).length;
+  const digits = [...value].filter((char) => DIGIT.test(char)).length;
   const long = digits > SHOWN_START + SHOWN_END;
   const start = long ? SHOWN_START : 0;
   const end = long ? SHOWN_END : Math.floor(digits / 2);
   let seen = 0;
   return [...value]
     .map((char) => {
-      if (!/\d/u.test(char)) return char;
+      if (!DIGIT.test(char)) return char;
       seen += 1;
       return seen <= start || seen > digits - end ? char : '*';
     })
@@ -85,8 +91,9 @@ const SCAN_WAIT_MAX_MS = 60_000;
 
 /**
  * How long the record waits before reading again while a paper is still being scanned — doubling
- * from five seconds to a minute over the reads already made (`reads`), or `false` when nothing is
- * pending, so a page with no pending paper never polls.
+ * from five seconds to a minute over the reads made since that paper was first seen pending
+ * (`reads`, the first such read being 1), or `false` when nothing is pending, so a page with no
+ * pending paper never polls.
  */
 export const scanRecheckDelay = (
   papers: readonly Pick<AdministrationSupplierAttachmentDto, 'scanStatus'>[] | undefined,
@@ -97,6 +104,34 @@ export const scanRecheckDelay = (
   }
   const doublings = Math.max(0, Math.min(reads - 1, 4));
   return Math.min(SCAN_WAIT_FIRST_MS * 2 ** doublings, SCAN_WAIT_MAX_MS);
+};
+
+/** Where a record's scan wait stands: the papers it saw pending, and the read that first showed one. */
+export interface ScanWait {
+  readonly pending: readonly string[];
+  readonly from: number;
+}
+
+/**
+ * The scan wait after a read (`reads` counts every read of the record, its load included). The
+ * doubling starts over at the read that first shows a newly pending paper — a paper filed after a
+ * long session waits five seconds, not the minute an earlier one had reached — and ends with
+ * `undefined` once none is pending.
+ */
+export const nextScanWait = (
+  papers:
+    readonly Pick<AdministrationSupplierAttachmentDto, 'attachmentId' | 'scanStatus'>[] | undefined,
+  reads: number,
+  wait: ScanWait | undefined,
+): ScanWait | undefined => {
+  const pending = (papers ?? [])
+    .filter((paper) => paper.scanStatus === 'pending')
+    .map((paper) => paper.attachmentId);
+  if (pending.length === 0) return undefined;
+  if (wait === undefined || pending.some((id) => !wait.pending.includes(id))) {
+    return { pending, from: reads };
+  }
+  return { pending, from: wait.from };
 };
 
 /** A paper's size in the reader's digits: kilobytes under a megabyte, else megabytes. */

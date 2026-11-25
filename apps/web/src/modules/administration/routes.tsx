@@ -11,7 +11,7 @@
 //   /administration/items/:id       administrationItem.view   (opened from the register)  P1a.W
 //   /administration/catalogs        administrationCatalog.manage                          P1a.W
 //   /administration/suppliers       administrationSupplier.view                           P1b.W
-//   /administration/suppliers/:id   administrationSupplier.view  (opened from the register)  P1b.W
+//   /administration/suppliers/:id   administrationSupplier.view (from the register)       P1b.W
 // Creating and editing a warehouse, an item, a unit, a category or a supplier, and filing or
 // removing a supplier's paper, are dialogs on the screen, never routes (§13.4 rule 2). Every key
 // is this module's own: no route gates on another module's key.

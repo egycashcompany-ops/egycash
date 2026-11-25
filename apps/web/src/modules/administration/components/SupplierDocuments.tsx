@@ -10,6 +10,9 @@
 // «الملف غير متاح». A holder of `administrationSupplier.edit` files a paper and removes one, any
 // state; both are edits of the supplier, so each carries the version the record was read at, and
 // a moved version re-reads it. No paper is required (OD-76 A), and the list takes at most 20.
+//
+// The shared picker checks a file's size and nothing else on a drop, so the add refuses a file of
+// another type itself, before it is sent: the server's own refusal names its category's key.
 import { useEffect, useState } from 'react';
 import {
   ADMINISTRATION_SUPPLIER_DOCUMENT_MAX_MB,
@@ -23,7 +26,7 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { ApiError } from '../../../shared/lib/api-client';
 import { errorMessage } from '../../../shared/lib/errors';
-import { formatDate, localized } from '../../../shared/lib/format';
+import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { Badge } from '../../../shared/ui/Badge';
 import { Button } from '../../../shared/ui/Button';
 import { Card, CardBody, CardHeader } from '../../../shared/ui/Card';
@@ -40,6 +43,10 @@ import { AdministrationDialogFrame } from './AdministrationDialogFrame';
 
 /** What a paper may be: a phone photo of the paper, or the office scanner's PDF (OD-76 (i)). */
 export const SUPPLIER_PAPER_ACCEPT = ADMINISTRATION_SUPPLIER_DOCUMENT_MIMES.join(',');
+
+/** Is this file one the documents' category takes (by its type, as the server reads it)? */
+export const paperFileAllowed = (file: Pick<File, 'type'>): boolean =>
+  (ADMINISTRATION_SUPPLIER_DOCUMENT_MIMES as readonly string[]).includes(file.type);
 
 /** A paper's label, bounded as a file's display name is (the contract's 200). */
 const LABEL_MAX = 200;
@@ -174,16 +181,30 @@ const AddPaperDialog = ({
   const add = useAddSupplierPaper();
   const [label, setLabel] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [wrongType, setWrongType] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
-  // The picker keeps its own list: a fresh one per opening, so a closed dialog forgets its file.
+  // The picker keeps its own list: a fresh one per opening, so a closed dialog forgets its file —
+  // and a fresh one after a refused file, so the picker never lists what will not be filed.
   const [opening, setOpening] = useState(0);
   useEffect(() => {
     if (!open) return;
     setLabel('');
     setFile(null);
+    setWrongType(false);
     setFailure(null);
     setOpening((n) => n + 1);
   }, [open]);
+  const pick = (files: File[]): void => {
+    const picked = files[0] ?? null;
+    if (picked !== null && !paperFileAllowed(picked)) {
+      setFile(null);
+      setWrongType(true);
+      setOpening((n) => n + 1);
+      return;
+    }
+    setWrongType(false);
+    setFile(picked);
+  };
   const required = useRequiredFields(
     [
       {
@@ -232,17 +253,16 @@ const AddPaperDialog = ({
       </Field>
       <Field
         label={t('administration.suppliers.papers.file')}
-        hint={t('administration.suppliers.papers.fileHint', {
-          size: ADMINISTRATION_SUPPLIER_DOCUMENT_MAX_MB,
-        })}
+        hint={t('administration.suppliers.papers.fileHint')}
         required
         missing={required.isMissing('file')}
+        error={wrongType ? t('administration.suppliers.papers.wrongType') : undefined}
       >
         <FileUpload
           key={opening}
           accept={SUPPLIER_PAPER_ACCEPT}
           maxSizeMb={ADMINISTRATION_SUPPLIER_DOCUMENT_MAX_MB}
-          onFiles={(files) => setFile(files[0] ?? null)}
+          onFiles={pick}
           disabled={add.isPending}
         />
       </Field>
@@ -346,7 +366,7 @@ export const SupplierDocuments = ({
       <CardHeader
         title={t('administration.suppliers.papers.title')}
         description={t('administration.suppliers.papers.caption', {
-          size: ADMINISTRATION_SUPPLIER_DOCUMENT_MAX_MB,
+          size: formatNumber(ADMINISTRATION_SUPPLIER_DOCUMENT_MAX_MB, locale),
         })}
         {...(mayEdit && !full
           ? {

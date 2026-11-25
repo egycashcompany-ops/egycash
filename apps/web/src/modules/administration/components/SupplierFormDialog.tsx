@@ -10,8 +10,15 @@
 // may be separate records. The edit opened from the record says so beside the box while the number
 // is the one the record holds; any save whose answer names other holders says so as it closes, and
 // the record keeps saying it. Writes are held at organization scope on the server (OD-04 A).
+//
+// A SAVE REFUSED FOR A MOVED VERSION OVERWRITES NOTHING (Fleet's custody papers rule): the form
+// reads the supplier afresh and shows it as it now is, the change typed over the old one dropped,
+// and says so — the next Save then carries the version the record holds, instead of meeting the
+// same refusal until the dialog is closed.
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
+  ErrorCodes,
   type AdministrationItemCategoryDto,
   type AdministrationSupplierDetailDto,
   type AdministrationSupplierDto,
@@ -19,15 +26,18 @@ import {
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
+import { ApiError } from '../../../shared/lib/api-client';
 import { errorMessage } from '../../../shared/lib/errors';
-import { localized } from '../../../shared/lib/format';
+import { formatNumber, localized } from '../../../shared/lib/format';
 import { Button } from '../../../shared/ui/Button';
 import { Checkbox, Field, Input, Textarea } from '../../../shared/ui/form';
 import { MultiSelect, type MultiSelectOption } from '../../../shared/ui/MultiSelect';
 import { PlusIcon, TrashIcon } from '../../../shared/ui/icons';
 import { useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
+import { supplierKey } from '../api/administration-keys';
 import { useWholeCategories } from '../api/catalog-queries';
+import { getSupplier } from '../api/suppliers-api';
 import { useCreateSupplier, useUpdateSupplier } from '../api/suppliers-queries';
 import { NAME_MAX } from '../lib/catalog-form';
 import { fieldRefusal, refusalFieldKeys, type RefusalField } from '../lib/refusals';
@@ -109,14 +119,21 @@ export const SupplierFormDialog = ({
   supplier: AdministrationSupplierDto | AdministrationSupplierDetailDto | null;
 }): JSX.Element => {
   const t = useT();
+  const qc = useQueryClient();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // The supplier the form was seeded from: the one opened, or — after a save refused for a moved
+  // version — the record as it now is. Every edit is measured against it and carries its version.
+  const [base, setBase] = useState(supplier);
   const [form, setForm] = useState<SupplierForm>(supplierFormFrom(supplier));
   const [failure, setFailure] = useState<unknown>(null);
+  const [reread, setReread] = useState(false);
   const [tried, setTried] = useState(false);
   useEffect(() => {
     if (!open) return;
+    setBase(supplier);
     setForm(supplierFormFrom(supplier));
     setFailure(null);
+    setReread(false);
     setTried(false);
   }, [open, supplier]);
   const set = <K extends keyof SupplierForm>(key: K, value: SupplierForm[K]): void =>
@@ -133,10 +150,10 @@ export const SupplierFormDialog = ({
       supplierCategoryOptions(
         categories.data ?? [],
         form.categoryIds,
-        supplier?.categories ?? [],
+        base?.categories ?? [],
         locale,
       ),
-    [categories.data, form.categoryIds, supplier, locale],
+    [categories.data, form.categoryIds, base, locale],
   );
 
   const create = useCreateSupplier();
@@ -148,7 +165,9 @@ export const SupplierFormDialog = ({
       { key: 'nameEn', label: t('administration.suppliers.fields.nameEn'), ok: filled.nameEn },
       ...filled.contacts.map((ok, i) => ({
         key: `contact-${String(i)}`,
-        label: t('administration.suppliers.fields.contactNameOf', { n: i + 1 }),
+        label: t('administration.suppliers.fields.contactNameOf', {
+          n: formatNumber(i + 1, locale),
+        }),
         ok,
       })),
     ],
@@ -160,26 +179,34 @@ export const SupplierFormDialog = ({
   const emails = emailProblems(form);
   const emailWord = (wrong: boolean | undefined): string | undefined =>
     tried && wrong === true ? t('administration.suppliers.errors.email') : undefined;
-  const holders = taxNumberHolders(form, supplier);
+  const holders = taxNumberHolders(form, base);
+
+  /** Saved elsewhere meanwhile: read the supplier afresh and show it as it now is. */
+  const rereadAfterStale = async (id: string): Promise<void> => {
+    const fresh = await qc
+      .fetchQuery({ queryKey: supplierKey(id), queryFn: () => getSupplier(id), staleTime: 0 })
+      .catch(() => null);
+    if (fresh === null) return;
+    setBase(fresh);
+    setForm(supplierFormFrom(fresh));
+    setReread(true);
+  };
 
   const save = async (): Promise<void> => {
     setTried(true);
     if (hasEmailProblem(form)) return;
     setFailure(null);
+    setReread(false);
     try {
       const saved =
-        supplier === null
+        base === null
           ? await create.mutateAsync(supplierCreateBody(form))
           : await update.mutateAsync({
-              id: supplier.id,
-              body: { ...supplierChanges(form, supplier), version: supplier.version },
+              id: base.id,
+              body: { ...supplierChanges(form, base), version: base.version },
             });
       toast.success(
-        t(
-          supplier === null
-            ? 'administration.suppliers.created'
-            : 'administration.suppliers.updated',
-        ),
+        t(base === null ? 'administration.suppliers.created' : 'administration.suppliers.updated'),
       );
       // Saved all the same: the warning names who else holds the number (OD-11 (i)).
       if (saved.taxNumberMatches.length > 0) {
@@ -191,6 +218,9 @@ export const SupplierFormDialog = ({
       onClose();
     } catch (error) {
       setFailure(error);
+      if (base !== null && error instanceof ApiError && error.code === ErrorCodes.STALE_DOCUMENT) {
+        await rereadAfterStale(base.id);
+      }
     }
   };
 
@@ -201,17 +231,19 @@ export const SupplierFormDialog = ({
       size="lg"
       tall
       title={
-        supplier === null
-          ? t('administration.suppliers.create')
-          : t('administration.suppliers.edit')
+        base === null ? t('administration.suppliers.create') : t('administration.suppliers.edit')
       }
-      {...(supplier === null
-        ? {}
-        : { description: `${localized(supplier.name, locale)} — ${supplier.code}` })}
+      {...(base === null ? {} : { description: `${localized(base.name, locale)} — ${base.code}` })}
       required={required}
       onSave={save}
       busy={create.isPending || update.isPending}
-      error={failure === null ? null : errorMessage(failure, locale)}
+      error={
+        failure === null
+          ? null
+          : reread
+            ? t('administration.suppliers.errors.stale')
+            : errorMessage(failure, locale)
+      }
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
@@ -302,6 +334,10 @@ export const SupplierFormDialog = ({
           <MultiSelect
             clearable
             showSelectedValues
+            // Every pick named in the box, and the list as wide as the box (Fleet's form select):
+            // a category's name and its parent's read on one line.
+            summaryMax={Math.max(form.categoryIds.length, 1)}
+            panelWidth="w-full"
             fullWidth
             className="w-full"
             label={t('administration.suppliers.fields.categories')}
@@ -327,7 +363,7 @@ export const SupplierFormDialog = ({
             onChange={(e) => set('notes', e.target.value)}
           />
         </Field>
-        {supplier !== null && (
+        {base !== null && (
           <div className="sm:col-span-2">
             <Checkbox
               label={t('administration.suppliers.fields.isActive')}

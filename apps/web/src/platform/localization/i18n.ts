@@ -16299,7 +16299,7 @@ const en: Record<string, string> = {
   'administration.nav.suppliers': 'Suppliers',
   'administration.home.activeSuppliers': 'Active suppliers',
   'administration.home.cards.suppliers':
-    'The parties the company buys from: their registration numbers, contacts and papers.',
+    'The parties the company buys from: their registration numbers, contacts and documents.',
   'administration.refusals.inactive.categoryIds':
     'A category chosen is retired — remove it, or choose an active one.',
   'administration.suppliers.create': 'Add supplier',
@@ -16334,6 +16334,8 @@ const en: Record<string, string> = {
     'Active — a retired supplier keeps its code and is offered nowhere new',
   'administration.suppliers.fields.contactNameOf': 'Contact person {{n}} — name',
   'administration.suppliers.errors.email': 'Not an e-mail address — such as name@example.com.',
+  'administration.suppliers.errors.stale':
+    'This supplier was saved elsewhere after it was opened here — the form now shows it as it is. Make the change again, then save.',
   'administration.suppliers.sections.identity': 'Supplier',
   'administration.suppliers.sections.reach': 'Contact details',
   'administration.suppliers.contacts.title': 'Contact people',
@@ -16344,7 +16346,7 @@ const en: Record<string, string> = {
   'administration.suppliers.contacts.remove': 'Remove',
   'administration.suppliers.taxNumberShared.title': 'Other suppliers hold this tax number',
   'administration.suppliers.taxNumberShared.body':
-    'Saved all the same — a supplier’s branches may be separate records. Make sure the same supplier is not entered twice.',
+    'This does not stop the supplier being saved — a supplier’s branches may be separate records. Make sure the same supplier is not entered twice.',
   'administration.suppliers.papers.title': 'Supplier documents',
   'administration.suppliers.papers.caption':
     'PDF or a photo, up to {{size}} MB each, and at most 20 documents.',
@@ -16355,10 +16357,11 @@ const en: Record<string, string> = {
     'The list holds 20 documents, as many as it takes — remove one to add another.',
   'administration.suppliers.papers.label': 'Document',
   'administration.suppliers.papers.labelHint':
-    'What the paper is — such as the commercial registry or the tax card.',
+    'What the document is — such as the commercial registry or the tax card.',
   'administration.suppliers.papers.file': 'File',
-  'administration.suppliers.papers.fileHint':
-    'A PDF or a photo (JPEG, PNG, WebP), up to {{size}} MB.',
+  'administration.suppliers.papers.fileHint': 'A PDF or a photo (JPEG, PNG or WebP).',
+  'administration.suppliers.papers.wrongType':
+    'Only a PDF or a photo (JPEG, PNG or WebP) can be filed.',
   'administration.suppliers.papers.open': 'Open document',
   'administration.suppliers.papers.openNewTab': 'Open in a new tab',
   'administration.suppliers.papers.remove': 'Remove document',
@@ -32307,6 +32310,8 @@ const ar: Record<string, string> = {
     'نشط — المورد الموقوف يحتفظ بكوده ولا يُعرض في أي اختيار جديد',
   'administration.suppliers.fields.contactNameOf': 'اسم جهة الاتصال {{n}}',
   'administration.suppliers.errors.email': 'هذا ليس عنوان بريد إلكتروني — مثل name@example.com.',
+  'administration.suppliers.errors.stale':
+    'حُفظ هذا المورد في مكان آخر بعد فتحه هنا — يعرض النموذج الآن المورد كما هو. أعِد إدخال التعديل ثم احفظ.',
   'administration.suppliers.sections.identity': 'المورد',
   'administration.suppliers.sections.reach': 'بيانات الاتصال',
   'administration.suppliers.contacts.title': 'جهات الاتصال',
@@ -32317,7 +32322,7 @@ const ar: Record<string, string> = {
   'administration.suppliers.contacts.remove': 'إزالة',
   'administration.suppliers.taxNumberShared.title': 'رقم التسجيل الضريبي مسجَّل لموردين آخرين',
   'administration.suppliers.taxNumberShared.body':
-    'حُفظ المورد مع ذلك — فقد تكون فروع المورد الواحد سجلات منفصلة. تأكد أن المورد نفسه لم يُسجَّل مرتين.',
+    'لا يمنع ذلك حفظ المورد — فقد تكون فروع المورد الواحد سجلات منفصلة. تأكد أن المورد نفسه لم يُسجَّل مرتين.',
   'administration.suppliers.papers.title': 'مستندات المورد',
   'administration.suppliers.papers.caption':
     'ملف PDF أو صورة، حتى {{size}} ميجابايت لكل مستند، وعشرون مستندًا على الأكثر.',
@@ -32328,15 +32333,16 @@ const ar: Record<string, string> = {
     'تضم القائمة عشرين مستندًا، وهو أقصى ما تتسع له — أزِل أحدها لإضافة غيره.',
   'administration.suppliers.papers.label': 'المستند',
   'administration.suppliers.papers.labelHint':
-    'ما هذه الورقة — مثل السجل التجاري أو البطاقة الضريبية.',
+    'ما هذا المستند — مثل السجل التجاري أو البطاقة الضريبية.',
   'administration.suppliers.papers.file': 'الملف',
-  'administration.suppliers.papers.fileHint':
-    'ملف PDF أو صورة (JPEG أو PNG أو WebP)، حتى {{size}} ميجابايت.',
+  'administration.suppliers.papers.fileHint': 'ملف PDF أو صورة (JPEG أو PNG أو WebP).',
+  'administration.suppliers.papers.wrongType':
+    'لا يُقبل إلا ملف PDF أو صورة (JPEG أو PNG أو WebP).',
   'administration.suppliers.papers.open': 'فتح المستند',
   'administration.suppliers.papers.openNewTab': 'فتح في نافذة جديدة',
   'administration.suppliers.papers.remove': 'إزالة المستند',
   'administration.suppliers.papers.removeBody':
-    'يُرفع المستند من قائمة هذا المورد، ويبقى ملفه محفوظًا في سجلات النظام.',
+    'يُزال المستند من قائمة هذا المورد، ويبقى ملفه محفوظًا في سجلات النظام.',
   'administration.suppliers.papers.removed': 'تمت إزالة المستند',
   'administration.suppliers.papers.stillScanning':
     'ما زال هذا الملف قيد فحص الفيروسات — يمكن فتحه بعد انتهاء الفحص.',

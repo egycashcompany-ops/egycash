@@ -5,7 +5,8 @@
 // below, and only the rows scroll.
 //
 // A PHONE IS MASKED HERE (§6.8, §13.6 B): a list shows `010****5678`, and the record's own page
-// shows the number whole. No phone ever travels in the URL — the search reads the code and the
+// shows the number whole. The code and the masked phone never break across lines: the table
+// scrolls sideways on a phone instead. No phone ever travels in the URL — the search reads the code and the
 // names only. A row opens its supplier's page; the row's own edit opens the form here, and stops
 // the click so it never also opens the page. A supplier is retired through its form, never deleted.
 //
@@ -114,7 +115,7 @@ export const SuppliersPage = (): JSX.Element => {
       header: t('administration.suppliers.columns.code'),
       sortable: true,
       render: (supplier) => (
-        <span className="font-mono text-xs" dir="ltr">
+        <span className="whitespace-nowrap font-mono text-xs" dir="ltr">
           {supplier.code}
         </span>
       ),
@@ -133,7 +134,7 @@ export const SuppliersPage = (): JSX.Element => {
         supplier.phone === null ? (
           '—'
         ) : (
-          <span className="tabular-nums" dir="ltr" data-supplier-phone="">
+          <span className="whitespace-nowrap tabular-nums" dir="ltr" data-supplier-phone="">
             {maskPhone(supplier.phone)}
           </span>
         ),

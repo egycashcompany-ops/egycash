@@ -11,6 +11,10 @@
 // The category names arrive on the record, resolved by the server (retired ones included), so the
 // page asks nothing more for them. A supplier that does not exist is the API's 404, shown as the
 // shared error panel. No VAT status is shown: it has no values until OD-29 gives them.
+//
+// The record is mounted afresh for each `:id`: the warning's links lead from one supplier's page to
+// another's on the same route, and a dialog left open across Back or Forward must never file a
+// paper on, or save a form over, a supplier other than the one it was opened for.
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { type AdministrationSupplierDetailDto, type Locale } from '@ecms/contracts';
@@ -30,7 +34,12 @@ import { SupplierDocuments } from '../components/SupplierDocuments';
 import { SupplierFormDialog } from '../components/SupplierFormDialog';
 import { supplierCategoryNames } from '../lib/supplier-view';
 
-/** One label/value row. `value` is already formatted — this only lays it out. */
+/**
+ * One label/value row. `value` is already formatted — this only lays it out. An empty value is a
+ * dash in the page's own direction; a code reads left to right as IT's `Fact` writes it, and a
+ * phone, an e-mail or an English name is isolated left to right inside a cell that keeps the
+ * page's side, as the contact people's rows write theirs.
+ */
 const Fact = ({
   label,
   value,
@@ -42,17 +51,20 @@ const Fact = ({
   mono?: boolean;
   /** A phone, an e-mail, an English name: read left to right in either language. */
   ltr?: boolean;
-}): JSX.Element => (
-  <div className="py-2">
-    <dt className="text-xs text-slate-500 dark:text-slate-400">{label}</dt>
-    <dd
-      className={`mt-0.5 text-sm text-slate-800 dark:text-slate-100 ${mono ? 'font-mono' : ''}`}
-      {...(mono || ltr ? { dir: 'ltr' as const } : {})}
-    >
-      {value === null || value === '' ? '—' : value}
-    </dd>
-  </div>
-);
+}): JSX.Element => {
+  const empty = value === null || value === '';
+  return (
+    <div className="py-2">
+      <dt className="text-xs text-slate-500 dark:text-slate-400">{label}</dt>
+      <dd
+        className={`mt-0.5 text-sm text-slate-800 dark:text-slate-100 ${mono ? 'font-mono' : ''}`}
+        {...(mono && !empty ? { dir: 'ltr' as const } : {})}
+      >
+        {empty ? '—' : ltr ? <span dir="ltr">{value}</span> : value}
+      </dd>
+    </div>
+  );
+};
 
 /** The other holders of this supplier's tax number — the warning, never a block. */
 const TaxNumberWarning = ({
@@ -74,10 +86,7 @@ const TaxNumberWarning = ({
       <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
         {supplier.taxNumberMatches.map((holder) => (
           <li key={holder.id}>
-            <Link
-              to={`/administration/suppliers/${holder.id}`}
-              className="underline hover:no-underline"
-            >
+            <Link to={`/administration/suppliers/${holder.id}`} className="font-medium underline">
               <span className="font-mono" dir="ltr">
                 {holder.code}
               </span>{' '}
@@ -91,15 +100,15 @@ const TaxNumberWarning = ({
   );
 };
 
-export const SupplierDetailPage = (): JSX.Element => {
+/** One supplier's record, mounted for one id: its dialogs never outlive it. */
+const SupplierRecord = ({ id }: { id: string }): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const { id = '' } = useParams<{ id: string }>();
   const { data: supplier, isPending, isError, error, refetch } = useAdministrationSupplier(id);
   // The supplier as it was when its form opened: a re-read underneath (a stale save re-reads the
   // record, a pending paper re-reads it with backoff) must not reset what is being typed, nor the
-  // refusal the form is showing.
+  // refusal the form is showing. After a stale save the form reads the supplier afresh itself.
   const [editing, setEditing] = useState<AdministrationSupplierDetailDto | null>(null);
 
   if (isPending) {
@@ -144,7 +153,9 @@ export const SupplierDetailPage = (): JSX.Element => {
 
       <TaxNumberWarning supplier={supplier} />
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      {/* One column of zero minimum below `lg`: a paper's truncated row never widens the cards past
+          a phone's screen (an implicit track would grow to the row's unwrapped length). */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader title={t('administration.suppliers.sections.identity')} />
           <CardBody>
@@ -271,4 +282,9 @@ export const SupplierDetailPage = (): JSX.Element => {
       />
     </PageContainer>
   );
+};
+
+export const SupplierDetailPage = (): JSX.Element => {
+  const { id = '' } = useParams<{ id: string }>();
+  return <SupplierRecord key={id} id={id} />;
 };

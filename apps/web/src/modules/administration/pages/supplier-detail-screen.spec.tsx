@@ -3,8 +3,9 @@
 // facts — the phone whole on this page, the registration numbers left to right, the categories by
 // name, a dash for what is not set, no VAT status; the tax-number warning, never a block; the edit
 // offered to the edit key alone, as the register's own form; the papers with their scan states —
-// open, waiting, blocked, gone — filed and removed by a writer only; a plain page that grows down,
-// loading through the shared panel, and a record gone shown as the shared error panel.
+// open, waiting, blocked, gone — filed and removed by a writer only, a file of another type refused
+// before it is sent; a plain page that grows down and fits a phone's width, mounted afresh for each
+// supplier, loading through the shared panel, and a record gone shown as the shared error panel.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +13,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { supplierKey } from '../api/administration-keys';
 import { ar, renderScreen, text } from '../screen-fixtures';
 import { paper, supplierDetail } from '../supplier-fixtures';
-import { SUPPLIER_PAPER_ACCEPT } from '../components/SupplierDocuments';
+import { SUPPLIER_PAPER_ACCEPT, paperFileAllowed } from '../components/SupplierDocuments';
 import { SupplierDetailPage } from './SupplierDetailPage';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -68,11 +69,22 @@ describe('the supplier’s record', () => {
     expect(text(html)).toContain('SUP-00001');
   });
 
+  it('fits a phone’s width — one column of zero minimum — and is mounted afresh for each supplier', () => {
+    // An implicit track grows to a paper row's unwrapped length and pushed every card off a
+    // 390 px screen; `grid-cols-1` is `minmax(0, 1fr)`.
+    expect(SOURCE).toContain('<div className="grid grid-cols-1 gap-4 lg:grid-cols-3">');
+    // A dialog left open across Back or Forward must not act on the supplier now shown.
+    expect(SOURCE).toContain('return <SupplierRecord key={id} id={id} />;');
+  });
+
   it('shows the facts — the phone whole here, the numbers left to right, the categories by name', () => {
     const html = render();
     expect(fact(html, ar('administration.suppliers.columns.code'))).toContain('dir="ltr"');
     expect(text(fact(html, ar('administration.suppliers.fields.phone')))).toBe('01012345678');
-    expect(fact(html, ar('administration.suppliers.fields.phone'))).toContain('dir="ltr"');
+    // The phone is isolated left to right inside a cell that keeps the page's side.
+    expect(fact(html, ar('administration.suppliers.fields.phone'))).toMatch(
+      /^<dd class="[^"]*">\s*<span dir="ltr">01012345678<\/span>/u,
+    );
     expect(text(fact(html, ar('administration.suppliers.fields.email')))).toBe(
       'sales@alnour.example',
     );
@@ -89,6 +101,20 @@ describe('the supplier’s record', () => {
     expect(categories).toContain('>الورق<');
     expect(text(fact(html, ar('administration.suppliers.fields.notes')))).toBe('—');
     expect(html).toContain(ar('administration.status.active'));
+  });
+
+  it('writes an empty fact’s dash on the page’s side — never turned left to right', () => {
+    const html = render(undefined, [
+      [supplierKey('s-1'), supplierDetail({ email: null, commercialRegistry: null })],
+    ]);
+    for (const label of [
+      ar('administration.suppliers.fields.email'),
+      ar('administration.suppliers.fields.commercialRegistry'),
+    ]) {
+      const dd = fact(html, label);
+      expect(text(dd), label).toBe('—');
+      expect(dd, label).not.toContain('dir="ltr"');
+    }
   });
 
   it('lists the contact people, each with the phone and e-mail they were given', () => {
@@ -133,6 +159,9 @@ describe('the supplier’s record', () => {
     expect(html).toContain('href="/administration/suppliers/s-7"');
     expect(html).toContain('href="/administration/suppliers/s-3"');
     expect(text(html)).toContain(`النور القديمة (${ar('administration.status.inactive')})`);
+    // Links in a tinted notice are written as the other notices write theirs.
+    const link = /<a\b[^>]*suppliers\/s-7"[^>]*>/u.exec(html)?.[0] ?? '';
+    expect(link).toContain('class="font-medium underline"');
     // The edit is still offered: a shared number holds nothing back.
     expect(html).toContain(`>${ar('administration.suppliers.edit')}<`);
   });
@@ -162,6 +191,8 @@ describe('the documents card (OD-11 A)', () => {
   it('lists each paper with what it is, its file, its size and its day', () => {
     const html = render();
     expect(html).toContain(ar('administration.suppliers.papers.title'));
+    // The caption's limit in the reader's digits, as each row's size is.
+    expect(html).toContain(ar('administration.suppliers.papers.caption', { size: '١٠' }));
     const row = paperRow(html, 'a-1');
     expect(row).toContain('السجل التجاري');
     expect(row).toContain('registry.pdf');
@@ -196,7 +227,13 @@ describe('the documents card (OD-11 A)', () => {
 
   it('reads the record again with backoff while a paper is being scanned, and maps a 422 to that', () => {
     expect(QUERIES).toContain('refetchInterval: (query) =>');
-    expect(QUERIES).toContain('scanRecheckDelay(query.state.data?.attachments');
+    // The doubling counts the reads since a paper was first seen pending (`nextScanWait`).
+    expect(QUERIES).toContain(
+      'nextScanWait(query.state.data?.attachments, reads, scanWaits.get(query))',
+    );
+    expect(QUERIES).toContain(
+      'scanRecheckDelay(query.state.data?.attachments, reads - wait.from + 1)',
+    );
     expect(CARD).toContain('error instanceof ApiError && error.status === 422');
     expect(CARD).toContain('if (scan) onScanPending();');
   });
@@ -243,8 +280,25 @@ describe('the documents card (OD-11 A)', () => {
     expect(full).not.toContain(`>${ar('administration.suppliers.papers.add')}<`);
   });
 
+  it('refuses a file of another type before sending it — the shared picker checks only the size', () => {
+    for (const type of ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']) {
+      expect(paperFileAllowed({ type }), type).toBe(true);
+    }
+    for (const type of ['text/plain', 'application/msword', 'image/gif', '']) {
+      expect(paperFileAllowed({ type }), type).toBe(false);
+    }
+    expect(CARD).toContain('onFiles={pick}');
+    expect(CARD).toContain(
+      "error={wrongType ? t('administration.suppliers.papers.wrongType') : undefined}",
+    );
+    // The size is said once, by the picker itself: the hint names the kinds only.
+    expect(CARD).toContain("hint={t('administration.suppliers.papers.fileHint')}");
+  });
+
   it('files a paper with what it is and its version, and removes one with its version', () => {
-    expect(CARD).toContain('version: supplier.version,');
+    // Each call on its own: the object holds no brace, so neither match can reach the other call.
+    expect(CARD).toMatch(/add\.mutateAsync\(\{[^}]*version: supplier\.version,[^}]*\}\)/u);
+    expect(CARD).toMatch(/remove\.mutateAsync\(\{[^}]*version: supplier\.version,[^}]*\}\)/u);
     expect(CARD).toContain("key: 'label'");
     expect(CARD).toContain("key: 'file'");
     expect(CARD).toContain('error={failure === null ? null : errorMessage(failure, locale)}');

@@ -227,6 +227,27 @@ describe('errorMessage', () => {
     expect(full('en')).toMatch(/\bremove\b/u);
     expect(full('ar')).toContain('عشرين');
     expect(full('ar')).toContain('أزِل');
+    // The card that raises it calls them documents in both languages, and so does its refusal.
+    expect(full('en')).toMatch(/\bdocuments\b/u);
+    expect(full('ar')).toContain('مستند');
+  });
+
+  // P1b.W — a supplier document of another type meets the file service's refusal, whose sentence
+  // names the category's internal key in English («Type text/plain is not allowed for category
+  // administration-supplier-documents»): the reader is told in their own words, without the key.
+  it('words a file type the category does not take, never with the server’s sentence', () => {
+    const server = 'Type text/plain is not allowed for category administration-supplier-documents';
+    for (const locale of ['en', 'ar'] as const) {
+      const said = errorMessage(
+        new ApiError(ErrorCodes.FILE_TYPE_NOT_ALLOWED, server, 422),
+        locale,
+      );
+      expect(said, locale).not.toContain('administration-supplier-documents');
+      expect(said, locale).not.toBe(server);
+    }
+    expect(
+      errorMessage(new ApiError(ErrorCodes.FILE_TYPE_NOT_ALLOWED, server, 422), 'ar'),
+    ).toContain('النوع');
   });
 });
 

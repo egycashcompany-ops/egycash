@@ -20,7 +20,12 @@ import {
   warehouseListKey,
   wholeCatalogKey,
 } from './administration-keys';
-import { CATALOG_SUBTREES, ITEM_SUBTREES, writeCallbacks } from './catalog-queries';
+import {
+  CATALOG_SUBTREES,
+  CATEGORY_SUBTREES,
+  ITEM_SUBTREES,
+  writeCallbacks,
+} from './catalog-queries';
 import { WAREHOUSE_SUBTREES } from './warehouses-queries';
 
 const under = (key: readonly unknown[], prefix: readonly unknown[]): boolean =>
@@ -64,6 +69,11 @@ describe('the module’s query keys', () => {
 
   it('re-read, on each write, exactly the subtrees its row is shown in', () => {
     expect(CATALOG_SUBTREES).toEqual([administrationKeys.catalogs, administrationKeys.items]);
+    expect(CATEGORY_SUBTREES).toEqual([
+      administrationKeys.catalogs,
+      administrationKeys.items,
+      administrationKeys.suppliers,
+    ]);
     expect(ITEM_SUBTREES).toEqual([administrationKeys.items]);
     expect(WAREHOUSE_SUBTREES).toEqual([administrationKeys.warehouses]);
     expect(administrationKeys).toEqual({

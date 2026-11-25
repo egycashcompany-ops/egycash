@@ -280,15 +280,20 @@ its entry here in the same PR.
     photo, up to 10 MB, at most 20), opened in the page — a photo inline, a PDF in a frame — and
     removed from the list. Its virus-scan state is shown: «قيد الفحص» while scanned, the record
     reading itself again until the scanner answers; «محظور» never opens; «الملف غير متاح» for a file
-    gone. Filing and removing take `administrationSupplier.edit`.
+    gone. A file of another type is refused before it is sent. Filing and removing take
+    `administrationSupplier.edit`.
   - **The form** adds or corrects a supplier — no code box (the server gives «SUP-00001»), no VAT
     status until OD-29 gives its values, no bank data — with its contact people as rows (at most
     20), its categories picked from both levels, and Active to retire it on an edit. Save stays
     pressable and names what is missing; an e-mail that is no address is marked before a round trip.
-  - **Two refusals worded for every record that meets them:** `ADMINISTRATION_ATTACHMENT_LIMIT` (a full
-    papers list) gains its words in both languages, and `ADMINISTRATION_REFERENCE_INACTIVE` now says
-    «a unit or category chosen» — a supplier's retired category as well as an item's. A category
-    change refreshes the supplier screens too.
+    A save that meets a newer version of the supplier shows it as it now is, overwriting nothing, so
+    the next Save goes through.
+  - **Refusals worded for every record that meets them:** `ADMINISTRATION_ATTACHMENT_LIMIT` (a full
+    documents list) gains its words in both languages, `ADMINISTRATION_REFERENCE_INACTIVE` now says
+    «a unit or category chosen» — a supplier's retired category as well as an item's — and
+    `FILE_TYPE_NOT_ALLOWED` is said in the reader's words instead of the server's English sentence.
+    A category change refreshes the supplier screens too, on the reader's own screen and through
+    realtime alike.
 
 - **Administrative Affairs («الشئون الإدارية») on screen: the home, the items, the warehouses, and the
   units and categories.** The Phase 1 screens over the three API slices before them, where master data

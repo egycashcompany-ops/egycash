@@ -3263,9 +3263,11 @@ Repository-wide findings outside this module are listed for the owner in
     with its spec, `supplier-fixtures.ts`, and a screen spec for the record besides `suppliers-screen.spec.tsx`.
   - *The phone mask* is the list shape `docs/06-security/security-architecture.md` writes (`298*******4567`): the
     first three digits and the last four, every other digit a star, spaces, dashes and `+` kept; a number of seven
-    digits or fewer keeps only its last half, so no list shows a phone whole. The record shows it whole, and the
-    contact people's phones appear on the record only. The register's columns are the code, the name, the masked
-    phone, the e-mail, the categories and the status, after IT's vendor register less its contact count.
+    digits or fewer keeps only its last half, so no list shows a phone whole. A digit is a digit in any script: a
+    phone is stored as typed, so «٠١٠…» from an Arabic keyboard is masked as «010…» is. The record shows it whole, and
+    the contact people's phones appear on the record only. The register's columns are the code, the name, the masked
+    phone, the e-mail, the categories and the status, after IT's vendor register less its contact count; the code
+    and the masked phone never break across lines, the table scrolling sideways on a phone instead.
   - *The category filter* shows only to a reader the categories' read admits (`authorizeAny` over the item, catalog
     and supplier write keys, §19.3); for a `.view`-only reader, a remembered `category` is not sent either, so the
     rows never narrow by a filter the screen does not show. The form picks the categories with the shared
@@ -3279,14 +3281,25 @@ Repository-wide findings outside this module are listed for the owner in
     nothing: under the no-placeholder rule (§13) it joins the screens with its values.
   - *The papers.* Filing is the module's dialog frame with two required values, the paper's label (1–200) and its
     file through the shared `FileUpload` (the category's PDF and images, 10 MB); at 20 papers the card stops offering
-    the add and says why, and a raced 21st meets `ADMINISTRATION_ATTACHMENT_LIMIT`. Removal is confirmed first and
-    says the file stays in the system's records (the link alone goes). While a paper is `pending` the record reads
-    itself again every 5 s, doubling to a minute, and stops when none is; a 422 on the bytes is read as the scan not
-    yet answered (§11.5, until PC-5) and re-reads the record. Each act carries the version the record was read at.
+    the add and says why, and a raced 21st meets `ADMINISTRATION_ATTACHMENT_LIMIT`. The shared picker checks only a
+    dropped file's size, so the dialog refuses a file of another type itself, before it is sent; the server's
+    `FILE_TYPE_NOT_ALLOWED`, whose sentence names the category's internal key, gains its en and ar `FRIENDLY` words.
+    Removal is confirmed first and says the file stays in the system's records (the link alone goes). While a paper is
+    `pending` the record reads itself again every 5 s, doubling to a minute, counted from the read that first shows
+    that paper pending (a paper filed meanwhile starts the doubling over), and stops when none is; a 422 on the bytes
+    is read as the scan not yet answered (§11.5, until PC-5) and re-reads the record. Each act carries the version
+    the record was read at, and the record is mounted afresh for each `:id`, so a dialog left open across Back or
+    Forward never acts on another supplier.
   - *The home* gives the supplier register its tile and a live count, P1a.W's rule: a key that reads a register gets
     its count.
   - *Realtime.* Only `administration.itemCategory` gains `['administration', 'suppliers']`: no supplier names a unit,
-    so the unit topic does not refetch the supplier screens.
+    so the unit topic does not refetch the supplier screens. The category writes' own re-reads reach `suppliers` too
+    (`CATEGORY_SUBTREES` in P1a.W's `catalog-queries.ts`, the one change P1b.W makes there), so the row and the writes
+    say the same thing (§9.4) and a category's new name reaches the supplier screens with realtime down.
+  - *A stale save overwrites nothing.* A supplier save refused for a moved version (`STALE_DOCUMENT`) reads the
+    supplier afresh and shows it as it now is, the typed change dropped, and says so; the next Save carries the
+    record's version instead of meeting the same refusal until the dialog is closed (Fleet's custody papers rule:
+    "overwrite nothing — show theirs, read afresh"). The paper acts read the live record, so their retry carries it.
   - *Refusals beside the field.* A supplier's retired category (`categoryIds`) is worded beside the categories box,
     in general words; the detail's id is not turned into a name, since the select offers only live categories and
     only a race reaches it. An e-mail that is no address is marked on Save before a round trip (a loose check; the

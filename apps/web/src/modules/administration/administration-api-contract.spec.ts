@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { CATEGORY_READ_KEYS } from './pages/SuppliersPage';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const API = resolve(HERE, '../../../../api/src/modules/administration');
@@ -176,6 +177,17 @@ describe('every endpoint the module’s client calls exists on the API', () => {
     for (const source of [CATALOG_CLIENT, WAREHOUSE_CLIENT, PEOPLE_CLIENT]) {
       expect(source).not.toMatch(/\bdel</u);
     }
+  });
+});
+
+describe('every gate a screen copies from the API is the one the API holds', () => {
+  it('the register’s category filter: exactly the keys the categories’ read admits', () => {
+    const route = read('catalog/item-categories/item-category.routes.ts');
+    const any =
+      /router\.get\(\s*'\/',\s*authenticate,\s*authorizeAny\(([^)]*)\)/u.exec(route)?.[1] ?? '';
+    const keys = [...any.matchAll(/'([^']+)'/gu)].map((m) => m[1] as string);
+    expect(keys.length).toBeGreaterThan(0);
+    expect(new Set(CATEGORY_READ_KEYS)).toEqual(new Set(keys));
   });
 });
 

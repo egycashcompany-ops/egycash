@@ -173,6 +173,9 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     ADMINISTRATION_ATTACHMENT_LIMIT:
       'This list already holds 20 documents, as many as it takes — remove one before adding another.',
     RATE_LIMITED: 'Too many requests — please slow down.',
+    // The server's own sentence names the file category's internal key («…for category
+    // administration-supplier-documents»), so no reader is ever shown it.
+    FILE_TYPE_NOT_ALLOWED: 'This kind of file is not accepted here.',
     FILE_TOO_LARGE: 'That file is too large.',
     PAYLOAD_TOO_LARGE: 'What was sent is too large to save at once.',
     FILE_BLOCKED: 'The virus scanner blocked this file.',
@@ -288,6 +291,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     ADMINISTRATION_ATTACHMENT_LIMIT:
       'تضم هذه القائمة عشرين مستندًا، وهو أقصى ما تتسع له — أزِل أحدها قبل إضافة غيره.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
+    FILE_TYPE_NOT_ALLOWED: 'هذا النوع من الملفات غير مقبول هنا.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',
     PAYLOAD_TOO_LARGE: 'حجم البيانات المُرسَلة أكبر من أن تُحفظ دفعة واحدة.',
     FILE_BLOCKED: 'حظر فاحص الفيروسات هذا الملف.',

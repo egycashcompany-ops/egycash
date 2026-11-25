@@ -97,6 +97,8 @@ describe('the supplier register', () => {
     const cells = rowOf(html, 'SUP-00001');
     expect(cells[0]).toContain('dir="ltr"');
     expect(cells[0]).toContain('font-mono');
+    // The code never breaks at its hyphen on a phone: the table scrolls sideways instead.
+    expect(cells[0]).toContain('whitespace-nowrap');
     expect(text(cells[1] ?? '')).toBe('شركة النور للأدوات المكتبية');
     expect(cells[3]).toContain('dir="ltr"');
     expect(text(cells[3] ?? '')).toBe('sales@alnour.example');
@@ -115,6 +117,7 @@ describe('the supplier register', () => {
     const phone = rowOf(html, 'SUP-00001')[2] ?? '';
     expect(text(phone)).toBe('010****5678');
     expect(phone).toContain('dir="ltr"');
+    expect(phone).toContain('whitespace-nowrap');
     expect(html).not.toContain('01012345678');
     // Nor in a contact's: the register shows no contact's phone at all.
     expect(html).not.toContain('01198765432');
@@ -170,8 +173,13 @@ describe('the supplier register', () => {
     // `.view` alone opens no category read (§19.3), so the reader gets no filter it cannot fill.
     const viewer = render();
     expect(viewer).not.toContain(ar('administration.suppliers.allCategories'));
-    // An item reader, or a supplier writer, gets both levels — a parent reads its children too.
-    for (const extra of ['administrationItem.view', 'administrationSupplier.edit']) {
+    // Each key the categories' read admits gets both levels — a parent reads its children too.
+    for (const extra of [
+      'administrationItem.view',
+      'administrationCatalog.manage',
+      'administrationSupplier.create',
+      'administrationSupplier.edit',
+    ]) {
       const html = render(['administrationSupplier.view', extra]);
       expect(html, extra).toContain(ar('administration.suppliers.allCategories'));
       expect(html, extra).toContain('>الأحبار — حبر ليزر<');
@@ -312,8 +320,36 @@ describe('the supplier form', () => {
       expect(FORM, field).toContain(`error={refusedWord('${field}')}`);
     }
     // The refusal itself, in the frame's alert box, in the reader's words.
-    expect(FORM).toContain('error={failure === null ? null : errorMessage(failure, locale)}');
+    // (After a refusal for a moved version the form is read afresh, and that is said instead.)
+    expect(FORM).toMatch(
+      /error=\{\s*failure === null\s*\? null\s*: reread\s*\? t\('administration\.suppliers\.errors\.stale'\)\s*: errorMessage\(failure, locale\)\s*\}/u,
+    );
     // An e-mail that is no address is marked on Save, before a round trip.
     expect(FORM).toContain('if (hasEmailProblem(form)) return;');
+  });
+
+  it('after a refusal for a moved version, shows the supplier as it now is and saves with its version', () => {
+    // Overwrite nothing (Fleet's custody papers rule): read afresh, seed the form from it, say so.
+    expect(FORM).toContain(
+      'if (base !== null && error instanceof ApiError && error.code === ErrorCodes.STALE_DOCUMENT) {',
+    );
+    expect(FORM).toContain(
+      'queryKey: supplierKey(id), queryFn: () => getSupplier(id), staleTime: 0',
+    );
+    expect(FORM).toContain('setBase(fresh);');
+    expect(FORM).toContain('setForm(supplierFormFrom(fresh));');
+    expect(FORM).toContain("? t('administration.suppliers.errors.stale')");
+    // Every save is measured against that base and carries its version.
+    expect(FORM).toContain('body: { ...supplierChanges(form, base), version: base.version },');
+    expect(FORM).not.toContain('version: supplier.version');
+  });
+
+  it('names every category picked in its box, the list as wide as the box', () => {
+    expect(FORM).toContain('summaryMax={Math.max(form.categoryIds.length, 1)}');
+    expect(FORM).toContain('panelWidth="w-full"');
+  });
+
+  it('numbers a contact person in the reader’s digits in the missing-fields list', () => {
+    expect(FORM).toContain('n: formatNumber(i + 1, locale),');
   });
 });

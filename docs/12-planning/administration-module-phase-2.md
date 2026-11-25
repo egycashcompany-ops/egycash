@@ -1406,6 +1406,7 @@ This table gives every count P2's pull requests pin, from its value on `de38fd71
 | `scripts/check-page-registry.mjs` totals | 121 → 122 pages and 441 → 445 keys (P2.2), then 445 → 446 keys (P2.5) (`administration-module-decisions-and-phases.md:3397`) | P2.2, P2.5 |
 | `apps/web/src/platform/approvals/ApprovalChainPanel.spec.tsx` | the caption in each locale; the level's name without one; no `permissionKey · level` line; the override line as it is (`:172-182`) | P2.0 |
 | `apps/web/src/modules/system-admin/approvals/pages/ApprovalWorkflowsPage.spec.tsx` (C) | request types, departments and branches named in each locale, in the list and in the editor's three selects | P2.0 |
+| `apps/web/src/modules/system-admin/system-admin-i18n.spec.ts` | + a case pinning `approvalDecision` in `AUDIT_ACTIONS` and its en and ar labels to the catalog's `approvalDecided` words (`EVENT_ACTION_NAMES`), since its census only checks that each verb has a label | P2.0 |
 | `targets.spec.ts:76-91`; `workforce-reset.spec.ts:223-246, :362-363` | +1 `keep`; the untouched list 14 → 15 entries; the recruitment count 13 → 14, and its comment's "The other thirteen" (`:362`) "The other fourteen" | P2.2 |
 | `employee-name-copies.spec.ts:36, :43-60` | 16 → 17 copies, and the comment's "Sixteen copies across eight collections" "Seventeen copies across nine collections" | P2.2 |
 | `packages/contracts/src/events/catalog.spec.ts:147, :181` | each event in `ALL_SCHEMAS` and the "invents nothing" set | P2.3–P2.5 |
@@ -1417,7 +1418,7 @@ This table gives every count P2's pull requests pin, from its value on `de38fd71
 | `apps/web/src/modules/administration/pages/home-screen.spec.tsx` | the PR tile, and the two counts with their params and links | P2.W2 |
 | `apps/web/src/shared/lib/errors.spec.ts`; `apps/web/src/shared/lib/remembered-filters-coverage.spec.ts`; `apps/web/src/modules/administration/administration-{i18n,api-contract,realtime}.spec.ts` | the new codes in `FRIENDLY`, en and ar; the new pages' classes (§9.4); the new keys, calls and topic | P2.W1, P2.W2 |
 
-These stay: `apps/web/src/modules/system-admin/system-admin-i18n.spec.ts:115-126` and
+These stay: the audit filter's two label cases, one per locale, in
 `apps/web/src/modules/system-admin/audit/audit-screens.spec.tsx:362-368`, which read `AUDIT_ACTIONS` and pass once
 P2.0's `i18n.ts` labels the verb (`systemAdmin.users.audit.approvalDecision`, en and ar); `realtime-registry.spec.ts`
 and `realtime.spec.ts`, whose registries gain one row each; the event publishers spec, which discovers the new
@@ -1441,6 +1442,7 @@ listed, then modified.
 | `packages/contracts/src/events/catalog.ts` + `catalog.spec.ts` | M | P2.3–P2.5 | the module's source, name and word |
 | `packages/contracts/src/platform/notification-target.ts` + spec | M | P2.W1 | `ENTITY_ROUTES` |
 | `packages/contracts/src/platform/audit.ts` | M | P2.0 | `approvalDecision` |
+| `packages/contracts/src/platform/approvals.ts` | M | P2.0 | the caption's comment: an uncaptioned rung is named by its level, never by its key (§3 note 1) |
 
 **API module**
 
@@ -1502,6 +1504,7 @@ listed, then modified.
 |---|---|---|---|
 | `apps/web/src/platform/approvals/ApprovalChainPanel.tsx` + spec | M | P2.0 | locale captions |
 | `apps/web/src/modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx` + `ApprovalWorkflowsPage.spec.tsx` (C) | M | P2.0 | locale names |
+| `apps/web/src/modules/system-admin/system-admin-i18n.spec.ts` | M | P2.0 | the verb's pin (§12.3) |
 | `apps/web/src/platform/localization/i18n.ts` | M | P2.0; P2.W0–P2.W2 | the verb's labels; `administration.purchaseRequests.*`, `administration.nav.purchaseRequests`, `ReferencePicker`'s texts |
 | `routes.tsx` | M | P2.W1, P2.W2 | §9.2, and its header table |
 | `api/administration-keys.ts` | M | P2.W1 | `purchaseRequests` and its keys |

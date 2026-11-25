@@ -114,8 +114,8 @@ describe('what the reader is shown about the chain', () => {
     expect(markup).not.toContain('لا يوجد أحد على هذه الخطوة');
   });
 
-  // The caption is written in both languages on the chain screen, and the panel is read in either.
-  // Showing the Arabic one to every reader put Arabic on the English screen.
+  // A rung's caption carries both languages (`ApprovalStepSchema.label`), and the panel is read in
+  // either. Showing the Arabic one to every reader put Arabic on the English screen.
   it('prefers the chain’s own caption over the level, in the reader’s language', () => {
     const captioned = trail({
       steps: [

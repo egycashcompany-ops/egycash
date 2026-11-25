@@ -3461,21 +3461,24 @@ Repository-wide findings outside this module are listed for the owner in
   to choose what the re-detail leaves open:
   - *The English label* is "Approval decided": the catalog's `approvalDecided` words
     (`packages/contracts/src/events/catalog.ts:872`), capitalized as every English label on the audit screen is, and as
-    §10.2's cost note writes it. The Arabic is the catalog's «البت في اعتماد» as it stands.
+    §10.3's cost note writes it (`administration-module-design-integration.md:566`). The Arabic is the catalog's
+    «البت في اعتماد» as it stands.
   - *A caption with no words in the reader's language* shows the level's name, never the other language's caption, so
     the panel never mixes its languages. An empty caption is the empty string, as the panel read it before; no trimming
     is added.
   - *The census pin.* The census specs read `AUDIT_ACTIONS` and check only that each verb in it has a label, so nothing
-    failed if the verb were dropped. `system-admin-i18n.spec.ts`, which the re-detail's §12.3 keeps unchanged, gains one
-    case that pins the verb, and its two labels to the catalog's words.
+    failed if the verb were dropped. `system-admin-i18n.spec.ts`, which the re-detail's §12.3 had kept unchanged, gains
+    one case that pins the verb, and its two labels to the catalog's words. The re-detail's §12.3 and §13 now list it, as
+    its §13 asks of a pull request that deviates.
   - *The chain editor is pinned at its source.* Its dialog opens only on a click, which the web suite's static renders
     cannot make (`apps/web/vitest.config.ts`), so `ApprovalWorkflowsPage.spec.tsx` renders the list in both locales and
     reads the editor's three selects, and the page as a whole, from the source, as `roster-dialog-dismissal.spec.tsx`
     reads its dialog.
-  - *Left as it is:* the approvals contract's caption comment still says an uncaptioned rung reads «من عنده <key> على
-    <level>» (`packages/contracts/src/platform/approvals.ts:44-47`), which the panel no longer shows from P2.0 on. The
-    file is outside P2.0's list (re-detail §13), so the comment is a finding for the engine's owner, not a P2.0
-    change.
+  - *The caption's contract comment is corrected.* It said an uncaptioned rung reads «من عنده <key> على <level>»
+    (`packages/contracts/src/platform/approvals.ts:44-47`), which the panel no longer shows from P2.0 on; it now says
+    the approval panel names the rung's level, never its key. Only the comment changes, so no behavior does. The file
+    was not on the re-detail's §13 list, and its §14 does not bar it (§14 bars the engine's folder, rbac and the
+    permission contracts); §13 now lists it.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

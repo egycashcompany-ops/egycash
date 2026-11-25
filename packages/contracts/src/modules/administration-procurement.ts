@@ -124,7 +124,7 @@ export interface AdministrationSupplierContactDto {
   email: string | null;
 }
 
-/** An item category the supplier names, by its name at read time (a retired one still names itself). */
+/** An item category the supplier names, by its name at read time (a retired one names itself). */
 export interface AdministrationSupplierCategoryDto {
   id: string;
   name: LocalizedString | null;
@@ -186,13 +186,13 @@ export interface AdministrationSupplierDetailDto extends AdministrationSupplierD
   /**
    * Other suppliers that hold this tax number, retired ones included — a WARNING, never a block
    * (OD-11 (i)): a supplier's branches may be separate records. At most
-   * `ADMINISTRATION_SUPPLIER_TAX_NUMBER_MATCHES`, newest first; empty without a tax number.
+   * `ADMINISTRATION_SUPPLIER_MAX_TAX_NUMBER_MATCHES`, newest first; empty without a tax number.
    */
   taxNumberMatches: AdministrationSupplierMatchDto[];
 }
 
 /** How many other holders of a tax number the warning names — enough to recognize, not a report. */
-export const ADMINISTRATION_SUPPLIER_TAX_NUMBER_MATCHES = 5;
+export const ADMINISTRATION_SUPPLIER_MAX_TAX_NUMBER_MATCHES = 5;
 
 // ── Writes ──────────────────────────────────────────────────────────────────
 

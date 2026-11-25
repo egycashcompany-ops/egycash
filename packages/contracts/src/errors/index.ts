@@ -730,8 +730,9 @@ export const ErrorCodes = {
   ADMINISTRATION_DEACTIVATION_BLOCKED: 'ADMINISTRATION_DEACTIVATION_BLOCKED',
   /**
    * 422 — a typed attachment list already holds `ADMINISTRATION_MAX_LIST_ATTACHMENTS` (20) entries
-   * (a supplier's papers, design §11.4); the file was not linked and its upload was withdrawn. One
-   * detail, `field` 'attachments', `code` 'limit'. Remove a paper first.
+   * (a supplier's papers, design §11.4); the file was not linked and nothing of it is kept (an
+   * upload that raced past the check is withdrawn). One detail, `field` 'attachments', `code`
+   * 'limit'. Remove a paper first.
    */
   ADMINISTRATION_ATTACHMENT_LIMIT: 'ADMINISTRATION_ATTACHMENT_LIMIT',
 

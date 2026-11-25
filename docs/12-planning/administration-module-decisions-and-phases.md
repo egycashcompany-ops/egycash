@@ -3224,13 +3224,18 @@ Repository-wide findings outside this module are listed for the owner in
     removal `?version=` (ATM's `AtmVersionQuerySchema`), and both move the supplier's `__v`, so an edit decided before
     a paper was linked is stale. The bound of 20 rides in the link write's filter and, since §5.15 names no code for
     it, answers a new module-wide one, 422 `ADMINISTRATION_ATTACHMENT_LIMIT` (`ADMINISTRATION_MAX_LIST_ATTACHMENTS`);
-    a link that misses withdraws its upload. The endpoint takes an upload only, never a JSON link of an existing
+    a full list is refused before a byte is stored. The collection is made ready before the upload, so a failed
+    index build stores nothing, and a link write that misses or throws withdraws its upload (§11.4's "failed link
+    write", as IT's signed copy does on any throw). The endpoint takes an upload only, never a JSON link of an existing
     file, so §19.7's "a link to a file of another category or entity" cannot be made: the strict schema refuses a
     `fileId`, and a paper is never reached through another supplier (404).
   - *OD-76 on a record with no draft.* No supplier paper is required (OD-76 A names none), so no gate reads the scan
     states, which the detail shows per paper (`scanStatus`, null for a file gone or archived, «الملف غير متاح»; the
-    file id stays on the server). "After submission (i)" has nothing to apply to, so the list is open at every
-    status, retired included; whether a retired supplier's papers freeze is for the owner.
+    file id stays on the server). A writer holding `.edit` without `.view` (a custom role: every §6.5 bundle with a
+    write key holds `.view`) gets each write's detail with every `scanStatus` null and Files not asked, since the
+    authorizer would refuse each lookup and audit it as `permissionDenied` in their name. "After submission (i)" has
+    nothing to apply to, so the list is open at every status, retired included; whether a retired supplier's papers
+    freeze is for the owner.
   - *The authorizer's write branch* takes `.edit` at organization scope, the paper endpoints' own OD-04 A rule, so a
     branch holder of `.edit` with a `file.*` key cannot write the papers through `/platform/files` (§11.3's table
     names only the key). The category resolver ensures the category once more when the cached one is no longer found.

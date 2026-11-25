@@ -320,7 +320,8 @@ its entry here in the same PR.
     address, up to 20 contact people, the item categories it supplies, its tax and commercial
     registration numbers, payment terms as free text, notes, and active or retired (OD-12 A). No
     bank, IBAN or account data and no national id. The VAT status is kept empty until OD-29 gives
-    its values. A contact's phone is redacted from the logs at every depth.
+    its values. A contact's phone is redacted from the logs at the root and up to two levels deep
+    (`CONTACT_PHONE_PATHS`).
   - **A generated code, «SUP-00001»** (OD-05 A), on the same counter machinery as the items' under
     its own key, `supplier:global`: two creates at once get consecutive codes, a create refused
     inside its transaction gives its number back, and the seed and every create raise the counter
@@ -341,9 +342,10 @@ its entry here in the same PR.
     `/suppliers/:id/attachments/:attachmentId` sends it inline, `private, no-store`, refused while a
     virus scan is pending (`FILE_SCAN_PENDING`) or after it blocked the file (`FILE_BLOCKED`); a
     `DELETE` of the same path removes the link and keeps the file. A supplier holds at most 20
-    papers (422 `ADMINISTRATION_ATTACHMENT_LIMIT`), its record shows each paper's scan state, and a
-    paper is never reached through another supplier. The platform's own file paths ask the
-    supplier's keys, writes only at organization scope.
+    papers (422 `ADMINISTRATION_ATTACHMENT_LIMIT`), an upload its link does not reach is withdrawn,
+    its record shows each paper's scan state, and a paper is never reached through another
+    supplier. The platform's own file paths ask the supplier's keys, writes only at organization
+    scope.
   - **Every ready-made role reads suppliers** (OD-78 A): the storekeeper, the procurement officer
     and manager, the Administrative Affairs manager and the auditor gain `.view`; «مسؤول البيانات
     الأساسية» gains all three.

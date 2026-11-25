@@ -9,6 +9,7 @@ import {
   ADMINISTRATION_MAX_LIST_ATTACHMENTS,
   ErrorCodes,
   type AdministrationSupplierContact,
+  type AdministrationSupplierReferenceField,
 } from '@ecms/contracts';
 import { Types } from 'mongoose';
 import { AppError } from '../../../../shared/errors';
@@ -51,12 +52,13 @@ export const newlyNamed = (next: readonly string[], before: readonly string[]): 
  */
 export const categoryReferenceRefusal = (retiredIds: readonly string[]): AppError | null => {
   if (retiredIds.length === 0) return null;
+  const field: AdministrationSupplierReferenceField = 'categoryIds';
   return new AppError(
     ErrorCodes.ADMINISTRATION_REFERENCE_INACTIVE,
     422,
     'a retired item category cannot be given to a supplier',
     {
-      details: retiredIds.map((id) => ({ field: 'categoryIds', code: 'inactive', message: id })),
+      details: retiredIds.map((id) => ({ field, code: 'inactive', message: id })),
     },
   );
 };

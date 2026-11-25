@@ -14,7 +14,7 @@
 // be active; one the supplier already names is kept. A repeated tax number is never refused: the
 // detail names the other holders as a warning (OD-11 (i)).
 import {
-  ADMINISTRATION_SUPPLIER_TAX_NUMBER_MATCHES,
+  ADMINISTRATION_SUPPLIER_MAX_TAX_NUMBER_MATCHES,
   foldName,
   formatAdministrationMasterCode,
   type AdministrationDuplicateField,
@@ -101,12 +101,12 @@ class AdministrationSupplierService {
     });
   }
 
-  /** One supplier by id, retired or not: a form holding a stored `supplierId` still shows its name. */
+  /** One supplier by id, retired or not: a form holding a stored `supplierId` shows its name. */
   async getById(id: string): Promise<AdministrationSupplierDoc> {
     return repository.getById(id);
   }
 
-  /** The labels of the rows at hand, read by id and unfiltered: retired ones still name themselves. */
+  /** The labels of the rows at hand, read by id and unfiltered: retired ones name themselves. */
   async labels(docs: readonly AdministrationSupplierDoc[]): Promise<SupplierLabels> {
     const ids = [...new Set(docs.flatMap((doc) => doc.categoryIds.map(String)))];
     const categories = await administrationItemCategoryService.labels(ids);
@@ -126,7 +126,7 @@ class AdministrationSupplierService {
         : repository.taxNumberHolders(
             doc.taxNumber,
             String(doc._id),
-            ADMINISTRATION_SUPPLIER_TAX_NUMBER_MATCHES,
+            ADMINISTRATION_SUPPLIER_MAX_TAX_NUMBER_MATCHES,
           ),
     ]);
     return { labels, scanStates, taxNumberMatches };

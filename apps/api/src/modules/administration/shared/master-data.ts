@@ -1,5 +1,5 @@
-// What every master register of the module does the same way — units, categories and items now;
-// warehouses and suppliers as they ship — written once so the five cannot drift apart: the answer
+// What every master register of the module does the same way — units, categories, items and
+// suppliers now; warehouses as they ship — written once so the five cannot drift apart: the answer
 // to a duplicate (design §5.15), a stale edit's (§19.3), the audit verb of each act (§10.2) and the
 // text search (§19.4).
 // Each feature keeps what is its own: its checks, its literal entity ref, its snapshot, its signal.

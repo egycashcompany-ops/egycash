@@ -81,8 +81,8 @@ export const auditSupplierEdited = async (
   if (needsExplicitSignal(act)) signalSupplier(id);
 };
 
-/** The `attachment` pseudo-field's value (§11.4): the purpose the paper was filed under, and its label. */
-const paperOf = (label: string): string =>
+/** The `attachment` pseudo-field's value (§11.4): the purpose the paper was filed under, its label. */
+const attachmentFieldValue = (label: string): string =>
   `${ADMINISTRATION_SUPPLIER_DOCUMENTS_FILE_CATEGORY}:${label}`;
 
 /** A paper linked: one `update` row, `attachment` from nothing to the paper. */
@@ -90,7 +90,7 @@ export const auditSupplierPaperAdded = async (id: string, label: string): Promis
   await auditService.record({
     entityRef: supplierEntityRef(id),
     action: MASTER_DATA_AUDIT_ACTION.edit,
-    changes: [{ field: 'attachment', old: null, new: paperOf(label) }],
+    changes: [{ field: 'attachment', old: null, new: attachmentFieldValue(label) }],
   });
 };
 
@@ -99,6 +99,6 @@ export const auditSupplierPaperRemoved = async (id: string, label: string): Prom
   await auditService.record({
     entityRef: supplierEntityRef(id),
     action: MASTER_DATA_AUDIT_ACTION.edit,
-    changes: [{ field: 'attachment', old: paperOf(label), new: null }],
+    changes: [{ field: 'attachment', old: attachmentFieldValue(label), new: null }],
   });
 };

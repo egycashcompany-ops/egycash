@@ -1,29 +1,51 @@
-// The papers' authorizer and the scan states the detail reads (design §11.3, §11.5; ADR-023): the
-// platform's own file paths ask the supplier's keys — `.view` at any scope reads, since suppliers
-// carry no scope field, and `.edit` writes only when held company-wide (OD-04 A), the rule the
-// paper endpoints apply; a supplier that does not exist denies. Each paper's scan state comes from
-// one listing of the supplier's files, a link the listing missed is read by id, and a file gone or
-// archived reads null. Files and the repository mocked: no database.
+// The papers' authorizer, a paper's link and the scan states the detail reads (design §11.3–§11.5;
+// ADR-023): the platform's own file paths ask the supplier's keys — `.view` at any scope reads,
+// since suppliers carry no scope field, and `.edit` writes only when held company-wide (OD-04 A),
+// the rule the paper endpoints apply; a supplier that does not exist denies. A link waits for its
+// collection before a byte is stored, and a link write that misses or throws withdraws its upload.
+// Each paper's scan state comes from one listing of the supplier's files, a link the listing missed
+// is read by id, a file gone or archived reads null, and a writer who may not read the papers is
+// not sent to Files at all. Files and the repository mocked: no database.
 import { type DataScope } from '@ecms/contracts';
 import { Types } from 'mongoose';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NotFoundError } from '../../../../shared/errors';
+import { NotFoundError, StaleDocumentError } from '../../../../shared/errors';
 import { type AuthContext } from '../../../../shared/types';
 import { type AdministrationSupplierDoc } from './supplier.model';
 
 const mocks = vi.hoisted(() => ({
   findById: vi.fn(),
+  supplierById: vi.fn(),
+  ready: vi.fn(),
+  push: vi.fn(),
   list: vi.fn(),
   getById: vi.fn(),
+  upload: vi.fn(),
+  softDelete: vi.fn(),
   ensure: vi.fn(),
+  audit: vi.fn(),
 }));
 
 vi.mock('./supplier.repository', () => ({
-  administrationSupplierRepository: { findById: mocks.findById },
+  administrationSupplierRepository: {
+    findById: mocks.findById,
+    getById: mocks.supplierById,
+    ensureCollection: mocks.ready,
+    pushAttachment: mocks.push,
+  },
 }));
 vi.mock('../../../../platform/files', () => ({
-  fileService: { list: mocks.list, getById: mocks.getById },
+  fileService: {
+    list: mocks.list,
+    getById: mocks.getById,
+    upload: mocks.upload,
+    softDelete: mocks.softDelete,
+  },
   fileCategoryService: { ensure: mocks.ensure },
+}));
+vi.mock('./supplier-audit', () => ({
+  auditSupplierPaperAdded: mocks.audit,
+  auditSupplierPaperRemoved: mocks.audit,
 }));
 
 const { administrationSupplierPapers, supplierFileAuthorizer } = await import('./supplier-files');
@@ -83,6 +105,65 @@ describe('the papers’ authorizer (§11.3)', () => {
 
   it('does not opt into the delete intent: a removal is asked as a write', () => {
     expect(supplierFileAuthorizer.understandsDelete).toBeUndefined();
+  });
+});
+
+describe('linking a paper (§11.4)', () => {
+  const FILE = '64a0000000000000000000e1';
+  const writer = ctx({ 'administrationSupplier.edit': 'organization' });
+  const binary = {
+    originalName: 'tax-card.pdf',
+    mime: 'application/pdf',
+    size: 4,
+    buffer: Buffer.from('%PDF'),
+  };
+  // The row carries only what `add` reads: its id, its version and its papers.
+  const row = { _id: new Types.ObjectId(SUPPLIER), __v: 3, attachments: [] };
+  const link = () =>
+    administrationSupplierPapers.add(writer, SUPPLIER, { label: 'سجل', version: 3 }, binary);
+
+  beforeEach(() => {
+    mocks.supplierById.mockResolvedValue(row);
+    mocks.ready.mockResolvedValue(undefined);
+    mocks.upload.mockResolvedValue({
+      _id: new Types.ObjectId(FILE),
+      mime: 'application/pdf',
+      size: 4,
+    });
+    mocks.softDelete.mockResolvedValue(undefined);
+    mocks.audit.mockResolvedValue(undefined);
+  });
+
+  it('a failed index build refuses the link before a byte is stored', async () => {
+    const failedBuild = new Error('index build failed');
+    mocks.ready.mockRejectedValue(failedBuild);
+    await expect(link()).rejects.toBe(failedBuild);
+    expect(mocks.upload, 'nothing stored without the index').not.toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it('a link write that throws withdraws its upload and answers the write’s own error', async () => {
+    const stepdown = new Error('not primary');
+    mocks.push.mockRejectedValue(stepdown);
+    mocks.softDelete.mockRejectedValue(new Error('the withdrawal failed too'));
+    await expect(link()).rejects.toBe(stepdown);
+    expect(mocks.softDelete).toHaveBeenCalledWith(writer, FILE);
+    expect(mocks.audit, 'nothing linked, nothing audited').not.toHaveBeenCalled();
+  });
+
+  it('a link write that misses withdraws its upload and says why: the row moved on', async () => {
+    mocks.push.mockResolvedValue(null);
+    mocks.findById.mockResolvedValue({ ...row, __v: 4 });
+    await expect(link()).rejects.toBeInstanceOf(StaleDocumentError);
+    expect(mocks.softDelete).toHaveBeenCalledWith(writer, FILE);
+    expect(mocks.audit).not.toHaveBeenCalled();
+  });
+
+  it('a link that lands is audited and its upload kept', async () => {
+    mocks.push.mockResolvedValue({ ...row, __v: 4 });
+    expect(await link()).toMatchObject({ __v: 4 });
+    expect(mocks.softDelete).not.toHaveBeenCalled();
+    expect(mocks.audit).toHaveBeenCalledWith(SUPPLIER, 'سجل');
   });
 });
 
@@ -152,5 +233,14 @@ describe('the scan states the detail reads (§11.5)', () => {
       pageSize: 100,
     });
     expect(asked, 'the listing asks the authorizer as the caller').toBe(viewer);
+  });
+
+  it('a writer without `.view` reads every state null, and Files is not asked in their name', async () => {
+    const writer = ctx({ 'administrationSupplier.edit': 'organization' });
+    const states = await administrationSupplierPapers.scanStates(writer, supplier);
+    expect([...states.values()]).toEqual([null, null, null, null, null]);
+    expect([...states.keys()]).toEqual([LISTED, PENDING, REPLACED, ARCHIVED, GONE]);
+    expect(mocks.list, 'no listing the authorizer would empty').not.toHaveBeenCalled();
+    expect(mocks.getById, 'no read refused — and audited — per paper').not.toHaveBeenCalled();
   });
 });

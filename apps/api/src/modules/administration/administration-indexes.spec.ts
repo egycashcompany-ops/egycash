@@ -319,9 +319,14 @@ describe('a repository’s first write waits for its collection (RK-03)', () => 
     expect(read('people/people.service.ts')).not.toMatch(/repository|\.create\(|updateById/);
   });
 
-  it.each(writingServices())('%s awaits it inside every method that writes', (service) => {
+  // Those services, and the papers' links, which write the supplier row outside its service.
+  const writers = [...writingServices(), ...files('-files.ts')];
+
+  it.each(writers)('%s awaits it inside every method that writes', (service) => {
     const source = read(service);
-    const writes = [...source.matchAll(/repository\.(create|updateById)\(/g)];
+    const writes = [
+      ...source.matchAll(/repository\.(create|updateById|pushAttachment|pullAttachment)\(/g),
+    ];
     expect(writes.length, 'the scan found writes at all').toBeGreaterThan(0);
     for (const write of writes) {
       const before = source.slice(0, write.index);
@@ -331,6 +336,14 @@ describe('a repository’s first write waits for its collection (RK-03)', () => 
         `${service}: ${write[0]}`,
       ).toBe(true);
     }
+  });
+
+  it('a supplier paper waits for its collection before a byte is stored', () => {
+    const source = read(join('procurement', 'suppliers', 'supplier-files.ts'));
+    const add = source.slice(source.indexOf('\n  async add('), source.indexOf('\n  async remove('));
+    const guard = add.indexOf('await repository.ensureCollection();');
+    expect(guard, 'the guard is in `add`').toBeGreaterThanOrEqual(0);
+    expect(add.indexOf('this.upload('), 'the upload comes after it').toBeGreaterThan(guard);
   });
 
   const ctx = {

@@ -1,6 +1,6 @@
 // A supplier's papers (design §11; OD-11 A) — «مستندات المورد»: the commercial registry, the tax
-// card, whatever the company files to know who it buys from. Files owns the bytes; the supplier owns
-// the links, a typed list of at most 20 (list B, §11.4). Three pieces live here:
+// card, whatever the company files to know who it buys from. Files owns the bytes; the supplier
+// owns the links, a typed list of at most 20 (list B, §11.4). Three pieces live here:
 //
 //   * the CATEGORY — PDF and images, 10 MB (OD-76 (i)), kept for ever (OD-77 A) — so intake refuses
 //     what the documents card cannot preview before a byte is stored. Ensured by the seed, its id
@@ -132,8 +132,10 @@ export interface SupplierPaperContent {
 class AdministrationSupplierPapers {
   /**
    * Link one paper: the bytes go to Files under the supplier, then ONE write links them, holding
-   * the version the person saw and the list's bound. A write that misses withdraws the upload — no
-   * file is left behind that no link names — and says why it missed.
+   * the version the person saw and the list's bound. The collection is made ready before a byte is
+   * stored, so a failed index build refuses the request with nothing to undo. A link write that
+   * misses, or throws, withdraws the upload — no file is left behind that no link names (§11.4) —
+   * and a miss says why.
    */
   async add(
     ctx: AuthContext,
@@ -147,6 +149,7 @@ class AdministrationSupplierPapers {
     if (isPaperListFull(supplier.attachments.length)) throw paperLimitRefusal();
     const supplierId = String(supplier._id);
 
+    await repository.ensureCollection();
     const file = await this.upload(ctx, supplierId, input.label, binary);
     const paper: AdministrationSupplierAttachmentSub = {
       attachmentId: new Types.ObjectId(),
@@ -159,8 +162,16 @@ class AdministrationSupplierPapers {
       addedByUserId: new Types.ObjectId(ctx.userId),
       addedAt: new Date(),
     };
-    await repository.ensureCollection();
-    const linked = await repository.pushAttachment(supplierId, input.version, paper, ctx.userId);
+    let linked: AdministrationSupplierDoc | null;
+    try {
+      linked = await repository.pushAttachment(supplierId, input.version, paper, ctx.userId);
+    } catch (error) {
+      // The write failed outright (a stepdown, a timeout): withdrawn, as IT's signed copy is. Had
+      // the link landed after all, the paper reads «الملف غير متاح» and is filed again (§11.4) —
+      // better than a file no link names. The write's error is the answer, not the withdrawal's.
+      await fileService.softDelete(ctx, String(file._id)).catch(() => undefined);
+      throw error;
+    }
     if (linked === null) {
       await fileService.softDelete(ctx, String(file._id)).catch(() => undefined);
       throw await this.whyAddMissed(supplierId, input.version);
@@ -217,6 +228,10 @@ class AdministrationSupplierPapers {
    * Each paper's scan state, by file id, never stored (§11.5): one listing of the supplier's files
    * in the category, and a read by id for a link the page does not cover (a version replaced
    * through the platform, an archived file). Null for a file that is gone or archived.
+   *
+   * A caller the authorizer will not let read the papers — a writer holding `.edit` without
+   * `.view` — is not sent to Files at all: every state reads null, as the papers are to them, and
+   * no lookup is refused in their name (each refusal is a `permissionDenied` row in the trail).
    */
   async scanStates(
     ctx: AuthContext,
@@ -224,6 +239,10 @@ class AdministrationSupplierPapers {
   ): Promise<ReadonlyMap<string, ScanStatus | null>> {
     const states = new Map<string, ScanStatus | null>();
     if (supplier.attachments.length === 0) return states;
+    if (!hasPermission(ctx, READ_KEY)) {
+      for (const paper of supplier.attachments) states.set(String(paper.fileId), null);
+      return states;
+    }
     const page = await fileService.list(
       {
         moduleId: 'administration',

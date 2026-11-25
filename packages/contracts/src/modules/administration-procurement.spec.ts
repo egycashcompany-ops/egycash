@@ -11,7 +11,7 @@ import {
   ADMINISTRATION_SUPPLIER_MAX_CATEGORIES,
   ADMINISTRATION_SUPPLIER_MAX_CONTACTS,
   ADMINISTRATION_SUPPLIER_REFERENCE_FIELDS,
-  ADMINISTRATION_SUPPLIER_TAX_NUMBER_MATCHES,
+  ADMINISTRATION_SUPPLIER_MAX_TAX_NUMBER_MATCHES,
   ADMINISTRATION_SUPPLIER_VAT_STATUSES,
   AddAdministrationSupplierAttachmentSchema,
   AdministrationSupplierAttachmentVersionQuerySchema,
@@ -246,6 +246,6 @@ describe('the papers (OD-11 A, OD-76 A, OD-77 A)', () => {
   });
 
   it('a tax-number warning names a handful of other holders, not a report', () => {
-    expect(ADMINISTRATION_SUPPLIER_TAX_NUMBER_MATCHES).toBe(5);
+    expect(ADMINISTRATION_SUPPLIER_MAX_TAX_NUMBER_MATCHES).toBe(5);
   });
 });

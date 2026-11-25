@@ -172,6 +172,14 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'This warehouse cannot be retired while it holds stock or a document not yet ended names it.',
     ADMINISTRATION_ATTACHMENT_LIMIT:
       'This list already holds 20 documents, as many as it takes — remove one before adding another.',
+    // The documents' refusals (P2.2): a sentence per code, which the request screens (P2.W1) refine
+    // per detail.
+    ADMINISTRATION_INVALID_TRANSITION:
+      'The document’s status no longer allows this — reload it to see where it stands now.',
+    ADMINISTRATION_TRANSITION_BLOCKED:
+      'This cannot be done as the document stands — a rule of the document refuses it.',
+    ADMINISTRATION_ITEM_UNIT_LOCKED:
+      'This item’s unit cannot change: a purchase request line already names it in that unit.',
     // Compliance and Risks — the files page's refusals (compliance-files-design.md §8).
     COMPLIANCE_FOLDER_NAME_TAKEN: 'Another folder already has this name — choose a different one.',
     COMPLIANCE_VIEWER_INVALID:
@@ -296,6 +304,12 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'لا يمكن إيقاف هذا المخزن ما دام فيه رصيد أو يشير إليه مستند لم يُغلق بعد.',
     ADMINISTRATION_ATTACHMENT_LIMIT:
       'تضم هذه القائمة عشرين مستندًا، وهو أقصى ما تتسع له — أزِل أحدها قبل إضافة غيره.',
+    ADMINISTRATION_INVALID_TRANSITION:
+      'لم تعد حالة المستند تسمح بهذا الإجراء — أعد تحميله لترى حالته الآن.',
+    ADMINISTRATION_TRANSITION_BLOCKED:
+      'لا يمكن تنفيذ هذا الإجراء على المستند في وضعه الحالي، لأن إحدى قواعده تمنعه.',
+    ADMINISTRATION_ITEM_UNIT_LOCKED:
+      'لا يمكن تغيير وحدة هذا الصنف، لأن بندًا في طلب شراء يذكره بهذه الوحدة.',
     COMPLIANCE_FOLDER_NAME_TAKEN: 'يوجد مجلد آخر بهذا الاسم — اختر اسمًا غيره.',
     COMPLIANCE_VIEWER_INVALID:
       'لا يُشارَك المجلد إلا مع موظفين لهم حساب نشط، وبين من اخترتهم من ليس له حساب نشط.',

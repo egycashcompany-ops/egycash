@@ -3,7 +3,8 @@
 // out — 0, a negative, a fraction, an overflow — makes or reads a code (the
 // `consumable-number.spec.ts` shape). The yearly document numbers (§2.8; OD-57 A, OD-58 A),
 // «PR-2026-000001», on the same rules, with a four-digit year. And the people the module names
-// (§7.8): a search with no status, since only the employed are offered, and an id parameter.
+// (§7.8): a search with no status, since only the employed are offered, and an id parameter. And
+// what every document shares (P2.2): its lines' cap and the locks its lines put on an item.
 import { describe, expect, it } from 'vitest';
 import {
   ADMINISTRATION_DOCUMENT_DIGITS,
@@ -11,7 +12,9 @@ import {
   ADMINISTRATION_DOCUMENT_PREFIXES,
   ADMINISTRATION_MASTER_CODE_DIGITS,
   ADMINISTRATION_MASTER_CODE_PREFIXES,
+  ADMINISTRATION_ITEM_UNIT_LOCKS,
   ADMINISTRATION_MASTER_KINDS,
+  ADMINISTRATION_MAX_DOCUMENT_LINES,
   ADMINISTRATION_MAX_LIST_ATTACHMENTS,
   ADMINISTRATION_PERSON_STATUSES,
   AdministrationPersonIdParamSchema,
@@ -230,5 +233,17 @@ describe('the people the module names (§7.8)', () => {
 describe('the typed attachment list (§11.4)', () => {
   it('holds at most 20 entries, the one bound every list B keeps', () => {
     expect(ADMINISTRATION_MAX_LIST_ATTACHMENTS).toBe(20);
+  });
+});
+
+describe('what every document shares (P2.2)', () => {
+  it('caps a document at 100 lines, Fleet’s supply contract’s bound (design §2.1, Lines)', () => {
+    expect(ADMINISTRATION_MAX_DOCUMENT_LINES).toBe(100);
+  });
+
+  it('names the one lock a document line puts on an item’s unit so far: a purchase request’s', () => {
+    // The detail codes of ADMINISTRATION_ITEM_UNIT_LOCKED, read in this order by the item edit;
+    // the receipt, issue and count lines join with their phases.
+    expect([...ADMINISTRATION_ITEM_UNIT_LOCKS]).toEqual(['purchaseRequestLine']);
   });
 });

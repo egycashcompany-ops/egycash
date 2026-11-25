@@ -670,6 +670,9 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // A supplier moves the supplier screens (P1b.W) — its register, its record and the home's count —
   // its papers included (§9.4); `rfqs` joins with P3 and `purchaseOrders` with P4.
   'administration.supplier': [['administration', 'suppliers']],
+  // A purchase request moves the request screens — its register and its record (P2.W1). The
+  // prefix is the module's `purchaseRequests` subtree, which its query keys join with the screens.
+  'administration.purchaseRequest': [['administration', 'purchaseRequests']],
   // Compliance and Risks (compliance-files-design.md §9): a folder's or a file's write re-reads the
   // whole shelf subtree — the shelf, the folder, its files and their seen lines.
   'compliance.folder': [['compliance', 'folders']],

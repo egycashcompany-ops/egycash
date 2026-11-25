@@ -5,9 +5,10 @@
 // second one. P1a.1 shipped the catalog's first two lists — units of measure and item categories —
 // on one key and one page; P1a.2 added the items, their three keys and their page; P1a.3 added the
 // warehouses, their three keys and their page, and the people the keeper is picked from; P1b.1
-// adds the suppliers, their three keys, their page and their papers' authorizer (§19.1). A key
-// ships with its operation and a page with its keys: a key whose page is missing fails boot, and
-// so does a page with no key.
+// added the suppliers, their three keys, their page and their papers' authorizer (§19.1); P2.2
+// adds the purchase requests, their four keys and their page (P2 plan §9.1). A key ships with its
+// operation and a page with its keys: a key whose page is missing fails boot, and so does a page
+// with no key.
 import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { seedAdministration } from './administration.seed';
@@ -15,6 +16,7 @@ import { buildAdministrationCatalogItemsRouter } from './catalog/catalog-items';
 import { buildAdministrationItemCategoriesRouter } from './catalog/item-categories';
 import { buildAdministrationItemsRouter } from './catalog/items';
 import { buildAdministrationPeopleRouter } from './people/index';
+import { buildAdministrationPurchaseRequestsRouter } from './procurement/purchase-requests/index';
 import {
   buildAdministrationSuppliersRouter,
   supplierFileAuthorizer,
@@ -77,11 +79,26 @@ const supplierPermissions = declarePermissions(
   'administration.suppliers',
 );
 
+// Purchase requests (P2 plan §9.1; design §6.2): `view` reads the register and a record within its
+// scope; `create` raises a draft and submits it (P2.3), on the holder's own department copy (OD-16
+// A); `edit` edits a draft, the requester's own; `approve` decides a rung, and opens the record of
+// what it decides, at each rung's own scope (OD-69 (i)) — declared now so the chains of P2.3 can
+// name it (ADR-041 decision 9). `cancel` ships with its act (P2.5).
+const purchaseRequestPermissions = declarePermissions(
+  'administration',
+  'administrationPurchaseRequest',
+  { en: 'Purchase requests', ar: 'طلبات الشراء' },
+  ['view', 'create', 'edit', 'approve'],
+  [],
+  'administration.purchase-requests',
+);
+
 export const administrationPermissions: PermissionDef[] = [
   ...warehousePermissions,
   ...itemPermissions,
   ...catalogPermissions,
   ...supplierPermissions,
+  ...purchaseRequestPermissions,
 ];
 
 export const administrationPages: PageDef[] = [
@@ -113,6 +130,13 @@ export const administrationPages: PageDef[] = [
     route: '/administration/suppliers',
     sortOrder: 40,
   },
+  {
+    id: 'administration.purchase-requests',
+    moduleId: 'administration',
+    name: { en: 'Purchase requests', ar: 'طلبات الشراء' },
+    route: '/administration/purchase-requests',
+    sortOrder: 50,
+  },
 ];
 
 export const administrationModule: ModuleManifest = {
@@ -133,14 +157,20 @@ export const administrationModule: ModuleManifest = {
     // The keeper picker (§7.8): read-only, over the platform directory.
     { prefix: '/administration/people', router: buildAdministrationPeopleRouter() },
     { prefix: '/administration/suppliers', router: buildAdministrationSuppliersRouter() },
+    {
+      prefix: '/administration/purchase-requests',
+      router: buildAdministrationPurchaseRequestsRouter(),
+    },
   ],
-  // Bookkeeping included (§3.3): the counter the item and supplier codes are taken from.
+  // Bookkeeping included (§3.3): the counter the item and supplier codes, and the requests' yearly
+  // numbers, are taken from.
   collections: [
     'administration_catalog_items',
     'administration_item_categories',
     'administration_items',
     'administration_warehouses',
     'administration_suppliers',
+    'administration_purchase_requests',
     'administration_counters',
   ],
   eventSubscriptions: [],

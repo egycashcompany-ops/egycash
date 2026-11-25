@@ -3549,6 +3549,74 @@ Repository-wide findings outside this module are listed for the owner in
     the parsed body. The form gains no kind field before P2.W2.
   - *A pin off by one.* Re-detail §4.1 cited `cairoDayStart` at `cairo-date.ts:147-151`; it is `:148-152`, now
     corrected there. No other file P2.1 cites had changed since `de38fd71`.
+- **P2.2 built** (2026-11-25). Drafts ship as the P2 re-detail's §3 row says
+  ([administration-module-phase-2.md](administration-module-phase-2.md)): the four keys and the page, the model with
+  every field of its §6.1 and its indexes, `shared/lifecycle.ts` and the whole table of its §7, the register, the
+  record, the create and a draft's edit by its requester alone, the item reads opened to `.create`, the unit lock and
+  its first registrant, the topic, the census rows and the bundles of its §9.3. Where the code had to choose what the
+  re-detail leaves open:
+  - *The record carries what P2.2 can fill.* The model holds every field; the detail DTO leaves out `approvalTrail`,
+    which P2.4's row brings ("the trail on the detail"), and `attachments`, which P2.6 brings with their scan states,
+    so no reader is handed a field that is always empty. Every other field of the re-detail's §6.5 is there, and
+    nothing beyond it: the detail's `requester` is design §2.1's `PersonSnap` alone, with no HR employee id (review
+    fix).
+  - *`availableActions` reads the pairs from P2.2.* The re-detail computes it "from the whole table, the pairs and the
+    trail's flags" (§4.4), so the two pure predicates it reads, pair A1's set and pair B1's current round, ship with it;
+    P2.4 adds their refusals. With no trail before P2.4, a decide or return is listed `notYourStep` to an approve
+    holder.
+    The reasons are asked in the order the act's own route refuses: a key that does not cover the Unit (`outOfReach`)
+    before ownership (`notRequester`), so the draft's edit and submission also say `outOfReach`, which §4.4's
+    `enabled` column leaves out; the pairs before the rung. A decide is named under `.approve` unless the reader stands
+    on no rung and holds the override. `outOfReach` also answers a key that covers the Unit but whose selector the top
+    bar narrows away from the request's branch (ADR-028), since `keyCoversUnit` ignores the top bar and the act's
+    route, which loads the request through that selector, would answer 404 (review fix). The cancel keeps the cover
+    alone: the re-detail's §7.4 loads it under `.view`.
+  - *Who raises one.* The refusals run in §4.4's order: no employee, no branch or department, left, placement
+    mismatch. A department id the organization no longer holds counts as no department, and so does HR's directory
+    spelling of a missing id, the text `'null'`.
+  - *A line id sent twice is refused by the contract* (400), so two lines never share an id that P4's claims cite. A
+    rule the re-detail does not state for lines, two lines naming one item, is not added.
+  - *Every draft save rewrites every snapshot*, a kept line's too, its unit read again from the item (OD-07); a kept
+    line whose item no longer resolves keeps its copy and still takes the edit's quantity and notes. The requester's
+    snapshot is read again from the directory by the stored employee id, and kept as stored when the directory cannot
+    say. An item's snapshot names its unit `null` when the unit is no longer on file, as the item's own DTO does.
+  - *The requester's snapshot names the filing copy* (review fix). The re-detail's §6.5 row pairs the request's
+    `departmentId` with the snapshot's `departmentName`, and its §4.2 keeps a request filed on its copy for good, so
+    the create and every draft save copy the person's name, code and job title beside the copy the request is filed
+    on, not the department HR names today. They differ only after HR moves the requester while a branch- or
+    organization-scope `.edit` still reaches the old copy (the re-detail's §4.2 assumes a department grant). Before
+    the fix such a save named the new department beside the old copy, and one after HR dropped the department crashed
+    on the directory's `'null'` spelling; `resolvePerson` now reads that spelling as no department for every caller.
+  - *The trail compares ids, never names*: the requester as user and employee ids, each line as `{ itemCode, qty,
+    notes }` (design §10.1, "lines summarized"). A save that changed none of those writes no row and sends no signal,
+    the warehouse's rule.
+  - *The unit lock's checker* counts every request but a cancelled one that never took a number, and registers as the
+    feature's index loads, with the manifest.
+  - *The vocabularies are in the contracts* (house style): the acts and their reasons, and the create's and edit's
+    detail codes, `ADMINISTRATION_PURCHASE_REQUEST_DRAFT_PROBLEMS`. `TransitionDef` gains `substitute` (the override
+    beside `.approve`) and `ownWithdrawal` (rows 6 and 7), and the creation row is `from: null`; `decisionTransition`
+    picks row 3 or 4, `reasonRequired` holds a numbered draft's reason, and `cancelProblem`'s detail is
+    `lines.<i>.orderedQty` · `ordered`, which P2 never reaches.
+  - *Five files outside the re-detail's P2.2 rows (its §13).* The web's `FRIENDLY` table words the three new codes
+    now, not in P2.W1, because `errors.spec.ts` requires every `ADMINISTRATION_` code worded in both languages as it
+    ships; `ADMINISTRATION_EMPLOYEE_EXITED`'s words still name a warehouse's keeper, for P2.W1 to say of a requester
+    too. `catalog/items/item-rules.ts` holds the unit lock's refusal, `unitLockRefusal`, beside the item's other
+    refusals; `people/people.service.spec.ts` covers `self` and `resolvePerson`; `shared/master-data.ts` exports its
+    `escapeRegExp`, so the register's number search and the master registers escape one way. And the module's
+    indexes spec imports the manifest before the model list: the model spreads the engine's pin fields, and the
+    approvals barrel as a process's first platform import meets a load-order cycle in the organization layer
+    (`organization/shared/org-unit.ts` ↔ `audit.service.ts` ↔ `directory-profile.service.ts`), a platform finding
+    not changed here and listed for the platform's owners in
+    `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`. Its read-only check of the people service
+    now allows the organization's repositories read by id.
+  - *The files outside the module carry only their census rows and counts.* The workforce reset's classification and
+    its two specs, and HR's name-copy census and its spec, do not pass today's Prettier at `cad4c409`; P2.2 leaves
+    their other lines as they were, so HR's owner reviews the rows alone (re-detail §6.4), and the lines it adds are
+    Prettier's.
+  - *Pins that moved since `de38fd71`*, none changing a rule, read after P2.2: the page registry stood at 122 pages
+    and 443 keys on `cad4c409` and reaches 123 and 447; the item edit's unit lock check is `item.service.ts:237`, its
+    unit write `:251-252` and its `labels` `:142-149`; `ALL_REALTIME_KEY_PREFIXES` is `invalidation-registry.ts:747`;
+    the warehouses' census row `targets.ts:248-255`. The re-detail's §1.2 D and §12.3 carry the same re-pins.
 - **P2.W0 built** (2026-11-25). Phase 2's first web pull request ships as the P2 re-detail's §3 row says
   ([administration-module-phase-2.md](administration-module-phase-2.md) §9.4, §12.3, §13), from the P2 UI checklist's
   P2.W0 part: `components/ReferencePicker.tsx`, the module's one reference picker, rebuilt in the module after IT's

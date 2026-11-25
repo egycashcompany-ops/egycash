@@ -295,16 +295,17 @@ new rule names the alternative it rejects.
     set; a further pair is the owner's to decide, each alone (`administration-module-decisions-and-phases.md:917-930`).
 
 **D. Moved and corrected line pins** that P2's pull requests touch (no behavior changed; the counts they pin are in
-§12.3):
+§12.3). Each pull request re-pins the lines it moves; these are read after P2.2, with the `de38fd71` pin beside each:
 
-- web `FRIENDLY` is `apps/web/src/shared/lib/errors.ts:8-307` (design §5.15 cites `:8-266`);
-- the module's realtime rows are `apps/api/src/platform/realtime/realtime-registry.ts:245-259`, and `platform.approval`
-  is classified at `:331-335`;
-- the module's web rows are `apps/web/src/platform/realtime/invalidation-registry.ts:652-672`, and
-  `ALL_REALTIME_KEY_PREFIXES` is at `:740`;
-- the workforce reset's warehouses row is `apps/api/src/workforce-reset/targets.ts:245-255`; the integration
-  `untouched` list is `apps/api/tests/integration/workforce-reset.spec.ts:223-246`, and its recruitment count is at
-  `:363` (design §15.3.3 still pins 12);
+- web `FRIENDLY` is `apps/web/src/shared/lib/errors.ts:8-332` (`:8-307` on `de38fd71`; design §5.15 cites `:8-266`);
+- the module's realtime rows are `apps/api/src/platform/realtime/realtime-registry.ts:245-264` (`:245-259`), and
+  `platform.approval` is classified at `:343-347` (`:331-335`);
+- the module's web rows are `apps/web/src/platform/realtime/invalidation-registry.ts:652-675` (`:652-672`), and
+  `ALL_REALTIME_KEY_PREFIXES` is at `:747` (`:740`);
+- the workforce reset's warehouses row is `apps/api/src/workforce-reset/targets.ts:248-255` (`:245-255`), and the
+  purchase request's follows it at `:256-263`; the integration `untouched` list is
+  `apps/api/tests/integration/workforce-reset.spec.ts:223-247` (`:223-246`), and its recruitment count is at `:364-365`
+  (`:363`; design §15.3.3 still pins 12);
 - the navigation pins are `apps/api/src/seed-navigation.spec.ts:84` and
   `apps/api/tests/integration/auth-seed-login.spec.ts:40`, with the breakdown at `:299-308` and the groups at `:325`;
 - corrected, not moved: the audit service's `recordMany` is `apps/api/src/platform/audit/audit.service.ts:251-273`.
@@ -1543,12 +1544,12 @@ This table gives every count P2's pull requests pin, from its value on `de38fd71
 
 | Pin | Change | Slice |
 |---|---|---|
-| `scripts/check-page-registry.mjs` totals | 121 → 122 pages and 441 → 445 keys (P2.2), then 445 → 446 keys (P2.5) (`administration-module-decisions-and-phases.md:3400`) | P2.2, P2.5 |
+| `scripts/check-page-registry.mjs` totals | 122 → 123 pages and 443 → 447 keys (P2.2), then 447 → 448 keys (P2.5), read on `cad4c409` (the `de38fd71` figures were 121 and 441; `administration-module-decisions-and-phases.md:3400`) | P2.2, P2.5 |
 | `apps/web/src/platform/approvals/ApprovalChainPanel.spec.tsx` | the caption in each locale; the level's name without one; no `permissionKey · level` line; the override line as it is (`:172-182`) | P2.0 |
 | `apps/web/src/modules/system-admin/approvals/pages/ApprovalWorkflowsPage.spec.tsx` (C) | request types, departments and branches named in each locale, in the list and in the editor's three selects | P2.0 |
 | `apps/web/src/modules/system-admin/system-admin-i18n.spec.ts` | + a case pinning `approvalDecision` in `AUDIT_ACTIONS` and its en and ar labels to the catalog's `approvalDecided` words (`EVENT_ACTION_NAMES`), since its census only checks that each verb has a label | P2.0 |
-| `targets.spec.ts:76-91`; `workforce-reset.spec.ts:223-246, :362-363` | +1 `keep`; the untouched list 14 → 15 entries; the recruitment count 13 → 14, and its comment's "The other thirteen" (`:362`) "The other fourteen" | P2.2 |
-| `employee-name-copies.spec.ts:36, :43-60` | 16 → 17 copies, and the comment's "Sixteen copies across eight collections" "Seventeen copies across nine collections" | P2.2 |
+| `targets.spec.ts:76-91`; `workforce-reset.spec.ts:223-246, :362-363` (after P2.2 `:223-247, :364-365`) | +1 `keep`; the untouched list 14 → 15 entries; the recruitment count 13 → 14, and its comment's "The other thirteen" (`:362`) "The other fourteen" | P2.2 |
+| `employee-name-copies.spec.ts:36, :43-60` (after P2.2 `:36, :43-61`) | 16 → 17 copies, and the comment's "Sixteen copies across eight collections" "Seventeen copies across nine collections" | P2.2 |
 | `packages/contracts/src/events/catalog.spec.ts:147, :181` | each event in `ALL_SCHEMAS` and the "invents nothing" set | P2.3–P2.5 |
 | `packages/contracts/src/platform/notification-target.spec.ts` | the PR route's case: a PR notice's target is its record | P2.W1 |
 | `administration-catalog.spec.ts` (integration) | `stockTracked`; the widened read gate | P2.1, P2.2 |

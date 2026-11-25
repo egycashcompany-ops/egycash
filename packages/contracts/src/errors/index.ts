@@ -525,6 +525,24 @@ export const ErrorCodes = {
    * Retried after the move; a run left 30 minutes (its process died) no longer holds them.
    */
   ATM_BRANCH_MOVE_RUNNING: 'ATM_BRANCH_MOVE_RUNNING',
+  // ── ATM settings: the legacy history import (atm-settings.ts) ──────────────────────────────────
+  /**
+   * 409 — another legacy history run is running (one at a time, company-wide). It is resumed from
+   * its own row on the card; a run with no step for 30 minutes is stale and a new start takes over.
+   */
+  ATM_LEGACY_IMPORT_RUNNING: 'ATM_LEGACY_IMPORT_RUNNING',
+  /**
+   * 409 — the run is not in the state the request needs: a step on a run that is no longer
+   * running. The details name the state.
+   */
+  ATM_LEGACY_IMPORT_STATE: 'ATM_LEGACY_IMPORT_STATE',
+  /** 409 — another step of the same run is in progress (its lease, two minutes); retried after it. */
+  ATM_LEGACY_IMPORT_STEP_BUSY: 'ATM_LEGACY_IMPORT_STEP_BUSY',
+  /**
+   * 422 — the API's database user may not read the legacy database. Said apart from an empty source,
+   * which previews as zero rows.
+   */
+  ATM_LEGACY_IMPORT_UNREADABLE: 'ATM_LEGACY_IMPORT_UNREADABLE',
   /**
    * 422 — the machines file cannot be compared: no sheet with a Bank / ID / ATM Name / Area header
    * row, or over a cap. `details` name the missing column or the cap, never a cell's content.
@@ -700,10 +718,12 @@ export const ErrorCodes = {
    */
   ADMINISTRATION_STOCK_LEVELS_ORDER: 'ADMINISTRATION_STOCK_LEVELS_ORDER',
   /**
-   * 422 — an item names a retired unit or category, or a supplier a retired item category, on a
-   * create or by changing it; nothing was written. A row that already names one keeps it. One
-   * detail per retired reference, `code` 'inactive': an item's `field` is 'unitId' or
-   * 'categoryId'; a supplier's is 'categoryIds', its `message` the retired category's id.
+   * 422 — an item names a retired unit or category, a supplier a retired item category, or a
+   * purchase request's new line a retired item, on a create or by changing it; nothing was
+   * written. A row that already names one keeps it. One detail per retired reference, `code`
+   * 'inactive': an item's `field` is 'unitId' or 'categoryId'; a supplier's is 'categoryIds', its
+   * `message` the retired category's id; a request's is 'lines.<i>.itemId', `<i>` the line's index
+   * in the body.
    */
   ADMINISTRATION_REFERENCE_INACTIVE: 'ADMINISTRATION_REFERENCE_INACTIVE',
   /**
@@ -715,9 +735,10 @@ export const ErrorCodes = {
   ADMINISTRATION_SUBCATEGORY_REQUIRED: 'ADMINISTRATION_SUBCATEGORY_REQUIRED',
   /**
    * 422 — a warehouse is given a keeper whom HR answers as having left (IT's rule: a positive
-   * `exited` only; an id the directory cannot read passes); nothing was written. A warehouse whose
-   * keeper left later keeps them until the keeper is changed. One detail, `field`
-   * 'responsibleEmployeeId', `code` 'exited'.
+   * `exited` only; an id the directory cannot read passes), or a purchase request is raised by an
+   * employee HR answers as having left; nothing was written. A warehouse whose keeper left later
+   * keeps them until the keeper is changed. One detail, `code` 'exited': `field`
+   * 'responsibleEmployeeId' on a warehouse, 'requester' on a purchase request.
    */
   ADMINISTRATION_EMPLOYEE_EXITED: 'ADMINISTRATION_EMPLOYEE_EXITED',
   /**
@@ -735,6 +756,30 @@ export const ErrorCodes = {
    * 'limit'. Remove a paper first.
    */
   ADMINISTRATION_ATTACHMENT_LIMIT: 'ADMINISTRATION_ATTACHMENT_LIMIT',
+
+  // ── Administrative Affairs: documents (docs/12-planning/administration-module-design-flows.md §5.15;
+  // administration-module-phase-2.md §4.4). Each ships with the slice that first raises it.
+  /**
+   * 422 — the act is not defined from the document's current status: a draft's edit of a request
+   * that left draft, say. Nothing was written, and a retry with a fresh version cannot help. One
+   * detail, `field` 'status', `code` the document's current status.
+   */
+  ADMINISTRATION_INVALID_TRANSITION: 'ADMINISTRATION_INVALID_TRANSITION',
+  /**
+   * 422 — the act is defined from this status, but a rule refuses it; nothing was written. One
+   * detail per failed rule, `field` and `code` naming it. On a purchase request's create:
+   * 'requester' with 'noEmployee' (the login names no employee), 'unplaced' (no branch or no
+   * department) or 'placementMismatch' (the employee's branch is not their department copy's). On
+   * a draft's edit: 'lines.<i>.lineId' with 'unknownLine'. Later acts add theirs as they ship.
+   */
+  ADMINISTRATION_TRANSITION_BLOCKED: 'ADMINISTRATION_TRANSITION_BLOCKED',
+  /**
+   * 422 — an item's edit changes its base unit while a document line names the item in it (design
+   * §2.3.4); nothing was written. A hint read before the write; from P5 a posting is the binding
+   * guard. One detail per lock, `field` 'unitId', `code` one of `ADMINISTRATION_ITEM_UNIT_LOCKS`:
+   * 'purchaseRequestLine'.
+   */
+  ADMINISTRATION_ITEM_UNIT_LOCKED: 'ADMINISTRATION_ITEM_UNIT_LOCKED',
 
   // ── Compliance and Risks: the files page (docs/12-planning/compliance-files-design.md §8)
   /**

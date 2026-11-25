@@ -6,7 +6,9 @@
 // P1a.3: the warehouses' three keys and page, their route and the people's, their collection,
 // their topic, and the warehouse keys in the six bundles §6.5 gives them; P1b.1: the suppliers'
 // three keys and page, their route and collection, their topic, their papers' authorizer, and the
-// supplier keys each bundle gains.
+// supplier keys each bundle gains; P2.2: the purchase requests' four keys and page, their route and
+// collection, their topic, the department requester's bundle and the request keys four others gain
+// (P2 plan §9), and the item reads opened to the request's create key.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +26,7 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const read = (relative: string): string => readFileSync(join(HERE, relative), 'utf8');
 
-describe('administration module manifest (Administrative Affairs, P1b.1)', () => {
+describe('administration module manifest (Administrative Affairs, P2.2)', () => {
   it('passes kernel manifest validation', () => {
     expect(() => {
       validateManifest(administrationModule);
@@ -43,6 +45,10 @@ describe('administration module manifest (Administrative Affairs, P1b.1)', () =>
       'administrationItem.create',
       'administrationItem.edit',
       'administrationItem.view',
+      'administrationPurchaseRequest.approve',
+      'administrationPurchaseRequest.create',
+      'administrationPurchaseRequest.edit',
+      'administrationPurchaseRequest.view',
       'administrationSupplier.create',
       'administrationSupplier.edit',
       'administrationSupplier.view',
@@ -50,20 +56,22 @@ describe('administration module manifest (Administrative Affairs, P1b.1)', () =>
       'administrationWarehouse.edit',
       'administrationWarehouse.view',
     ]);
-    // §6.3's order: the warehouses first (10), then the items (20), the catalogs (30) and the
-    // suppliers (40).
+    // §6.3's order: the warehouses first (10), then the items (20), the catalogs (30), the
+    // suppliers (40) and the purchase requests (50).
     expect(administrationPages.map((p) => p.id)).toEqual([
       'administration.warehouses',
       'administration.items',
       'administration.catalogs',
       'administration.suppliers',
+      'administration.purchase-requests',
     ]);
-    expect(administrationPages.map((p) => p.sortOrder)).toEqual([10, 20, 30, 40]);
+    expect(administrationPages.map((p) => p.sortOrder)).toEqual([10, 20, 30, 40, 50]);
     expect(administrationModule.routes.map((r) => r.prefix).sort()).toEqual([
       '/administration/catalog-items',
       '/administration/item-categories',
       '/administration/items',
       '/administration/people',
+      '/administration/purchase-requests',
       '/administration/suppliers',
       '/administration/warehouses',
     ]);
@@ -72,6 +80,7 @@ describe('administration module manifest (Administrative Affairs, P1b.1)', () =>
       'administration_counters',
       'administration_item_categories',
       'administration_items',
+      'administration_purchase_requests',
       'administration_suppliers',
       'administration_warehouses',
     ]);
@@ -107,6 +116,39 @@ describe('administration module manifest (Administrative Affairs, P1b.1)', () =>
       name: { en: 'Suppliers', ar: 'الموردون' },
       route: '/administration/suppliers',
       sortOrder: 40,
+    });
+  });
+
+  it('names the purchase-request keys and page as P2 plan §9.1 does, after the suppliers', () => {
+    expect(administrationPages.find((p) => p.id === 'administration.purchase-requests')).toEqual({
+      id: 'administration.purchase-requests',
+      moduleId: 'administration',
+      name: { en: 'Purchase requests', ar: 'طلبات الشراء' },
+      route: '/administration/purchase-requests',
+      sortOrder: 50,
+    });
+    const names = Object.fromEntries(
+      administrationPermissions
+        .filter((p) => p.resource === 'administrationPurchaseRequest')
+        .map((p) => [p.key, p.name]),
+    );
+    expect(names).toEqual({
+      'administrationPurchaseRequest.view': {
+        en: 'View Purchase requests',
+        ar: 'عرض طلبات الشراء',
+      },
+      'administrationPurchaseRequest.create': {
+        en: 'Create Purchase requests',
+        ar: 'إنشاء طلبات الشراء',
+      },
+      'administrationPurchaseRequest.edit': {
+        en: 'Edit Purchase requests',
+        ar: 'تعديل طلبات الشراء',
+      },
+      'administrationPurchaseRequest.approve': {
+        en: 'Approve Purchase requests',
+        ar: 'اعتماد طلبات الشراء',
+      },
     });
   });
 
@@ -156,6 +198,7 @@ describe('the ready-made roles (OD-78 A, D-20)', () => {
   it('seeds every bundle that holds a key so far, in §6.5’s order, and nothing empty', () => {
     expect(ADMINISTRATION_ROLE_BUNDLES.map((b) => b.key)).toEqual([
       'administration-storekeeper',
+      'administration-department-requester',
       'administration-procurement-officer',
       'administration-procurement-manager',
       'administration-affairs-manager',
@@ -182,6 +225,7 @@ describe('the ready-made roles (OD-78 A, D-20)', () => {
       'administrationItem.view',
       'administrationWarehouse.view',
       'administrationSupplier.view',
+      'administrationPurchaseRequest.view',
     ]);
     expect(bundle('administration-master-data')?.permissionKeys).toEqual([
       'administrationWarehouse.view',
@@ -194,6 +238,35 @@ describe('the ready-made roles (OD-78 A, D-20)', () => {
       'administrationSupplier.view',
       'administrationSupplier.create',
       'administrationSupplier.edit',
+    ]);
+  });
+
+  it('gives a department’s focal point the request’s three draft keys, and nothing else (OD-16 A, P2.2)', () => {
+    expect(bundle('administration-department-requester')?.permissionKeys).toEqual([
+      'administrationPurchaseRequest.view',
+      'administrationPurchaseRequest.create',
+      'administrationPurchaseRequest.edit',
+    ]);
+  });
+
+  it('raises a request in no other bundle, and approves one in the Administrative Affairs manager’s alone (§9.3)', () => {
+    const holders = (key: string) =>
+      ADMINISTRATION_ROLE_BUNDLES.filter((b) => b.permissionKeys.includes(key)).map((b) => b.key);
+    expect(holders('administrationPurchaseRequest.create')).toEqual([
+      'administration-department-requester',
+    ]);
+    expect(holders('administrationPurchaseRequest.edit')).toEqual([
+      'administration-department-requester',
+    ]);
+    expect(holders('administrationPurchaseRequest.approve')).toEqual([
+      'administration-affairs-manager',
+    ]);
+    expect(holders('administrationPurchaseRequest.view')).toEqual([
+      'administration-department-requester',
+      'administration-procurement-officer',
+      'administration-procurement-manager',
+      'administration-affairs-manager',
+      'administration-auditor',
     ]);
   });
 
@@ -232,9 +305,23 @@ describe('the ready-made roles (OD-78 A, D-20)', () => {
     );
   });
 
+  it('the Administrative Affairs manager holds every approve key that has shipped (§6.5)', () => {
+    const approveKeys = administrationPermissions
+      .filter((p) => p.key.endsWith('.approve'))
+      .map((p) => p.key);
+    expect(approveKeys.length, 'an approve key has shipped').toBeGreaterThan(0);
+    expect(bundle('administration-affairs-manager')?.permissionKeys).toEqual(
+      expect.arrayContaining(approveKeys),
+    );
+  });
+
   it('titles each bundle in both languages, with §6.5’s candidate titles (OD-67 A)', () => {
     expect(Object.fromEntries(ADMINISTRATION_ROLE_BUNDLES.map((b) => [b.key, b.name]))).toEqual({
       'administration-storekeeper': { en: 'Storekeeper', ar: 'أمين المخزن' },
+      'administration-department-requester': {
+        en: 'Department requester',
+        ar: 'منسق طلبات الإدارة',
+      },
       'administration-procurement-officer': { en: 'Procurement officer', ar: 'موظف المشتريات' },
       'administration-procurement-manager': { en: 'Procurement manager', ar: 'مدير المشتريات' },
       'administration-affairs-manager': {
@@ -279,6 +366,12 @@ describe('the realtime topics (§19.6)', () => {
     }
   });
 
+  it('classifies purchase requests on their view key — a branch record, signalled with its branch (P2.2)', () => {
+    expect(REALTIME_TOPICS['administration.purchaseRequest']).toEqual({
+      permission: 'administrationPurchaseRequest.view',
+    });
+  });
+
   it('names no other topic of this module yet', () => {
     expect(
       Object.keys(REALTIME_TOPICS)
@@ -288,6 +381,7 @@ describe('the realtime topics (§19.6)', () => {
       'administration.catalogItem',
       'administration.item',
       'administration.itemCategory',
+      'administration.purchaseRequest',
       'administration.supplier',
       'administration.warehouse',
     ]);
@@ -317,6 +411,59 @@ describe('the catalog reads (§19.3)', () => {
     expect(writes.length).toBe(2);
     for (const write of writes)
       expect(write).toContain("authorize('administrationCatalog.manage')");
+  });
+});
+
+describe('the item reads open to whoever picks a request’s items (P2.2; design §13.6 D)', () => {
+  const source = read('catalog/items/item.routes.ts');
+
+  it('reads the register and one item under the item key or the request’s create key', () => {
+    expect(source).toMatch(
+      /const ITEM_READ_KEYS = \['administrationItem\.view', 'administrationPurchaseRequest\.create'\] as const;/,
+    );
+    const reads = [...source.matchAll(/router\.get\(\s*'([^']+)',([\s\S]*?)\n {2}\);/g)];
+    expect(reads.map((m) => m[1])).toEqual(['/', '/:id']);
+    for (const read of reads) expect(read[2]).toContain('authorizeAny(...ITEM_READ_KEYS)');
+  });
+
+  it('writes under the item keys alone', () => {
+    expect(source).toContain("authorize('administrationItem.create')");
+    expect(source).toContain("authorize('administrationItem.edit')");
+    expect(source.match(/ITEM_READ_KEYS/g)).toHaveLength(3);
+  });
+});
+
+describe('the purchase-request routes (P2 plan §4.1)', () => {
+  const source = read('procurement/purchase-requests/purchase-request.routes.ts');
+  const routes = [
+    ...source.matchAll(/router\.(get|post|patch|delete)\(\s*'([^']+)',[\s\S]*?\n {2}\);/g),
+  ].map((m) => ({ method: m[1] ?? '', path: m[2] ?? '', body: m[0] }));
+  const gate = (route: { body: string }): string =>
+    (/authorize(?:Any)?\(([^)]*)\)/.exec(route.body)?.[1] ?? '').replace(/\s+/g, ' ').trim();
+
+  it('serves P2.2’s four routes: the register, the record, the create and a draft’s edit', () => {
+    expect(routes.map((r) => `${r.method.toUpperCase()} ${r.path} ${gate(r)}`)).toEqual([
+      "GET / 'administrationPurchaseRequest.view'",
+      "GET /:id 'administrationPurchaseRequest.view', 'administrationPurchaseRequest.approve'",
+      "POST / 'administrationPurchaseRequest.create'",
+      "PATCH /:id 'administrationPurchaseRequest.edit'",
+    ]);
+  });
+
+  it('validates every :param route’s params, and deletes no request', () => {
+    for (const route of routes.filter((r) => r.path.includes(':'))) {
+      expect(route.body, `${route.method} ${route.path}`).toMatch(/params: \w+ParamSchema/);
+    }
+    expect(routes.some((r) => r.method === 'delete')).toBe(false);
+  });
+
+  it('registers the request’s line lock with the items as its index loads (§6.2)', () => {
+    expect(read('procurement/purchase-requests/index.ts')).toContain(
+      "import './purchase-request-item-lock';",
+    );
+    expect(read('procurement/purchase-requests/purchase-request-item-lock.ts')).toMatch(
+      /registerItemReferenceChecker\(async \(itemId\) =>\s*\(await repository\.namesItem\(itemId\)\) \? 'purchaseRequestLine' : null,/,
+    );
   });
 });
 

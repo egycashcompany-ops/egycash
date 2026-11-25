@@ -33,14 +33,15 @@ describe('the names a permanent delete rewrites', () => {
   });
 
   /**
-   * The resolved list, whole. Sixteen copies across eight collections, and the shape of it is the
+   * The resolved list, whole. Seventeen copies across nine collections, and the shape of it is the
    * finding: an employee's name is written onto gold receipts, traffic violations, fuel receipts,
-   * odometer readings and ATM maintenance tickets. Deleting the employee row alone leaves every
-   * one of them still naming the person.
+   * odometer readings, ATM maintenance tickets and purchase requests. Deleting the employee row
+   * alone leaves every one of them still naming the person.
    */
   it('rewrites exactly these, each beside the id that says whose name it is', () => {
     const resolved = nameCopiesToScrub().map((c) => `${c.collection}.${c.path} <- ${c.by.path}`);
     expect(resolved).toEqual([
+      'administration_purchase_requests.requesterName <- requesterEmployeeId',
       'atm_maintenances.closedByName <- closedById',
       'atm_maintenances.leaderName <- leaderEmployeeId',
       'atm_maintenances.openedByName <- openedById',

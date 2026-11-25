@@ -131,6 +131,13 @@ const CLASSIFICATION: Record<string, NameCopy> = {
     by: { path: 'driver2EmployeeId', kind: 'employee' },
     why: 'second driver on the vehicle when the reading was taken',
   },
+  // Administrative Affairs' purchase request, kept by the reset (OD-64 A): its requester's name,
+  // stored top level beside the id for exactly this rewrite (D-22).
+  'administration_purchase_requests.requesterName': {
+    action: 'scrub',
+    by: { path: 'requesterEmployeeId', kind: 'employee' },
+    why: 'who raised the purchase request, as the request recorded them',
+  },
 
   // ── Copies carried on the ACCOUNT rather than the employee, and still this person ──
   // The purge removes their account too, so without this the name would outlive both records it
@@ -158,6 +165,16 @@ const CLASSIFICATION: Record<string, NameCopy> = {
   'hr_job_offers.applicantName': {
     action: 'leave',
     why: 'the candidate the offer was made to, who is not the employee being purged',
+  },
+  // An approval trail's deciders sit inside arrays, which a scrub cannot address one person at a
+  // time; the gap is recorded (RK-34), the cost of the snapshot an archived round prints.
+  'administration_purchase_requests.approvalSteps.deciderName': {
+    action: 'leave',
+    why: 'who decided a rung, inside the trail’s array — RK-34’s recorded gap',
+  },
+  'administration_purchase_requests.approvalRounds.steps.deciderName': {
+    action: 'leave',
+    why: 'who decided a rung of an archived round, inside the array — RK-34’s recorded gap',
   },
 
   // ── Not people at all. Named here so the refusal below never has to guess ──
@@ -196,6 +213,10 @@ const CLASSIFICATION: Record<string, NameCopy> = {
   'atm_maintenances.machineName': { action: 'leave', why: 'the machine' },
   'atm_maintenances.name': { action: 'leave', why: 'not a person' },
   'it_mobile_line_assignments.name': { action: 'leave', why: 'not a person' },
+  'administration_purchase_requests.attachments.fileName': {
+    action: 'leave',
+    why: 'an uploaded file’s name',
+  },
 };
 
 /** Every path on `schema` whose name matches, including paths inside subdocument arrays. */

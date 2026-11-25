@@ -3,7 +3,8 @@
 //   1. its indexes, FIRST — a unique index is the only race guard for one-name-one-row, and the
 //      counter's upsert is safe only once `ux_counter_key` exists;
 //   2. its counters (OD-05 A): the item code's and the supplier code's, each raised to the highest
-//      code of its own already given;
+//      code of its own already given, and this Cairo year's purchase-request series (OD-58 A,
+//      P2.2), raised to its highest number;
 //   3. its file categories: the suppliers' papers (OD-11 A), before any upload asks for it;
 //   4. its ready-made roles (OD-78 A), as managed roles.
 //
@@ -17,6 +18,7 @@ import { reportLines, reportSummary, syncDeclaredIndexes } from '../../shared/ba
 import { administrationModels } from './administration-indexes';
 import { ADMINISTRATION_ROLE_BUNDLES } from './administration-roles';
 import { ensureItemCodeCounter } from './catalog/items';
+import { ensurePurchaseRequestNumberCounter } from './procurement/purchase-requests/index';
 import {
   ensureSupplierCodeCounter,
   ensureSupplierDocumentsCategory,
@@ -41,6 +43,14 @@ export const seedAdministration = async (): Promise<void> => {
     await ensureSupplierCodeCounter();
   } catch (err) {
     logger.warn({ module: 'administration', err }, 'the supplier code counter was not ensured');
+  }
+  try {
+    await ensurePurchaseRequestNumberCounter();
+  } catch (err) {
+    logger.warn(
+      { module: 'administration', err },
+      'the purchase-request number counter was not ensured',
+    );
   }
   try {
     await ensureSupplierDocumentsCategory();

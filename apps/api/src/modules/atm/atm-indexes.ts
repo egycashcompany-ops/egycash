@@ -74,6 +74,7 @@ import { AtmRouteAssignmentModel } from './settlements/control/route-assignment.
 import { AtmLayoutImportRunModel } from './settlements/import/layout-import-run.model';
 import { AtmMailboxConfigModel } from './mail-tickets/mailbox-config.model';
 import { AtmBranchMoveRunModel } from './branch-links/branch-move-run.model';
+import { AtmLegacyImportRunModel } from './migration/legacy-history-run.model';
 import { RETIRED_OPEN_OPERATION_INDEX_NAMES } from './shared/open-operation';
 
 export interface AtmIndexedModel {
@@ -125,6 +126,7 @@ export const atmIndexedModels = (): AtmIndexedModel[] => [
       AtmNoteCounterModel,
       AtmMailboxConfigModel,
       AtmBranchMoveRunModel,
+      AtmLegacyImportRunModel,
     ] as unknown as Model<never>[]
   ).map((model) => ({ collection: model.collection.name, model, rowsInLog: true })),
   ...(

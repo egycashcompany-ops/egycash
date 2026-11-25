@@ -221,6 +221,8 @@ describe('a dry run', () => {
     const gold = report.untouched.find((u) => u.collection === 'gold_receiving_receipts');
     expect(gold?.documentsNamingAnEmployee).toBe(1);
     expect(report.untouched.map((u) => u.collection)).toEqual([
+      // A purchase request names its requester, and the RFQ, the PO and the receipt cite it.
+      'administration_purchase_requests',
       // A warehouse names its keeper and outlives them: the ledger and the store documents cite it.
       'administration_warehouses',
       'atm_maintenances',
@@ -359,8 +361,8 @@ describe('the recruitment pipeline', () => {
     const report = await runReset({ write: false, includeRecruitment: true });
     expect(report.untouched.map((u) => u.collection)).not.toContain('hr_job_offers');
     expect(report.recruitment.map((r) => r.collection)).toContain('hr_job_offers');
-    // The other thirteen are still off limits.
-    expect(report.untouched).toHaveLength(13);
+    // The other fourteen are still off limits.
+    expect(report.untouched).toHaveLength(14);
   }, 240_000);
 });
 

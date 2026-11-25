@@ -123,6 +123,7 @@ export const blockerText = (
     case 'layoutImportRunning':
       return t(key, { source: names.source, banks: listed(blocker.bankCodes.map(bankName)) });
     case 'registerImportRunning':
+    case 'legacyImportRunning':
     case 'moveRunning':
       return t(key);
   }

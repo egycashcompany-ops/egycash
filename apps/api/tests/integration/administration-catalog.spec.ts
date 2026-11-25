@@ -167,18 +167,28 @@ describe('the seed', () => {
         'administrationSupplier.view',
         'administrationWarehouse.view',
       ],
+      // P2.2: a department's focal point (OD-16 A), and the request keys four others gain (§9.3).
+      'administration-department-requester': [
+        'administrationPurchaseRequest.create',
+        'administrationPurchaseRequest.edit',
+        'administrationPurchaseRequest.view',
+      ],
       'administration-procurement-officer': [
         'administrationItem.view',
+        'administrationPurchaseRequest.view',
         'administrationSupplier.view',
         'administrationWarehouse.view',
       ],
       'administration-procurement-manager': [
         'administrationItem.view',
+        'administrationPurchaseRequest.view',
         'administrationSupplier.view',
         'administrationWarehouse.view',
       ],
       'administration-affairs-manager': [
         'administrationItem.view',
+        'administrationPurchaseRequest.approve',
+        'administrationPurchaseRequest.view',
         'administrationSupplier.view',
         'administrationWarehouse.view',
       ],
@@ -196,6 +206,7 @@ describe('the seed', () => {
       ],
       'administration-auditor': [
         'administrationItem.view',
+        'administrationPurchaseRequest.view',
         'administrationSupplier.view',
         'administrationWarehouse.view',
       ],
@@ -207,6 +218,8 @@ describe('the seed', () => {
     });
     const storekeeper = roles.find((role) => role.key === 'administration-storekeeper');
     expect(storekeeper?.name).toEqual({ en: 'Storekeeper', ar: 'أمين المخزن' });
+    const requester = roles.find((role) => role.key === 'administration-department-requester');
+    expect(requester?.name).toEqual({ en: 'Department requester', ar: 'منسق طلبات الإدارة' });
   });
 });
 
@@ -1370,6 +1383,39 @@ describe('who may read and write', () => {
         unitId: meter.id,
       }),
       await viewer.patch(`/items/${filed.id}`, { notes: 'x', version: 0 }),
+    ]) {
+      expect(res.status).toBe(403);
+      expect(refusal(res).code).toBe('FORBIDDEN');
+    }
+  });
+
+  it('a purchase-request creator reads the items — the request’s picker — and writes none (P2.2)', async () => {
+    // The widened read gate's other half: `administrationPurchaseRequest.create` alone, no item key.
+    const picker = administrationApi(
+      world.app,
+      await world
+        .personWith(
+          'request-picker',
+          ['administrationPurchaseRequest.create'],
+          'organization',
+          null,
+        )
+        .then((p) => p.token),
+    );
+    const filed = await anItem();
+    const list = await picker.get('/items?isActive=true');
+    expect(list.status, JSON.stringify(list.body)).toBe(200);
+    expect(data<AdministrationItemDto[]>(list).length).toBeGreaterThan(0);
+    expect(data<AdministrationItemDto>(await picker.get(`/items/${filed.id}`)).id).toBe(filed.id);
+    for (const res of [
+      await picker.post('/items', {
+        name: fresh('ج', 'C'),
+        categoryId: filed.categoryId,
+        unitId: filed.unitId,
+      }),
+      await picker.patch(`/items/${filed.id}`, { notes: 'x', version: 0 }),
+      // The picker is the items alone: the catalogs keep their own gate.
+      await picker.get('/catalog-items?kind=unit'),
     ]) {
       expect(res.status).toBe(403);
       expect(refusal(res).code).toBe('FORBIDDEN');

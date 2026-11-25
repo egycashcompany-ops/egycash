@@ -560,6 +560,8 @@ const blockerMessage = (blocker: AtmBranchMoveBlockerDto): string => {
       return `the target would hold ${String(blocker.zones)} zones and ${String(blocker.points)} points`;
     case 'registerImportRunning':
       return 'a register import is running';
+    case 'legacyImportRunning':
+      return 'a legacy history import is running';
     case 'layoutImportRunning':
       return `a Full list import of the source is running: ${listed(blocker.bankCodes)}`;
     case 'moveRunning':

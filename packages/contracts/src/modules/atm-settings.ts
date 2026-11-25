@@ -428,6 +428,8 @@ export const emptyAtmBranchMoveMerges = (): AtmBranchMoveMergesDto => ({
  * · `registerImportRunning` — a register import `running` for under 30 minutes, anywhere: its rows
  *   file into whichever branch a code resolves to, the target included, so its couplings would land
  *   between the move's plan and its writes (one started while a move runs waits for it instead);
+ * · `legacyImportRunning` — a legacy history import running (stepped within 30 minutes): it files
+ *   rows under machines the move re-files and retires (one started while a move runs waits for it);
  * · `moveRunning` — another move holds the run lock (one at a time, 30 minutes before it is stale).
  */
 export const ATM_BRANCH_MOVE_BLOCKERS = [
@@ -438,6 +440,7 @@ export const ATM_BRANCH_MOVE_BLOCKERS = [
   'zoneCaps',
   'layoutImportRunning',
   'registerImportRunning',
+  'legacyImportRunning',
   'moveRunning',
 ] as const;
 export type AtmBranchMoveBlockerKind = (typeof ATM_BRANCH_MOVE_BLOCKERS)[number];
@@ -451,6 +454,7 @@ export type AtmBranchMoveBlockerDto =
   | { kind: 'zoneCaps'; zones: number; points: number }
   | { kind: 'layoutImportRunning'; bankCodes: AtmBankCode[] }
   | { kind: 'registerImportRunning' }
+  | { kind: 'legacyImportRunning' }
   | { kind: 'moveRunning' };
 
 /** `atm_branch_move_runs.state` — the run lock: one `running` at a time, 30 minutes to stale. */
@@ -496,6 +500,248 @@ export interface AtmBranchMoveResultDto {
   merges: AtmBranchMoveMergesDto;
   /** Rows still filed under the source after the run, per collection — all 0 once it completed. */
   remaining: AtmBranchMoveCountsDto;
+}
+
+// ── The legacy history — the old system's replenishments and maintenances (2026-11-25) ─────────
+//
+// The owner: «تقدر تشوفهم أنت من Mongo مباشرة جوا maintenance و replenishment — وللأفرع كلها مش بس
+// المهندسين وأكتوبر .. ماعدا أسيوط — alex + portsaid + tanta + wsal + egycash ( المهندسين وأكتوبر)».
+// Each legacy deployment is a database on the company's cluster, beside ECMS's own; its rows are
+// COPIED into the branch it was, insert-only and keyed by their legacy ids, from a card on
+// /atm/settings (docs/12-planning/atm-legacy-history-import.md). `atmSettings.manage` at
+// organization scope, as the rest of the page.
+
+/**
+ * The legacy deployments, by database name, and the ECMS branch code each one was — the owner's
+ * list. Never free text: the server reads only these databases. Asyut is left out by the owner;
+ * October works as Mohandessin (`atm.branchLinks`), so `egycash` is Mohandessin's.
+ */
+export const ATM_LEGACY_SOURCES = [
+  { source: 'alex', branchCode: '050' },
+  { source: 'portsaid', branchCode: '060' },
+  { source: 'tanta', branchCode: '020' },
+  { source: 'wsal', branchCode: '070' },
+  { source: 'egycash', branchCode: '010' },
+] as const;
+export type AtmLegacySource = (typeof ATM_LEGACY_SOURCES)[number]['source'];
+export const ATM_LEGACY_SOURCE_NAMES = ATM_LEGACY_SOURCES.map((entry) => entry.source) as [
+  AtmLegacySource,
+  ...AtmLegacySource[],
+];
+
+/** The two legacy collections, in the order a run reads them. */
+export const ATM_LEGACY_KINDS = ['replenishment', 'maintenance'] as const;
+export type AtmLegacyKind = (typeof ATM_LEGACY_KINDS)[number];
+
+/**
+ * How a deployment wrote a kind's open times: `cairoLabelled` — Cairo wall-clock parts stamped as
+ * UTC (the legacy replenishment path, port doc T1), repaired on the way in; `utc` — true instants.
+ */
+export const ATM_LEGACY_TIME_MODES = ['cairoLabelled', 'utc'] as const;
+export type AtmLegacyTimeMode = (typeof ATM_LEGACY_TIME_MODES)[number];
+
+/**
+ * `POST /atm/legacy-import/preview` and `POST /atm/legacy-import/runs`. The branch is the source's
+ * own (`ATM_LEGACY_SOURCES`), never the request's.
+ */
+export const AtmLegacyImportBodySchema = z
+  .object({
+    source: z.enum(ATM_LEGACY_SOURCE_NAMES),
+    /**
+     * The moment the branch began working in ECMS (ISO): a legacy row closed at or after it is the
+     * branch's own and is not copied. Null: no cut. Only closed («Done») rows are ever copied —
+     * the owner, 2026-11-25 (design §4.5) — so there is no switch for open ones.
+     */
+    cutoverAt: z.string().datetime({ offset: true }).nullable(),
+  })
+  .strict();
+export type AtmLegacyImportBody = z.output<typeof AtmLegacyImportBodySchema>;
+
+/** `:runId` of `POST /atm/legacy-import/runs/:runId/step`. */
+export const AtmLegacyImportRunParamsSchema = z.object({ runId: objectId() }).strict();
+export type AtmLegacyImportRunParams = z.output<typeof AtmLegacyImportRunParamsSchema>;
+
+/** `:source` of `POST /atm/legacy-import/sources/:source/undo`. */
+export const AtmLegacySourceParamsSchema = z
+  .object({ source: z.enum(ATM_LEGACY_SOURCE_NAMES) })
+  .strict();
+export type AtmLegacySourceParams = z.output<typeof AtmLegacySourceParamsSchema>;
+
+/**
+ * `GET /atm/legacy-import/sources/:source/cutover` — the moment the source's branch began working in
+ * ECMS (design §4.4): its first own row of the day's own work (opened for the Cairo day it was
+ * written — a plan for the next day is not) on the first Cairo day with at least 20 such rows.
+ * Null: no such day yet (nothing to cut). Asked when a source is opened, not for every source.
+ */
+export interface AtmLegacyCutoverDto {
+  source: AtmLegacySource;
+  suggestedCutoverAt: string | null;
+}
+
+/** Rows one undo call removes (design §4.8): the screen calls it until `remaining` is 0. */
+export const ATM_LEGACY_UNDO_ROWS = 5_000;
+
+/** `POST /atm/legacy-import/sources/:source/undo` — one batch of the source's copies removed. */
+export interface AtmLegacyUndoResultDto {
+  source: AtmLegacySource;
+  removed: number;
+  /** Copies of the source still in ECMS; 0 once the undo is complete. */
+  remaining: number;
+}
+
+/**
+ * Why a legacy row is left out — the first rule it fails (design §4.1). `open`: not closed in the
+ * legacy system — not «Done» (`end: 1` with a close time) — and never copied.
+ */
+export const ATM_LEGACY_SKIP_REASONS = [
+  'deleted',
+  'noOpenTime',
+  'open',
+  'afterCutover',
+  'unresolved',
+] as const;
+export type AtmLegacySkipReason = (typeof ATM_LEGACY_SKIP_REASONS)[number];
+export type AtmLegacySkipCountsDto = Record<AtmLegacySkipReason, number>;
+
+export const emptyAtmLegacySkipCounts = (): AtmLegacySkipCountsDto => ({
+  deleted: 0,
+  noOpenTime: 0,
+  open: 0,
+  afterCutover: 0,
+  unresolved: 0,
+});
+
+/** A machine code the target branch's register lacks, with the rows it carries. */
+export interface AtmLegacyUnresolvedCodeDto {
+  code: string;
+  rows: number;
+}
+
+/** Codes the preview lists, most rows first. */
+export const ATM_LEGACY_UNRESOLVED_LISTED = 20;
+
+/**
+ * Design §4.3 — a legacy row's `_id` records the moment it was written, which for most rows is the
+ * moment it was opened. Over a kind's rows: how many have an open time within 15 minutes of that
+ * moment (written as UTC), and how many two to three hours after it (Cairo wall clock stamped as
+ * UTC). The larger one names the mode.
+ */
+export interface AtmLegacyTimeEvidenceDto {
+  /** Rows with an open time and an ObjectId `_id`. */
+  rows: number;
+  asWritten: number;
+  cairoShifted: number;
+}
+
+/** One kind of a preview. */
+export interface AtmLegacyKindPreviewDto {
+  /** Every row of the legacy collection. */
+  total: number;
+  skipped: AtmLegacySkipCountsDto;
+  /** Rows the run would copy — those already in ECMS included (a run counts them as `existing`). */
+  toImport: number;
+  /** `skipped.unresolved` by code, most rows first, at most `ATM_LEGACY_UNRESOLVED_LISTED`. */
+  unresolvedCodes: AtmLegacyUnresolvedCodeDto[];
+  /** The mode chosen from the counts below (design §4.3). */
+  timeMode: AtmLegacyTimeMode;
+  evidence: AtmLegacyTimeEvidenceDto;
+  /**
+   * Whether the evidence decides the mode: the larger count at least ten times the smaller, and
+   * above zero. A run refuses a source with a kind whose rows leave it undecided.
+   */
+  timeModeClear: boolean;
+  /** The first and last open time of the rows to copy, as they will be stored; null when none. */
+  firstOpenedAt: string | null;
+  lastOpenedAt: string | null;
+}
+
+/** `POST /atm/legacy-import/preview` — read-only: what a run with this body would do now. */
+export interface AtmLegacyImportPreviewDto {
+  source: AtmLegacySource;
+  branchId: string;
+  branchName: LocalizedString | null;
+  cutoverAt: string | null;
+  /** False when the source holds no row of either kind (a missing database reads as empty). */
+  sourceFound: boolean;
+  replenishment: AtmLegacyKindPreviewDto;
+  maintenance: AtmLegacyKindPreviewDto;
+  /**
+   * Both kinds' unresolved codes as one list — a code in both is one entry, its rows summed — most
+   * rows first, at most `ATM_LEGACY_UNRESOLVED_LISTED`; and how many distinct codes there are in
+   * all, so the screen's «و… أخرى» counts the codes not listed, not only those sent.
+   */
+  unresolvedCodes: AtmLegacyUnresolvedCodeDto[];
+  unresolvedCodeCount: number;
+}
+
+/**
+ * `atm_legacy_import_runs.state` — `running` until its last step (`done`), a takeover after 30
+ * minutes without a step (`failed`, resumable no longer), or its source's undo (`undone`). One
+ * `running` at a time, company-wide.
+ */
+export const ATM_LEGACY_RUN_STATES = ['running', 'done', 'failed', 'undone'] as const;
+export type AtmLegacyRunState = (typeof ATM_LEGACY_RUN_STATES)[number];
+
+/** One kind of a run, so far. */
+export interface AtmLegacyKindRunDto {
+  /** Legacy rows read. */
+  read: number;
+  /** Rows copied into ECMS. */
+  written: number;
+  /** Rows already in ECMS under their legacy id — never changed (design §4.6). */
+  existing: number;
+  skipped: AtmLegacySkipCountsDto;
+  timeMode: AtmLegacyTimeMode;
+}
+
+/** A run (`atm_legacy_import_runs`). */
+export interface AtmLegacyImportRunDto {
+  id: string;
+  source: AtmLegacySource;
+  branchId: string;
+  branchName: LocalizedString | null;
+  cutoverAt: string | null;
+  state: AtmLegacyRunState;
+  /** The kind the next step reads; null once both are read. */
+  nextKind: AtmLegacyKind | null;
+  replenishment: AtmLegacyKindRunDto;
+  maintenance: AtmLegacyKindRunDto;
+  /** The preview's totals when the run started — the progress bar's denominator. */
+  totals: Record<AtmLegacyKind, number>;
+  actorName: string | null;
+  startedAt: string;
+  lastStepAt: string;
+  finishedAt: string | null;
+  /** A failed run's error code (never a message that could quote a row). */
+  error: string | null;
+  /**
+   * Running, and stepped within the step lease — a window is driving it now. Read on the server's
+   * clock: the screen offers «متابعة» only when it is false, so two windows never drive one run.
+   */
+  active: boolean;
+  /**
+   * Running, and left 30 minutes without a step: the next start or undo of any source ends it
+   * `failed`. The screen then offers «معاينة» and «تراجع» beside «متابعة».
+   */
+  stale: boolean;
+}
+
+/** `GET /atm/legacy-import` — one entry per source, in `ATM_LEGACY_SOURCES` order. */
+export interface AtmLegacySourceDto {
+  source: AtmLegacySource;
+  /** The branch whose code the source was; null when no live branch carries it. */
+  branchId: string | null;
+  branchName: LocalizedString | null;
+  /** The source's latest run, any state; null: never run. */
+  lastRun: AtmLegacyImportRunDto | null;
+  /** Rows copied from this source now in ECMS — what its undo would remove. */
+  copiedRows: number;
+  /**
+   * Of those, the ones changed in ECMS since they were copied (closed again, edited, reopened —
+   * any write raises a row's version above the copy's 0). The undo removes them too, so its
+   * confirmation names them.
+   */
+  changedRows: number;
 }
 
 // ── The leader list — whose names the leader pickers offer ───────────────────────────────────────

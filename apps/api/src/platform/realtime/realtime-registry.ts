@@ -257,6 +257,11 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // Suppliers (§9.2), organization-wide as the items are; a paper's link is an `update` on its
   // supplier (§11.4).
   'administration.supplier': { permission: 'administrationSupplier.view' },
+  // Purchase requests (P2 plan §10.1), branch records: every act sends one `update` WITH the
+  // request's branch (`signalPurchaseRequest`), so a department requester — whose `.view` joins
+  // their branch's room (OD-16 A) — sees their draft and its decisions live. An approver who holds
+  // `.approve` alone joins no room, and refreshes on navigation until PC-7.
+  'administration.purchaseRequest': { permission: 'administrationPurchaseRequest.view' },
 
   // ── Compliance and Risks ───────────────────────────────────────────────────
   // The files shelf (docs/12-planning/compliance-files-design.md §9): a folder's and a file's
@@ -357,4 +362,9 @@ export const REALTIME_EXCLUDED_ENTITIES: Readonly<Record<string, string>> = {
   // run itself signals each topic it touched once, with the target's branch; the card refetches.
   'atm.branchMove':
     'one audit row per branch-move run (the register-import shape); the run signals each affected topic once and the settings card refetches itself',
+  // Audit rows of a legacy history run (/atm/settings, 2026-11-25) — one as it starts and one as it
+  // ends, fails or is undone. The rows it copies are history (closed before the branch began working
+  // in ECMS); the card refetches itself, and the done pages read them on their next load.
+  'atm.legacyImport':
+    'one audit row per legacy history run (the branch-move shape); the settings card refetches itself and the copied rows are read on the next load',
 };

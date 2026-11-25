@@ -3420,10 +3420,10 @@ Repository-wide findings outside this module are listed for the owner in
   (d), one of which went to the owner as PRQ-4. It is the gate before P2.0.
 - **PX-1 closed** (2026-11-25, when PX-1.6 merges). The platform slice's seven pull requests
   ([administration-module-phase-px1.md](administration-module-phase-px1.md) §3): PX-1.0, the re-detail, ADR-041 and
-  their docs (#788), PX-1.1 (#789), PX-1.2 (#790) and PX-1.3 (#791) are merged; PX-1.4, PX-1.5 and PX-1.6 open in that
-  order on top of main at `2658fe5d`, and this entry is PX-1.6's. The seven engine defects of §15.2.1 that PX-1 takes
+  their docs (#788), PX-1.1 (#789), PX-1.2 (#790), PX-1.3 (#791), PX-1.4 (#793) and PX-1.5 (#795) are merged, and this
+  entry is PX-1.6's. The seven engine defects of §15.2.1 that PX-1 takes
   (R1–R5, R8, R9) are fixed, with R12's tests as their baseline. The re-detail's §11 criteria, checked against merged
-  main with PX-1.4 to PX-1.6 stacked on it:
+  main with PX-1.6 on it:
   1. *One test per defect, failing before its fix.* Each fix pull request's description shows its new cases failing on
      its base commit's source and passing on its head, guards excepted: PX-1.2 for R2 and R4 (on `099b23f1`, PX-1.1's
      merged head; its engine, leave and contract sources are identical to `c95674c4`, the pre-rebase base PX-1.2's
@@ -3442,15 +3442,18 @@ Repository-wide findings outside this module are listed for the owner in
   6. *The ADR was accepted first.* PX-1.0 made ADR-041 Accepted (`c49f0cfe`), with its README row and ADR-011's row
      naming the superseded bullet, and merged (#788) ahead of PX-1.1 (#789). Its last commit is the Phase 1 close above
      (`050fa94f`), a docs commit after the acceptance that does not touch the ADR.
-  7. *Gates.* PX-1.0 to PX-1.3 merged green in CI; PX-1.4 to PX-1.6 pass §18.5's gates locally, and CI runs them on each
-     pull request. No permission key changed, so the permission matrix has nothing to regenerate.
+  7. *Gates.* PX-1.0 to PX-1.5 merged green in CI; PX-1.6 passes §18.5's gates locally, and CI runs them on its pull
+     request. No permission key changed, so the permission matrix has nothing to regenerate.
   8. *Docs.* Each code pull request carries its CHANGELOG entry. Platform core §11 matches ADR-041 from PX-1.0 on; its
      "from PX-1" marks stay true once PX-1 has shipped, and the re-detail asks for no change to them. This entry records
      the close; the owner is told when PX-1.6 merges.
-  - *Still open after PX-1:* PXQ-1 (re-detail §2), what leave does with a request nobody can approve, waits for the
-    owner's answer, which is an HR slice of its own; until then such a request waits for an override within reach. The
-    read-only counts of re-detail §10 are the owner's or an operator's to run: C1 and C2 before PX-1.2 deploys, C3 before
-    PX-1.6 merges.
+  - *Still open after PX-1:* PXQ-1 (re-detail §2) was answered on 2026-11-25, option 1 (§16.12): a leave request nobody
+    can approve goes to HR. It is an HR slice of its own, planned in `leave-management-design.md` §16, after PX-1.6;
+    until it ships such a request waits for an override within reach. The read-only counts of re-detail §10 (C1 and C2
+    before PX-1.2 deployed, C3 before PX-1.6 merges) were not run: they need production access, which this work does
+    not have (the organization's MongoDB Atlas access for AI clients is off). PX-1.2 and PX-1.6 shipped on the safe side
+    the plan states (a request nobody can decide waits; an off-type rung is unstaffed), and the counts stay the owner's
+    or an operator's to run.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

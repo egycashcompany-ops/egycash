@@ -72,7 +72,7 @@ const refusalOf = (body) => {
   return details === '' ? String(error.code) : `${String(error.code)} (${details})`;
 };
 
-process.stdout.write(`purchase-request contention — ${baseUrl}\n`);
+process.stdout.write('purchase-request contention — staging\n');
 
 // The lines: the active items the first focal point's picker offers, cycled to 100. Two lines may
 // name one item (P2.2 adds no rule against it), so a catalog of fewer than 100 items still serves.

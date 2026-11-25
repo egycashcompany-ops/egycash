@@ -42,12 +42,7 @@ import { Types } from 'mongoose';
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
 import { departmentRepository } from '../../../../platform/organization';
 import { narrowToBranch } from '../../../../shared/base/branch-scope';
-import {
-  ForbiddenError,
-  NotFoundError,
-  StaleDocumentError,
-  type AppError,
-} from '../../../../shared/errors';
+import { ForbiddenError, NotFoundError, type AppError } from '../../../../shared/errors';
 import {
   hasPermission,
   keyCoversUnit,
@@ -86,7 +81,6 @@ import {
 } from './purchase-request-rules';
 import { branchSnap } from './purchase-request-snapshots';
 import {
-  AdministrationPurchaseRequestModel,
   type AdministrationPurchaseRequestDoc,
   type AdministrationPurchaseRequestLineSub,
 } from './purchase-request.model';
@@ -130,12 +124,6 @@ const ensureSeriesCounter = async (series: DocumentNumberSeries): Promise<void> 
 export const ensurePurchaseRequestNumberCounter = async (at = new Date()): Promise<void> => {
   await ensureSeriesCounter(documentNumberAt('purchaseRequest', at).series);
 };
-
-/**
- * A submission whose conditional write matched nothing: thrown INSIDE the transaction, so it
- * aborts and the number it took goes back, then answered outside it from the request as it stands.
- */
-class SubmissionMissed extends Error {}
 
 /** Whether the request's status allows its submission — the table's row 2, from `draft`. */
 const assertSubmittable = (doc: AdministrationPurchaseRequestDoc): void => {
@@ -200,8 +188,10 @@ class AdministrationPurchaseRequestService {
 
   /**
    * What this reader may do with the request now (P2 plan §4.4), from the whole lifecycle table.
-   * No request holds a pin before its submission (P2.3), so no reader stands on its chain yet; the
-   * trail that says who does joins with the decisions (P2.4).
+   * From P2.3 a submitted request holds its pin, but the engine's trail that says who stands on its
+   * chain joins with the decisions (P2.4): until then `trail` is null for every request, so every
+   * reader's decide and return read `notYourStep` (design §22, P2.2 built). No route decides before
+   * P2.4, and no screen reads `availableActions` before P2.W1 (P2 plan §7).
    */
   actionsFor(
     doc: AdministrationPurchaseRequestDoc,
@@ -392,57 +382,43 @@ class AdministrationPurchaseRequestService {
     await repository.ensureCollection();
     if (numbering !== null) await ensureSeriesCounter(numbering.series);
 
-    let after: AdministrationPurchaseRequestDoc;
-    try {
-      after = await unitOfWork(async (session) => {
-        const taken =
-          numbering === null
-            ? {}
-            : {
-                number: formatAdministrationNumber(
-                  numbering.series.kind,
-                  numbering.series.year,
-                  await nextNumber(numbering.series.key, session),
-                ),
-                businessDate: numbering.businessDate,
-              };
-        const written = await AdministrationPurchaseRequestModel.findOneAndUpdate(
-          { _id: before._id, status: 'draft', __v: input.version },
-          {
-            $set: {
-              status: 'pendingApproval',
-              ...taken,
-              approvalRequestType: PURCHASE_REQUEST_APPROVAL_TYPE,
-              // The pin, whole, from the one `pinOf` above: the fields' own check that an id comes
-              // with its rungs runs at create and save only, never in an update (P2 plan §1.2
-              // item 28), so this write is what keeps the two together.
-              approvalWorkflowId: new Types.ObjectId(pin.workflowId),
-              approvalChainShape: [...pin.steps],
-              approvalSteps: [],
-              submittedAt,
-              submittedBy: new Types.ObjectId(ctx.userId),
-              lines,
-              branch,
-              ...requester,
-              updatedBy: new Types.ObjectId(ctx.userId),
-            },
-            $inc: { __v: 1 },
-          },
-          { new: true, session },
-        )
-          .lean<AdministrationPurchaseRequestDoc>()
-          .exec();
-        if (written === null) throw new SubmissionMissed();
-        return written;
-      });
-    } catch (error) {
-      if (!(error instanceof SubmissionMissed)) throw error;
-      // Lost to another write since the checks: its status first, then its version.
-      const current = await repository.findById(id, scope);
-      if (current === null) throw new NotFoundError('purchase request not found');
-      assertSubmittable(current);
-      throw new StaleDocumentError();
-    }
+    // The repository's conditional write: `{ _id, __v }` with its draft condition and `.create`'s
+    // scope. A miss is answered inside the transaction, so it aborts and the number it took goes
+    // back: the request re-read as it stands, 404 when the scope no longer finds it, 422 when its
+    // status moved, else 409.
+    const after = await unitOfWork(async (session) => {
+      const taken =
+        numbering === null
+          ? {}
+          : {
+              number: formatAdministrationNumber(
+                numbering.series.kind,
+                numbering.series.year,
+                await nextNumber(numbering.series.key, session),
+              ),
+              businessDate: numbering.businessDate,
+            };
+      return repository.updateById(
+        id,
+        {
+          status: 'pendingApproval',
+          ...taken,
+          approvalRequestType: PURCHASE_REQUEST_APPROVAL_TYPE,
+          // The pin, whole, from the one `pinOf` above: the fields' own check that an id comes with
+          // its rungs runs at create and save only, never in an update (P2 plan §1.2 item 28), so
+          // this write is what keeps the two together.
+          approvalWorkflowId: new Types.ObjectId(pin.workflowId),
+          approvalChainShape: [...pin.steps],
+          approvalSteps: [],
+          submittedAt,
+          submittedBy: new Types.ObjectId(ctx.userId),
+          lines,
+          branch,
+          ...requester,
+        },
+        { by: ctx.userId, version: input.version, scope, session },
+      );
+    });
 
     await auditPurchaseRequestSubmitted(before, after);
     await notifyAwaitingDecision(after, approvers);

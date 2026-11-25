@@ -166,8 +166,8 @@ export interface ActionFacts extends PairFacts {
    */
   loads: (key: string) => boolean;
   /**
-   * The reader's place on the current chain, from the engine's trail — null while the request
-   * holds no pin, so nobody may decide it.
+   * The reader's place on the current chain, from the engine's trail — null when the host reads
+   * none (a request with no pin, and every request before P2.4), so nobody may decide it.
    */
   trail: { viewerMayDecide: boolean; viewerMayOverride: boolean } | null;
 }

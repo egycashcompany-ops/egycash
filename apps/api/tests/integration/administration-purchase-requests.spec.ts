@@ -1295,29 +1295,52 @@ describe('the submission to the approval chain (P2 plan §8.2)', () => {
 
     it('a returned request keeps its number and date, and its next submission takes none', async () => {
       // Where a return (P2.4) leaves a request: back in draft, its number kept, its pin cleared.
+      // Its date and its last stamp are planted where no fresh stamp could put them, and one entry
+      // is left in its round, so each part of the write that a resubmission keeps, restamps or
+      // empties shows (P2 plan §8.2 step 7).
+      const kept = new Date(Date.UTC(series().year - 1, 11, 31));
+      const stamped = new Date('2000-01-01T00:00:00.000Z');
       await plant(first.id, {
         status: 'draft',
         approvalWorkflowId: null,
         approvalChainShape: [],
-        approvalSteps: [],
+        businessDate: kept,
+        submittedAt: stamped,
+        submittedBy: new Types.ObjectId(approverB.id),
+        approvalSteps: [
+          {
+            stepIndex: 0,
+            outcome: 'approved',
+            deciderUserId: new Types.ObjectId(approverB.id),
+            decidedAt: stamped,
+            comment: null,
+            overriddenWith: null,
+            stepLabel: null,
+            deciderName: null,
+          },
+        ],
         __v: 2,
       });
       const before = await counter();
+      const sentFrom = Date.now();
       const again = await submitted(focalB, { id: first.id, version: 2 });
       expect(again).toMatchObject({
         status: 'pendingApproval',
         number: first.number,
-        businessDate: first.businessDate,
+        businessDate: kept.toISOString().slice(0, 10),
+        submittedBy: focalB.id,
         version: 3,
       });
+      expect(Date.parse(again.submittedAt ?? '')).toBeGreaterThanOrEqual(sentFrom);
       expect(await counter()).toBe(before);
       const rows = await trail(first.id);
       expect(rows.at(-1)?.changes).toEqual([
         { field: 'status', old: 'draft', new: 'pendingApproval' },
       ]);
-      // Pinned again, on the chain that applies now.
+      // Pinned again, on the chain that applies now, and a new round.
       const row = await AdministrationPurchaseRequestModel.findById(first.id).lean().exec();
       expect(row?.approvalChainShape).toHaveLength(1);
+      expect(row?.approvalSteps).toEqual([]);
     });
 
     it('rewrites the snapshots once more as it leaves draft (design §2.1, Snapshots)', async () => {
@@ -1330,6 +1353,19 @@ describe('the submission to the approval chain (P2 plan §8.2)', () => {
       expect(rename.status, JSON.stringify(rename.body)).toBe(200);
       const sent = await submitted(focalB, created);
       expect(sent.lines[0]?.itemName).toEqual({ ar: 'شريط لاصق عريض', en: 'Wide adhesive tape' });
+    });
+
+    it('a first submission floors its own series: a lost counter comes back above the numbers taken', async () => {
+      // A counter row dropped or left out of a restore (P2 plan §6.3), while a number above its last
+      // one is taken: the first submission raises the series to that number before its
+      // transaction, so it neither waits for the next boot nor meets `ux_number`.
+      const top = await counter();
+      const taken = await draft(focalB);
+      await plant(taken.id, { status: 'cancelled', number: numbered(top + 40) });
+      await AdministrationCounterModel.deleteOne({ key: series().key }).exec();
+      const sent = await submitted(focalB, await draft(focalB));
+      expect(sent.number).toBe(numbered(top + 41));
+      expect(await counter()).toBe(top + 41);
     });
   });
 

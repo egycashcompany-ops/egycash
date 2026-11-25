@@ -18,7 +18,11 @@
 //
 // Shared, so it imports no feature (`administration-isolation.spec.ts`): a document hands in what
 // this file reads of it, and the pair A1 set its own rules name.
-import { ErrorCodes, type AdministrationApprovalChainProblem } from '@ecms/contracts';
+import {
+  ErrorCodes,
+  type AdministrationApprovalChainProblem,
+  type AdministrationPurchaseRequestSubmitProblem,
+} from '@ecms/contracts';
 import { type Types } from 'mongoose';
 import {
   approvalService,
@@ -68,7 +72,13 @@ export interface FiledOn {
 const copyMoved = (): AppError => {
   const message = 'the department this document was raised in no longer lies in its branch';
   return new AppError(ErrorCodes.ADMINISTRATION_TRANSITION_BLOCKED, 422, message, {
-    details: [{ field: 'departmentId', code: 'copyMoved', message }],
+    details: [
+      {
+        field: 'departmentId',
+        code: 'copyMoved' satisfies AdministrationPurchaseRequestSubmitProblem,
+        message,
+      },
+    ],
   });
 };
 
@@ -127,7 +137,9 @@ export type ApprovalHost = Parameters<typeof readApprovalPin>[0] & {
 /**
  * The engine's subject for one document — the one helper every call that hands the engine a
  * subject goes through, so a document is never decided on rungs its own trail does not show
- * (leave's `subjectOf`). A document always pins at submission, so its pin is null only before.
+ * (leave's `subjectOf`). A document always pins at submission, so its pin is null only before: the
+ * submission itself, whose pin is stored by its own write, puts `pinOf`'s over it (P2 plan §8.2
+ * step 4).
  */
 export const approvalSubjectOf = (
   requestType: string,
@@ -197,7 +209,11 @@ export const chainForSubmission = async (
   // After the status check `pinOf` always pins: a chain that is pending has a row and rungs.
   const pin = pinOf(chain);
   if (pin === null) throw chainMissing('noChain');
-  const holders = await approvalService.currentApprovers({ requestType, unit, decisions: [], pin });
+  // A new round: no entries yet, and the pin this submission is about to store.
+  const holders = await approvalService.currentApprovers({
+    ...approvalSubjectOf(requestType, unit, { approvalSteps: [] }),
+    pin,
+  });
   const approvers = eligibleAmong(holders, [], pairA1);
   if (approvers.length === 0) throw chainMissing('noEligibleApprover');
   return { pin, approvers };

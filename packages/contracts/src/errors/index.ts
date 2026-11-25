@@ -764,8 +764,11 @@ export const ErrorCodes = {
    * no number; nothing was written. One detail, `field` 'approval', `code` one of
    * `ADMINISTRATION_APPROVAL_CHAIN_PROBLEMS`: 'noChain' (no chain applies to its department and
    * branch), 'unstaffed' (nobody holds any rung of the chain that does) or 'noEligibleApprover' (the
-   * rung it would wait on is held only by its requester, creator or submitter). The remedies are an
-   * administrator's: a chain written, a rung given to someone, or a rung removed from the chain.
+   * rung it would wait on is held only by its requester, creator or submitter). For 'noChain' an
+   * administrator writes a chain, and for 'unstaffed' gives a rung to someone; for
+   * 'noEligibleApprover' an administrator gives that rung to a second person or removes it from the
+   * department's chain, or another focal point of the department raises the request (P2 plan §8.2
+   * step 4).
    */
   ADMINISTRATION_APPROVAL_CHAIN_MISSING: 'ADMINISTRATION_APPROVAL_CHAIN_MISSING',
   /**

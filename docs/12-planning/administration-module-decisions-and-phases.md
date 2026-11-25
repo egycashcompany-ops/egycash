@@ -3404,6 +3404,17 @@ Repository-wide findings outside this module are listed for the owner in
     `GET /platform/me/applications`; the §7.2 rows for several listed branches and for section scope are covered by the
     shared rule's unit specs, not by a warehouse integration case; and no spec pins the module's label in the role
     matrix (§6.1 says nothing catches the omission; the label is present today).
+- **P2 re-detailed** (2026-11-25). Phase 2, purchase requests, is re-detailed in
+  [administration-module-phase-2.md](administration-module-phase-2.md), as §18 and §21 ask, under the owner's
+  adoption of every recommended default (§16.12). Its drift check, on `main` at `de38fd71`, found no change since
+  `9efdcbd9` in the platform code P2 relies on. P2 is written against the engine as ADR-041 leaves it, which PX-1's code
+  pull requests have yet to build, so P2's code waits for PX-1 to close (§18.2), and a second drift check reads the
+  merged engine, in a docs pull request of its own, before P2.0. ADR-041 supersedes five points of the P2 text, and the
+  code Phase 1 left differs from it in eight places; the re-detail's §1.2 details each, with the plan-of-record changes
+  it makes. It plans eleven code pull requests, P2.0 to P2.W2, and records four questions for the owner, PRQ-1 to
+  PRQ-4, which P2 does not wait for. Its design review, Full preset, ran on 2026-11-25 and is recorded in its §18: 148
+  findings over two rounds, 146 fixed, one escalated (PRQ-3) and one dropped, and a few parts dropped under (a) and
+  (d), one of which went to the owner as PRQ-4. It is the gate before P2.0.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

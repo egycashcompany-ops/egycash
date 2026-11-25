@@ -3454,6 +3454,26 @@ Repository-wide findings outside this module are listed for the owner in
     not have (the organization's MongoDB Atlas access for AI clients is off). PX-1.2 and PX-1.6 shipped on the safe side
     the plan states (a request nobody can decide waits; an off-type rung is unstaffed), and the counts stay the owner's
     or an operator's to run.
+- **P2 engine drift check** (2026-11-25). The second drift check the P2 re-detail asks for before P2.0 (its §3) read
+  the engine PX-1 built, PX-1.1 to PX-1.6, on `a4434d00`, PX-1.6's head, and its hosts as they now stand: HR leave's
+  service and model, and the chain screen at `/system/approvals` with its source scan. It compared them with the
+  re-detail's §1.2 A items 1–5 and 17, its Terms, §4.4, §8, §10.2 and §12's engine-facing cases. The engine is as
+  ADR-041 leaves it, and nothing asks for an engine change. The re-detail, now v0.4, records nine differences as its
+  §1.2 E, items 23 to 31, each folded into the sections it names:
+  - *Rules.* Off `pendingApproval` the detail's trail also clears `currentStep`, as leave's does, so a cancelled PR
+    marks no rung as waiting. The subject maps each stored entry to the engine's `DecidedEntry`, the decider's id as a
+    string, and the append turns it back into an ObjectId, as leave's do. The submission's conditional write sets both
+    pin fields from one `pinOf` result, since the pin's own check runs only at create and save. The record's earlier
+    rounds name a rung by its caption, else "Step n", since the chain screen writes no caption and an entry stores no
+    level; the re-detail's review is asked to confirm it.
+  - *Wording.* The `approvalDecision` row carries the engine's own fields, `permissionKey` and `covers` among them, with
+    `overriddenWith` and `covers` only where the engine writes them. The trail's `currentStep` gives the live rung to a
+    host that holds an `AuthContext`; the stuck audience is still chosen by the rungs left, after a decision and in the
+    sweep alike. The audit option is checked through a mock of the platform barrel, and the chain screen's source scan
+    joins the specs that stay.
+  - *Pins.* The engine, leave and chain-screen lines PX-1 moved are re-pinned, and so are the re-detail's citations of
+    this file past §16.12's log, which moved three lines when the owner's answers of 2026-11-25 were logged.
+  - *Next.* Nothing in the engine holds P2 back: P2.0 may open once PX-1.6 and this docs pull request have merged.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

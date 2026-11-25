@@ -834,13 +834,14 @@ describe('the sidebar', () => {
     ]);
   });
 
-  it('the super-admin sees the module’s four rows, under its own category', async () => {
+  it('the super-admin sees the module’s five rows, under its own category', async () => {
     const sidebar = await sidebarOf(world.adminToken);
     expect(sidebar.get('Administrative Affairs')).toEqual([
       '/administration',
       '/administration/warehouses',
       '/administration/items',
       '/administration/catalogs',
+      '/administration/suppliers',
     ]);
     // Never filed under System Administration, whose English name it must not take.
     expect(sidebar.get('Administration') ?? []).not.toContain('/administration/warehouses');

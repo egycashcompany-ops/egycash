@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { CATEGORY_READ_KEYS } from './pages/SuppliersPage';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const API = resolve(HERE, '../../../../api/src/modules/administration');
@@ -20,6 +21,7 @@ const MANIFEST = read('administration.module.ts');
 const CATALOG_CLIENT = client('catalog-api.ts');
 const WAREHOUSE_CLIENT = client('warehouses-api.ts');
 const PEOPLE_CLIENT = client('people-api.ts');
+const SUPPLIER_CLIENT = client('suppliers-api.ts');
 
 /** The verb + path pairs a router declares, e.g. `get /:id`. */
 const declared = (routes: string): Set<string> => {
@@ -37,13 +39,14 @@ const sortable = (service: string): string[] => {
 };
 
 describe('every endpoint the module’s client calls exists on the API', () => {
-  it('mounts the five routers the client targets', () => {
+  it('mounts the six routers the client targets', () => {
     for (const prefix of [
       '/administration/catalog-items',
       '/administration/item-categories',
       '/administration/items',
       '/administration/warehouses',
       '/administration/people',
+      '/administration/suppliers',
     ]) {
       expect(MANIFEST, prefix).toContain(`prefix: '${prefix}'`);
     }
@@ -132,10 +135,59 @@ describe('every endpoint the module’s client calls exists on the API', () => {
     );
   });
 
-  it('calls no endpoint the API does not declare — no delete anywhere', () => {
+  it('suppliers: list, one, create, update, and a paper’s link, bytes and removal — no supplier delete', () => {
+    expect(declared(read('procurement/suppliers/supplier.routes.ts'))).toEqual(
+      new Set([
+        'get /',
+        'get /:id',
+        'post /',
+        'patch /:id',
+        'post /:id/attachments',
+        'get /:id/attachments/:attachmentId',
+        'delete /:id/attachments/:attachmentId',
+      ]),
+    );
+    expect(SUPPLIER_CLIENT).toContain('`/administration/suppliers${buildQuery(params)}`');
+    expect(SUPPLIER_CLIENT).toContain(
+      'get<AdministrationSupplierDetailDto>(`/administration/suppliers/${id}`)',
+    );
+    expect(SUPPLIER_CLIENT).toContain(
+      "post<AdministrationSupplierDetailDto>('/administration/suppliers'",
+    );
+    expect(SUPPLIER_CLIENT).toContain(
+      'patch<AdministrationSupplierDetailDto>(`/administration/suppliers/${id}`',
+    );
+    // A paper: multipart, the file part named `file`, with the text fields the contract reads.
+    expect(SUPPLIER_CLIENT).toContain('`/administration/suppliers/${id}/attachments`');
+    for (const part of ["form.append('file', file)", "form.append('label', label)"]) {
+      expect(SUPPLIER_CLIENT, part).toContain(part);
+    }
+    expect(SUPPLIER_CLIENT).toContain("form.append('version', String(version))");
+    expect(SUPPLIER_CLIENT).toContain(
+      'fetchBlob(`/administration/suppliers/${id}/attachments/${attachmentId}`)',
+    );
+    // The one DELETE removes a paper's link, its version in the query (a DELETE has no body).
+    expect(SUPPLIER_CLIENT).toContain(
+      '`/administration/suppliers/${id}/attachments/${attachmentId}${buildQuery({ version })}`',
+    );
+    expect(SUPPLIER_CLIENT.match(/\bdel</gu)).toHaveLength(1);
+  });
+
+  it('calls no endpoint the API does not declare — no record deleted anywhere', () => {
     for (const source of [CATALOG_CLIENT, WAREHOUSE_CLIENT, PEOPLE_CLIENT]) {
       expect(source).not.toMatch(/\bdel</u);
     }
+  });
+});
+
+describe('every gate a screen copies from the API is the one the API holds', () => {
+  it('the register’s category filter: exactly the keys the categories’ read admits', () => {
+    const route = read('catalog/item-categories/item-category.routes.ts');
+    const any =
+      /router\.get\(\s*'\/',\s*authenticate,\s*authorizeAny\(([^)]*)\)/u.exec(route)?.[1] ?? '';
+    const keys = [...any.matchAll(/'([^']+)'/gu)].map((m) => m[1] as string);
+    expect(keys.length).toBeGreaterThan(0);
+    expect(new Set(CATEGORY_READ_KEYS)).toEqual(new Set(keys));
   });
 });
 
@@ -153,6 +205,13 @@ describe('every sort a screen offers is one the API sorts on', () => {
       expect.arrayContaining(['code', 'name.ar']),
     );
     expect(page('WarehousesPage.tsx')).toContain("sortKey: 'name.ar'");
+  });
+
+  it('suppliers: the code and the Arabic name', () => {
+    expect(sortable(read('procurement/suppliers/supplier.service.ts'))).toEqual(
+      expect.arrayContaining(['code', 'name.ar']),
+    );
+    expect(page('SuppliersPage.tsx')).toContain("sortKey: 'name.ar'");
   });
 
   it('units and categories: the sort order and the Arabic name — and the selects’ whole read too', () => {

@@ -16294,6 +16294,88 @@ const en: Record<string, string> = {
     'A document not yet ended names this warehouse, so it cannot be retired.',
   'administration.refusals.branchOutOfReach':
     'A new warehouse is filed under the top bar’s branch — choose that branch here, or change it in the top bar.',
+  // The supplier register and record (P1b.W): the parties the company buys from, their contacts and
+  // their papers (administration-module-design-integration.md §13.6 B, §11.4–§11.5).
+  'administration.nav.suppliers': 'Suppliers',
+  'administration.home.activeSuppliers': 'Active suppliers',
+  'administration.home.cards.suppliers':
+    'The parties the company buys from: their registration numbers, contacts and documents.',
+  'administration.refusals.inactive.categoryIds':
+    'A category chosen is retired — remove it, or choose an active one.',
+  'administration.suppliers.create': 'Add supplier',
+  'administration.suppliers.edit': 'Edit supplier',
+  'administration.suppliers.created': 'Supplier added',
+  'administration.suppliers.updated': 'Supplier saved',
+  'administration.suppliers.empty': 'No suppliers match these filters.',
+  'administration.suppliers.searchPlaceholder': 'Search by code or name',
+  'administration.suppliers.allCategories': 'All categories',
+  'administration.suppliers.columns.code': 'Code',
+  'administration.suppliers.columns.name': 'Name',
+  'administration.suppliers.columns.phone': 'Phone',
+  'administration.suppliers.columns.email': 'Email',
+  'administration.suppliers.columns.categories': 'Categories supplied',
+  'administration.suppliers.columns.status': 'Status',
+  'administration.suppliers.columns.actions': 'Actions',
+  'administration.suppliers.fields.nameAr': 'Arabic name',
+  'administration.suppliers.fields.nameEn': 'English name',
+  'administration.suppliers.fields.phone': 'Phone',
+  'administration.suppliers.fields.email': 'Email',
+  'administration.suppliers.fields.address': 'Address',
+  'administration.suppliers.fields.taxNumber': 'Tax registration number',
+  'administration.suppliers.fields.taxNumberHint':
+    'As the tax card prints it. Another supplier holding it is pointed out, never refused.',
+  'administration.suppliers.fields.commercialRegistry': 'Commercial registry number',
+  'administration.suppliers.fields.categories': 'Categories supplied',
+  'administration.suppliers.fields.categoriesHint':
+    'The item categories this supplier supplies — a top-level category or a subcategory.',
+  'administration.suppliers.fields.paymentTerms': 'Payment terms',
+  'administration.suppliers.fields.notes': 'Notes',
+  'administration.suppliers.fields.isActive':
+    'Active — a retired supplier keeps its code and is offered nowhere new',
+  'administration.suppliers.fields.contactNameOf': 'Contact person {{n}} — name',
+  'administration.suppliers.errors.email': 'Not an e-mail address — such as name@example.com.',
+  'administration.suppliers.errors.stale':
+    'This supplier was saved elsewhere after it was opened here — the form now shows it as it is, with your changes kept. Check them, then save again.',
+  'administration.suppliers.sections.identity': 'Supplier',
+  'administration.suppliers.sections.reach': 'Contact details',
+  'administration.suppliers.contacts.title': 'Contact people',
+  'administration.suppliers.contacts.add': 'Add contact person',
+  'administration.suppliers.contacts.none': 'No contact people recorded.',
+  'administration.suppliers.contacts.name': 'Name',
+  'administration.suppliers.contacts.role': 'Role',
+  'administration.suppliers.contacts.remove': 'Remove',
+  'administration.suppliers.taxNumberShared.title': 'Other suppliers hold this tax number',
+  'administration.suppliers.taxNumberShared.body':
+    'This does not stop the supplier being saved — a supplier’s branches may be separate records. Make sure the same supplier is not entered twice.',
+  'administration.suppliers.papers.title': 'Supplier documents',
+  'administration.suppliers.papers.caption':
+    'PDF or a photo, up to {{size}} MB each, and at most 20 documents.',
+  'administration.suppliers.papers.add': 'Add document',
+  'administration.suppliers.papers.added': 'Document filed',
+  'administration.suppliers.papers.empty': 'No documents filed yet.',
+  'administration.suppliers.papers.full':
+    'The list holds 20 documents, as many as it takes — remove one to add another.',
+  'administration.suppliers.papers.label': 'Document',
+  'administration.suppliers.papers.labelHint':
+    'What the document is — such as the commercial registry or the tax card.',
+  'administration.suppliers.papers.file': 'File',
+  'administration.suppliers.papers.fileHint': 'A PDF or a photo (JPEG, PNG or WebP).',
+  'administration.suppliers.papers.wrongType':
+    'Only a PDF or a photo (JPEG, PNG or WebP) can be filed.',
+  'administration.suppliers.papers.open': 'Open document',
+  'administration.suppliers.papers.openNewTab': 'Open in a new tab',
+  'administration.suppliers.papers.remove': 'Remove document',
+  'administration.suppliers.papers.removeBody':
+    'The document leaves this supplier’s list. Its file stays in the system’s records.',
+  'administration.suppliers.papers.removed': 'Document removed',
+  'administration.suppliers.papers.stillScanning':
+    'This file is still being scanned for viruses — it opens once the scan is done.',
+  'administration.suppliers.papers.loadFailed': 'The file could not be opened.',
+  'administration.suppliers.papers.scan.pending': 'Being scanned',
+  'administration.suppliers.papers.scan.blocked': 'Blocked',
+  'administration.suppliers.papers.scan.unavailable': 'File unavailable',
+  'administration.suppliers.papers.size.kb': '{{size}} KB',
+  'administration.suppliers.papers.size.mb': '{{size}} MB',
 };
 
 const ar: Record<string, string> = {
@@ -32189,6 +32271,87 @@ const ar: Record<string, string> = {
     'يشير إلى هذا المخزن مستند لم يُغلق بعد، فلا يمكن إيقافه.',
   'administration.refusals.branchOutOfReach':
     'يُسجَّل المخزن الجديد تحت فرع الشريط العلوي — اختر ذلك الفرع هنا، أو غيِّره من الشريط العلوي.',
+  // سجل الموردين وصفحة المورد (P1b.W).
+  'administration.nav.suppliers': 'الموردون',
+  'administration.home.activeSuppliers': 'الموردون النشطون',
+  'administration.home.cards.suppliers':
+    'الجهات التي تشتري منها الشركة: أرقام تسجيلها وجهات الاتصال بها ومستنداتها.',
+  'administration.refusals.inactive.categoryIds':
+    'أحد التصنيفات المختارة موقوف — أزِله، أو اختر تصنيفًا نشطًا.',
+  'administration.suppliers.create': 'إضافة مورد',
+  'administration.suppliers.edit': 'تعديل المورد',
+  'administration.suppliers.created': 'تمت إضافة المورد',
+  'administration.suppliers.updated': 'تم حفظ المورد',
+  'administration.suppliers.empty': 'لا يوجد موردون مطابقون لهذه الفلاتر.',
+  'administration.suppliers.searchPlaceholder': 'ابحث بالكود أو الاسم',
+  'administration.suppliers.allCategories': 'كل التصنيفات',
+  'administration.suppliers.columns.code': 'الكود',
+  'administration.suppliers.columns.name': 'الاسم',
+  'administration.suppliers.columns.phone': 'الهاتف',
+  'administration.suppliers.columns.email': 'البريد الإلكتروني',
+  'administration.suppliers.columns.categories': 'التصنيفات التي يوردها',
+  'administration.suppliers.columns.status': 'الحالة',
+  'administration.suppliers.columns.actions': 'الإجراءات',
+  'administration.suppliers.fields.nameAr': 'الاسم بالعربية',
+  'administration.suppliers.fields.nameEn': 'الاسم بالإنجليزية',
+  'administration.suppliers.fields.phone': 'الهاتف',
+  'administration.suppliers.fields.email': 'البريد الإلكتروني',
+  'administration.suppliers.fields.address': 'العنوان',
+  'administration.suppliers.fields.taxNumber': 'رقم التسجيل الضريبي',
+  'administration.suppliers.fields.taxNumberHint':
+    'كما تطبعه البطاقة الضريبية. يُنبَّه إلى مورد آخر يحمله، ولا يُرفض.',
+  'administration.suppliers.fields.commercialRegistry': 'رقم السجل التجاري',
+  'administration.suppliers.fields.categories': 'التصنيفات التي يوردها',
+  'administration.suppliers.fields.categoriesHint':
+    'تصنيفات الأصناف التي يوردها هذا المورد — تصنيف رئيسي أو تصنيف فرعي.',
+  'administration.suppliers.fields.paymentTerms': 'شروط الدفع',
+  'administration.suppliers.fields.notes': 'ملاحظات',
+  'administration.suppliers.fields.isActive':
+    'نشط — المورد الموقوف يحتفظ بكوده ولا يُعرض في أي اختيار جديد',
+  'administration.suppliers.fields.contactNameOf': 'اسم جهة الاتصال {{n}}',
+  'administration.suppliers.errors.email': 'هذا ليس عنوان بريد إلكتروني — مثل name@example.com.',
+  'administration.suppliers.errors.stale':
+    'حُفظ هذا المورد في مكان آخر بعد فتحه هنا — يعرض النموذج الآن المورد كما هو مع الإبقاء على تعديلاتك. راجعها ثم احفظ مجددًا.',
+  'administration.suppliers.sections.identity': 'المورد',
+  'administration.suppliers.sections.reach': 'بيانات الاتصال',
+  'administration.suppliers.contacts.title': 'جهات الاتصال',
+  'administration.suppliers.contacts.add': 'إضافة جهة اتصال',
+  'administration.suppliers.contacts.none': 'لا توجد جهات اتصال مسجَّلة.',
+  'administration.suppliers.contacts.name': 'الاسم',
+  'administration.suppliers.contacts.role': 'الصفة',
+  'administration.suppliers.contacts.remove': 'إزالة',
+  'administration.suppliers.taxNumberShared.title': 'رقم التسجيل الضريبي مسجَّل لموردين آخرين',
+  'administration.suppliers.taxNumberShared.body':
+    'لا يمنع ذلك حفظ المورد — فقد تكون فروع المورد الواحد سجلات منفصلة. تأكد أن المورد نفسه لم يُسجَّل مرتين.',
+  'administration.suppliers.papers.title': 'مستندات المورد',
+  'administration.suppliers.papers.caption':
+    'ملف PDF أو صورة، حتى {{size}} ميجابايت لكل مستند، وعشرون مستندًا على الأكثر.',
+  'administration.suppliers.papers.add': 'إضافة مستند',
+  'administration.suppliers.papers.added': 'تم حفظ المستند',
+  'administration.suppliers.papers.empty': 'لم يُحفظ أي مستند بعد.',
+  'administration.suppliers.papers.full':
+    'تضم القائمة عشرين مستندًا، وهو أقصى ما تتسع له — أزِل أحدها لإضافة غيره.',
+  'administration.suppliers.papers.label': 'المستند',
+  'administration.suppliers.papers.labelHint':
+    'ما هذا المستند — مثل السجل التجاري أو البطاقة الضريبية.',
+  'administration.suppliers.papers.file': 'الملف',
+  'administration.suppliers.papers.fileHint': 'ملف PDF أو صورة (JPEG أو PNG أو WebP).',
+  'administration.suppliers.papers.wrongType':
+    'لا يُقبل إلا ملف PDF أو صورة (JPEG أو PNG أو WebP).',
+  'administration.suppliers.papers.open': 'فتح المستند',
+  'administration.suppliers.papers.openNewTab': 'فتح في نافذة جديدة',
+  'administration.suppliers.papers.remove': 'إزالة المستند',
+  'administration.suppliers.papers.removeBody':
+    'يُزال المستند من قائمة هذا المورد، ويبقى ملفه محفوظًا في سجلات النظام.',
+  'administration.suppliers.papers.removed': 'تمت إزالة المستند',
+  'administration.suppliers.papers.stillScanning':
+    'ما زال هذا الملف قيد فحص الفيروسات — يمكن فتحه بعد انتهاء الفحص.',
+  'administration.suppliers.papers.loadFailed': 'تعذّر فتح الملف.',
+  'administration.suppliers.papers.scan.pending': 'قيد الفحص',
+  'administration.suppliers.papers.scan.blocked': 'محظور',
+  'administration.suppliers.papers.scan.unavailable': 'الملف غير متاح',
+  'administration.suppliers.papers.size.kb': '{{size}} كيلوبايت',
+  'administration.suppliers.papers.size.mb': '{{size}} ميجابايت',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

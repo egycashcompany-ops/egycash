@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { ADMINISTRATION_WAREHOUSE_TYPES, type Locale } from '@ecms/contracts';
 import { translate } from '../../platform/localization/i18n';
 import { REFUSAL_FIELD_KEYS } from './lib/refusals';
+import { PAPER_CHIPS } from './lib/supplier-view';
 import { CATALOG_TABS } from './pages/CatalogsPage';
 
 const LOCALES: Locale[] = ['en', 'ar'];
@@ -38,10 +39,21 @@ const VOCABULARIES: { name: string; keys: readonly string[] }[] = [
       (word) => `administration.status.${word}`,
     ),
   },
+  // A supplier paper's scan chip and its size's unit (P1b.W).
+  {
+    name: 'paper scan chip',
+    keys: PAPER_CHIPS.map((chip) => `administration.suppliers.papers.scan.${chip}`),
+  },
+  {
+    name: 'paper size unit',
+    keys: ['kb', 'mb'].map((unit) => `administration.suppliers.papers.size.${unit}`),
+  },
   // The sidebar rows' labels are the page titles (the routes spec holds them word for word).
   {
     name: 'nav row',
-    keys: ['home', 'warehouses', 'items', 'catalogs'].map((page) => `administration.nav.${page}`),
+    keys: ['home', 'warehouses', 'items', 'catalogs', 'suppliers'].map(
+      (page) => `administration.nav.${page}`,
+    ),
   },
 ];
 

@@ -25,6 +25,7 @@ export type RefusalField =
   | 'maxQty'
   | 'unitId'
   | 'categoryId'
+  | 'categoryIds'
   | 'branchId'
   | 'responsibleEmployeeId'
   | 'isActive';
@@ -56,8 +57,11 @@ const wording = (code: string, detail: ApiErrorDetail): [RefusalField, string] |
       return isOneOf(ADMINISTRATION_STOCK_LEVEL_FIELDS, detail.field)
         ? [detail.field, 'administration.refusals.levelsOutOfOrder']
         : null;
+    // An item's unit or category, or one of a supplier's categories (P1b.W).
     case ErrorCodes.ADMINISTRATION_REFERENCE_INACTIVE:
-      return detail.field === 'unitId' || detail.field === 'categoryId'
+      return detail.field === 'unitId' ||
+        detail.field === 'categoryId' ||
+        detail.field === 'categoryIds'
         ? [detail.field, `administration.refusals.inactive.${detail.field}`]
         : null;
     case ErrorCodes.ADMINISTRATION_SUBCATEGORY_REQUIRED:
@@ -102,6 +106,7 @@ export const REFUSAL_FIELD_KEYS: readonly string[] = [
   'administration.refusals.levelsOutOfOrder',
   'administration.refusals.inactive.unitId',
   'administration.refusals.inactive.categoryId',
+  'administration.refusals.inactive.categoryIds',
   'administration.refusals.subcategoryRequired',
   'administration.refusals.keeperExited',
   ...ADMINISTRATION_DEACTIVATION_PROBLEMS.map(
@@ -124,8 +129,11 @@ export const isStaleRefusal = (error: unknown): boolean =>
  * keeps the reader's typing, which they can see before pressing Save again.
  */
 export const carryEdits = <F extends object>(opened: F, typed: F, fresh: F): F => {
+  // Compared by value, so a list (a supplier's categories or contacts) counts as changed only when
+  // what it holds differs — a form rebuilt from the same record is not an edit.
+  const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
   const mine = Object.fromEntries(
-    Object.entries(typed).filter(([key, value]) => value !== opened[key as keyof F]),
+    Object.entries(typed).filter(([key, value]) => !same(value, opened[key as keyof F])),
   );
   return { ...fresh, ...mine };
 };

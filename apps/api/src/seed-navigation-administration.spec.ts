@@ -10,9 +10,9 @@
 // All three are read as SOURCE (or as the declarations the seed exports) and compared. A routed
 // screen with no row is invisible; a row for a page that does not exist is a 404 in the sidebar; a
 // row keyed on another key than its route's guard is offered to a reader the router then refuses.
-// Unlike Operations, a routed screen may go without a row — the item record, opened from its
-// register — but then it is NAMED below with the page that links to it, so a screen nothing links
-// to still fails here.
+// Unlike Operations, a routed screen may go without a row — the item and supplier records, each
+// opened from its register — but then it is NAMED below with the page that links to it, so a
+// screen nothing links to still fails here.
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -41,6 +41,11 @@ const ROWLESS: Record<string, { page: string; link: RegExp }> = {
   '/administration/items/:id': {
     page: 'pages/ItemsPage.tsx',
     link: /navigate\(`\/administration\/items\/\$\{item\.id\}`\)/u,
+  },
+  // The supplier record, opened from its register's row (P1b.W).
+  '/administration/suppliers/:id': {
+    page: 'pages/SuppliersPage.tsx',
+    link: /navigate\(`\/administration\/suppliers\/\$\{supplier\.id\}`\)/u,
   },
 };
 
@@ -80,12 +85,13 @@ describe('the Administrative Affairs category', () => {
 });
 
 describe('the rows', () => {
-  it('are the four Phase 1 screens, in order', () => {
+  it('are the five Phase 1 screens, in order — the supplier register last (P1b.W)', () => {
     expect(rows.map((row) => [row.en, row.ar, row.route])).toEqual([
       ['Administrative Affairs Home', 'الرئيسية', '/administration'],
       ['Warehouses', 'المخازن', '/administration/warehouses'],
       ['Items', 'الأصناف', '/administration/items'],
       ['Units and categories', 'وحدات القياس والتصنيفات', '/administration/catalogs'],
+      ['Suppliers', 'الموردون', '/administration/suppliers'],
     ]);
   });
 
@@ -118,7 +124,7 @@ describe('the rows', () => {
     for (const row of rows)
       expect(known.has(row.icon), `${row.route} icon '${row.icon}'`).toBe(true);
     expect(known.has(category?.icon ?? ''), `category icon '${category?.icon ?? ''}'`).toBe(true);
-    expect(rows.map((row) => row.icon)).toEqual(['home', 'warehouse', 'box', 'tag']);
+    expect(rows.map((row) => row.icon)).toEqual(['home', 'warehouse', 'box', 'tag', 'company']);
     expect(new Set(rows.map((row) => row.icon)).size).toBe(rows.length);
   });
 });

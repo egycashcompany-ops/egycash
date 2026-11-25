@@ -7,10 +7,11 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
-import { itemListKey, warehouseListKey } from '../api/administration-keys';
+import { itemListKey, supplierListKey, warehouseListKey } from '../api/administration-keys';
 import { useAdministrationItems } from '../api/catalog-queries';
 import { useAdministrationWarehouses } from '../api/warehouses-queries';
 import { ar, item, pageOf, renderScreen, text, warehouse } from '../screen-fixtures';
+import { supplier } from '../supplier-fixtures';
 import {
   ADMINISTRATION_SHORTCUTS,
   AdministrationHomePage,
@@ -53,6 +54,7 @@ const render = (
   seed: readonly (readonly [readonly unknown[], unknown])[] = [
     [warehouseListKey(COUNT), pageOf([warehouse()], 7)],
     [itemListKey(COUNT), pageOf([item()], 1250)],
+    [supplierListKey(COUNT), pageOf([supplier()], 42)],
   ],
   failing: readonly (readonly unknown[])[] = [],
 ): string =>
@@ -69,6 +71,7 @@ const ALL = [
   'administrationWarehouse.view',
   'administrationItem.view',
   'administrationCatalog.manage',
+  'administrationSupplier.view',
 ];
 
 describe('the Administrative Affairs home', () => {
@@ -102,6 +105,17 @@ describe('the Administrative Affairs home', () => {
     const itemsOnly = render(['administrationItem.view']);
     expect(itemsOnly).toContain(ar('administration.home.activeItems'));
     expect(itemsOnly).not.toContain(ar('administration.home.activeWarehouses'));
+    expect(itemsOnly).not.toContain(ar('administration.home.activeSuppliers'));
+  });
+
+  it('gives the supplier register its tile and its live count, under its own key (P1b.W)', () => {
+    const html = render(['administrationSupplier.view']);
+    expect(html).toContain('href="/administration/suppliers"');
+    expect(html).toContain(ar('administration.home.cards.suppliers'));
+    expect(text(html)).toContain(ar('administration.home.activeSuppliers'));
+    expect(text(html)).toContain('٤٢');
+    expect(html).not.toContain('href="/administration/items"');
+    expect(html).not.toContain(ar('administration.home.activeItems'));
   });
 
   it('asks each count only under the key its read takes — never a read the server refuses', () => {
@@ -123,9 +137,11 @@ describe('the Administrative Affairs home', () => {
     expect(COUNT_LINKS).toEqual({
       warehouses: '/administration/warehouses?active=true',
       items: '/administration/items?active=true',
+      suppliers: '/administration/suppliers?active=true',
     });
     expect(html).toContain('href="/administration/warehouses?active=true"');
     expect(html).toContain('href="/administration/items?active=true"');
+    expect(html).toContain('href="/administration/suppliers?active=true"');
   });
 
   it('says a count could not be read rather than showing 0', () => {

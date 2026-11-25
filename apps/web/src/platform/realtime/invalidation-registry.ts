@@ -652,6 +652,8 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // ── Administrative Affairs ─────────────────────────────────────────────────
   // An item moves the item screens; a unit or a category moves the catalogs screen and every item
   // screen that names one (administration-module-design-integration.md §9.4); `stock` joins in P5.
+  // A category also moves the supplier screens, whose rows and records name the categories each
+  // supplier supplies (P1b.W); no supplier names a unit.
   'administration.item': [['administration', 'items']],
   'administration.catalogItem': [
     ['administration', 'catalogs'],
@@ -660,12 +662,13 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'administration.itemCategory': [
     ['administration', 'catalogs'],
     ['administration', 'items'],
+    ['administration', 'suppliers'],
   ],
   // A warehouse moves the warehouse register and the home's count. The branch options are their
   // own subtree (`warehouseBranchOptions`): no warehouse write changes what a key reaches.
   'administration.warehouse': [['administration', 'warehouses']],
-  // A supplier moves the supplier screens, its papers included (§9.4); `rfqs` joins with P3 and
-  // `purchaseOrders` with P4. The screens arrive with P1b.W.
+  // A supplier moves the supplier screens (P1b.W) — its register, its record and the home's count —
+  // its papers included (§9.4); `rfqs` joins with P3 and `purchaseOrders` with P4.
   'administration.supplier': [['administration', 'suppliers']],
 
   // ── Automation ─────────────────────────────────────────────────────────────

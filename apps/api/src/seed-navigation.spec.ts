@@ -80,7 +80,8 @@ describe('the seeded navigation catalog', () => {
     // 139 → 140: «الشحنات المسلَّمة» joined Operations, right beneath the day board (Round 33 B).
     // 140 → 144: Administrative Affairs' first four rows — its home, the warehouses, the items, and
     //   the units and categories (administration-module-decisions-and-phases.md §19.5, P1a.W).
-    expect(rows).toHaveLength(144);
+    // 144 → 145: its supplier register, «الموردون» (P1b.W), closing Phase 1.
+    expect(rows).toHaveLength(145);
   });
 
   /**

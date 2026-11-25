@@ -569,8 +569,9 @@ export type AtmLegacySourceParams = z.output<typeof AtmLegacySourceParamsSchema>
 
 /**
  * `GET /atm/legacy-import/sources/:source/cutover` — the moment the source's branch began working in
- * ECMS (design §4.4): its first own row written on the first Cairo day it wrote at least 20. Null:
- * no such day yet (nothing to cut). Asked when a source is opened, not for every source at once.
+ * ECMS (design §4.4): its first own row of the day's own work (opened for the Cairo day it was
+ * written — a plan for the next day is not) on the first Cairo day with at least 20 such rows.
+ * Null: no such day yet (nothing to cut). Asked when a source is opened, not for every source.
  */
 export interface AtmLegacyCutoverDto {
   source: AtmLegacySource;
@@ -664,6 +665,13 @@ export interface AtmLegacyImportPreviewDto {
   sourceFound: boolean;
   replenishment: AtmLegacyKindPreviewDto;
   maintenance: AtmLegacyKindPreviewDto;
+  /**
+   * Both kinds' unresolved codes as one list — a code in both is one entry, its rows summed — most
+   * rows first, at most `ATM_LEGACY_UNRESOLVED_LISTED`; and how many distinct codes there are in
+   * all, so the screen's «و… أخرى» counts the codes not listed, not only those sent.
+   */
+  unresolvedCodes: AtmLegacyUnresolvedCodeDto[];
+  unresolvedCodeCount: number;
 }
 
 /**

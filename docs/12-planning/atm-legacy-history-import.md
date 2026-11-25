@@ -235,11 +235,15 @@ run, and «متابعة» on its row carries it on.
   run is, on the server's clock, **active** (stepped within the two-minute step lease — a window is
   driving it), **paused** (its page closed) or **stale** (no step for 30 minutes). A paused or stale
   run can still be resumed. A stale one no longer holds the lock: **every start attempt and every
-  undo, of any source, first ends every stale run `failed`** (one audit row each) — a start refused
-  afterwards (an undecided mode, an unreadable source) has still ended it. While a run holds the
+  undo batch, of any source, first ends every stale run `failed`** (one audit row each), before
+  anything else is checked — a start refused afterwards (a branch move, a linked branch, an
+  undecided mode, an unreadable source) has still ended it. Opening a preview ends nothing. While a run holds the
   lock (stepped within 30 minutes), the branch move refuses (`legacyImportRunning`, below). The
   screen offers «متابعة» on a paused run, nothing on an active one (another window drives it), and
-  on a stale one «متابعة», «معاينة» and «تراجع» — either of the last two ends it.
+  on a stale one «متابعة», «معاينة» and «تراجع» — «تراجع», or «استيراد» in the preview's dialog,
+  ends it. A run this window drove and stopped (a step failed) is paused at once, though the
+  server still reads it active for two minutes; while a row shows a run another window drives, the
+  card reads its sources again every 15 seconds, so it sees that run pause or end.
 - **Steps.** A step takes a two-minute lease on the run before it reads anything; a second step sent
   meanwhile is refused (409 `ATM_LEGACY_IMPORT_STEP_BUSY`) instead of reading the same rows. A step
   that fails gives the lease back and leaves the cursor where it was; the next step reads the same
@@ -322,15 +326,17 @@ source and its branch, its last run and the operations copied now; the buttons o
 running run, otherwise «معاينة» and «تراجع» while it holds copies; a progress bar while this window
 drives a run or an undo. «معاينة» opens a dialog that is also the confirmation: the cut (suggested),
 the server's preview (both kinds side by side, the cut it was counted with in Cairo time, the time
-evidence, the unresolved codes — ten, then how many more —, a refusal when the times are
-undecided, a line when nothing would be copied), and «استيراد», held back until the preview allows
+evidence, the unresolved codes of both kinds as one list — ten, then how many more there are in
+all —, a refusal when the times are undecided, a line when nothing would be copied), and «استيراد», held back until the preview allows
 it.
 
 The cut box is sent only as a complete moment from the year 2000, once it has held still for half a
 second or been left (the done pages' rule, `done-range-commit.ts`); a superseded preview is
 cancelled in the browser, and a failed one is not retried unasked. A half-typed box — a native box
 reads '' while any part is blank — blocks the preview and «استيراد» and, once left, says so; only an
-EMPTY box means no cut, and the preview then says every Done row is copied.
+EMPTY box means no cut, and the preview then says every Done row is copied. A box that was empty and
+is half-typed sends no change event at all, so the box's own `validity.badInput` is asked on each
+key, on leaving it and again at «استيراد».
 
 ### 4.11 What it changes elsewhere
 
@@ -430,8 +436,10 @@ source before reverting**.
   one run at a time, a busy step, the move's blocker, the undo refused, active / paused / stale on
   the server's clock; the undo in batches and its index; a linked target, a branch move running
   (at the start and the undo) and an unknown run refused; the suggestion counting only the day's
-  own work. ATM-7's refusal is in `atm-no-double-open.spec.ts`. Not tested: the unreadable source
-  (it needs a database user without read rights on the test server).
+  own work; a stale run ended by a start the move then refuses; both kinds' unresolved codes as one
+  list with its count; a source with a branch and no legacy database (Shorouk's, here) previewing
+  as not found. ATM-7's refusal is in `atm-no-double-open.spec.ts`. Not tested: the unreadable
+  source (it needs a database user without read rights on the test server).
 - `apps/web/src/modules/atm/legacy-history-card.spec.tsx` — the rows, their buttons by run state
   and permission, the labels naming the source, the progress, the body, when «استيراد» waits, the
   skip reasons shown, the code list, which box values are sent, the refusals' wording, every
@@ -500,6 +508,11 @@ Registering a machine the preview names, then importing again, adds its rows.
 - **The ATM-7 command** still exists; it refuses a branch with a register of its own, so it cannot
   run against these branches (§5).
 - **Copies changed in ECMS go with an undo**; the confirmation counts them (§4.8).
+- **An undo and a new start of the same source at once.** The undo does not take the run lock, so a
+  run started while another window's undo batch is between its check and its delete can count rows
+  as `existing` that the batch then removes: the run ends `done` with those rows missing, and the
+  undo's next batch is refused. It needs two administrators acting on one source within the same
+  seconds; importing the source again adds the missing rows (insert-only). Not guarded in code.
 
 ## 9. Open — the owner's
 
@@ -575,6 +588,17 @@ from reading the same rows; a mode decided month by month in the code — the fo
 read month by month and none changed, and Mohandessin gets the same reading before its import (§7,
 §8); retiring ATM-7 and the card now — after the imports, in a later change (§5, §9); the cut box in
 Cairo time — every ATM time box uses the reader's clock, and the preview names the cut in Cairo time.
-Refuted by their skeptics: an undo racing a new run of the same source (each refuses while the
-other holds the lock); a paused run's dead end, as worded; and two test-coverage claims with no
-failure a user can reach.
+Refuted by their skeptics: a paused run's dead end, as worded, and two test-coverage claims with no
+failure a user can reach. A fourth, an undo racing a new run of the same source, was refuted then
+as "each refuses while the other holds the lock" — which holds for a run, not for an undo, which
+takes no lock; the final review below kept it, and it is §8's accepted risk.
+
+**Final review**, the same day, of everything since the code review — three reviewers (data and
+API, the web card, the doc against the code), each finding put to a skeptic: 13 kept, several the
+same point, 1 refuted. Fixed: a box half-typed from empty imported with no cut (two reviewers); a
+run this window stopped read as another window's, and the card never read again; a refused start
+or undo left stale runs running, and the doc said «معاينة» ended one; the undo's confirmation
+could open over another action begun while its count was read; «و… أخرى» counted only the codes
+sent (both kinds are now one list, with the count of all); the cutover contract's comment; §6's
+claim of a test for an empty source (the test now exists). Accepted, not built: the undo racing a
+start of the same source (§8).

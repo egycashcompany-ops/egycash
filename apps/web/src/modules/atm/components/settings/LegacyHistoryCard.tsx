@@ -102,6 +102,13 @@ export const LegacyHistoryCard = (): JSX.Element => {
   const [opening, setOpening] = useState<LegacyImportSubject | null>(null);
   const [undoing, setUndoing] = useState<AtmLegacySourceDto | null>(null);
   const [busy, setBusy] = useState<LegacyBusy | null>(null);
+  /** A source whose «تراجع» is reading the server's count — its row waits for the answer. */
+  const [checking, setChecking] = useState<AtmLegacySource | null>(null);
+  /**
+   * Runs this window drove and stopped (a step failed): their last claim makes them `active` for
+   * two more minutes on the server's clock, but no window drives them — «متابعة» is offered.
+   */
+  const [stoppedHere, setStoppedHere] = useState<ReadonlySet<string>>(new Set());
   // A loop stops when the card goes: the page closed pauses a run, as the server expects. The
   // project's hook, so StrictMode's second mount sets it again (useMountedRef).
   const alive = useMountedRef();
@@ -145,6 +152,7 @@ export const LegacyHistoryCard = (): JSX.Element => {
       // A step that fails after the card closed is not news on whatever page the reader is on;
       // nor is a run another window finished meanwhile — the card's re-read shows how it ended.
       if (alive.current && !isRunEnded(error)) toast.error(legacyErrorText(error, t, locale));
+      if (alive.current) setStoppedHere((ids) => new Set(ids).add(run.id));
     } finally {
       if (alive.current) setBusy(null);
       restale();
@@ -191,8 +199,22 @@ export const LegacyHistoryCard = (): JSX.Element => {
    * before another window imported again (review finding, 2026-11-25).
    */
   const confirmUndo = async (entry: AtmLegacySourceDto): Promise<void> => {
-    const fresh = await sources.refetch();
-    setUndoing(fresh.data?.find((row) => row.source === entry.source) ?? entry);
+    setChecking(entry.source);
+    try {
+      const fresh = (await sources.refetch()).data?.find((row) => row.source === entry.source);
+      // Asked only if the source still offers it: copies held, and no run it would refuse for.
+      const run = fresh?.lastRun?.state === 'running' ? fresh.lastRun : null;
+      if (
+        alive.current &&
+        fresh !== undefined &&
+        fresh.copiedRows > 0 &&
+        (run === null || run.stale)
+      ) {
+        setUndoing(fresh);
+      }
+    } finally {
+      if (alive.current) setChecking(null);
+    }
   };
 
   const rows = sources.data ?? [];
@@ -214,7 +236,9 @@ export const LegacyHistoryCard = (): JSX.Element => {
               const mine = busy?.source === entry.source ? busy : null;
               const run = entry.lastRun?.state === 'running' ? entry.lastRun : null;
               // Driven by a window now (this one, or another): nothing else is offered.
-              const driven = mine !== null || run?.active === true;
+              const driven = mine !== null || (run?.active === true && !stoppedHere.has(run.id));
+              // While any row's «تراجع» reads its count, or a dialog is open, nothing new starts.
+              const held = busy !== null || checking !== null || undoing !== null;
               // Paused: carried on. Stale (left 30 minutes): also undone or started over — the
               // server ends it at either.
               const offerNew = run === null || run.stale;
@@ -230,7 +254,12 @@ export const LegacyHistoryCard = (): JSX.Element => {
                     {/* This window's own loop shows its progress below instead. */}
                     {mine === null && (
                       <span className="block text-xs text-slate-500 dark:text-slate-400">
-                        {legacySourceStatus(entry, t, locale)}
+                        {legacySourceStatus(
+                          entry,
+                          t,
+                          locale,
+                          run !== null && stoppedHere.has(run.id),
+                        )}
                       </span>
                     )}
                   </span>
@@ -239,7 +268,7 @@ export const LegacyHistoryCard = (): JSX.Element => {
                       variant="secondary"
                       size="sm"
                       leftIcon={<PlayIcon className="h-4 w-4" />}
-                      disabled={busy !== null || driven}
+                      disabled={held || driven}
                       aria-label={t('atm.settings.legacy.resumeFor', names)}
                       data-legacy-action="resume"
                       onClick={() => void runLoop(run)}
@@ -252,7 +281,7 @@ export const LegacyHistoryCard = (): JSX.Element => {
                       variant="secondary"
                       size="sm"
                       leftIcon={<EyeIcon className="h-4 w-4" />}
-                      disabled={busy !== null || entry.branchId === null}
+                      disabled={held || entry.branchId === null}
                       aria-label={t('atm.settings.legacy.previewFor', names)}
                       data-legacy-action="preview"
                       onClick={() => setOpening({ source: entry.source, branch })}
@@ -265,7 +294,8 @@ export const LegacyHistoryCard = (): JSX.Element => {
                       variant="ghost-danger"
                       size="sm"
                       leftIcon={<UndoIcon className="h-4 w-4" />}
-                      disabled={busy !== null}
+                      disabled={held}
+                      loading={checking === entry.source}
                       aria-label={t('atm.settings.legacy.undoFor', names)}
                       data-legacy-action="undo"
                       onClick={() => void confirmUndo(entry)}

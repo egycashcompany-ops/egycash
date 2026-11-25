@@ -70,23 +70,24 @@ export const shownSkipReasons = (preview: AtmLegacyImportPreviewDto): AtmLegacyS
     ATM_LEGACY_KINDS.some((kind) => preview[kind].skipped[reason] > 0),
   );
 
-/** The unresolved codes of both kinds, «code (rows)», the first ten and how many more. */
+/**
+ * The unresolved codes of both kinds, «code (rows)» — one entry per code, as the server merges
+ * them — the first ten, then how many more there are IN ALL (the server's distinct count), not
+ * only how many more it sent.
+ */
 export const unresolvedCodesText = (
   preview: AtmLegacyImportPreviewDto,
   t: Translate,
   locale: Locale,
 ): string => {
-  const codes = ATM_LEGACY_KINDS.flatMap((kind) =>
-    preview[kind].unresolvedCodes.map(
-      (entry) => `${entry.code} (${formatNumber(entry.rows, locale)})`,
-    ),
-  );
-  const shown = codes.slice(0, LEGACY_CODES_LISTED).join(listSeparator(locale));
-  return codes.length <= LEGACY_CODES_LISTED
-    ? shown
-    : `${shown} ${t('atm.settings.move.more', {
-        count: formatNumber(codes.length - LEGACY_CODES_LISTED, locale),
-      })}`;
+  const shown = preview.unresolvedCodes.slice(0, LEGACY_CODES_LISTED);
+  const text = shown
+    .map((entry) => `${entry.code} (${formatNumber(entry.rows, locale)})`)
+    .join(listSeparator(locale));
+  const more = Math.max(preview.unresolvedCodeCount, preview.unresolvedCodes.length) - shown.length;
+  return more <= 0
+    ? text
+    : `${text} ${t('atm.settings.move.more', { count: formatNumber(more, locale) })}`;
 };
 
 /** Legacy rows a run has read so far, of all it will read — the bar's numbers. */
@@ -99,11 +100,16 @@ export const legacyRunProgress = (run: AtmLegacyImportRunDto): { done: number; t
 export const percentOf = (done: number, total: number): number =>
   total <= 0 ? 100 : Math.max(0, Math.min(100, Math.floor((done / total) * 100)));
 
-/** What a source's row says under its name: its last run, and the copies it holds now. */
+/**
+ * What a source's row says under its name: its last run, and the copies it holds now.
+ * `stoppedHere`: this window drove the run and its step failed — no window drives it, whatever
+ * the server's two-minute `active` still says.
+ */
 export const legacySourceStatus = (
   entry: AtmLegacySourceDto,
   t: Translate,
   locale: Locale,
+  stoppedHere = false,
 ): string => {
   const n = (value: number): string => formatNumber(value, locale);
   if (entry.branchId === null) return t('atm.settings.legacy.noBranch');
@@ -122,7 +128,7 @@ export const legacySourceStatus = (
       ? t('atm.settings.legacy.never')
       : run.state !== 'running'
         ? t(`atm.settings.legacy.last.${run.state}`)
-        : run.active
+        : run.active && !stoppedHere
           ? place('atm.settings.legacy.runningElsewhere')
           : run.stale
             ? place('atm.settings.legacy.stale')

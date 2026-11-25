@@ -114,6 +114,8 @@ const preview = (over: Partial<AtmLegacyImportPreviewDto> = {}): AtmLegacyImport
   sourceFound: true,
   replenishment: kindPreview(),
   maintenance: kindPreview(),
+  unresolvedCodes: [],
+  unresolvedCodeCount: 0,
   ...over,
 });
 
@@ -230,6 +232,16 @@ describe('the legacy history card', () => {
     expect(html).not.toContain('data-legacy-action');
   });
 
+  it('a run this window stopped is paused, whatever the server’s two minutes still say', () => {
+    const entry = source({ lastRun: run({ state: 'running', active: true }) });
+    expect(legacySourceStatus(entry, t, 'ar')).toContain(
+      t('atm.settings.legacy.runningElsewhere', { done: '٦٣٬٤٣١', total: '١٢٦٬١٠٢' }),
+    );
+    expect(legacySourceStatus(entry, t, 'ar', true)).toContain(
+      t('atm.settings.legacy.paused', { done: '٦٣٬٤٣١', total: '١٢٦٬١٠٢' }),
+    );
+  });
+
   it('says a paused run’s place and the copies a source holds', () => {
     const status = legacySourceStatus(
       source({ lastRun: run({ state: 'running' }), copiedRows: 1_234 }),
@@ -303,19 +315,17 @@ describe('the preview and the body', () => {
     expect(shownSkipReasons(quiet)).toEqual(['deleted', 'open']);
   });
 
-  it('lists ten unresolved codes, then how many more', () => {
+  it('lists ten unresolved codes, then how many more there are in all — not only how many were sent', () => {
     const codes = (from: number, count: number) =>
       Array.from({ length: count }, (_, i) => ({ code: `90${String(from + i)}`, rows: 1 }));
-    const few = preview({ replenishment: kindPreview({ unresolvedCodes: codes(10, 3) }) });
+    const few = preview({ unresolvedCodes: codes(10, 3), unresolvedCodeCount: 3 });
     expect(unresolvedCodesText(few, t, 'en')).toBe('9010 (1), 9011 (1), 9012 (1)');
-    const many = preview({
-      replenishment: kindPreview({ unresolvedCodes: codes(10, 8) }),
-      maintenance: kindPreview({ unresolvedCodes: codes(30, 5) }),
-    });
+    // 20 sent of 38 distinct: ten shown, 28 more.
+    const many = preview({ unresolvedCodes: codes(10, 20), unresolvedCodeCount: 38 });
     const text = unresolvedCodesText(many, t, 'ar');
-    expect(text).toContain('9031');
-    expect(text).not.toContain('9032');
-    expect(text.endsWith(t('atm.settings.move.more', { count: '٣' }))).toBe(true);
+    expect(text).toContain('9019');
+    expect(text).not.toContain('9020');
+    expect(text.endsWith(t('atm.settings.move.more', { count: '٢٨' }))).toBe(true);
     expect(unresolvedCodesText(preview(), t, 'en')).toBe('');
   });
 

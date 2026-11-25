@@ -214,8 +214,19 @@ export const useSaveAtmDisplay = () => {
 // batch per request), so they are plain calls (`settings-api.ts`): the card re-reads its sources
 // when a loop ends or stops. The preview is a read, kept per body: the dialog asks again when the
 // cut or the open-row switch changes, and keeps the last numbers on screen (dimmed) meanwhile.
+/**
+ * The card's rows. While a row shows a run another window drives (`active`, on the server's
+ * clock), the list is read again every 15 seconds — nothing else tells this window when that run
+ * pauses or ends (no realtime event, no refetch on focus).
+ */
 export const useAtmLegacySources = (enabled = true) =>
-  useQuery({ queryKey: atmLegacySourcesKey(), queryFn: () => api.getLegacySources(), enabled });
+  useQuery({
+    queryKey: atmLegacySourcesKey(),
+    queryFn: () => api.getLegacySources(),
+    enabled,
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((row) => row.lastRun?.active === true) ? 15_000 : false,
+  });
 
 /** The moment the source's branch began working in ECMS — asked when its dialog opens. */
 export const useAtmLegacyCutover = (source: AtmLegacySource | null) =>

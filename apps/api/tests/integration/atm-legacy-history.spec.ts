@@ -261,6 +261,8 @@ beforeAll(async () => {
   // Each carries the code its deployment maps to (contracts ATM_LEGACY_SOURCES).
   alexBranchId = await mkBranch('050', 'الاسكندرية', 'Alexandria');
   await mkBranch('020', 'طنطا', 'Tanta');
+  // Shorouk's branch, with no `wsal` database on the test server: a source that is empty.
+  await mkBranch('070', 'الشروق', 'Shorouk');
   octoberBranchId = await mkBranch('040', 'اكتوبر', 'October');
   const linked = await call('put', '/atm/branch-links', adminToken, {
     links: [{ branchId: octoberBranchId, actsAsBranchId: alexBranchId }],
@@ -328,6 +330,9 @@ describe('the preview — what a run would copy, by the run’s own rules', () =
     const dto = await preview(BODY);
     expect(dto.sourceFound).toBe(true);
     expect(dto.branchId).toBe(alexBranchId);
+    // Both kinds' unresolved codes as one list, with how many there are in all.
+    expect(dto.unresolvedCodes).toEqual([{ code: '7777', rows: 1 }]);
+    expect(dto.unresolvedCodeCount).toBe(1);
     expect(dto.replenishment).toMatchObject({
       total: 10,
       toImport: 5, // r1, r2, r8, r9, r10
@@ -376,6 +381,11 @@ describe('the preview — what a run would copy, by the run’s own rules', () =
     const tanta = await preview({ ...BODY, source: 'tanta' });
     expect(tanta.sourceFound).toBe(true);
     expect(tanta.replenishment.total).toBe(0);
+    // Shorouk has a branch and no legacy database here: not found, nothing to copy.
+    const wsal = await preview({ ...BODY, source: 'wsal' });
+    expect(wsal).toMatchObject({ sourceFound: false, unresolvedCodeCount: 0 });
+    expect(wsal.replenishment).toMatchObject({ total: 0, toImport: 0 });
+    expect(wsal.maintenance).toMatchObject({ total: 0, toImport: 0 });
   });
 
   it('says when a kind’s rows do not decide the time mode', async () => {
@@ -666,6 +676,14 @@ describe('refusals', () => {
   });
 
   it('a branch move running holds a start and an undo (423); a step on an unknown run is 404', async () => {
+    // A run left half an hour: the start refused below still ends it first (design §4.7).
+    const left = await call('post', '/atm/legacy-import/runs', adminToken, BODY);
+    expect(left.status, JSON.stringify(left.body)).toBe(200);
+    const leftId = data<AtmLegacyImportRunDto>(left).id;
+    await AtmLegacyImportRunModel.updateOne(
+      { _id: leftId },
+      { $set: { lastStepAt: new Date(Date.now() - 31 * 60_000) } },
+    ).exec();
     const moveId = await atmBranchMoveRunRepository.start({
       sourceBranchId: octoberBranchId,
       targetBranchId: alexBranchId,
@@ -678,6 +696,7 @@ describe('refusals', () => {
       const started = await call('post', '/atm/legacy-import/runs', adminToken, BODY);
       expect(started.status).toBe(423);
       expect(errorCode(started)).toBe('ATM_BRANCH_MOVE_RUNNING');
+      expect((await AtmLegacyImportRunModel.findById(leftId).lean().exec())?.state).toBe('failed');
       const undo = await call('post', '/atm/legacy-import/sources/alex/undo', adminToken);
       expect(undo.status).toBe(423);
       expect(errorCode(undo)).toBe('ATM_BRANCH_MOVE_RUNNING');

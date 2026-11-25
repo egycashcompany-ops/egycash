@@ -544,6 +544,12 @@ export const atmLegacyHistoryService = {
     const index = await machineIndexOf(branch.id);
     const cutoverAt = cutoverOf(input);
     const kinds = {} as Record<AtmLegacyKind, AtmLegacyKindPreviewDto>;
+    const unresolvedAll = new Map<string, number>();
+    const listed = (codes: Map<string, number>) =>
+      [...codes]
+        .map(([code, rows]) => ({ code, rows }))
+        .sort((a, b) => b.rows - a.rows || a.code.localeCompare(b.code))
+        .slice(0, ATM_LEGACY_UNRESOLVED_LISTED);
     for (const kind of ATM_LEGACY_KINDS) {
       const mode = transformMode(modes[kind]);
       const skipped = emptyAtmLegacySkipCounts();
@@ -574,6 +580,7 @@ export const atmLegacyHistoryService = {
           skipped[outcome.verdict as AtmLegacySkipReason] += 1;
           if (outcome.verdict === 'unresolved') {
             unresolved.set(outcome.code, (unresolved.get(outcome.code) ?? 0) + 1);
+            unresolvedAll.set(outcome.code, (unresolvedAll.get(outcome.code) ?? 0) + 1);
           }
         }
       });
@@ -581,10 +588,7 @@ export const atmLegacyHistoryService = {
         total: totals[kind],
         skipped,
         toImport,
-        unresolvedCodes: [...unresolved]
-          .map(([code, rows]) => ({ code, rows }))
-          .sort((a, b) => b.rows - a.rows || a.code.localeCompare(b.code))
-          .slice(0, ATM_LEGACY_UNRESOLVED_LISTED),
+        unresolvedCodes: listed(unresolved),
         timeMode: modes[kind],
         evidence: evidence[kind],
         timeModeClear: legacyTimeModeClear(evidence[kind]),
@@ -600,17 +604,20 @@ export const atmLegacyHistoryService = {
       sourceFound: totals.replenishment + totals.maintenance > 0,
       replenishment: kinds.replenishment,
       maintenance: kinds.maintenance,
+      unresolvedCodes: listed(unresolvedAll),
+      unresolvedCodeCount: unresolvedAll.size,
     };
   },
 
   /** `POST /atm/legacy-import/runs` — starts a run; its steps do the work. */
   async start(input: AtmLegacyImportBody, ctx: AuthContext): Promise<AtmLegacyImportRunDto> {
     assertAtmSettingsManager(ctx);
+    // Every start attempt ends the stale runs first — refused or not (design §4.7).
+    const now = new Date();
+    await endStaleRuns(now);
     await assertNoBranchMoveRunning();
     const branch = await requireBranch(input.source);
     await assertNotLinkedSource(branch.id);
-    const now = new Date();
-    await endStaleRuns(now);
     const { modes, evidence, totals } = await readModes(input.source);
     const unclear = ATM_LEGACY_KINDS.filter((kind) => !legacyTimeModeClear(evidence[kind]));
     if (unclear.length > 0) {
@@ -715,9 +722,10 @@ export const atmLegacyHistoryService = {
    */
   async undoSource(source: AtmLegacySource, ctx: AuthContext): Promise<AtmLegacyUndoResultDto> {
     assertAtmSettingsManager(ctx);
-    await assertNoBranchMoveRunning();
+    // As a start: the stale runs end first, whatever refuses this batch after (design §4.7).
     const now = new Date();
     await endStaleRuns(now);
+    await assertNoBranchMoveRunning();
     if (await legacyImportRunning(now)) {
       throw new AppError(
         ErrorCodes.ATM_LEGACY_IMPORT_RUNNING,

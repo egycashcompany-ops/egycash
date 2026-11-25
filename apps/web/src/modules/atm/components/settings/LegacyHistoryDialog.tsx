@@ -213,6 +213,10 @@ export const LegacyHistoryDialog = ({
   const [incomplete, setIncomplete] = useState(false);
   const [left, setLeft] = useState(false);
   const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The box itself: a box that was empty and is now half-typed still reads '' — no change event
+  // reaches React — so its own `validity.badInput` is asked as well (final review, 2026-11-25).
+  const boxRef = useRef<HTMLInputElement | null>(null);
+  const halfTyped = (): boolean => boxRef.current?.validity.badInput === true;
   const stopTimer = (): void => {
     if (commitTimer.current !== null) clearTimeout(commitTimer.current);
     commitTimer.current = null;
@@ -272,6 +276,7 @@ export const LegacyHistoryDialog = ({
   const preview = useAtmLegacyPreview(body);
   const allowed =
     settled &&
+    !halfTyped() &&
     preview.data !== undefined &&
     !preview.isFetching &&
     !preview.isError &&
@@ -279,7 +284,15 @@ export const LegacyHistoryDialog = ({
     legacyImportAllowed(preview.data);
 
   const confirm = async (): Promise<void> => {
-    if (body === null || !allowed) return;
+    // Asked again at the click: the box may have been half-typed since the last render.
+    if (body === null || !allowed || halfTyped()) {
+      if (halfTyped()) {
+        stopTimer();
+        setIncomplete(true);
+        setLeft(true);
+      }
+      return;
+    }
     try {
       onStarted(await start.mutateAsync(body));
       onClose();
@@ -335,14 +348,26 @@ export const LegacyHistoryDialog = ({
           error={incomplete && left ? t('atm.settings.legacy.cutIncomplete') : undefined}
         >
           <Input
+            ref={boxRef}
             id="atm-legacy-cutover"
             type="datetime-local"
             value={box ?? ''}
             disabled={box === undefined || start.isPending}
             onChange={(e) => edit(e.target.value, e.target.validity.badInput)}
+            // A key typed into a box that read '' and still does: no change event, so the box's
+            // validity says whether it is half-typed now.
+            onKeyUp={(e) => {
+              if (e.currentTarget.value === '' && e.currentTarget.validity.badInput) {
+                stopTimer();
+                setIncomplete(true);
+              }
+            }}
             onBlur={(e) => {
               setLeft(true);
-              if (!e.target.validity.badInput) commit(e.target.value);
+              if (e.target.validity.badInput) {
+                stopTimer();
+                setIncomplete(true);
+              } else commit(e.target.value);
             }}
           />
         </Field>

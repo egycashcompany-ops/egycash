@@ -21,7 +21,9 @@ export const itemEntityRef = (id: string) => ({
 /**
  * The item's facts as the trail compares them: references as ids (their names are read at read
  * time, never copied), the name split by language, and `nameKey` left out, being the Arabic name
- * folded. The code is in the `create` row and never changes after it.
+ * folded. The code is in the `create` row and never changes after it. A row older than the kind
+ * reads as a stock item, as the DTO does, so the trail never records a change from nothing to
+ * what the row already meant.
  */
 export const itemSnapshot = (doc: AdministrationItemDoc): Record<string, unknown> => ({
   code: doc.code,
@@ -35,6 +37,7 @@ export const itemSnapshot = (doc: AdministrationItemDoc): Record<string, unknown
   maxQty: doc.maxQty,
   description: doc.description,
   notes: doc.notes,
+  stockTracked: doc.stockTracked ?? true,
   isActive: doc.isActive,
 });
 

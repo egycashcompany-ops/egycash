@@ -1,5 +1,6 @@
 // Administrative Affairs — the catalog (docs/12-planning/administration-module-design.md §2.3.2–§2.3.4,
-// §19.4): units of measure and item categories (P1a.1), and the items that name them (P1a.2).
+// §19.4): units of measure and item categories (P1a.1), and the items that name them (P1a.2),
+// each a stock or a non-stock item (P2.1, OD-14 C).
 //
 // Master data is organization-wide and never deleted: a row retires with `isActive: false` and keeps
 // its name and code, so a retired name is reactivated, never typed again. No schema here takes
@@ -240,6 +241,13 @@ export interface AdministrationItemDto {
   maxQty: number | null;
   description: string | null;
   notes: string | null;
+  /**
+   * The item's kind (OD-14 C): a stock item, or — false — a non-stock one, a service or a good no
+   * store keeps, which a purchase request names as it names any item. It changes no rule before
+   * P5, where a non-stock line posts no movement. A row written before the field existed reads
+   * true, a stock item, as every item was then.
+   */
+  stockTracked: boolean;
   isActive: boolean;
   version: number;
   createdAt: string;
@@ -249,7 +257,8 @@ export interface AdministrationItemDto {
 /**
  * No `code`: the server takes it inside the create's transaction (OD-05 A). No stock figure: an
  * item carries none, its stock is the ledger's (ADR-024). The levels' order is the service's rule
- * (422), judged on the row a write leaves, which an update's schema alone cannot see.
+ * (422), judged on the row a write leaves, which an update's schema alone cannot see. An item is a
+ * stock item unless the desk says otherwise (`stockTracked`, OD-14 C).
  */
 export const CreateAdministrationItemSchema = z
   .object({
@@ -262,8 +271,12 @@ export const CreateAdministrationItemSchema = z
     maxQty: AdministrationStockLevelSchema.optional(),
     description: description.optional(),
     notes: notes.optional(),
+    stockTracked: z.boolean().default(true),
   })
   .strict();
+/** What a client sends, `stockTracked` optional — ATM's `CreateAtmBankInput` precedent. */
+export type CreateAdministrationItemInput = z.input<typeof CreateAdministrationItemSchema>;
+/** What the server reads once the schema has parsed it, `stockTracked` always set. */
 export type CreateAdministrationItem = z.infer<typeof CreateAdministrationItemSchema>;
 
 /** `null` clears a barcode or a level; `isActive: false` retires the item (§5.3, OD-70 A). */
@@ -278,6 +291,8 @@ export const UpdateAdministrationItemSchema = z
     maxQty: AdministrationStockLevelSchema.nullable().optional(),
     description: description.nullable().optional(),
     notes: notes.nullable().optional(),
+    /** Never null: an item is one kind or the other. */
+    stockTracked: z.boolean().optional(),
     isActive: z.boolean().optional(),
     version: z.number().int().min(0),
   })
@@ -287,7 +302,8 @@ export type UpdateAdministrationItem = z.infer<typeof UpdateAdministrationItemSc
 /**
  * `search` reads the code, both names, the folded Arabic name and the barcode, so a scan finds
  * its item (§19.4). `categoryId` reads a category with its subcategories: the register's filter is
- * picked from the top level down, and a top-level category holds its subcategories' items.
+ * picked from the top level down, and a top-level category holds its subcategories' items. There
+ * is no `stockTracked` filter: no screen asks for one in P2.
  */
 export const ListAdministrationItemsQuerySchema = PaginationQuerySchema.extend({
   search: z.string().trim().max(200).optional(),

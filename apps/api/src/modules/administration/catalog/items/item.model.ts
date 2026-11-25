@@ -6,6 +6,9 @@
 // The code is generated, «ITM-00001» (OD-05 A), taken inside the create's transaction from the
 // module's counter, so a create that rolls back gives its number back. It is permanent and unique
 // across every row ever written, retired or not, like IT's asset and consumable codes.
+//
+// An item is a stock item or a non-stock one (`stockTracked`, OD-14 C, from P2.1), so a purchase
+// request names a service as it names any item.
 import { Schema, model, type Types } from 'mongoose';
 import { type LocalizedString } from '@ecms/contracts';
 import {
@@ -32,6 +35,13 @@ export interface AdministrationItemDoc extends BaseDocFields {
   maxQty: number | null;
   description: string | null;
   notes: string | null;
+  /**
+   * The item's kind (OD-14 C): a stock item, or — false — a non-stock one, a service or a good no
+   * store keeps. Absent on a row written before P2.1, which reads as a stock item, as every item
+   * was then (§2.3.4, absence-safe): reads are lean and apply no default, so every reader says
+   * `stockTracked ?? true`, and no row is rewritten.
+   */
+  stockTracked?: boolean;
   isActive: boolean;
 }
 
@@ -48,6 +58,8 @@ const itemSchema = new Schema<AdministrationItemDoc>(
     maxQty: { type: Number, default: null, min: 0 },
     description: { type: String, default: null },
     notes: { type: String, default: null },
+    // Not required: an older row lacks it, and an edit of that row must not fail validation.
+    stockTracked: { type: Boolean, default: true },
     isActive: { type: Boolean, required: true, default: true },
     ...baseFields,
   },

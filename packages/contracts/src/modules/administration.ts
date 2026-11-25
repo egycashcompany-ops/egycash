@@ -1,9 +1,10 @@
 // Administrative Affairs — what the whole module shares (docs/12-planning/administration-module-design.md
-// §2.8, §11.4, §19.4): the master codes (P1a.2, the supplier's in P1b.1), the people it names
-// (P1a.3) and the bound every typed attachment list keeps (P1b.1). An item is «ITM-00001» and a
-// supplier «SUP-00001» (OD-05 A), generated, global, permanent and never reused, the way IT's asset
-// and consumable codes are. The formatter and the parser live here, not in the API, because a
-// screen reads a code too (a scanned label, a search) — IT's `formatConsumableMemoNumber`
+// §2.8, §11.4, §19.4): the master codes (P1a.2, the supplier's in P1b.1), the yearly document
+// numbers (P2.1), the people it names (P1a.3) and the bound every typed attachment list keeps
+// (P1b.1). An item is «ITM-00001» and a supplier «SUP-00001» (OD-05 A), generated, global,
+// permanent and never reused, the way IT's asset and consumable codes are; a purchase request is
+// «PR-2026-000001». The formatters and the parsers live here, not in the API, because a screen
+// reads a code or a number too (a scanned label, a search) — IT's `formatConsumableMemoNumber`
 // precedent.
 //
 // Names are not folded here: the module folds them with the shared `foldName`
@@ -65,6 +66,80 @@ export const parseAdministrationMasterCode = (
   const seq = Number(match[2]);
   if (!isCodeNumber(seq)) return null;
   return formatAdministrationMasterCode(kind, seq) === code ? { kind, seq } : null;
+};
+
+// ── Document numbers — the yearly series (design §2.8) ──────────────────────
+//
+// A document takes «PR-2026-000001» when it leaves draft (OD-58 A): one series per document type
+// for the whole company, restarted each year, gap-free, never reused. The year is the Cairo
+// calendar year of the act's business date (OD-57 A), which the server works out once from the
+// act's instant; the formatter takes it as given, so a screen and the server print one number
+// one way. More kinds join with their phases (the RFQ in P3, the PO in P4 …), each with its
+// prefix.
+
+/** Each document that takes a yearly number: the purchase request (P2). */
+export const ADMINISTRATION_DOCUMENT_KINDS = ['purchaseRequest'] as const;
+export type AdministrationDocumentKind = (typeof ADMINISTRATION_DOCUMENT_KINDS)[number];
+
+/** Each document's prefix: one per kind, and a kind without one does not compile. */
+export const ADMINISTRATION_DOCUMENT_PREFIXES = {
+  purchaseRequest: 'PR',
+} as const satisfies Record<AdministrationDocumentKind, string>;
+
+/**
+ * The width a document's sequence pads to. As with the master codes, a number past it grows
+ * wider — «PR-2026-1000000» — rather than being cut.
+ */
+export const ADMINISTRATION_DOCUMENT_DIGITS = 6;
+
+/**
+ * A year a number may carry: four digits exactly, as `{YYYY}` prints it. The server's year is a
+ * Cairo calendar year, so anything else is a bug upstream, and a number made of it would be
+ * stored for ever.
+ */
+const isNumberYear = (year: number): boolean =>
+  Number.isSafeInteger(year) && year >= 1000 && year <= 9999;
+
+/**
+ * «PR-2026-000001». Throws on a year that is not four digits, and on a sequence no counter hands
+ * out (0, a negative, a fraction, one past the safe integers), for the master codes' reason.
+ */
+export const formatAdministrationNumber = (
+  kind: AdministrationDocumentKind,
+  year: number,
+  seq: number,
+): string => {
+  if (!isNumberYear(year)) {
+    throw new RangeError(`a ${kind} number takes a four-digit year, not ${String(year)}`);
+  }
+  if (!isCodeNumber(seq)) {
+    throw new RangeError(`a ${kind} number takes a whole number from 1, not ${String(seq)}`);
+  }
+  const digits = String(seq).padStart(ADMINISTRATION_DOCUMENT_DIGITS, '0');
+  return `${ADMINISTRATION_DOCUMENT_PREFIXES[kind]}-${String(year)}-${digits}`;
+};
+
+const DOCUMENT_NUMBER = /^([A-Z]+)-(\d{4})-(\d+)$/;
+
+/**
+ * The document, year and sequence a number names, or null. Only the number the formatter would
+ * write is read, as with the master codes: «PR-2026-1» and «PR-2026-0000001» are not
+ * «PR-2026-000001», so a typed number never finds a document under a second spelling, and a
+ * number typed into the database by hand cannot floor its series (`shared/document-number.ts`).
+ */
+export const parseAdministrationNumber = (
+  value: string,
+): { kind: AdministrationDocumentKind; year: number; seq: number } | null => {
+  const match = DOCUMENT_NUMBER.exec(value);
+  if (match === null) return null;
+  const kind = ADMINISTRATION_DOCUMENT_KINDS.find(
+    (candidate) => ADMINISTRATION_DOCUMENT_PREFIXES[candidate] === match[1],
+  );
+  if (kind === undefined) return null;
+  const year = Number(match[2]);
+  const seq = Number(match[3]);
+  if (!isNumberYear(year) || !isCodeNumber(seq)) return null;
+  return formatAdministrationNumber(kind, year, seq) === value ? { kind, year, seq } : null;
 };
 
 // ── People — the employees the module names (design §7.8) ───────────────────

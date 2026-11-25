@@ -3454,6 +3454,34 @@ Repository-wide findings outside this module are listed for the owner in
     not have (the organization's MongoDB Atlas access for AI clients is off). PX-1.2 and PX-1.6 shipped on the safe side
     the plan states (a request nobody can decide waits; an off-type rung is unstaffed), and the counts stay the owner's
     or an operator's to run.
+- **P2.1 built** (2026-11-25). Phase 2's first module pull request ships as the P2 re-detail's §3 row says
+  ([administration-module-phase-2.md](administration-module-phase-2.md)), under the owner's answers (§16.12): the yearly
+  formatter and parser in the contracts, the yearly series and its floor in `shared/document-number.ts`,
+  `shared/cairo-day.ts`, and `stockTracked` on items (OD-14 C). No key, route or page; nothing takes a number before
+  P2.3. Where the code had to choose what the re-detail leaves open:
+  - *The year in a number is four digits.* `formatAdministrationNumber(kind, year, seq)` throws on a year outside 1000
+    to 9999, as it throws on a sequence no counter hands out, since `{YYYY}` prints four digits and the server's year is
+    a Cairo calendar year; `parseAdministrationNumber` answers `{ kind, year, seq }` and reads only that spelling. A
+    master code and a document number never parse as each other.
+  - *A document series' prefix carries its year.* `DocumentNumberSeries.prefix` is «PR-2026», where a master series'
+    is its kind's «ITM», because each year restarts; `documentNumberSeries(kind, year)` builds the series, keyed
+    `<kind>:<YYYY>`.
+  - *One instant, one helper.* `documentNumberAt(kind, at)` answers both the business date (`cairoCalendarDate(at)`)
+    and the series, whose year is read from that business date, so the stored date and the counter key cannot fall on
+    two sides of Cairo's midnight; P2.3's submission calls it once.
+  - *`shared/cairo-day.ts` re-exports four names*, the four §1.7 lists for it: `cairoCalendarDate`, `cairoYmd`,
+    `cairoDayStart` and `addDaysYmd`, which cover §3.5's day bounds and an instant's Cairo date and year. Others join
+    when a caller needs them.
+  - *`stockTracked` on the row is optional with a default, not required.* A create always writes it (the schema's
+    default, `true`); a row from before P2.1 lacks it, and an edit of that row neither fails validation nor writes
+    the field unless the edit sets it, so no row is rewritten. Every reader, the DTO mapper and the audit snapshot,
+    says `stockTracked ?? true`, so telling an older row that it is a stock item records no change (its version still
+    moves). The update takes the field optional and never null.
+  - *A change of kind is an ordinary edit.* It has no rule of its own and no key of its own; a PATCH that sets it is
+    held to the category's level like any edit but a status change (P1a.2's `isStatusChangeOnly`).
+  - *The client's create type.* With the default, the parsed create body always carries the field, so the contracts
+    add `CreateAdministrationItemInput` (`z.input`), ATM's `CreateAtmBankInput` precedent, for what a client sends; the
+    web's item create calls take it, and its item fixture gains the field. The form gains no kind field before P2.W2.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

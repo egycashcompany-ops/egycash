@@ -4,6 +4,11 @@ Design of the platform's configurable process engine ([ADR-011](../03-decisions/
 and its first consumer, the recruitment pipeline. Schemas:
 [Database Design §2](../05-database/database-design.md).
 
+> **Approvals are not built this way.** The approval chain of §1 and the resolution of §4 (job
+> titles, quorum, escalation, `createApprovalRequest`, `platform.approval.completed`,
+> `approval_decisions`) describe a plan. The approval engine that exists, and its contract, are
+> [ADR-041](../03-decisions/ADR-041-money-approvals-on-the-platform-engine.md).
+
 ## 1. Concepts
 
 | Concept | Definition |

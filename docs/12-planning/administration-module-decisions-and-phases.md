@@ -3374,6 +3374,36 @@ Repository-wide findings outside this module are listed for the owner in
     server decides), and every contact person listed needs a name, as the missing-fields banner says.
   - *§19.10.2's case* for suppliers runs in the suppliers suite: an `administrationSupplier.view` holder's whole
     sidebar is the Suppliers row; the warehouses suite's super-admin case now reads five rows.
+- **PX-1 re-detailed** (2026-11-25). The platform slice is re-detailed in
+  [administration-module-phase-px1.md](administration-module-phase-px1.md), as §18 and §21 ask, under the owner's
+  adoption of OD-19 A, OD-20 A and OD-69 (i) (§16.12). §20's "Money approvals on the platform engine" is written as
+  [ADR-041](../03-decisions/ADR-041-money-approvals-on-the-platform-engine.md), Accepted in its documentation
+  pull request (PX-1.0). §20's "the next free number is **ADR-039**" was overtaken again: ADR-039 and ADR-040 are taken
+  (`docs/03-decisions/README.md`), so this ADR is ADR-041. The ADR settles the shape §15.2.1 proposed, with three
+  departures from the plan of record. The host keeps `approvalWorkflowId` and `approvalChainShape`, and the engine
+  stays stateless, but the shape holds the rungs as subdocuments in the chain row's own schema rather than
+  `string[]` of `permissionKey@level` (§2.1 left the type to the ADR): the strings served OD-20 B's compare, and under
+  OD-20 A they would need a parser and a second read for captions. R5's after-commit audit is opt-in per request
+  type rather than per host (§15.2.1, §18.3.1 item 5, §20), so one host may register types of both kinds. And
+  value bands are not added to the ADR later, as §20 planned: OD-18 A needs no engine change, an engine condition
+  (OD-18 B) would be a new ADR, and ADRs are immutable (`docs/README.md` rule 2). The ADR also drops the engine's closing of empty rungs above an approval, as
+  §15.2.1 R2's fix ("at every decision, never as 'approved'") asks. The re-detail plans seven pull requests, PX-1.0
+  (these documents, with platform core §11's rewrite) to PX-1.6, and records one question for the owner about HR
+  leave, PXQ-1, which PX-1 does not wait for. Their design review (Full preset, 2026-11-25) is recorded in the
+  re-detail's §13; it is the gate before PX-1.1, which also waits for Phase 1 to close.
+- **Phase 1 closed** (2026-11-25). Its seven pull requests are merged: P1a.1 (#780), P1a.2 (#781), the supplier-registry
+  ADR-040 (#782, accepted before P1b.1), P1a.3 (#783), P1b.1 (#785), P1a.W (#786) and P1b.W (#787), each green in CI.
+  §19.10's criteria 1 to 8 were checked on merged main (`4c6457d4`) by running the specs they name: the page registry
+  rose by 4 pages and 10 keys (117 → 121 pages, 431 → 441 keys), the super-admin sees the module's five rows, and the
+  scope, concurrency, realtime, language and docs criteria hold. Criterion 9, the owner's acceptance on staging with real
+  item families typed in by hand, is the one left; its date and the owner's words are recorded here when it is given.
+  - *The permission-matrix section* (§19.2) is not adopted: §6.2 is the module's matrix, as the owner's brief item 5
+    asks, and no module since Recruitment keeps a section in `docs/06-security/permission-matrix.md`.
+  - *Gaps the check found, none against a criterion:* a role holding only `administrationItem.view` or only
+    `administrationCatalog.manage` is checked by the seed spec's row-to-key mapping, not over
+    `GET /platform/me/applications`; the §7.2 rows for several listed branches and for section scope are covered by the
+    shared rule's unit specs, not by a warehouse integration case; and no spec pins the module's label in the role
+    matrix (§6.1 says nothing catches the omission; the label is present today).
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

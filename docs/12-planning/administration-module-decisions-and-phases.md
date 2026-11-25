@@ -3617,6 +3617,55 @@ Repository-wide findings outside this module are listed for the owner in
     and 443 keys on `cad4c409` and reaches 123 and 447; the item edit's unit lock check is `item.service.ts:237`, its
     unit write `:251-252` and its `labels` `:142-149`; `ALL_REALTIME_KEY_PREFIXES` is `invalidation-registry.ts:747`;
     the warehouses' census row `targets.ts:248-255`. The re-detail's §1.2 D and §12.3 carry the same re-pins.
+- **P2.W0 built** (2026-11-25). Phase 2's first web pull request ships as the P2 re-detail's §3 row says
+  ([administration-module-phase-2.md](administration-module-phase-2.md) §9.4, §12.3, §13), from the P2 UI checklist's
+  P2.W0 part: `components/ReferencePicker.tsx`, the module's one reference picker, rebuilt in the module after IT's
+  `VendorPicker` (D-21), and Phase 1's keeper box, `EmployeePicker`, drawn by it with its props, its two exports and
+  its header comment kept. No key, route, page, word or API changes, so the warehouse form is reviewed alone. Where the
+  code had to choose what the re-detail leaves open:
+  - *Who owns "only on a non-empty search".* The picker calls the caller's hook as `useSearch(search, allowed &&
+    typed)`, `typed` being `search.trim() !== ''`, and shows the results box only while `typed`, so the rule is
+    written once for every user. `usePeopleSearch` keeps its own guard, unchanged; the request that leaves the browser
+    is the same.
+  - *The hook's answer* is read as `useQuery` answers a page, `{ isPending, data?: { items } }`, a type local to the
+    file (no caller needs to name it, as HR's `ApplicantPicker` keeps its own). The page's size stays the hook's: the
+    keeper search asks for 8 (`PEOPLE_PICKER_ROWS`), and P2.W1's item search is to ask for the same. The re-detail's
+    §9.4, which listed "8 rows" among the picker's own properties, now says so.
+  - *The four texts are i18n keys* the picker says through `t`, in the reader's language; it names no key of its own,
+    so `i18n.ts` and the module's i18n spec do not change, and the module's key scan finds the keeper's four keys in
+    `EmployeePicker.tsx`. The re-detail's §13 had `i18n.ts` change in P2.W0 for "`ReferencePicker`'s texts"; it now
+    lists the file for P2.0, P2.W1 and P2.W2, the picker's texts being `ItemPicker`'s keys.
+  - *A result row's contents* are the caller's (`renderRow`), inside the picker's button, which keeps the pressed state,
+    the classes and `text-start`. The keeper's row is the name, the «منتهي الخدمة» badge for one who has left, and the
+    code left to right, as before.
+  - *`data-keeper-chip` is dropped.* The chip's attribute named the keeper in a picker that is no longer only the
+    keeper's, and no spec or style read it (the checklist's search over `apps/web/src`). It is the one difference in
+    the markup.
+  - *No change of behaviour, shown three ways.* The keeper box's markup was rendered in 13 states (no access with
+    neither key and with `.edit` alone; empty; a pick; a refused pick; spaces typed; searching; nothing found; rows with
+    and without a pick; the create, edit and left-keeper warehouse dialogs) in Arabic and English, on `1210ebcc` and on
+    the head: all 26 are byte-identical but for that attribute. `pages/warehouses-screen.spec.tsx` passes unchanged. And
+    the review's live check drove the warehouse create and edit dialogs' keeper box in a browser, against a seeded API,
+    on `1210ebcc` and on `60d10a9c`, in Arabic and English at 1280 and 390 px: a name and a code typed (the spinner, the
+    rows), nothing found, spaces alone, a leaver not offered, a pick (the search emptied, the row pressed), the clear
+    button, a pick by keyboard, a stored keeper, a keeper who has left, a long keeper name, and a save refused because
+    the picked keeper left meanwhile (the chip red), then cleared and saved. The picker's HTML in all 84 states per
+    build matched but for that attribute and, in the 4 refused saves, the leaver each run used; side by side, the
+    screenshots differ only by what each run typed or seeded (its own warehouse code and leaver, and so the register's
+    rows) and by the spinner's frame. The merge of main and the review's fixes change nothing the warehouse form draws.
+  - *Found and left alone.* At 390 px a long name in a result row splits the code at its hyphen («EXT-» / «011»): the
+    code's span has no `shrink-0 whitespace-nowrap`. It is so on `1210ebcc` too, and mending it is a change a user sees,
+    which P2.W0 is not to make; it is for a fix of its own, or for P2.W1, whose `ItemPicker` row can carry those classes
+    from the start, as IT's `AssetPicker.tsx:528-529` writes a code beside a long label.
+  - *Specs.* `administration-employee-picker.spec.ts`'s no-access case reads `ReferencePicker.tsx` for `if (!allowed)`
+    and holds `EmployeePicker.tsx` to passing `allowed`, `usePeopleSearch` and `administration.people.noAccess`
+    (§12.3); its other cases stay. Beyond §13's list, `components/reference-picker.spec.tsx` renders the picker in each
+    state (no access and no search; nothing typed; a spinner; nothing found; the rows, the picked one pressed; the chip,
+    red when refused; both languages) and the keeper box on it (its rows, its words, its chip red while the form refuses
+    the keeper, a pick handed to the form's `onChange` with `pickerLabel`'s label), and holds the module to one results
+    box; the re-detail's §13 now lists it. The node suite has no DOM, so what was typed is seeded by replacing React's
+    `useState` in that spec, as `useDocumentTitle.spec.ts` replaces `useEffect`; a pick and a clear are read as
+    source.
 - **P2.3 built** (2026-11-25). The submission ships as the P2 re-detail's §3 row says
   ([administration-module-phase-2.md](administration-module-phase-2.md)): the adapter `shared/approvals.ts` — the
   type registered with `{ audit: 'host' }`, the Unit, OD-19 A, the eligible-approver check and the remap —
@@ -3685,6 +3734,63 @@ Repository-wide findings outside this module are listed for the owner in
 
     No page, key, navigation row, topic or census row changes: the page registry stays at 123 pages and 447 keys,
     and the event catalogue reaches 224 events, every administration one reachable.
+- **P2.6 built** (2026-11-25). Request attachments ship as the P2 re-detail's §3 row says
+  ([administration-module-phase-2.md](administration-module-phase-2.md)), in the supplier papers' shape (P1b.1):
+  the category `administration-request-attachments`, the `purchaseRequest` authorizer, the three routes and the scan
+  states on the record. Built beside P2.3, on P2.2; a submitted request is planted in its integration cases. Where the
+  code had to choose what the re-detail leaves open:
+  - *The act's key, of two,* is the re-detail's own rule (§4.2, §4.3), applied as written. The write routes take
+    `.create` or `.edit`; each held key is tried with its own scope, and the first whose scope finds the request is
+    the act's key, its scope also the link write's filter. That key must cover the request's Unit (`keyCoversUnit`),
+    else 403, even where the other key would (an `own` `.create` finds what its holder raised and covers no Unit);
+    found under none is 404. Then the requester (403), the draft (422), the version (409) and the act's rule: the
+    bound of 20 on a link (422), a file the request does not list on a removal (404). Review fix: the first build
+    passed over a finder that covered no Unit to the next key, a rule the re-detail does not state.
+  - *The authorizer's write branch is the route's whole rule*: the act's key covering the request's Unit, the
+    requester, a draft, as P1b.1 held the supplier's write branch to the paper routes' own rule. So `/platform/files`
+    (upload, replace, update, archive, restore and delete) is no wider than the module's routes: a colleague of the
+    same department with a `file.*` key changes nothing of another's draft. The read branch, the bytes route and the
+    scan states ask the record's own read, `service.get` (design §11.3's `.view` then `.approve`, each with its own
+    scope, at every status), so the files and the record cannot come to disagree on who reads a request (review fix:
+    the first build kept a second copy of that loop).
+  - *What the record offers* (review fix). The re-detail's §4.4 has the record offer attachment writes "while the PR
+    is a draft and the caller is its requester"; the route also asks the act's key, which a requester HR has moved
+    no longer holds over the old copy (§4.2). The rule P2.W2's attachments card reads is therefore the DTO's: where
+    the write keys a reader holds share one scope and reach, as the department requester's bundle grants them, the
+    writes are offered exactly when `availableActions` holds `edit` or `submit` enabled, never on the status and
+    `requesterUserId` alone. A custom role that gives the two keys different reach can still meet the route's 403
+    where `edit` is enabled; no field is added for it, since the re-detail asks for none.
+  - *The category* is titled «مرفقات الطلبات» / "Request attachments" (design §11.2 names its key and purpose only).
+    Its formats and limit are constants of its own in the contracts, equal to the supplier papers' today, because one
+    key per purpose keeps a later answer to OD-76 or OD-77 for one list from moving the other. The purchase-request
+    feature ensures it, as its first user; where the ensure lives once material requests share it is P6's.
+  - *Scan states on every answer of the record*: the read and the two writes answer the detail, each file's state read
+    once. A reader the authorizer would not let open the files (a custom role whose read keys do not reach the request)
+    gets every state null and Files is not asked in their name, P1b.1's rule; the question is the record's own read,
+    so a request's scope is honoured where a supplier has none.
+  - *An archived file is unavailable on both sides* (review fix): the record names its state null (design §11.4,
+    «الملف غير متاح») and its bytes route answers 404, although Files still reads an archived file by id
+    (`readEntityOwnedBuffer` skips deleted rows only). The supplier papers' bytes route sends an archived paper all
+    the same; that is P1b.1's code, not changed here, and is left to the owner as its own fix.
+  - *A removal unlinks only*: the file stays in Files as history, as a supplier paper's does (design §11.4, list B,
+    "entries are added and removed"). No replace route ships: §11.4's replace of a `blocked` entry serves a
+    required-file gate, and OD-76 A requires no file of a request.
+  - *The guards admit one more writer.* Design §5.16 spec 9's scan read the service as the request's only writer; the
+    link write is the repository's, as the supplier's is, so the spec now holds it to the list alone (a `$push` or
+    `$pull` of `attachments`, the writer and the version) and to the file feature as its only caller, and spec 10 reads
+    its filter for the version and the draft set. Integration cases reach the same filter against the database, a load
+    since overtaken refused by the write itself, and the seed-order case holds the category's step to its place and
+    its own catch (review fix).
+  - *Three files outside the re-detail's P2.6 rows (its §13), which now names P2.6 on each*: `administration.mappers.ts`
+    maps the detail's files; `purchase-request-guards.spec.ts` carries the scans above; and
+    `packages/contracts/src/errors/index.ts`, whose `ADMINISTRATION_ATTACHMENT_LIMIT` comment now names the request's
+    files beside the supplier's papers (comment only).
+  - *Pins that moved since `de38fd71`*, none changing a rule, read on `90401f23`: the supplier papers' cached category
+    is `supplier-files.ts:65-76` (re-detail §4.3 `:67-76`) and their upload `:277-308` (`:277-300`); the list's bound
+    is `packages/contracts/src/modules/administration.ts:189-196` (§1.2 item 12 `:120`, §4.3 `:112-120`); its refusal
+    `packages/contracts/src/errors/index.ts:734-740` (`:732-737`); the supplier's link schemas
+    `administration-procurement.ts:106-127` (§5 `:100-117`). The authorizer's `supplier-files.ts:83-98`,
+    `shared/file-upload.ts:19-28` and ADR-023's `:63-73, 160-169` hold.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

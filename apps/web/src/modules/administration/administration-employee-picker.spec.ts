@@ -76,10 +76,18 @@ describe('who may open the box', () => {
   });
 
   it('says so to anybody else rather than searching into a 403', () => {
-    const picker = code('components/EmployeePicker.tsx');
+    // The module's reference picker draws the box (P2 re-detail §9.4): it says no access in a
+    // sentence and asks nothing then. The keeper box hands it who may open it, its search and its
+    // words.
+    const picker = code('components/ReferencePicker.tsx');
     expect(picker).toContain('if (!allowed)');
-    expect(picker).toContain("t('administration.people.noAccess')");
-    expect(picker).toContain('usePeopleSearch(search, allowed)');
+    expect(picker).toContain('t(texts.noAccess)');
+    expect(picker).toContain('useSearch(search, allowed && typed)');
+    const keeper = code('components/EmployeePicker.tsx');
+    expect(keeper).toContain('const allowed = ADMINISTRATION_PEOPLE_GRANTS.some(');
+    expect(keeper).toContain('allowed={allowed}');
+    expect(keeper).toContain('useSearch={usePeopleSearch}');
+    expect(keeper).toContain("noAccess: 'administration.people.noAccess'");
   });
 
   it('labels a pick with the name and the code, as the chip and the register show it', () => {

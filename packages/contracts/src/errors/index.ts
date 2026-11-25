@@ -525,6 +525,24 @@ export const ErrorCodes = {
    * Retried after the move; a run left 30 minutes (its process died) no longer holds them.
    */
   ATM_BRANCH_MOVE_RUNNING: 'ATM_BRANCH_MOVE_RUNNING',
+  // ── ATM settings: the legacy history import (atm-settings.ts) ──────────────────────────────────
+  /**
+   * 409 — another legacy history run is running (one at a time, company-wide). It is resumed from
+   * its own row on the card; a run with no step for 30 minutes is stale and a new start takes over.
+   */
+  ATM_LEGACY_IMPORT_RUNNING: 'ATM_LEGACY_IMPORT_RUNNING',
+  /**
+   * 409 — the run is not in the state the request needs: a step on a run that is no longer
+   * running. The details name the state.
+   */
+  ATM_LEGACY_IMPORT_STATE: 'ATM_LEGACY_IMPORT_STATE',
+  /** 409 — another step of the same run is in progress (its lease, two minutes); retried after it. */
+  ATM_LEGACY_IMPORT_STEP_BUSY: 'ATM_LEGACY_IMPORT_STEP_BUSY',
+  /**
+   * 422 — the API's database user may not read the legacy database. Said apart from an empty source,
+   * which previews as zero rows.
+   */
+  ATM_LEGACY_IMPORT_UNREADABLE: 'ATM_LEGACY_IMPORT_UNREADABLE',
   /**
    * 422 — the machines file cannot be compared: no sheet with a Bank / ID / ATM Name / Area header
    * row, or over a cap. `details` name the missing column or the cap, never a cell's content.
@@ -733,9 +751,9 @@ export const ErrorCodes = {
   ADMINISTRATION_DEACTIVATION_BLOCKED: 'ADMINISTRATION_DEACTIVATION_BLOCKED',
   /**
    * 422 — a typed attachment list already holds `ADMINISTRATION_MAX_LIST_ATTACHMENTS` (20) entries
-   * (a supplier's papers, design §11.4); the file was not linked and nothing of it is kept (an
-   * upload that raced past the check is withdrawn). One detail, `field` 'attachments', `code`
-   * 'limit'. Remove a paper first.
+   * (a supplier's papers, a purchase request's files; design §11.4); the file was not linked and
+   * nothing of it is kept (an upload that raced past the check is withdrawn). One detail, `field`
+   * 'attachments', `code` 'limit'. Remove an entry first.
    */
   ADMINISTRATION_ATTACHMENT_LIMIT: 'ADMINISTRATION_ATTACHMENT_LIMIT',
 

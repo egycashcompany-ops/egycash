@@ -11,6 +11,8 @@
 // nothing else, and the reasons a draft is refused it.
 import { describe, expect, it } from 'vitest';
 import {
+  AddAdministrationPurchaseRequestAttachmentSchema,
+  AdministrationPurchaseRequestAttachmentVersionQuerySchema,
   ADMINISTRATION_PURCHASE_REQUEST_ACTIONS,
   ADMINISTRATION_PURCHASE_REQUEST_ACTION_REASONS,
   ADMINISTRATION_PURCHASE_REQUEST_ORDER_STATUSES,
@@ -597,5 +599,53 @@ describe('the acts a purchase request’s record offers (phase-2 §4.4)', () => 
       'decided',
       'outOfReach',
     ]);
+  });
+});
+
+// A request's files (P2.6; phase-2 §4.3): the supplier papers' shape, read from multipart strings —
+// a link names what the file is and the version of the draft it is an edit of, and nothing else
+// (never a file id, so no stored file of another request is linked); a removal carries its version.
+describe('a purchase request’s files (P2.6)', () => {
+  it('a link takes a label and the request’s version, both from multipart strings', () => {
+    expect(
+      AddAdministrationPurchaseRequestAttachmentSchema.parse({
+        label: ' مواصفات الطابعة ',
+        version: '4',
+      }),
+    ).toEqual({ label: 'مواصفات الطابعة', version: 4 });
+    for (const body of [
+      { label: 'x' },
+      { version: '0' },
+      { label: '', version: '0' },
+      { label: '   ', version: '0' },
+      { label: 'x'.repeat(201), version: '0' },
+      { label: 'x', version: '-1' },
+      { label: 'x', version: '1.5' },
+      { label: 'x', version: '0', fileId: oid(1) },
+    ]) {
+      expect(
+        AddAdministrationPurchaseRequestAttachmentSchema.safeParse(body).success,
+        JSON.stringify(body),
+      ).toBe(false);
+    }
+    expect(
+      AddAdministrationPurchaseRequestAttachmentSchema.safeParse({
+        label: 'x'.repeat(200),
+        version: '0',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('a removal carries the version in its query, and nothing else', () => {
+    expect(
+      AdministrationPurchaseRequestAttachmentVersionQuerySchema.parse({ version: '2' }),
+    ).toEqual({ version: 2 });
+    expect(AdministrationPurchaseRequestAttachmentVersionQuerySchema.safeParse({}).success).toBe(
+      false,
+    );
+    expect(
+      AdministrationPurchaseRequestAttachmentVersionQuerySchema.safeParse({ version: '2', x: '1' })
+        .success,
+    ).toBe(false);
   });
 });

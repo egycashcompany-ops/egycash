@@ -11,6 +11,38 @@ its entry here in the same PR.
 
 ### Added
 
+- **ATM — «استيراد السجل القديم»: the old system's replenishment and maintenance history, copied
+  into each branch** (`docs/12-planning/atm-legacy-history-import.md`). The owner (2026-11-25):
+  «تقدر تشوفهم أنت من Mongo مباشرة جوا maintenance و replenishment — وللأفرع كلها مش بس المهندسين
+  وأكتوبر .. ماعدا أسيوط». A card on `/atm/settings` (`atmSettings.manage`, company-wide) for the
+  five legacy deployments — `alex`, `portsaid`, `tanta`, `wsal`, `egycash` — each into the branch
+  its code names.
+  - **Only closed («Done») operations move** — the owner: «عايز اللى يتنقل بس سجل الصيانة والتغذية
+    اللى اتقفل Done». Done is `end: 1` with a close time, the two signals asked together; there is
+    no switch for open rows, and work still open in a legacy system is opened in ECMS by hand.
+  - **A preview first**, counted by the run's own rules: the rows to copy, and each row left out
+    under the first reason (deleted, no open time, not Done, closed after the branch began working
+    in ECMS, a machine the register lacks — its code listed).
+  - **Times read from the data**: a legacy row's id records when it was written, so each kind's open
+    times are read as true instants or as Cairo clock time (the replenishment bug), and a kind the
+    evidence does not decide ten to one is refused.
+  - **A cut at a moment**, suggested as the branch's first own ECMS row of the day's own work, not a
+    day: Shorouk switched mid-morning, and the morning's finished legacy work is kept; a plan
+    entered the evening before for the next day does not count (Alexandria's 23rd), so the 14
+    operations closed in the legacy system that evening are copied. The box sends a cut only when
+    complete and still; a half-typed one never means «no cut», and the preview names its cut in
+    Cairo time.
+  - **Insert-only** by legacy id, never changing a row already in ECMS; a run steps 2,000 rows at a
+    time under a lease, one run at a time, and resumes with «متابعة» (a run another window drives
+    is not offered it; one left half an hour may also be undone or started over); **«تراجع»**
+    removes a source's copies in batches, and its confirmation names the copies changed in ECMS
+    since. Copies carry `legacyImportRunId` (both operation logs, partial index, read with its
+    filter restated so it is used).
+  - «نقل البيانات» refuses while an import runs (`legacyImportRunning`); the ATM-7 command refuses a
+    branch with a register of its own. Error codes `ATM_LEGACY_IMPORT_RUNNING`,
+    `ATM_LEGACY_IMPORT_STATE`, `ATM_LEGACY_IMPORT_STEP_BUSY`, `ATM_LEGACY_IMPORT_UNREADABLE`; audit
+    action `atmLegacyImport` (one row as a run starts, one as it ends).
+
 - **Roles: quick selection by permission type, and a full-width role form** (`/system/roles`).
   «جنبها الصلاحيات فى جروبات أقدر أحددها مره واحده .. مثلاً قراءة فقط .. تعديل فقط».
   - Beside the permission tree, «تحديد سريع حسب النوع» ticks every permission of one type over every
@@ -295,6 +327,17 @@ its entry here in the same PR.
   («NBE» above «- 1056») would otherwise run into the code below it.
 
 ### Changed
+
+- **Administrative Affairs: the module's reference picker, with the warehouse keeper box moved onto
+  it.** This is P2.W0, the first web pull request of the module's Phase 2, purchase requests
+  (`docs/12-planning/administration-module-phase-2.md` §3, §9.4). `ReferencePicker`, in the module
+  after IT's `VendorPicker` (design D-21), searches the server for one record once something is
+  typed, shows the pick on a chip with a clear button, the results as pressed-or-not buttons, a
+  spinner, a no-results sentence, and a no-access sentence in place of the box; the caller gives who
+  may open it, its search, its rows and its words. The warehouse form's keeper box
+  («أمين المخزن») is drawn by it with no change a user can see: the same search, chip, rows, words
+  and no-access sentence, in Arabic and English. P2's item box will be its second user. No key,
+  route, page, word or API changes. Rollback: revert the pull request; nothing is stored.
 
 - **ATM maintenance close: the crew leader on the row is the one the close keeps.** The owner
   (2026-11-25): «لما بيتم تقفيل صيانة لماكينة ATM كان بيطلب منه اسم الشخص اللى قفلها / عايز اسم
@@ -586,6 +629,38 @@ its entry here in the same PR.
   - Rollback (RK-30): reverting removes the route, the request type, the event and the notice's
     sender at the next deploy; submitted requests stay readable in `pendingApproval` with their
     numbers, the template and the counter rows stay, and nothing is rewritten.
+
+- **Administrative Affairs («الشئون الإدارية»), purchase requests: request attachments.** This is
+  P2.6 of Phase 2 (`docs/12-planning/administration-module-phase-2.md` §3): the contracts and the API;
+  no screen shows them yet (P2.W2).
+  - **For the requester** (the department's focal point, OD-16 A): while their purchase request is a
+    draft, `POST /api/v1/administration/purchase-requests/:id/attachments` files a spec sheet, a photo
+    or a memo with it — one PDF, JPEG, PNG or WebP file of up to 10 MB, a label of what it is, and the
+    draft's version — and `DELETE …/attachments/:attachmentId?version=` removes a file's link (the
+    file itself stays in Files). A draft holds at most 20 files (422 `ADMINISTRATION_ATTACHMENT_LIMIT`);
+    each link moves the draft's version. Only the requester writes them, and only on a draft: a
+    colleague of the same department is refused (403), and once the request leaves draft nothing is
+    added or removed (422 `ADMINISTRATION_INVALID_TRANSITION`), so approvers decide on the files the
+    request was submitted with. No file is required.
+  - **For readers and approvers:** `GET …/attachments/:attachmentId` sends the bytes inline and
+    `private, no-store` to whoever reads the record — a holder of `.view`, or of `.approve` alone —
+    and the platform's scan gate refuses a file still being scanned (`FILE_SCAN_PENDING`) or blocked
+    (`FILE_BLOCKED`); a file archived since its link is 404, as the record names it unavailable. The
+    record now lists its files, each with its scan state.
+  - **The platform's file paths** (`/api/v1/platform/files`) ask the request's own rule through the new
+    `administration/purchaseRequest` file authorizer: reading takes `.view` or `.approve`, and every
+    change — upload, replace, update, archive, restore, delete — takes the requester, on a draft, with
+    `.create` or `.edit` over the request's department.
+  - The boot ensures the file category `administration-request-attachments` («مرفقات الطلبات», kept
+    for ever, OD-77 A). Each link and removal is audited as `update` with an `attachment` field and
+    followed by a signal with the request's branch. No key, page or navigation row changes.
+  - Rollback (RK-30): reverting removes the three routes and the authorizer; files already filed stay
+    in Files under their requests, and the category stays, unread. With the authorizer gone, those
+    files fall back to the platform's own file rules: `file.view` lists them and `file.download`
+    reads them through `/platform/files`, and `file.edit` and `file.delete` change them. A rollback
+    that must keep them closed reverts the three routes but keeps `purchaseRequestFileAuthorizer` in
+    the manifest's `fileEntityAuthorizers`. Any cleanup of the stored files is an operator act the
+    owner approves (P2 plan §15).
 
 - **Administrative Affairs («الشئون الإدارية»), purchase requests: drafts — the record, the
   register and the editor's API.** This is P2.2 of Phase 2
@@ -4591,6 +4666,221 @@ its entry here in the same PR.
         and its codes said, at the eight widths named above (16/16). F's shots taken again on the real
         stack with this build (`r34f/shoot-r34f.mjs`, the live API on a MongoDB that outlives it, booted
         twice): 32/32, «يومي» and «محصنة» bare across the restart as F reported.
+    - G and H — the owner's answer to the five questions put to him after E and F (the standing page,
+      the acts as icons, a fresh database's colours, a swap arrow's hover, a colour moved one way), in
+      full: «اعمل الافضل واعمل ميرج». His ask for the head, in full: «واسمح الحاجات اللى فوق دى وحط
+      مكاناها الاجماليات بدل ما انت لما بختار حاجه بينزل سطر ل تحت». The orchestrator decided: «الطاقم
+      الثابت» gets the board's head (G); opening a past day drops no line either (H); the board's acts
+      stay icons at 1280–1759, so the totals fit on his 1440 laptop, and «إضافة صف بدون سيارة» gets an
+      icon of its own (H). Kept as they are, no code change:
+      - a fresh database still seeds the nine original types with colours (`seedOperationsShiftTypes`,
+        `$setOnInsert` only); existing installs are untouched and any type is one press from «بدون لون»;
+      - a swap arrow that cannot act stays faint under the pointer — it did not: its soft tint there
+        (`hover:bg-sky-100` / `hover:bg-orange-100`, dark `…-400/15`) was the fill of an arrow that
+        acts, at rest. The critic below took the tint away: under the pointer it is as it is away
+        from it, `cursor-not-allowed` saying why, pinned on its resolved look (both hues, both themes);
+      - a colour moved one way leaves the sending row on «لون النوع» (its own colour left it, so it falls
+        back to its type's);
+      - the English totals may scroll sideways inside their strip at laptop widths (the fade, the wheel
+        and Tab of Round 34 E and its critic).
+      - G — «الطاقم الثابت»'s head is the board's twin:
+        - Gone: the role legend and the hint at the toolbar's start. `CrewPlanHand` lost its legend
+          branch (`hint`; no screen draws one now — `children`, the page's totals, is required) and
+          `RoleLegend` left `CrewPlanChip` (nothing else drew it); `operations.standingCrew.hint`
+          removed, Arabic and English (nothing else read it). The role colours stay on every chip, each
+          pool's head names whom it holds, every empty slot says «+ اختيار».
+        - The counters — «السيارات», «طاقم مكتمل», «طاقم ناقص», «بدون طاقم», each a chip that filters,
+          pressed again lets go — went up from the bar into the toolbar where the legend was, on the
+          acts' line from 1280 (their own line below it), in the board's strip: `HEAD_STRIP`,
+          `HEAD_CHIP`, `HEAD_FIGURE` (the frame's now, was the board's own) and `lib/side-scroll`'s
+          fade, wheel and Tab; `data-standing-counts`, `data-standing-count`, the group's label and its
+          title kept. Measured: the acts in words are 459px in Arabic and 484 in English, and at 1280 the
+          strip keeps 693 / 668px for its four chips — so the acts keep their words from 640 up. Below
+          640 the buttons are smaller and the words 391px in Arabic, 414 in English: one line from 480
+          (corrected by the critic below — they had turned to icons all the way up to 639). Below 480
+          each act but «حفظ» is its icon in a 44px square — the board's below 820 — its word its name
+          and its tooltip (the page's own `ICON_ACT`, `ACT_WORD`, `WORD_ACT`); «لوحة التشغيلة»'s
+          tooltip names it before its hint. The phone's toolbar went from 134px (legend, hint and
+          acts) to 86.
+        - Somebody picked: the board's pill at the counters' start (`CrewPlanHand` with children),
+          «إلغاء» and Escape, the spoken region there before anything is picked; the counters after it
+          still seen and pressed.
+        - The bar: the dayless mark, the van, the person and the direction on ONE line from 1280
+          (`CREW_PLAN_BAR_LINE`, moved into `CrewPlanFrame` and shared with the board); «المعروض N من
+          M» where the board puts it (`filteredCountAt`): at the bar's end from 1280, at the end of the
+          counters' line below (figures only on a phone), so it never adds a line.
+        - A reader without `operationsCrew.plan`: `ViewOnlyMark` first among the acts — a lock and
+          «للعرض فقط» in words — instead of the hint's line; why, in this screen's words («يمكنك الاطلاع
+          على الطاقم الثابت؛ أما تعديله فيحتاج صلاحية تخطيط الطاقم.»), its tooltip and what is said
+          (`scopedKey` maps `operations.crewPlan.viewOnly` to `operations.standingCrew.viewOnly` here).
+      - H — «لوحة التشغيلة»:
+        - A past day opened from the day box added Round 32's notice under the bar (62px and its gap:
+          the table 78px down). Gone from the board — `RecordNotice` stays the distribution's and the
+          handover's: the record's mark on the toolbar's line («سجل · للعرض فقط», new `RecordMark` in
+          `CrewPlanFrame`) carries it, «سجل يوم … — للعرض فقط، لا يمكن التعديل» and what a record is as
+          its tooltip (two lines) and what a screen reader says (`role="status"`, as the notice had);
+          `data-crew-record={day}` is on it. Work the day's end left unsaved (`lostOnRecord`) is still
+          said once by the toast as it happens, and stays on the mark while the record stands: amber,
+          its count in a badge (white on `amber-700`, dark `slate-950` on `amber-400`), «التغييرات غير
+          المحفوظة: …» in its tooltip and its words.
+        - On a narrow phone the record's two acts in words beside «ألوان الأنواع» and «Excel» asked
+          331px in Arabic and 345 in English (20 more with a count of unsaved work) of the 328 a 360
+          screen gives the board (343 at 375): the line wrapped and opening a past day put the table
+          48px down there. Below 400 the mark and «العودة إلى اليوم» keep their words without the lock
+          and the calendar, 2px less inside (`NARROW_WORD_ACT`, `NARROW_WORD_ICON`).
+        - «إضافة صف بدون سيارة» at its icon-only widths was a bare «+»: now `PLAN_ICON.addRow` — three
+          rows of the table and a plus beside the last, in the icon set's 24×24 strokes, mirrored in
+          Arabic so the plus stands at the rows' end; its word stays its name and its tooltip.
+      - Measured on the built web (dist-r34g; today's dist-r34 for «before») against the stubbed API
+        (`r34h/probe-h.mjs` over `r34e/stub-e.mjs` — the standing crew's fourteen vans; the board's 265
+        rows), dark, Arabic and English, at 360, 375, 390, 768, 1024, 1242, 1280, 1366, 1440 and 1760,
+        the table's top against the toolbar's (`ship/r34h/measure.json`). «الطاقم الثابت», each from a
+        fresh load — a pool's chip picked, a seated chip picked, «إلغاء», Escape, a van, three vans, a
+        direction, a counter chip, the same chip again, «السيارات» after a chip, a van and a chip,
+        «مسح التصفية», a chip pressed while somebody is held, and the person typed key by key and
+        erased: 0px for every one of the 280 (14 at each of the 10 widths, both languages). Today's
+        build moved it on 9 of the 14 at most widths — picking somebody −6 to −87px (the two-line
+        legend and hint gave way to the pill), every filter and counter chip +23.5px at 1440 and up to
+        +89 at 1280, −52 at 1024 («المعروض N من M» and the counters re-wrapping the bar), the person
+        search on its first key. The board — a past day from the day box, then «العودة إلى اليوم»: 0px
+        both ways at all ten widths in both languages, the toolbar's height unchanged; today's build
+        78px from 768 in Arabic and from 1024 in English, 98 at 390 in Arabic and 768 in English, 142
+        at 390 in English, 190 at 360.
+        Midnight passing with work unsaved (`r34h/midnight-h.mjs`, the page's clock set to 23:59:30
+        in Cairo, somebody placed, a minute on): the mark turns amber with its «١», the toast says it
+        once, the tooltip adds the unsaved line, the table 0px — at 1440 (Arabic and English), 1280
+        and 390 (Arabic), 375 (English) and 360 (both). No sideways page scroll anywhere.
+      - Specs. Rewritten (the rule changed): `components/crew-board-head.spec.tsx` ««الطاقم الثابت»
+        keeps its legend and its hint, unchanged» → ««الطاقم الثابت» draws neither any more (Round 34
+        G) — no screen has a legend or a hint to draw»; «the pill reads the same in English, and «الطاقم
+        الثابت» keeps it in its toolbar’s start» → «… and «الطاقم الثابت» holds it at its counters’
+        start, as the board»; «the bar is ONE line from 1280: …» (title kept: `CREW_PLAN_BAR_LINE` read
+        from the frame), «a total’s chip: 4px inside, …» (title kept: `HEAD_FIGURE` the frame's, and
+        «الطاقم الثابت» no longer wears `COUNT_CHIP`) and «a past day keeps its mark and «العودة إلى
+        اليوم» in words, in the acts’ place» (title kept: the mark is `RecordMark`, its words read off
+        its render, and the narrow phone's bands pinned); the spec's bar slice now ends at the roster's notice (the record's notice it ended
+        at is gone). `pages/standing-crew-page.spec.tsx` «draws the board’s frame, toolbar, bar, grid,
+        slots, chips, pools and lists» (title kept: its bar is `CREW_PLAN_BAR_LINE`, the frame's) and
+        «the toolbar’s start and the «المعروض» pair are the board’s» (title kept: the hand holds the
+        counters — no legend, no `hint`); the key list of «Round 27 — every new word in Arabic and
+        English» drops `hint` (its case goes with the key). `components/crew-round32.spec.tsx` «a calm
+        notice, the mark, and «العودة إلى اليوم» where the acts were; the day box keeps the past» →
+        «the mark — the notice’s words its tooltip — and «العودة إلى اليوم» where the acts were; no
+        notice under the bar; the day box keeps the past». `operations-i18n.spec.ts` holds no standing
+        crew key — those are `standing-crew-page.spec.tsx`'s list, above. New, with the pages
+        server-rendered on a seeded cache (Arabic and English): in `crew-board-head.spec.tsx` «Round 34
+        G — what the two heads share» (2), «Round 34 H — a past day takes no line of its own: the mark
+        on the toolbar’s line says it all» (5) and «Round 34 H — «إضافة صف بدون سيارة» is rows and a
+        plus, never a bare «+»» (1); in `standing-crew-page.spec.tsx` «Round 34 G — the legend and the
+        hint are gone from «الطاقم الثابت»» (1), «… the counters stand in the toolbar, where the legend
+        was» (3), «… the acts keep their words wherever they fit one line» (1), «… somebody picked
+        stands at the counters’ start; nothing takes a line» (2) and «… a reader without the grant:
+        «للعرض فقط», not a line» (1). Seen red on the code before (each page put back as it was at HEAD
+        under the new specs, `r34h/red/`): the board — four of the six new H cases (a day to plan
+        drawing no mark, and the distribution keeping its notice, hold on both) and two rewritten ones;
+        the standing page — seven of the eight new G cases (the pill is the frame's, unchanged), three
+        rewritten ones, and «the page asks for no key it does not have» (the old page read `hint`).
+    - Round 34 G and H verifier (the build's, never the owner's), on the owner's «اعمل الافضل واعمل
+      ميرج» and his ask for the head, «واسمح الحاجات اللى فوق دى وحط مكاناها الاجماليات بدل ما انت لما
+      بختار حاجه بينزل سطر ل تحت». Nothing found to fix: no code or spec changed. On the real stack (the
+      live API on mongodb-memory-server serving this tree's build; tomorrow's board, yesterday's saved
+      record, the standing crew, and a reader without `operationsCrew.plan`):
+      - The table's top against the toolbar's, each from a fresh load: 1,560 selections (on «الطاقم
+        الثابت» 21 — a pool's chip and a seated chip picked, «إلغاء», Escape, one van, three vans, a
+        direction, each counter pressed and pressed again, a van and a counter, «مسح التصفية», a counter
+        and a van while somebody is held; on the board 22, its type box and type chips the same way) at
+        360, 375, 390, 400, 430, 600, 639, 640, 700, 768, 819, 820, 1024, 1242, 1280, 1366, 1440 and
+        1760, Arabic and English, dark (light at 390, 1280 and 1440), and 608 keys of the person typed
+        and erased: 0px every one, the toolbar never moved in the page, no sideways page scroll. A past
+        day from the day box, a chip on the record, then «العودة إلى اليوم»: 0px at all 40 runs, no
+        notice under the bar, the mark on the toolbar's line (`role="status"`, the day, its two-line
+        tooltip), no «حفظ», «تراجع», «الطاقم الثابت» or add-row on the record.
+      - Midnight with work unsaved (the page's clock at 23:59:30 in Cairo, somebody placed, a minute on;
+        the server's next read of the day answering as a server past midnight does): the mark amber with
+        «١» / «1», the unsaved sentence its third tooltip line, the toast, 0px — Arabic at 360, 390, 400,
+        1280 and 1440, English at 360, 375, 400, 430, 640, 1280 and 1440.
+      - No legend and no hint on either page; the counters in the standing crew's toolbar, on the acts'
+        line from 1280; Tab reaching every counter and every total whole and clear of the fade (76
+        runs); «للعرض فقط» first among the acts on both pages for the reader without the grant, why in
+        the screen's own words, a chip pressed twice moving nothing (360 to 1440, both languages). The
+        acts left alone still work: the picker, a drag, «إضافة سيارة», «تراجع», «حفظ» (PUT and POST 200),
+        «لوحة التشغيلة», «الطاقم الثابت» loaded, the swap window (an arrow that cannot act under the
+        pointer: a soft tint, no solid fill, no white glyph, `not-allowed`), Excel, a record read only;
+        «توزيع المحصنات» and «تسليم المحصنات» keep their record notice. Each page put back as it was at
+        HEAD under the new specs: the board 6 red, the standing crew 9 red, as G and H reported.
+    - Round 34 G and H critic (the build's, never the owner's), on the owner's «اعمل الافضل واعمل
+      ميرج» and his ask for the head, in full: «واسمح الحاجات اللى فوق دى وحط مكاناها الاجماليات بدل
+      ما انت لما بختار حاجه بينزل سطر ل تحت». Five findings, each real, each fixed with a spec seen red
+      on the code before it (each fix put back alone under the specs, `r34hc/red/`, then restored and
+      its sha256 checked). The orchestrator's decisions stand; kept as they are, no code change:
+      - a fresh database seeds the nine original types with colours (existing installs untouched; any
+        type can be set to «بدون لون»);
+      - a colour moved one way leaves the sending row on «لون النوع»;
+      - the English totals may scroll sideways inside their strip at laptop widths;
+      - the acts stay icons at 1280–1759 on the board, «إضافة صف بدون سيارة» its own drawing;
+      - a swap arrow that cannot act stays faint under the pointer — now true (H2 below).
+      - G1 — «الطاقم الثابت»'s acts dropped their words on every phone below 640, where they fit:
+        below 640 the buttons take their smaller size, and the five words are 391px in Arabic and 414
+        in English («حفظ (n)» 15 to 22 more), one line from 440 / 480 (the toolbar gives 408 / 448).
+        Now in words down to 480 and icons below it (`max-[479px]`), every act 44px high below 640
+        (a finger's size, in words or not); «إضافة سيارة» there is a van and a plus (`PLAN_ICON.addVan`,
+        mirrored in Arabic), never a bare «+»; a reader without the grant keeps «لوحة التشغيلة» and
+        «Excel» in words at every width (with «للعرض فقط», 262px: one line at 320). Measured
+        (`r34hc/probe-c.mjs standing`, at 20 widths from 320 to 700, Arabic and English, clean, one
+        change and a dozen): one line everywhere, words from 480 (406 / 430px of 448 with «حفظ (٧)»),
+        the table 0px on every change; the reader without the grant 262px of 288 at 320.
+      - H1 — once the toast had gone, work lost at midnight was a bare amber «١»: what it counts, and
+        the day and what a record is, lived in the mark's `title` — the mouse's alone; on a phone and
+        to a sighted keyboard user, nothing. The mark is a button now (`RecordMark`, still
+        `role="status"`, still `data-crew-record`) whose card — the day in bold, what a record is, the
+        work lost in amber (`RecordCardBody`, in the hover cards' layer) — opens on a press, a tap or
+        the keyboard's focus as on the pointer after a beat, and closes on a press again, a press
+        elsewhere, Escape or Tab away; no browser `title`. The shared hover card took an opt-in
+        `toggle` (`useHoverCard`, `togglePress`; every other card unchanged). Its words stay what a
+        screen reader says (`aria-describedby`). Checked (`r34hc/record-tip.mjs`): 1440 mouse and
+        keyboard, 360 and 390 by touch, Arabic and English, and midnight with work unsaved at 390 and
+        1440 — 48/48, the table 0px with the card open, the card inside a 360 screen.
+      - H2 — a swap arrow that cannot act took, under the pointer, a tint of its own hue: light
+        sky-100 / orange-100 (stronger than an acting arrow's sky-50 at rest), dark the very 15% tint
+        of an acting arrow — it lit up as if it could be pressed. `SWAP_ARROW_LOOK[…].off` has no
+        `hover:` now: computed in the browser (`r34hc/swap-hover.mjs`), its fill, border and glyph are
+        the same under the pointer as away from it, both hues, both themes, never an acting arrow's.
+      - H3 — below 360 the board's acts took one line in one state and two in another (a day to plan
+        299 / 302px, from its first change 313 / 317, a past day 287 / 301, of 288–327): opening a past
+        day, «العودة إلى اليوم» and the first change moved the table 48px at 320–359. There the acts'
+        line keeps two rows' room (`NARROW_ACTS_ROOM`, 92px = 44 × 2 + 4), whatever it holds. Measured
+        (`r34hc/probe-c.mjs board`, the critic's `probe-record.mjs` and `midnight-sweep.mjs`, 320 to 420,
+        both languages): 0px on every change, every past day, every return and every midnight; 360
+        and up as before (86px).
+      - H5 — the add-row icon at 1x: its middle row on a pixel's edge (a 2px grey smear) and a 4px
+        plus. Drawn on the 14px grid now — rows at 4.29, 11.14 and 18 (pixels 2½, 6½, 10½), the plus 8
+        units (4.7px) on pixel 10½ × 8½ — and the van-and-plus the same way; every straight line on a
+        pixel's middle, pinned.
+      - Specs. Rewritten (the rule changed): `components/crew-board-head.spec.tsx` «the mark — in the
+        toolbar, before «العودة إلى اليوم» — names the day, says what a record is, and is said aloud» →
+        «the mark — in the toolbar, before «العودة إلى اليوم» — a button whose card names the day and
+        says what a record is; no hover-only title; said aloud»; «work the day’s end left unsaved stays
+        on the mark: amber, counted, its sentence in the tooltip and said» → «… its sentence in its card
+        and said»; «a past day keeps its mark and «العودة إلى اليوم» in words, in the acts’ place»
+        (title kept: the words are the button's name, the board's classes on the button) and «its icon
+        is the board’s own drawing, not the plain plus — its word its name and its tooltip» (title
+        kept: the rows' heights read with their fraction). `pages/standing-crew-page.spec.tsx` «in
+        words from 640 (beside the counters from 1280); below, 44px icons — each word its name and its
+        tooltip» → «in words down to 480 (beside the counters from 1280); below, 44px icons — each word
+        its name and its tooltip»; «the toolbar is the board’s: the same line, the same hand, the same
+        acts’ box» (title kept: the board's box adds `NARROW_ACTS_ROOM`, this page's does not).
+        `components/crew-swap-dialog.spec.tsx` «the two one-way arrows share ONE hue (sky), the swap
+        another (orange) — at rest, under the pointer and held; never the brand’s, never grey» and
+        «each arrow off with its reason: nothing ticked on the card(s) it sends from» (titles kept: the
+        arrow off has no `hover:` — they pinned `hover:bg-…-100`). New: in `crew-board-head.spec.tsx`
+        «Round 34 H critic — the add-row and add-van drawings land on the pixels they are drawn on» (2),
+        «… the record mark’s card is reached without hover: a press, a tap, the keyboard» (3) and «…
+        below 360 the acts’ line keeps two rows’ room, whatever it holds» (1); in
+        `standing-crew-page.spec.tsx` ««إضافة سيارة» below 480 is a van and a plus — never a bare «+»;
+        mirrored in Arabic» and «a reader without the grant keeps «لوحة التشغيلة» and «Excel» in words
+        at every width — 262px, one line at 320»; in `crew-swap-dialog.spec.tsx` «an arrow that cannot
+        act looks the same under the pointer as away from it — both hues, both themes — and never like
+        one that acts». Seen red with each fix put back: G1 5, H1 6, H2 3, H3 2, H5 1.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

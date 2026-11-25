@@ -6,10 +6,10 @@
 // on one key and one page; P1a.2 added the items, their three keys and their page; P1a.3 added the
 // warehouses, their three keys and their page, and the people the keeper is picked from; P1b.1
 // added the suppliers, their three keys, their page and their papers' authorizer (§19.1); P2.2
-// adds the purchase requests, their four keys and their page (P2 plan §9.1), and P2.3 their
-// submission to the platform's approval engine, under a request type of the module's own. A key
-// ships with its operation and a page with its keys: a key whose page is missing fails boot, and so
-// does a page with no key.
+// adds the purchase requests, their four keys and their page (P2 plan §9.1), P2.3 their
+// submission to the platform's approval engine, under a request type of the module's own, and P2.6
+// their files' authorizer (P2 plan §4.3). A key ships with its operation and a page with its keys: a
+// key whose page is missing fails boot, and so does a page with no key.
 import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { seedAdministration } from './administration.seed';
@@ -17,7 +17,10 @@ import { buildAdministrationCatalogItemsRouter } from './catalog/catalog-items';
 import { buildAdministrationItemCategoriesRouter } from './catalog/item-categories';
 import { buildAdministrationItemsRouter } from './catalog/items';
 import { buildAdministrationPeopleRouter } from './people/index';
-import { buildAdministrationPurchaseRequestsRouter } from './procurement/purchase-requests/index';
+import {
+  buildAdministrationPurchaseRequestsRouter,
+  purchaseRequestFileAuthorizer,
+} from './procurement/purchase-requests/index';
 import {
   buildAdministrationSuppliersRouter,
   supplierFileAuthorizer,
@@ -178,7 +181,8 @@ export const administrationModule: ModuleManifest = {
     'administration_counters',
   ],
   eventSubscriptions: [],
-  // A supplier's papers are filed under `administration/supplier` (§11.3).
-  fileEntityAuthorizers: [supplierFileAuthorizer],
+  // A supplier's papers are filed under `administration/supplier` (§11.3), and a purchase
+  // request's files under `administration/purchaseRequest` (P2 plan §4.3, P2.6).
+  fileEntityAuthorizers: [supplierFileAuthorizer, purchaseRequestFileAuthorizer],
   seed: seedAdministration,
 };

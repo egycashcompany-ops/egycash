@@ -12,32 +12,49 @@
 //     are gone;
 //   • what stays the list's own: no day, no notes, no type; no absence or leave (a day's fact) on its
 //     chips, cards or drops; the van's card without the day's drivers; the save's body unchanged;
-//   • every new word in Arabic and English.
+//   • every new word in Arabic and English;
+//   • Round 34 G — the head is the board's: no legend and no hint, the counters in the toolbar where
+//     they were, somebody picked at their start, the bar one line from 1280, «المعروض N من M» where
+//     the board puts it, «للعرض فقط» for a reader without the grant.
 //
-// The suite runs in node with no DOM: the pieces are rendered on their own, the page is read as
-// source (as the board's own specs read it).
+// The suite runs in node with no DOM: the pieces are rendered on their own, the page itself is
+// server-rendered on a seeded cache (Round 34 G), and is read as source (as the board's own specs
+// read it).
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   type Locale,
   type MeDto,
   type OperationsCrewMemberDto,
   type OperationsDayBoardVehicleCrewDto,
+  type OperationsStandingCrewBoardDto,
+  type OperationsStandingCrewRowDto,
 } from '@ecms/contracts';
 import type { ReactNode } from 'react';
 import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
+import { uiSlice } from '../../../store/uiSlice';
 import { PLURAL_FORMS } from '../../../shared/lib/plural';
+import { listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { VehicleCrewCardBody } from '../components/BoardCrewCards';
 import { PlanAttendanceFact, PlanMemberCardBody } from '../components/CrewPlanMemberCard';
-import { CrewPlanHand, FilteredCount, ReturnPickedButton } from '../components/CrewPlanFrame';
+import {
+  CREW_PLAN_BAR_LINE,
+  CrewPlanHand,
+  FilteredCount,
+  HEAD_CHIP,
+  HEAD_STRIP,
+  ReturnPickedButton,
+} from '../components/CrewPlanFrame';
 import { CrewPlanSlot } from '../components/CrewPlanSlot';
+import { PLAN_ICON } from '../components/crew-plan-icons';
 import {
   CrewPlanScopeProvider,
   STANDING_WORD_KEYS,
@@ -46,7 +63,8 @@ import {
 } from '../components/crew-plan-scope';
 import { resolveDrop, type DropDecision, type DropTarget } from '../lib/crew-drag';
 import { type PlanRow } from '../lib/crew-plan';
-import { STANDING_CREW_STATES } from '../lib/standing-crew';
+import { STANDING_CREW_STATES, standingCounts, toStandingPlanRows } from '../lib/standing-crew';
+import { StandingCrewPage } from './StandingCrewPage';
 
 const read = (rel: string): string =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
@@ -124,7 +142,8 @@ describe('Round 27 — the page is built from the board’s own pieces', () => {
     for (const piece of [
       'className={BOARD_FRAME} data-crew-plan="true" data-standing-crew="true"',
       '<CrewPlanHand',
-      'className={CREW_PLAN_BAR} data-crew-plan-bar="true"',
+      // Round 34 G — the board's one-line bar, the frame's since (was `CREW_PLAN_BAR` itself).
+      'className={CREW_PLAN_BAR_LINE} data-crew-plan-bar="true"',
       'className={CREW_PLAN_GRID} data-crew-plan-grid="true"',
       'className={CREW_PLAN_POOLS}',
       'className={CREW_PLAN_TABLE_SIDE}',
@@ -147,7 +166,6 @@ describe('Round 27 — the page is built from the board’s own pieces', () => {
     // the same bar kept on ONE line from 1280 (Round 34 E: the totals left it for the toolbar).
     for (const piece of [
       'className={CREW_PLAN_BAR_LINE} data-crew-plan-bar="true"',
-      "const CREW_PLAN_BAR_LINE = cn(CREW_PLAN_BAR, 'min-[1280px]:flex-nowrap min-[1280px]:gap-x-2');",
       'className={CREW_PLAN_GRID} data-crew-plan-grid="true"',
       '<CrewPlanHand',
       '<FilteredCount',
@@ -158,6 +176,11 @@ describe('Round 27 — the page is built from the board’s own pieces', () => {
     }
     expect(read('../components/CrewPlanFrame.tsx')).toContain('export const targetAt =');
     expect(BOARD).not.toContain('const targetAt =');
+    // Round 34 G — one bar line for both, in the frame (it was the board's own).
+    expect(read('../components/CrewPlanFrame.tsx')).toMatch(
+      /export const CREW_PLAN_BAR_LINE = cn\(\s*CREW_PLAN_BAR,\s*'min-\[1280px\]:flex-nowrap min-\[1280px\]:gap-x-2',?\s*\)/u,
+    );
+    expect(BOARD).not.toContain('const CREW_PLAN_BAR_LINE =');
   });
 
   it('tells every shared piece it is on the standing crew', () => {
@@ -509,16 +532,24 @@ describe('Round 27 — `CrewPlanSlot`, the board’s slot', () => {
     expect(text(refused)).toContain(t('operations.crewPlan.wrongSlot.over.notSpecialist'));
   });
 
+  // Round 34 G — REWRITTEN (title kept): the hand holds the counters (its children), no legend and
+  // no hint (`hint` is gone from `CrewPlanHand`).
   it('the toolbar’s start and the «المعروض» pair are the board’s', () => {
     const hand = text(
-      render(<CrewPlanHand pickedName="احمد" onCancel={() => undefined} hint="x" />),
+      render(
+        <CrewPlanHand pickedName="احمد" onCancel={() => undefined}>
+          <span>١٤</span>
+        </CrewPlanHand>,
+      ),
     );
     expect(hand).toContain(t('operations.crewPlan.picked', { name: 'احمد' }));
-    const legend = render(
-      <CrewPlanHand pickedName={null} onCancel={() => undefined} hint="تلميح" />,
+    const idle = render(
+      <CrewPlanHand pickedName={null} onCancel={() => undefined}>
+        <span data-standing-counts="true" />
+      </CrewPlanHand>,
     );
-    expect(legend).toContain('data-role-legend="true"');
-    expect(text(legend)).toContain('تلميح');
+    expect(idle).not.toContain('data-role-legend');
+    expect(idle).toContain('data-crew-plan-head-idle="true"><span data-standing-counts="true">');
     const shown = render(<FilteredCount shown={3} total={14} onClear={() => undefined} />);
     expect(shown).toContain('data-shown-count="3"');
     expect(shown).toContain('data-crew-plan-clear-filters="true"');
@@ -530,7 +561,7 @@ describe('Round 27 — `CrewPlanSlot`, the board’s slot', () => {
 describe('Round 27 — every new word in Arabic and English', () => {
   const KEYS = [
     ...[
-      'hint',
+      // Round 34 G — 'hint' left with the legend's line: «واسمح الحاجات اللى فوق دى».
       'viewOnly',
       'toBoard',
       'toBoardHint',
@@ -721,5 +752,367 @@ describe('Round 27 review — the page', () => {
     expect(t('operations.standingCrew.partlySaved', { codes: '276' })).toBe(
       'وقد حُفظ قبل ذلك إخراج 276 من الطاقم الثابت، ولم تُحفظ بقية التغييرات.',
     );
+  });
+});
+
+// ── Round 34 G — the head is the board's ─────────────────────────────────────────────────────────
+// The owner, of the board's head: «واسمح الحاجات اللى فوق دى وحط مكاناها الاجماليات بدل ما انت لما بختار
+// حاجه بينزل سطر ل تحت»; asked whether «الطاقم الثابت» should match: «اعمل الافضل واعمل ميرج». The page
+// itself, server-rendered on a seeded cache (a planner, and a reader without the grant).
+
+const T0 = '2026-01-01T00:00:00.000Z';
+const srow = (
+  code: string,
+  slots: Partial<OperationsStandingCrewRowDto> = {},
+): OperationsStandingCrewRowDto => ({
+  id: `sc-${code}`,
+  vehicleId: `v-${code}`,
+  vehicleCode: code,
+  uncoded: null,
+  captainEmployeeIds: [],
+  specialist1EmployeeIds: [],
+  specialist2EmployeeIds: [],
+  direction: null,
+  plannedTime: null,
+  version: 1,
+  createdAt: T0,
+  updatedAt: T0,
+  ...slots,
+});
+const STANDING_DTO: OperationsStandingCrewBoardDto = {
+  rows: [
+    srow('213', {
+      captainEmployeeIds: ['e-cap'],
+      specialist1EmployeeIds: ['e-s1'],
+      specialist2EmployeeIds: ['e-s2'],
+    }),
+    srow('248', { captainEmployeeIds: ['e-c2'], specialist1EmployeeIds: ['e-s3'] }),
+    srow('250', { specialist1EmployeeIds: ['e-s4'] }),
+    srow('276'),
+  ],
+  available: [],
+  unidentifiedVehicles: 0,
+  availableIsFiltered: true,
+};
+const COUNTS = standingCounts(toStandingPlanRows(STANDING_DTO.rows));
+const renderPage = ({
+  plan = true,
+  locale = 'ar',
+}: { plan?: boolean; locale?: Locale } = {}): string => {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  qc.setQueryData(listKey('operations', 'standingCrew', {}), STANDING_DTO);
+  qc.setQueryData(listKey('operations', 'crewDirectory', { date: 'tomorrow' }), {
+    date: T0,
+    members: [CAPTAIN],
+    rosterIsDerived: true,
+  });
+  qc.setQueryData(listKey('operations', 'areas', { whole: true, isActive: true }), ['مدينة نصر']);
+  const permissions = plan
+    ? { 'operationsCrew.view': 'organization', 'operationsCrew.plan': 'organization' }
+    : { 'operationsCrew.view': 'organization' };
+  const store = configureStore({
+    reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
+    preloadedState: {
+      locale: { locale, dir: locale === 'ar' ? ('rtl' as const) : ('ltr' as const) },
+      auth: { me: { id: 'u1', permissions } as unknown as MeDto, status: 'signedIn' as const },
+      ui: { theme: 'dark' as const, sidebarOpen: false },
+    },
+  });
+  return renderToStaticMarkup(
+    <Provider store={store}>
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/operations/standing-crew']}>
+          <Routes>
+            <Route path="/operations/standing-crew" element={<StandingCrewPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    </Provider>,
+  );
+};
+const between = (html: string, from: string, to: string): string => {
+  const start = html.indexOf(from);
+  expect(start, from).toBeGreaterThan(-1);
+  const end = html.indexOf(to, start);
+  expect(end, to).toBeGreaterThan(start);
+  return html.slice(start, end);
+};
+/** The toolbar's markup, from its mark to the bar's. */
+const toolbarOf = (html: string): string =>
+  between(html, 'data-crew-plan-toolbar="true"', 'data-crew-plan-bar="true"');
+/** An element's opening tag, by an attribute it carries — its entities read back. */
+const tagWith = (html: string, mark: string): string => {
+  const at = html.indexOf(mark);
+  expect(at, mark).toBeGreaterThan(-1);
+  return html
+    .slice(html.lastIndexOf('<', at), html.indexOf('>', at) + 1)
+    .replace(/&amp;/gu, '&')
+    .replace(/&quot;/gu, '"')
+    .replace(/&#x27;/gu, "'");
+};
+/** An element's classes, as a set — the order `cn` writes them in is not the point. */
+const classesIn = (tag: string): string[] => (/class="([^"]*)"/u.exec(tag)?.[1] ?? '').split(' ');
+
+describe('Round 34 G — the legend and the hint are gone from «الطاقم الثابت»', () => {
+  it('the page draws no legend and no hint, in Arabic or English — and the key went with it', () => {
+    const hint = {
+      ar: 'اضغط «+ اختيار» في الخانة، أو اسحب الاسم إلى صف السيارة أو إلى الخانة',
+      en: 'Press «+ Choose» in a slot, or drag a name onto a vehicle’s row or a slot',
+    };
+    for (const locale of ['ar', 'en'] as const) {
+      const html = renderPage({ locale });
+      expect(html, locale).not.toContain('data-role-legend');
+      expect(text(html)).not.toContain(hint[locale]);
+      for (const role of ['captain', 'dual', 'specialist']) {
+        expect(text(toolbarOf(html))).not.toContain(
+          t(`operations.crewPlan.role.${role}`, undefined, locale),
+        );
+      }
+      expect(translate(locale, 'operations.standingCrew.hint')).toBe(
+        'operations.standingCrew.hint',
+      );
+    }
+    expect(PAGE).not.toContain("'operations.standingCrew.hint'");
+  });
+});
+
+describe('Round 34 G — the counters stand in the toolbar, where the legend was', () => {
+  it('the toolbar’s start holds the four counters, before the acts; the bar holds none', () => {
+    const html = renderPage();
+    const toolbar = toolbarOf(html);
+    const idle = between(toolbar, 'data-crew-plan-head-idle="true"', '</button></div>');
+    expect(idle).toContain('data-standing-counts="true"');
+    expect(toolbar.indexOf('data-standing-counts')).toBeLessThan(
+      toolbar.indexOf('data-standing-to-board'),
+    );
+    const bar = between(html, 'data-crew-plan-bar="true"', 'data-crew-plan-grid="true"');
+    expect(bar).not.toContain('data-standing-counts');
+    expect(bar).not.toContain('data-standing-count=');
+    // The bar: the dayless mark and the three filters, ONE line from 1280 (the board's bar line).
+    expect(classesIn(tagWith(html, 'data-crew-plan-bar="true"'))).toEqual(
+      expect.arrayContaining(['min-[1280px]:flex-nowrap', 'min-[1280px]:gap-x-2']),
+    );
+    expect(CREW_PLAN_BAR_LINE).toContain('min-[1280px]:flex-nowrap min-[1280px]:gap-x-2');
+    expect(bar).toContain('data-standing-dayless="true"');
+    expect(bar).toContain('data-filter-person="true"');
+  });
+
+  it('the board’s compact strip and chips — titles, hooks, figures and presses kept', () => {
+    const html = renderPage();
+    const group = tagWith(html, 'data-standing-counts="true"');
+    expect(group).toContain('role="group"');
+    expect(group).toContain(`aria-label="${t('operations.standingCrew.counts')}"`);
+    expect(group).toContain(`title="${t('operations.standingCrew.countsHint')}"`);
+    expect(classesIn(group).sort()).toEqual(HEAD_STRIP.split(' ').sort());
+    for (const [state, label, count] of [
+      ['all', t('operations.standingCrew.total'), COUNTS.total],
+      ...STANDING_CREW_STATES.map(
+        (state) => [state, t(`operations.standingCrew.state.${state}`), COUNTS[state]] as const,
+      ),
+    ] as const) {
+      const chip = tagWith(html, `data-standing-count="${state}"`);
+      // The toolbar's compact chip (26px high, 10.5px), not the bar's `COUNT_CHIP` any more.
+      expect(classesIn(chip), state).toEqual(expect.arrayContaining(HEAD_CHIP.split(' ')));
+      // Nothing filters on a fresh page: «السيارات» is the one pressed.
+      expect(chip).toContain(`aria-pressed="${state === 'all' ? 'true' : 'false'}"`);
+      const button = between(html, `data-standing-count="${state}"`, '</button>');
+      expect(text(`<x ${button}`)).toContain(label);
+      expect(button).toContain(`>${new Intl.NumberFormat('ar-EG').format(count)}</span>`);
+    }
+    expect(COUNTS).toEqual({ total: 4, complete: 1, short: 2, empty: 1 });
+    // Pressed again it lets go; «السيارات» shows all — the page's own handler, as before.
+    expect(PAGE).toContain('onClick={() => setStateFilter(on || state === null ? null : state)}');
+    // The fade and the wheel of the board's strip.
+    expect(PAGE).toContain('const stripEdges = useSideScroll(stripRef);');
+    expect(PAGE).toContain("const stripFade = sideFade(stripEdges, locale === 'ar');");
+    expect(PAGE).toContain('style={{ maskImage: stripFade, WebkitMaskImage: stripFade }}');
+  });
+
+  // Round 34 H critic — REWRITTEN (title kept): the acts' box is the board's, and the board adds
+  // `NARROW_ACTS_ROOM` below 360 (its six acts and a past day's record take one line or two there);
+  // this page's acts keep one line at every width, in every state — measured — so it needs no room
+  // of its own.
+  it('the toolbar is the board’s: the same line, the same hand, the same acts’ box', () => {
+    for (const piece of [
+      'className="flex flex-wrap items-center gap-2 min-[1280px]:flex-nowrap"\n          data-crew-plan-toolbar="true"',
+      'className="basis-full min-[1280px]:basis-0 min-[1280px]:flex-1"',
+      'ms-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 min-[1280px]:flex-nowrap',
+    ]) {
+      expect(PAGE, piece).toContain(piece);
+      expect(BOARD, piece).toContain(piece);
+    }
+    expect(PAGE).toContain(
+      '<span className="ms-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 min-[1280px]:flex-nowrap">',
+    );
+    expect(BOARD).toContain(
+      "'ms-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 min-[1280px]:flex-nowrap',\n              NARROW_ACTS_ROOM,",
+    );
+    expect(PAGE).not.toContain('NARROW_ACTS_ROOM');
+  });
+});
+
+describe('Round 34 G — the acts keep their words wherever they fit one line', () => {
+  const classesOf = (constant: string): string => {
+    const at = PAGE.indexOf(`const ${constant} =`);
+    return PAGE.slice(at, PAGE.indexOf(';\n', at));
+  };
+  // Round 34 G critic — REWRITTEN: «in words from 640 (beside the counters from 1280); below, 44px
+  // icons — each word its name and its tooltip». Below 640 the buttons take their smaller size, and
+  // there the words are 391px in Arabic and 414 in English: one line from 440 / 480. They had turned
+  // to icons all the way up to 639 — «إضافة سيارة» a bare «+» there.
+  it('in words down to 480 (beside the counters from 1280); below, 44px icons — each word its name and its tooltip', () => {
+    // Measured on the built page: 391px of words in Arabic, 414 in English below 640 («حفظ (n)» 15
+    // to 22 more) — one line from 480 in both; 459 / 484 from 640. Never the board's 1280–1759 band.
+    expect(classesOf('ACT_WORD')).toContain("'max-[479px]:sr-only'");
+    expect(classesOf('ICON_ACT')).toContain(
+      "'max-[479px]:w-11 max-[479px]:justify-center max-[479px]:!px-0'",
+    );
+    expect(classesOf('WORD_ACT')).toContain("'max-[639px]:h-11'");
+    expect(PAGE).not.toMatch(/max-\[639px\]:(sr-only|w-11)/u);
+    expect(PAGE).not.toMatch(/min-\[1280px\]:max-\[1759px\]:sr-only/u);
+    const html = renderPage();
+    const toolbar = toolbarOf(html);
+    for (const [mark, word, title] of [
+      [
+        'data-standing-to-board="true"',
+        t('operations.standingCrew.toBoard'),
+        `${t('operations.standingCrew.toBoard')} — ${t('operations.standingCrew.toBoardHint')}`,
+      ],
+      [
+        'data-standing-add="true"',
+        t('operations.standingCrew.addVehicle'),
+        t('operations.standingCrew.addVehicle'),
+      ],
+      ['data-crew-plan-excel="true"', 'Excel', 'Excel'],
+      [
+        'data-crew-plan-discard="true"',
+        t('operations.crewPlan.discard'),
+        t('operations.crewPlan.undo.none'),
+      ],
+    ] as const) {
+      const tag = tagWith(toolbar, mark);
+      expect(tag, mark).toContain(`title="${title}"`);
+      // A finger's height below 640, in words or not; a 44px square below 480.
+      expect(classesIn(tag)).toEqual(
+        expect.arrayContaining(['max-[639px]:h-11', 'max-[479px]:w-11', 'max-[479px]:!px-0']),
+      );
+      const act = toolbar.slice(toolbar.indexOf(mark));
+      expect(act.slice(0, act.search(/<\/(button|a)>/u))).toContain(
+        `<span class="max-[479px]:sr-only">${word}</span>`,
+      );
+    }
+    // «حفظ» keeps its word at every width — as high as the icons below 640.
+    const save = tagWith(toolbar, 'data-crew-plan-save=');
+    expect(classesIn(save)).toContain('max-[639px]:h-11');
+    expect(classesIn(save)).not.toContain('max-[479px]:w-11');
+  });
+
+  it('«إضافة سيارة» below 480 is a van and a plus — never a bare «+»; mirrored in Arabic', () => {
+    const html = renderPage();
+    const add = html.slice(html.indexOf('data-standing-add="true"'));
+    const button = add.slice(0, add.indexOf('</button>'));
+    for (const d of PLAN_ICON.addVan) expect(button, d).toContain(`d="${d}"`);
+    expect(button).not.toContain('d="M12 4v16m8-8H4"');
+    expect(button).toContain('rtl:-scale-x-100');
+  });
+
+  it('a reader without the grant keeps «لوحة التشغيلة» and «Excel» in words at every width — 262px, one line at 320', () => {
+    for (const locale of ['ar', 'en'] as const) {
+      const toolbar = toolbarOf(renderPage({ plan: false, locale }));
+      for (const [mark, word] of [
+        ['data-standing-to-board="true"', translate(locale, 'operations.standingCrew.toBoard')],
+        ['data-crew-plan-excel="true"', 'Excel'],
+      ] as const) {
+        const tag = tagWith(toolbar, mark);
+        expect(classesIn(tag), `${locale} ${mark}`).toContain('max-[639px]:h-11');
+        expect(classesIn(tag)).not.toContain('max-[479px]:w-11');
+        const act = toolbar.slice(toolbar.indexOf(mark));
+        expect(act.slice(0, act.search(/<\/(button|a)>/u))).toContain(`<span>${word}</span>`);
+      }
+      expect(toolbar).not.toContain('max-[479px]:sr-only');
+    }
+  });
+});
+
+describe('Round 34 G — somebody picked stands at the counters’ start; nothing takes a line', () => {
+  it('the pill, «إلغاء» and the spoken region — the counters after it, still seen and pressed', () => {
+    const html = render(
+      <CrewPlanHand pickedName={CAPTAIN.fullNameAr} onCancel={() => undefined}>
+        <div role="group" data-standing-counts="true" className={HEAD_STRIP}>
+          <button type="button" data-standing-count="all" className={HEAD_CHIP}>
+            السيارات ٤
+          </button>
+        </div>
+      </CrewPlanHand>,
+    );
+    expect(html).toMatch(/^<div class="flex min-w-0 items-center" data-crew-plan-head="true">/u);
+    expect(html).toContain('aria-live="polite" data-crew-plan-head-hand="true"');
+    expect(text(html)).toContain(t('operations.crewPlan.picked', { name: CAPTAIN.fullNameAr }));
+    expect(html).toContain('data-crew-picked-cancel="true"');
+    expect(html.indexOf('data-crew-picked="true"')).toBeLessThan(
+      html.indexOf('data-standing-counts'),
+    );
+    expect(html).not.toMatch(/\binvisible\b|aria-hidden="true"[^>]*data-standing-count/u);
+    // The page wires it: «إلغاء» and Escape put the chip down; the spoken region is there on load.
+    const toolbar = PAGE.slice(PAGE.indexOf('data-crew-plan-toolbar="true"'));
+    expect(toolbar).toContain('pickedName={pickedName}');
+    expect(toolbar).toContain('onCancel={() => setSelected(null)}');
+    expect(PAGE).toContain("if (event.key === 'Escape') setSelected(null);");
+    expect(renderPage()).toContain(
+      '<div aria-live="polite" data-crew-plan-head-hand="true" class="flex min-w-0 items-center"></div>',
+    );
+  });
+
+  it('«المعروض N من M» where the board puts it: the bar’s end from 1280, the counters’ line below', () => {
+    expect(PAGE).toContain('const countAt = filteredCountAt({ oneLineHead: useMinWidth(1280) });');
+    const hand = PAGE.slice(PAGE.indexOf('<CrewPlanHand'), PAGE.indexOf('</CrewPlanHand>'));
+    const strip = hand.indexOf('data-standing-counts="true"');
+    const count = hand.indexOf("{filtering && countAt === 'head' && (");
+    expect(strip).toBeGreaterThan(0);
+    expect(count).toBeGreaterThan(strip);
+    expect(hand.slice(count)).toMatch(
+      /<FilteredCount\s+shown=\{shown\.length\}\s+total=\{rows\.length\}\s+onClear=\{clearFilters\}\s+compact=\{phone\}\s+\/>/u,
+    );
+    const bar = PAGE.slice(
+      PAGE.indexOf('data-crew-plan-bar="true"'),
+      PAGE.indexOf('<CrewRosterNotice'),
+    );
+    expect(bar).toContain("{filtering && countAt === 'bar' && (");
+    expect(bar).toContain('<span className="flex shrink-0 min-[1280px]:ms-auto">');
+    expect(PAGE.match(/<FilteredCount\b/gu)?.length).toBe(2);
+    const acts = PAGE.slice(
+      PAGE.indexOf('</CrewPlanHand>'),
+      PAGE.indexOf('data-crew-plan-bar="true"'),
+    );
+    expect(acts).not.toContain('<FilteredCount');
+    // Nothing filters on load: no count is drawn.
+    expect(renderPage()).not.toContain('data-crew-plan-filtered');
+  });
+});
+
+describe('Round 34 G — a reader without the grant: «للعرض فقط», not a line', () => {
+  it('a lock and «للعرض فقط» first among the acts — why in full, in the standing crew’s words', () => {
+    for (const locale of ['ar', 'en'] as const) {
+      const html = renderPage({ plan: false, locale });
+      const toolbar = toolbarOf(html);
+      const acts = toolbar.slice(toolbar.indexOf('data-crew-view-only'));
+      const why = translate(locale, 'operations.standingCrew.viewOnly');
+      expect(tagWith(toolbar, 'data-crew-view-only="true"'), locale).toContain(`title="${why}"`);
+      expect(acts).toContain(`<span class="sr-only">${why}</span>`);
+      expect(acts).toContain(
+        `<span aria-hidden="true">${translate(locale, 'operations.crewPlan.viewOnlyMark')}</span>`,
+      );
+      expect(toolbar.indexOf('data-crew-view-only')).toBeLessThan(
+        toolbar.indexOf('data-standing-to-board'),
+      );
+      // Read only: no «إضافة سيارة», «تراجع» or «حفظ»; the counters still filter.
+      expect(toolbar).not.toContain('data-standing-add');
+      expect(toolbar).not.toContain('data-crew-plan-save');
+      expect(toolbar).toContain('data-standing-count="short"');
+    }
+    // A planner gets no mark.
+    expect(renderPage()).not.toContain('data-crew-view-only');
   });
 });

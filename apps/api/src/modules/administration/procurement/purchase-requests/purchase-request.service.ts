@@ -1,7 +1,7 @@
 // Purchase requests (P2 plan §4; design §5.4, §7.3, §7.5): the register, the record, the create
-// and a draft's edit — P2.2 — and the submission to the approval chain — P2.3. Decisions, returns,
-// cancels and request files join with their slices (P2.4 to P2.6). Nothing is deleted: a request
-// ends in a terminal status.
+// and a draft's edit — P2.2 — and the submission to the approval chain — P2.3. A request's files
+// are `purchase-request-files.ts`'s (P2.6); decisions, returns and cancels join with their slices
+// (P2.4, P2.5). Nothing is deleted: a request ends in a terminal status.
 //
 // THE REQUESTER IS THE CALLER (OD-16 A, design §7.3). The create reads the caller's own employee
 // through the directory, never a body field, and files the request on that employee's department

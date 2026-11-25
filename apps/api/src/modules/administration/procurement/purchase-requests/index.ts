@@ -7,3 +7,8 @@ export {
   administrationPurchaseRequestService,
   ensurePurchaseRequestNumberCounter,
 } from './purchase-request.service';
+// The seed ensures the request files' category; the manifest registers their authorizer (P2.6).
+export {
+  ensureRequestAttachmentsCategory,
+  purchaseRequestFileAuthorizer,
+} from './purchase-request-files';

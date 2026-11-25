@@ -1,5 +1,5 @@
-import { Types, type FilterQuery } from 'mongoose';
-import { CONTENT_EDITABLE } from '@ecms/contracts';
+import { Types, type FilterQuery, type UpdateQuery } from 'mongoose';
+import { ADMINISTRATION_MAX_LIST_ATTACHMENTS, CONTENT_EDITABLE } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
 import { type ScopeSelector } from '../../../../shared/types';
 import { collectionReady } from '../../shared/collection-ready';
@@ -11,9 +11,13 @@ import {
 import { statusesWhere } from '../../shared/lifecycle';
 import {
   AdministrationPurchaseRequestModel,
+  type AdministrationPurchaseRequestAttachmentSub,
   type AdministrationPurchaseRequestDoc,
 } from './purchase-request.model';
 import { invalidTransition } from './purchase-request-rules';
+
+/** The list's last slot: while it is empty, the list holds fewer than the bound (design §11.4). */
+const LAST_SLOT = `attachments.${String(ADMINISTRATION_MAX_LIST_ATTACHMENTS - 1)}`;
 
 class AdministrationPurchaseRequestRepository extends BaseRepository<AdministrationPurchaseRequestDoc> {
   /** Awaited before every write: `ux_number` is what two submissions taking one number meet. */
@@ -78,6 +82,77 @@ class AdministrationPurchaseRequestRepository extends BaseRepository<Administrat
       'lines.itemId': new Types.ObjectId(itemId),
       $nor: [{ status: 'cancelled', number: null }],
     });
+  }
+
+  // ── A request's files (P2.6; P2 plan §4.3) ─────────────────────────────────
+
+  /**
+   * Link one file: ONE write that holds the version the requester saw, the draft status and the
+   * list's bound in its filter, so a stale view, a submitted request and a 21st file are refused
+   * even when two adds race. Null when it matched nothing; the caller re-reads to say why.
+   */
+  async pushAttachment(
+    id: string,
+    version: number,
+    entry: AdministrationPurchaseRequestAttachmentSub,
+    by: string,
+    scope: ScopeSelector,
+  ): Promise<AdministrationPurchaseRequestDoc | null> {
+    return this.linkWrite(
+      id,
+      version,
+      { [LAST_SLOT]: { $exists: false } },
+      { $push: { attachments: entry } },
+      by,
+      scope,
+    );
+  }
+
+  /** Unlink one file, under the version the requester saw, while a draft. Null when it missed. */
+  async pullAttachment(
+    id: string,
+    version: number,
+    attachmentId: Types.ObjectId,
+    by: string,
+    scope: ScopeSelector,
+  ): Promise<AdministrationPurchaseRequestDoc | null> {
+    return this.linkWrite(
+      id,
+      version,
+      { 'attachments.attachmentId': attachmentId },
+      { $pull: { attachments: { attachmentId } } },
+      by,
+      scope,
+    );
+  }
+
+  /**
+   * A link write is an edit of the draft (design §11.4): version-held, it moves the version, so an
+   * edit decided before it is answered as stale; `writeConditions()` keeps it to a draft, as on
+   * every content write; and the scope is the write key's that found the request, so the filter
+   * reaches no row its load could not. It writes the list alone — never the status.
+   */
+  private async linkWrite(
+    id: string,
+    version: number,
+    condition: FilterQuery<AdministrationPurchaseRequestDoc>,
+    change: UpdateQuery<AdministrationPurchaseRequestDoc>,
+    by: string,
+    scope: ScopeSelector,
+  ): Promise<AdministrationPurchaseRequestDoc | null> {
+    return this.model
+      .findOneAndUpdate(
+        this.baseFilter(scope, {
+          _id: new Types.ObjectId(id),
+          __v: version,
+          ...condition,
+          ...this.writeConditions(),
+        }),
+        { ...change, $set: { updatedBy: new Types.ObjectId(by) }, $inc: { __v: 1 } },
+        { new: true },
+      )
+      .lean<AdministrationPurchaseRequestDoc>()
+      .exec();
   }
 }
 

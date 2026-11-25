@@ -5,7 +5,8 @@
 //   2. its counters (OD-05 A): the item code's and the supplier code's, each raised to the highest
 //      code of its own already given, and this Cairo year's purchase-request series (OD-58 A,
 //      P2.2), raised to its highest number;
-//   3. its file categories: the suppliers' papers (OD-11 A), before any upload asks for it;
+//   3. its file categories: the suppliers' papers (OD-11 A) and the requests' files (OD-76 A,
+//      P2.6), before any upload asks for either;
 //   4. its notification templates (P2 plan §11.1), before any act sends one — a send whose template
 //      is missing is swallowed, so it would tell nobody and say nothing (RK-22);
 //   5. its ready-made roles (OD-78 A), as managed roles.
@@ -22,7 +23,10 @@ import { reportLines, reportSummary, syncDeclaredIndexes } from '../../shared/ba
 import { administrationModels } from './administration-indexes';
 import { ADMINISTRATION_ROLE_BUNDLES } from './administration-roles';
 import { ensureItemCodeCounter } from './catalog/items';
-import { ensurePurchaseRequestNumberCounter } from './procurement/purchase-requests/index';
+import {
+  ensurePurchaseRequestNumberCounter,
+  ensureRequestAttachmentsCategory,
+} from './procurement/purchase-requests/index';
 import {
   ensureSupplierCodeCounter,
   ensureSupplierDocumentsCategory,
@@ -81,6 +85,14 @@ export const seedAdministration = async (): Promise<void> => {
     await ensureSupplierDocumentsCategory();
   } catch (err) {
     logger.warn({ module: 'administration', err }, 'the supplier papers category was not ensured');
+  }
+  try {
+    await ensureRequestAttachmentsCategory();
+  } catch (err) {
+    logger.warn(
+      { module: 'administration', err },
+      'the request attachments category was not ensured',
+    );
   }
   try {
     await ensurePurchaseRequestTemplates();

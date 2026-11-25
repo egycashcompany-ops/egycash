@@ -1293,14 +1293,15 @@ In `administration-roles.ts`, each key joining in the slice that declares it (de
 ### 9.4 The pickers and the page parts
 
 - **`ReferencePicker`** (P2.W0) is rebuilt in the module after IT's `VendorPicker` (D-21; design §13.6 D): a server
-  search, enabled only on a non-empty search, 8 rows, a picked chip, `aria-pressed` results, a spinner, a no-results
-  sentence and a no-access sentence. Its props are `{ value, valueLabel, onChange(id, label), error?, allowed,
-  useSearch(search, enabled), rowId(row), rowLabel(row), renderRow(row), texts: { placeholder, noResults, noAccess,
-  clearPick } }`, the last four i18n keys. P2.W0 also moves Phase 1's `EmployeePicker`, the warehouse keeper box
-  written by hand after IT's pattern (`apps/web/src/modules/administration/components/EmployeePicker.tsx:35-62`), onto
-  it with no change of behavior: `EmployeePicker` keeps its props, `ADMINISTRATION_PEOPLE_GRANTS` and `pickerLabel`,
-  and passes `allowed`, `usePeopleSearch` and the `administration.people.*` texts. The module then has one
-  implementation with two users: "one control and one behaviour to fix"
+  search, enabled only on a non-empty search, 8 rows, the caller's search hook's page (`PEOPLE_PICKER_ROWS`;
+  `useItemSearch` asks the same; design §22 "P2.W0 built"), a picked chip, `aria-pressed` results, a spinner, a
+  no-results sentence and a no-access sentence. Its props are `{ value, valueLabel, onChange(id, label), error?,
+  allowed, useSearch(search, enabled), rowId(row), rowLabel(row), renderRow(row), texts: { placeholder, noResults,
+  noAccess, clearPick } }`, the last four i18n keys. P2.W0 also moves Phase 1's `EmployeePicker`, the warehouse keeper
+  box written by hand after IT's pattern (`apps/web/src/modules/administration/components/EmployeePicker.tsx:35-62`),
+  onto it with no change of behavior: `EmployeePicker` keeps its props, `ADMINISTRATION_PEOPLE_GRANTS` and
+  `pickerLabel`, and passes `allowed`, `usePeopleSearch` and the `administration.people.*` texts. The module then has
+  one implementation with two users: "one control and one behaviour to fix"
   (`docs/03-decisions/ADR-019-reference-pickers-search-not-load-all.md:118-119`).
 - **`ItemPicker`** (P2.W1) is its second user: active items only for a new line, the picked id resolved even when the
   item is retired, `allowed` through `useCan` over exactly the item reads' two keys (§4.1). A non-stock item carries a
@@ -1500,7 +1501,7 @@ Feature specs sit beside their files in the PR feature, `procurement/purchase-re
 | `purchase-request-files.spec.ts` | C | P2.6 | the authorizer: each key with its own scope; write only by the requester and only on a draft, so a write on a submitted PR is denied; the delete asked as a write |
 | `purchase-request-sweeps.spec.ts` | C | P2.7 | the declaration's key, cron and owner; reminders only after an earlier Cairo date; the stuck notice and its audience; idempotency keys with the rung; the `_id` cursor across pages; no write |
 | `catalog/items/item-unit-lock.spec.ts` | C | P2.2 | no registrant passes; a registrant's answer refuses the unit change and only that |
-| `purchase-request-guards.spec.ts`, the source-scan guards | C, M | P2.2; P2.3, P2.4 | design §5.16 specs 9–13: one writer of `status`; every status write filtered on `__v` or `status`; pair A1 in decide and return, B1 in decide; no `approvalService.statusFor(` and no `decide(` inside `unitOfWork(`; no content write matches a terminal status |
+| `purchase-request-guards.spec.ts`, the source-scan guards | C, M | P2.2; P2.3, P2.4, P2.6 | design §5.16 specs 9–13: one writer of `status`; every status write filtered on `__v` or `status`; pair A1 in decide and return, B1 in decide; no `approvalService.statusFor(` and no `decide(` inside `unitOfWork(`; no content write matches a terminal status; the file link, the repository's one write, writes the list alone and holds the version and the draft set in its filter (P2.6) |
 | `administration.module.spec.ts`, `administration-scope-guards.spec.ts`, `administration-indexes.spec.ts` | M | P2.2–P2.7 | the surface pinned; the PR repository's scope fields and its section-as-own reading (design §7.3); the model list |
 | `administration.seed.spec.ts` | C, M | P2.3; P2.4, P2.5, P2.7 | every sent template seeded |
 
@@ -1598,7 +1599,7 @@ listed, then modified.
 | `packages/contracts/src/modules/administration.ts` + spec | M | P2.1; P2.2–P2.7 | numbering; lines cap; available actions; the unit-lock vocabulary; events; templates; the request-attachments category |
 | `packages/contracts/src/modules/administration-procurement.ts` + spec | M | P2.2–P2.6 | PR statuses, guard sets, schemas, DTOs, action keys and reasons |
 | `packages/contracts/src/modules/administration-catalog.ts` + spec | M | P2.1 | `stockTracked`; `CreateAdministrationItemInput` |
-| `packages/contracts/src/errors/index.ts` | M | P2.2–P2.5 | §5's eight codes; `ADMINISTRATION_EMPLOYEE_EXITED`'s comment |
+| `packages/contracts/src/errors/index.ts` | M | P2.2–P2.6 | §5's eight codes; `ADMINISTRATION_EMPLOYEE_EXITED`'s comment; `ADMINISTRATION_ATTACHMENT_LIMIT`'s comment names the request's files (P2.6) |
 | `packages/contracts/src/events/catalog.ts` + `catalog.spec.ts` | M | P2.3–P2.5 | the module's source, name and word |
 | `packages/contracts/src/platform/notification-target.ts` + spec | M | P2.W1 | `ENTITY_ROUTES` |
 | `packages/contracts/src/platform/audit.ts` | M | P2.0 | `approvalDecision` |
@@ -1611,9 +1612,9 @@ listed, then modified.
 | `administration.module.ts` + `.spec.ts` | M | P2.2–P2.7 | keys, page, routes, collection, the file authorizer (P2.6), `scheduledTasks` (P2.7) |
 | `administration.seed.ts` | M | P2.2–P2.7 | the year's counter (P2.2); each template in its slice (P2.3–P2.5, P2.7); the request-attachments category (P2.6) |
 | `administration.seed.spec.ts` | C, M | P2.3; P2.4, P2.5, P2.7 | every sent template seeded |
-| `administration-indexes.ts` + `administration-indexes.spec.ts` | M | P2.1 (the spec), P2.2 | the item input's parsed `stockTracked` (P2.1); the PR model |
+| `administration-indexes.ts` + `administration-indexes.spec.ts` | M | P2.1 (the spec), P2.2, P2.6 (the spec) | the item input's parsed `stockTracked` (P2.1); the PR model; the seed's request-attachments step in its order (P2.6) |
 | `administration-roles.ts` | M | P2.2, P2.5 | §9.3 |
-| `administration.mappers.ts` | M | P2.1; P2.2 | `stockTracked ?? true` on the item DTO; the PR DTOs |
+| `administration.mappers.ts` | M | P2.1; P2.2; P2.6 | `stockTracked ?? true` on the item DTO; the PR DTOs; the detail's files with their scan states (P2.6) |
 | `administration-scope-guards.spec.ts` | M | P2.2 | the PR repository's fields |
 | `shared/document-number.ts` + spec | M | P2.1 | the yearly series and its Cairo-year key; `highestNumberPipeline`, `numberFloorFrom` |
 | `shared/cairo-day.ts` | C | P2.1 | re-exports of the contracts' Cairo calendar (`cairoCalendarDate`, `cairoYmd`, the day bounds), nothing copied (design §3.5), as HR's `apps/api/src/modules/hr/shared/business-date.ts:4-10` does; no spec of its own, because the contracts spec covers the calendar (`packages/contracts/src/common/cairo-date.spec.ts:37-40`) |
@@ -1633,7 +1634,7 @@ listed, then modified.
 | `procurement/purchase-requests/purchase-request-notices.ts` | C, M | P2.3; P2.4, P2.5, P2.7 | the sends of §11.1 |
 | `procurement/purchase-requests/purchase-request-files.ts` + spec | C | P2.6 | category, authorizer, the three routes' service |
 | `procurement/purchase-requests/purchase-request-sweeps.ts` + spec | C | P2.7 | §11.2 |
-| `procurement/purchase-requests/purchase-request-guards.spec.ts` | C, M | P2.2; P2.3, P2.4 | §12.1's source-scan guards |
+| `procurement/purchase-requests/purchase-request-guards.spec.ts` | C, M | P2.2; P2.3, P2.4, P2.6 | §12.1's source-scan guards |
 
 **Platform registries, census, seeds and scripts**
 
@@ -1665,7 +1666,7 @@ listed, then modified.
 | `apps/web/src/platform/approvals/ApprovalChainPanel.tsx` + spec | M | P2.0 | locale captions |
 | `apps/web/src/modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx` + `ApprovalWorkflowsPage.spec.tsx` (C) | M | P2.0 | locale names |
 | `apps/web/src/modules/system-admin/system-admin-i18n.spec.ts` | M | P2.0 | the verb's pin (§12.3) |
-| `apps/web/src/platform/localization/i18n.ts` | M | P2.0; P2.W0–P2.W2 | the verb's labels; `administration.purchaseRequests.*`, `administration.nav.purchaseRequests`, `ReferencePicker`'s texts |
+| `apps/web/src/platform/localization/i18n.ts` | M | P2.0; P2.W1, P2.W2 | the verb's labels; `administration.purchaseRequests.*`, `administration.nav.purchaseRequests`, `ItemPicker`'s texts (a caller's keys; `ReferencePicker` names none, P2.W0, design §22 "P2.W0 built") |
 | `routes.tsx` | M | P2.W1, P2.W2 | §9.2, and its header table |
 | `api/administration-keys.ts` | M | P2.W1 | `purchaseRequests` and its keys |
 | `api/catalog-api.ts` | M | P2.1 | `createItem` takes `CreateAdministrationItemInput` |
@@ -1674,7 +1675,7 @@ listed, then modified.
 | `pages/{PurchaseRequestsPage,PurchaseRequestDetailPage,PurchaseRequestEditorPage}.tsx`; `pages/{purchase-requests,purchase-request-detail,purchase-request-editor}-screen.spec.tsx` | C | P2.W1 | §9.2, §9.5 |
 | `pages/AwaitingDecisionPage.tsx`; `pages/awaiting-decision-screen.spec.tsx` | C | P2.W2 | §9.2, §9.5 |
 | `pages/AdministrationHomePage.tsx`; `pages/home-screen.spec.tsx` | M | P2.W2 | the tile and the two counts |
-| `components/ReferencePicker.tsx` | C | P2.W0 | §9.4 |
+| `components/ReferencePicker.tsx`; `components/reference-picker.spec.tsx` | C | P2.W0 | §9.4; the picker rendered in each state and the keeper box on it (design §22 "P2.W0 built") |
 | `components/EmployeePicker.tsx`; `administration-employee-picker.spec.ts` | M | P2.W0 | moved onto `ReferencePicker`, behavior unchanged; its guard spec (§12.3) |
 | `components/ItemPicker.tsx` | C | P2.W1 | §9.4 |
 | `components/PurchaseRequestActionDialogs.tsx` | C | P2.W1 | submit, decide (with cuts), return, cancel (§9.5) |

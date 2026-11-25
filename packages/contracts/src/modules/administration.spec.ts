@@ -5,7 +5,8 @@
 // «PR-2026-000001», on the same rules, with a four-digit year. And the people the module names
 // (§7.8): a search with no status, since only the employed are offered, and an id parameter. And
 // what every document shares (P2.2): its lines' cap and the locks its lines put on an item. And
-// from P2.3 why a document may not go to its chain, its events and its notices.
+// from P2.3 why a document may not go to its chain, its events and its notices; from P2.6 the
+// request files' category.
 import { describe, expect, it } from 'vitest';
 import {
   ADMINISTRATION_APPROVAL_CHAIN_PROBLEMS,
@@ -19,6 +20,9 @@ import {
   ADMINISTRATION_MAX_DOCUMENT_LINES,
   ADMINISTRATION_MAX_LIST_ATTACHMENTS,
   ADMINISTRATION_PERSON_STATUSES,
+  ADMINISTRATION_REQUEST_ATTACHMENTS_FILE_CATEGORY,
+  ADMINISTRATION_REQUEST_ATTACHMENT_MAX_MB,
+  ADMINISTRATION_REQUEST_ATTACHMENT_MIMES,
   AdministrationEvents,
   AdministrationPersonIdParamSchema,
   AdministrationPurchaseRequestSubmittedPayloadV1,
@@ -238,6 +242,25 @@ describe('the people the module names (§7.8)', () => {
 describe('the typed attachment list (§11.4)', () => {
   it('holds at most 20 entries, the one bound every list B keeps', () => {
     expect(ADMINISTRATION_MAX_LIST_ATTACHMENTS).toBe(20);
+  });
+});
+
+// The request files' category (design §11.2; OD-76 formats (i), P2.6): its own key, PDF and images,
+// 10 MB — the limit a requester meets, below the upload's own cap.
+describe('the request attachments’ category (P2.6)', () => {
+  it('files under one key of its own: PDF and images, 10 MB', () => {
+    expect(ADMINISTRATION_REQUEST_ATTACHMENTS_FILE_CATEGORY).toBe(
+      'administration-request-attachments',
+    );
+    // The platform's key pattern (`CreateFileCategorySchema`), so the seed's ensure accepts it.
+    expect(ADMINISTRATION_REQUEST_ATTACHMENTS_FILE_CATEGORY).toMatch(/^[a-z][a-z0-9-]{1,49}$/);
+    expect([...ADMINISTRATION_REQUEST_ATTACHMENT_MIMES]).toEqual([
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+    ]);
+    expect(ADMINISTRATION_REQUEST_ATTACHMENT_MAX_MB).toBe(10);
   });
 });
 

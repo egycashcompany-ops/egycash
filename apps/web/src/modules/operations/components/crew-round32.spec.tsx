@@ -349,10 +349,17 @@ describe('B — the page on a record', () => {
     expect(page).toContain("t('operations.crewPlan.record.unsavedTitle')");
   });
 
-  it('a calm notice, the mark, and «العودة إلى اليوم» where the acts were; the day box keeps the past', () => {
-    expect(page).toContain('<RecordNotice');
-    expect(page).toContain("title={t('operations.crewPlan.record.title', {");
-    expect(page).toContain('data-crew-record-mark="true"');
+  // Round 34 H — REWRITTEN (was «a calm notice, the mark, and «العودة إلى اليوم» where the acts were;
+  // the day box keeps the past»): the notice under the bar took a line of its own; its words are the
+  // mark's now, on the toolbar's line (`RecordMark` — rendered in `crew-board-head.spec.tsx`).
+  it('the mark — the notice’s words its tooltip — and «العودة إلى اليوم» where the acts were; no notice under the bar; the day box keeps the past', () => {
+    expect(page).not.toContain('<RecordNotice');
+    expect(page).toContain('<RecordMark');
+    expect(page).toContain('dayLabel={dayText(`${day}T00:00:00.000Z`)}');
+    const frame = read('./CrewPlanFrame.tsx');
+    expect(frame).toContain("t('operations.crewPlan.record.title', { day: dayLabel }),");
+    expect(frame).toContain("t('operations.crewPlan.record.body'),");
+    expect(frame).toContain('data-crew-record-mark="true"');
     expect(page).toContain('onClick={() => setDay(liveToday)}');
     expect(page).toContain(
       '<DayBox label={t(\'operations.crewPlan.day\')} value={day} min="" onChange={setDay} />',

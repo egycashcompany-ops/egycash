@@ -35,8 +35,11 @@
 // AN ARROW THAT CANNOT ACT (Round 34 D critic) is what the window shows most — at opening nothing is
 // ticked, and after a press the ticks it read are gone — so it keeps its colour whole: the same
 // glyph as at rest (sky-700 5.9:1, orange-700 5.2:1 on white; dark sky-300 / orange-300), on no
-// tint, a lighter border; under the pointer its own colour comes as a soft tint, never the solid
-// fill that a press would follow. It was softened to 60% — 2.6:1 and 2.5:1, faded.
+// tint, a lighter border. It was softened to 60% — 2.6:1 and 2.5:1, faded. Round 34 H critic —
+// under the pointer it stays exactly so: it does nothing, so it must not look pressable. Its soft
+// tint there (sky-100 / orange-100, dark the 15% tint) was the very fill of an arrow that acts, at
+// rest — the arrow lit up as if it could be pressed. The pointer reads «not allowed» and the
+// tooltip says why.
 import { cn } from '../../../shared/lib/cn';
 import { SWAP_MODES, modeStepOf, type SwapMode } from '../lib/crew-swap';
 
@@ -71,15 +74,15 @@ export const swapArrowTone = (mode: SwapMode): SwapArrowTone =>
  * (`off`) — light and dark. Solid: white on sky-600 #0284c7 4.10:1, on orange-600 #ea580c 3.56:1 (a
  * glyph: 3:1 is the bar). At rest: sky-700 on sky-50 5.6:1, orange-700 on orange-50 4.9:1; dark,
  * sky-300 / orange-300 on their 15% tint over the window's navy, above 8:1. Off: the same glyphs on
- * the window itself (5.9:1, 5.2:1; dark above 9:1), a soft tint of their own under the pointer
- * (sky-100 5.2:1, orange-100 4.5:1).
+ * the window itself (5.9:1, 5.2:1; dark above 9:1) — and nothing else, under the pointer too: no
+ * `hover:` of its own (Round 34 H critic).
  */
 export const SWAP_ARROW_LOOK: Record<
   SwapArrowTone,
   { rest: string; active: string; held: string; focus: string; off: string }
 > = {
   oneWay: {
-    off: 'border-sky-300 bg-white text-sky-700 hover:border-sky-400 hover:bg-sky-100 dark:border-sky-400/40 dark:bg-transparent dark:text-sky-300 dark:hover:border-sky-400/60 dark:hover:bg-sky-400/15',
+    off: 'border-sky-300 bg-white text-sky-700 dark:border-sky-400/40 dark:bg-transparent dark:text-sky-300',
     focus:
       'focus-visible:ring-2 focus-visible:ring-sky-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#121c3f]',
     rest: 'border-sky-500 bg-sky-50 text-sky-700 dark:border-sky-400/70 dark:bg-sky-400/15 dark:text-sky-300',
@@ -88,7 +91,7 @@ export const SWAP_ARROW_LOOK: Record<
     held: 'border-sky-600 bg-sky-600 text-white ring-2 ring-sky-500/60 ring-offset-2 ring-offset-white shadow-[0_8px_20px_-8px_rgba(2,132,199,0.95)] dark:border-sky-500 dark:bg-sky-600 dark:text-white dark:ring-sky-400/60 dark:ring-offset-[#121c3f]',
   },
   swap: {
-    off: 'border-orange-300 bg-white text-orange-700 hover:border-orange-400 hover:bg-orange-100 dark:border-orange-400/40 dark:bg-transparent dark:text-orange-300 dark:hover:border-orange-400/60 dark:hover:bg-orange-400/15',
+    off: 'border-orange-300 bg-white text-orange-700 dark:border-orange-400/40 dark:bg-transparent dark:text-orange-300',
     focus:
       'focus-visible:ring-2 focus-visible:ring-orange-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#121c3f]',
     rest: 'border-orange-500 bg-orange-50 text-orange-700 dark:border-orange-400/70 dark:bg-orange-400/15 dark:text-orange-300',
@@ -108,8 +111,9 @@ export const SWAP_ARROW_BUTTON =
 
 /**
  * An arrow that cannot act now, and is not the one playing: whole in its own colour (never grey —
- * «مش عايز … رصاصي» — and never faded), on no tint, its reason in its tooltip; under the pointer a
- * soft tint of its colour (`SWAP_ARROW_LOOK[…].off`), never the solid fill of an arrow that acts.
+ * «مش عايز … رصاصي» — and never faded), on no tint, its reason in its tooltip; under the pointer
+ * unchanged (`SWAP_ARROW_LOOK[…].off` has no `hover:`) — never the tint or the solid fill of an
+ * arrow that acts. The pointer itself says it: «not allowed».
  */
 export const SWAP_ARROW_OFF = 'cursor-not-allowed';
 

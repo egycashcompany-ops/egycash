@@ -102,7 +102,10 @@ const ROLE_FLAT: Record<CrewRole, string> = {
   specialist: 'bg-rose-700 dark:bg-rose-800',
 };
 
-/** The role's dot — the legend uses the same three colours. */
+/**
+ * The role's dot — a slot's list and «تبديل بين سيارتين» use the chips' three colours. (The toolbar's
+ * legend of them is gone: Round 34 E from the board, Round 34 G from «الطاقم الثابت».)
+ */
 export const ROLE_DOT: Record<CrewRole, string> = {
   captain: 'bg-emerald-600 dark:bg-emerald-500',
   dual: 'bg-sky-600 dark:bg-sky-500',
@@ -333,23 +336,5 @@ export const CrewPlanChip = ({
       )}
       {card.card}
     </div>
-  );
-};
-
-/** What the three colours mean — said once, beside the board's hint. */
-export const RoleLegend = (): JSX.Element => {
-  const t = useT();
-  return (
-    <span
-      className="inline-flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11.5px] font-bold text-slate-600 dark:text-slate-300"
-      data-role-legend="true"
-    >
-      {(['captain', 'dual', 'specialist'] as const).map((role) => (
-        <span key={role} className="inline-flex items-center gap-1">
-          <span aria-hidden className={cn('h-2.5 w-2.5 rounded-full', ROLE_DOT[role])} />
-          {t(`operations.crewPlan.role.${role}`)}
-        </span>
-      ))}
-    </span>
   );
 };

@@ -8,8 +8,10 @@
 //     فى القايمة بتاعت القائد بس يكونوا فى الاخر»; the order is `listPool`'s);
 //   · الأخصائيون: red chips — never a blue one.
 //
-// What the colours mean is said once, in the toolbar (`RoleLegend`). Each pool counts its people (and how many are still free), searches by name or code — folded,
-// so «احمد» finds «أحمد» — and filters by the requirement icons (AND, as legacy's buttons). Somebody
+// The toolbar's legend of the colours is gone (Round 34 E and G: «واسمح الحاجات اللى فوق دى»): each
+// pool's head names whom it holds, every chip wears its role's colour, and the person's card names
+// the role. Each pool counts its people (and how many are still free), searches by name or code —
+// folded, so «احمد» finds «أحمد» — and filters by the requirement icons (AND, as legacy's buttons). Somebody
 // already on a row stays LISTED, after the free ones, dimmed, with where they sit: the pool answers
 // «where is he», and dragging him from here moves him. Dropping a chip back onto either pool frees it.
 import { type DragEvent, type ReactNode } from 'react';

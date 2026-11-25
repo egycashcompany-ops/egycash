@@ -1937,6 +1937,9 @@ words in «». An answer that changes this design is applied as a revision (§22
 | OD-68 | B: typed by hand through the screens; no go-live file load in Phase 1 | 2026-11-24 | «لأ خلينا من غير شيتات او بيانات دلوقتى» |
 | Delivery (Status, §18) | one phase at a time; each phase is closed, its exit criteria met and the owner told, before the next starts | 2026-11-24 | «وامشى Phase واحده وبعد ما نقفل كل واحده ندخل على اللى بعدها» |
 | RK-09, the zod waiver | renewed for 30 days, to 2026-12-26; the zod 4 migration stays its own change | 2026-11-24 | «موافق على Zod» |
+| Phase 1's readings (the close report of 2026-11-25; §22, "P1a.2 built" to "Phase 1 closed") | kept as built: a retire or bring-back re-files no item; stock levels whole numbers 0 to 1,000,000 in order; the item unit editable until P2 or P5; no new warehouse in a closed branch; a warehouse names an active department of its own branch; a keeper from another branch allowed; top-bar filing (ADR-028); tax numbers compared as typed and a repeat only warned; VAT status hidden until OD-29; a retired supplier's papers list open; role titles §6.5's candidates (OD-67) | 2026-11-25 | «موافق على كل التوصيات، كمّل» |
+| PXQ-1 (PX-1 re-detail §2), a leave request nobody can approve | (1): it goes to HR, down leave's manager and HR path at submission and to HR for the remaining steps after earlier approvals; applied in an HR slice of its own after PX-1.6, option 3 holding until then | 2026-11-25 | «موافق على كل التوصيات، كمّل» |
+| PRQ-1 to PRQ-4 (P2 re-detail §2) | each its recommendation: PRQ-1 (1), a returned PR keeps the lowered quantities and a line cut to nothing is removed; PRQ-2 (a) 1 and (b) 1, the procurement manager hears of approvals and the override holders who reach every rung left and can open the PR hear of a stuck one; PRQ-3 (1), no PR roles in production before P4; PRQ-4 (1), a different person settles each empty level | 2026-11-25 | «موافق على كل التوصيات، كمّل» |
 
 ---
 

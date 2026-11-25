@@ -302,7 +302,7 @@ new rule names the alternative it rejects.
 
 Nothing new for the phase itself: the defaults of §1.1 answer it. Four business questions arise, PRQ-1 to PRQ-4
 below: two where OD-17 and OD-61 answer in outline only, one on when PRs are used in production, and one, raised in
-this re-detail's review (§18), on what OD-21 B means for overrides. P2 does not wait for their answers. Under the owner's instruction of 2026-11-24, «بص اعمل انت الـ Recommendations من عندك دلوقتى وبعدين
+this re-detail's review (§18), on what OD-21 B means for overrides. The owner answered all four on 2026-11-25 with their recommendations, «موافق على كل التوصيات، كمّل» (design §16.12); each question below names its answer. P2 did not wait for them. Under the owner's instruction of 2026-11-24, «بص اعمل انت الـ Recommendations من عندك دلوقتى وبعدين
 نبقى نعدل» (design §16.12), the slice that carries each answer builds its recommendation, and the question goes to the
 owner before that slice merges. Another answer to PRQ-1 changes the return alone (P2.4); to PRQ-2, the recipients of
 the approved and stuck notices (P2.4, P2.7); to PRQ-3, when the PR roles are assigned in production, and no code; to
@@ -345,7 +345,8 @@ starts from these.
      only.
 - **Recommendation.** 1: the requester starts from what the approvers accepted, asks for more only by raising a
   quantity on purpose, and every raise goes through the whole chain again.
-- **Until the owner answers.** P2.4 builds option 1; option 2 changes the return alone. A PR returned before the answer
+- **Answered** (2026-11-25, design §16.12): the recommendation, «موافق على كل التوصيات، كمّل».
+- **Before the answer.** P2.4 builds option 1; option 2 changes the return alone. A PR returned before the answer
   keeps its folded quantities, and its return's audit row holds the quantities it had.
 - **Arabic.** إذا خفّض المعتمِدون كميات في طلب شراء، ثم أُعيد الطلب إلى الطالب لتعديله، فهل تبقى الكميات المخفَّضة في
   الطلب المُعاد، أم تعود الكميات التي أرسلها الطالب في تلك المرة؟ (١) تبقى الكميات المخفَّضة، ويُحذف من الطلب البند
@@ -395,7 +396,8 @@ starts from these.
   they take no part in. (b) 1: the notice goes to the people who can open the request and decide it wherever it stopped,
   up to its last rung; the requester is told when it moves, and a cancel stays the procurement manager's choice from
   the register.
-- **Until the owner answers.** P2.4 builds (a) 1 and (b) 1; P2.7's sweep repeats (b) daily.
+- **Answered** (2026-11-25, design §16.12): the recommendation, «موافق على كل التوصيات، كمّل».
+- **Before the answer.** P2.4 builds (a) 1 and (b) 1; P2.7's sweep repeats (b) daily.
 - **Arabic.** (أ) عند اعتماد طلب شراء، مَن يُبلَّغ في إدارة المشتريات؟ (١) مَن يملكون صلاحية «إلغاء طلبات الشراء» على
   مستوى الشركة، وهي صلاحية مدير المشتريات، ويحل محلهم في المرحلة الثالثة مَن يُنشئون طلبات عروض الأسعار؛ وهذا ما نوصي به،
   لأن مدير المشتريات يعرف بكل احتياج معتمد، ولا يُبلَّغ غيره بما لا شأن له به؛ (٢) كل من يملك صلاحية «عرض طلبات الشراء» على
@@ -425,7 +427,8 @@ starts from these.
      before P3.
 - **Recommendation.** 1: no request is approved in the live system without a way to order it there, and no need that
   was bought is reported as cancelled.
-- **Until the owner answers.** No code changes either way; the answer sets only when the PR roles are assigned in
+- **Answered** (2026-11-25, design §16.12): the recommendation, «موافق على كل التوصيات، كمّل».
+- **Before the answer.** No code changes either way; the answer sets only when the PR roles are assigned in
   production.
 - **Arabic.** هل نبدأ استخدام طلبات الشراء على النظام الفعلي من المرحلة الثانية، مع أن النظام لن يستطيع تحويل الطلب
   المعتمد إلى طلب عروض أسعار قبل المرحلة الثالثة، ولا إلى أمر شراء قبل المرحلة الرابعة؟ (١) لا، نجرّبها على نسخة الاختبار،
@@ -450,7 +453,8 @@ starts from these.
      levels.
 - **Recommendation.** 1: the separation of duties the owner adopted holds for overrides too, and the case is rare and
   has two other ways out.
-- **Until the owner answers.** P2.4 builds option 1; option 2 changes pair B1's check alone.
+- **Answered** (2026-11-25, design §16.12): the recommendation, «موافق على كل التوصيات، كمّل».
+- **Before the answer.** P2.4 builds option 1; option 2 changes pair B1's check alone.
 - **Arabic.** إذا توقف طلب شراء عند مستويين أو أكثر من مستويات الاعتماد لا يشغلهما أحد، فهل يجوز لشخص واحد يملك صلاحية
   التجاوز في الاعتماد أن يبت فيها كلها، أم يجب أن يبت في كل مستوى شخص مختلف؟ (١) يبت في كل مستوى شخص مختلف، كما تقضي
   قاعدة الفصل بين المهام التي اعتمدتموها، ويمكن أيضًا إسناد المستوى الفارغ إلى أحد الموظفين أو إلغاء الطلب؛ وهذا ما

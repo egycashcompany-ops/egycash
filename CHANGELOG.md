@@ -11,6 +11,19 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **ATM done pages no longer hang the system (2026-11-25).** «السيستم كان مهنج». From 12:00 Cairo a
+  done-maintenance page over 1–25 November for one branch (29,500 closed rows) asked for up to 200
+  pages at once, and each page sorted the whole range in memory on the database (Atlas slow log:
+  29,500 keys and documents examined per 100-row page), so every screen waited behind it.
+  - Indexes in the done pages' own order on both operation logs (`ix_branch_done_range`,
+    `ix_done_range`), built at boot.
+  - `GET /atm/{replenishments,maintenances}/done/range` reads the range in chunks of 5,000, each
+    continuing where the last stopped; the done pages read the whole range that way, with no cap
+    («عايز إمكانية إنى أستخرجهم كلهم»), so the Excel and PDF are the whole period.
+  - The done tables and the mail log show 100 rows a page (50–500); the column filters, the sort and
+    the files still cover every row («تظهرهم عادى على صفحات فى الجدول»).
+  - The remaining whole-list walks (mail log, machine export) keep at most 4 pages in flight.
+
 - **The approvals engine: a request is decided on the chain it was submitted on.** This is PX-1.4
   of PX-1, which hardens the platform approvals engine before Administrative Affairs' money
   approvals run on it (`docs/12-planning/administration-module-phase-px1.md` §3, §5, §6.5 and §10;

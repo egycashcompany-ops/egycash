@@ -86,7 +86,8 @@ export const toShiftTypeDto = (doc: OperationsShiftTypeDoc): OperationsShiftType
   id: String(doc._id),
   name: doc.name,
   nameEn: doc.nameEn ?? null,
-  colour: doc.colour,
+  // Round 34 C — a type may have no colour.
+  colour: doc.colour ?? null,
   sortOrder: doc.sortOrder ?? null,
   isActive: doc.isActive,
   version: doc.__v,

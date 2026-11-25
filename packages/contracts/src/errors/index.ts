@@ -736,6 +736,25 @@ export const ErrorCodes = {
    */
   ADMINISTRATION_ATTACHMENT_LIMIT: 'ADMINISTRATION_ATTACHMENT_LIMIT',
 
+  // ── Compliance and Risks: the files page (docs/12-planning/compliance-files-design.md §8)
+  /**
+   * 409 — another live folder already has this name, compared through the shared `foldName`
+   * («عقود الموردين» and «عقود  الموردين», «أ» and «ا» are one name); nothing was written. One
+   * detail, `field` 'name', `code` 'taken'.
+   */
+  COMPLIANCE_FOLDER_NAME_TAKEN: 'COMPLIANCE_FOLDER_NAME_TAKEN',
+  /**
+   * 422 — a folder is shared with an account that is not an active employee login; nothing was
+   * written. One detail per refused id, `field` 'viewerUserIds', `code` 'notEligible', `message`
+   * the id. A person already on the list whose account was since suspended stays on it.
+   */
+  COMPLIANCE_VIEWER_INVALID: 'COMPLIANCE_VIEWER_INVALID',
+  /**
+   * 422 — the file's contents are not what its name says (a renamed picture called «.pdf»);
+   * nothing was stored. One detail, `field` 'file', `code` 'contentMismatch'.
+   */
+  COMPLIANCE_FILE_CONTENT_MISMATCH: 'COMPLIANCE_FILE_CONTENT_MISMATCH',
+
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */
 } as const;

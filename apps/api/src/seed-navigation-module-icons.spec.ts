@@ -116,6 +116,8 @@ describe('the module tiles', () => {
       // A box — the stores the department keeps (OD-62.1 A).
       'Administrative Affairs': 'box',
       Administration: 'briefcase',
+      // A shield — what Compliance and Risks keeps the company inside of.
+      'Compliance and Risks': 'shield',
     });
   });
 

@@ -11,11 +11,14 @@ import {
   type ListAtmOpenOperationsQuery,
   type OpenAtmReplenishments,
   type UpdateAtmReplenishment,
+  type AtmDoneRangeQuery,
+  type AtmReplenishmentDoneChunkDto,
 } from '@ecms/contracts';
 import { ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
 import { toAtmReplenishmentDto } from '../atm.mappers';
 import { atmReplenishmentService } from './replenishment.service';
+import { formatDoneRangeCursor } from '../shared/operation-log.repository';
 
 type IdParam = { id: string };
 
@@ -54,6 +57,17 @@ export const listDoneReplenishments = async (req: Request, res: Response): Promi
     await atmReplenishmentService.listDone(query, authContext(req)),
     toAtmReplenishmentDto,
   );
+};
+
+/** One chunk of a done range and the cursor of the next (`GET /atm/replenishments/done/range`). */
+export const doneReplenishmentRange = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, AtmDoneRangeQuery>(req);
+  const chunk = await atmReplenishmentService.doneRange(query, authContext(req));
+  const body: AtmReplenishmentDoneChunkDto = {
+    items: chunk.items.map(toAtmReplenishmentDto),
+    next: chunk.next === null ? null : formatDoneRangeCursor(chunk.next),
+  };
+  ok(res, body);
 };
 
 export const openReplenishments = async (req: Request, res: Response): Promise<void> => {

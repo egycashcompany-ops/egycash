@@ -59,6 +59,8 @@ import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
 import { BoardResetButton } from '../components/BoardResetButton';
 import { DoneRangeBar, DoneRangeCutShort } from '../components/DoneRangeBar';
 import { FRESH_ON_OPEN } from '../lib/fresh-filters';
+import { Pagination } from '../../../shared/ui/Pagination';
+import { ROW_PAGE_SIZES, useRowPages } from '../../../shared/lib/use-row-pages';
 
 /**
  * Remembered across visits: the filters. Not `from`/`to` — the log opens on today, a day of mail,
@@ -102,6 +104,8 @@ export const MailLogPage = (): JSX.Element => {
     [filtered, columnFilters.values, cellText],
   );
   const options = useMemo(() => mailFilterOptions(read, filters), [read, filters]);
+  // The table shows a page of the log; the filters above and under the head are about all of it.
+  const pages = useRowPages(rows, JSON.stringify([from, to, filters, status, columnFilters.values]));
 
   const restore = useRestoreAtmMailTickets();
   const [restoring, setRestoring] = useState<AtmMailTicketDto | null>(null);
@@ -278,7 +282,7 @@ export const MailLogPage = (): JSX.Element => {
             steadyColumns
             filtered={isMailFiltered(filters, status)}
             columns={columns}
-            rows={rows}
+            rows={pages.rows}
             rowKey={(row) => row.id}
             loading={list.isLoading}
             error={list.error}
@@ -303,6 +307,14 @@ export const MailLogPage = (): JSX.Element => {
             stickyHead
           />
         </div>
+        {pages.meta.totalItems > 0 && (
+          <Pagination
+            meta={pages.meta}
+            onPageChange={pages.setPage}
+            onPageSizeChange={pages.setPageSize}
+            pageSizeOptions={ROW_PAGE_SIZES}
+          />
+        )}
       </div>
 
       <ConfirmActionDialog

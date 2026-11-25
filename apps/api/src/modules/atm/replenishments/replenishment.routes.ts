@@ -4,6 +4,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
+  AtmDoneRangeQuerySchema,
   AtmOpenBoardQuerySchema,
   AtmOperationFacetsQuerySchema,
   AtmOperationIdsSchema,
@@ -23,6 +24,7 @@ import {
   closeReplenishments,
   deleteReplenishments,
   listDoneReplenishments,
+  doneReplenishmentRange,
   listOpenReplenishments,
   openReplenishments,
   replenishmentBoard,
@@ -64,6 +66,14 @@ export const buildAtmReplenishmentsRouter = (): Router => {
     authorize('atmReplenishment.view'),
     validate({ query: ListAtmDoneOperationsQuerySchema }),
     asyncHandler(listDoneReplenishments),
+  );
+  // The done page's read: the range whole, chunk after chunk (the hang of 2026-11-25).
+  router.get(
+    '/done/range',
+    authenticate,
+    authorize('atmReplenishment.view'),
+    validate({ query: AtmDoneRangeQuerySchema }),
+    asyncHandler(doneReplenishmentRange),
   );
   router.post(
     '/open',

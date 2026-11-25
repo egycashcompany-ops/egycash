@@ -10,6 +10,7 @@ import { automationModule } from './automation/automation.module';
 import { goldModule } from './gold/gold.module';
 import { atmModule } from './atm/atm.module';
 import { administrationModule } from './administration/administration.module';
+import { complianceModule } from './compliance/compliance.module';
 
 /**
  * Automation is gated on `AUTOMATION_ENABLED` (default false) until the engine is complete
@@ -25,5 +26,6 @@ export const moduleManifests: ModuleManifest[] = [
   goldModule,
   atmModule,
   administrationModule,
+  complianceModule,
   ...(env.AUTOMATION_ENABLED ? [automationModule] : []),
 ];

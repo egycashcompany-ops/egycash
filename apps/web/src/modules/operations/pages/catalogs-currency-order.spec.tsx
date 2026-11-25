@@ -148,6 +148,10 @@ describe('the currencies tab — dragged into order, «زى شاشة الحرك�
   });
 
   it('shows no pager — the whole list is on screen', () => {
+    // Round 34 B: the screen's pager is the boards' numbered one in the table's frame
+    // (`data-catalog-pager`, «الصفوف بالصفحة» from `common.pager`) — absent here, as the old one was.
+    expect(html).not.toContain('data-catalog-pager');
+    expect(html).not.toContain(ar('common.pager.perPage'));
     expect(html).not.toContain(ar('common.pagination.perPage'));
   });
 });

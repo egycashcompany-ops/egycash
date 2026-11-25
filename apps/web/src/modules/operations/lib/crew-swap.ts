@@ -12,6 +12,7 @@
 //   · «تبديل المحدد ⇄» (`swap`) — the ticked items of both rows cross at once;
 //   · «نقل المحدد» one way (`aToB`, `bToA`) — only the ticked items of the sending row cross; the
 //     receiving row's ticks are not read.
+// (Since Round 34 D a «mode» is the arrow PRESSED — no way stays chosen in the window.)
 // A FIELD — one value a row:
 //   · in «تبديل المحدد ⇄» it is ONE exchange the two cards share (Round 32 critic): ticked on either
 //     card, the two values cross — each row takes the other's, or the one value moves into the empty
@@ -36,11 +37,15 @@
 //     landed, and the archived type was lost from both rows).
 // What a rule keeps back is listed (`refused`) and left exactly where it was; the rest is applied.
 //
-// ONE OPERATION. The page records `applySwap` as one step of «تراجع» (`lib/crew-undo.ts`): one press
-// puts both rows back. Nothing is written until «حفظ», which counts the two rows it changed.
+// ONE OPERATION. The page records the window's work as one step of «تراجع» (`lib/crew-undo.ts`): one
+// press puts both rows back. Since Round 34 D the window's arrows are ACTIONS — each press a step
+// (`SwapStep`) on the window's working copy (`replaySwap`) — and «تطبيق» replays them all on the
+// draft as that one step (`applySwapStepsToDraft`). Nothing is written until «حفظ», which counts the
+// two rows it changed.
 import { CREW_SLOT_CAPACITY, fitsCrewSlot } from '@ecms/contracts';
 import {
   CREW_SLOTS,
+  sameRow,
   wrongSlotOf,
   type CrewAway,
   type CrewRole,
@@ -190,10 +195,26 @@ interface Mover {
   fits: readonly CrewSlot[];
 }
 
+/** Where a person sat on a row: his slot, and his place in it. */
+const seatOn = (row: PlanRow, employeeId: string): { slot: CrewSlot; at: number } | null => {
+  for (const slot of CREW_SLOTS) {
+    const at = row.slots[slot].indexOf(employeeId);
+    if (at !== -1) return { slot, at };
+  }
+  return null;
+};
+
 /**
  * The operation on two rows — what the preview draws and what «تطبيق» applies. Pure: the same rows,
  * ticks, mode and rules give the same answer, so the page recomputes it on the draft as it is at the
  * press (another desk's save may have rebased it under the open dialog).
+ *
+ * `home` (Round 34 D critic) — the two rows as the window OPENED on them, when the operation is one
+ * press of several (`replaySwap`). A person going back to the row he opened on takes his own slot
+ * first, and his own place in it, ahead of anybody who came in the window — so moved there and
+ * back is no change at all (he came home at the end of his slot, or in the other «أخصائي», and the
+ * row read as changed with nothing to say so). With his own slot full he takes the other one, and
+ * the card says so (`swapSlotChanges`).
  */
 export const planSwap = (
   a: PlanRow,
@@ -201,8 +222,17 @@ export const planSwap = (
   picks: SwapPicks,
   mode: SwapMode,
   rules: SwapRules,
+  home?: { a: PlanRow; b: PlanRow },
 ): SwapResult => {
   const rowOf = { a, b };
+  /** Where he sat when the window opened, on the row he goes to — null for anybody else. */
+  const homeSeat = (to: SwapSide, employeeId: string): { slot: CrewSlot; at: number } | null =>
+    home === undefined ? null : seatOn(home[to], employeeId);
+  /** The order a slot keeps: who opened there by his place then, before anybody who came since. */
+  const rank = (to: SwapSide, slot: CrewSlot, employeeId: string): number => {
+    const seat = homeSeat(to, employeeId);
+    return seat !== null && seat.slot === slot ? seat.at : Number.POSITIVE_INFINITY;
+  };
   const ticked = { a: new Set(picks.a), b: new Set(picks.b) };
   const sends = (side: SwapSide, item: string): boolean =>
     sendsFrom(mode, side) && ticked[side].has(item);
@@ -225,7 +255,13 @@ export const planSwap = (
           continue;
         }
         const role = rules.roleOf(employeeId);
-        const path = SLOT_PATH[slot];
+        // Going home: his own slot first (always of his slot's kind — a captain's seat stays a
+        // captain's), then the rest of the path.
+        const own = homeSeat(otherSide(side), employeeId)?.slot;
+        const path =
+          own !== undefined && SLOT_PATH[slot].includes(own)
+            ? [own, ...SLOT_PATH[slot].filter((to) => to !== own)]
+            : SLOT_PATH[slot];
         const fits = path.filter((to) => role === null || fitsCrewSlot(role, to));
         const first = path[0] as CrewSlot;
         if (fits.length === 0) {
@@ -275,7 +311,12 @@ export const planSwap = (
         more = true;
         continue;
       }
-      there[slot].push(mover.employeeId);
+      // In his own place when he comes home (`rank`); at the end of the slot otherwise.
+      const to = otherSide(mover.side);
+      const mine = rank(to, slot, mover.employeeId);
+      const at = there[slot].findIndex((id) => rank(to, slot, id) > mine);
+      if (at === -1) there[slot].push(mover.employeeId);
+      else there[slot].splice(at, 0, mover.employeeId);
       arrivals.push({ mover, slot });
     }
     if (!more) {
@@ -385,6 +426,16 @@ export const applySwapToDraft = (
 ): CrewDraft => {
   const rows = applySwap(draft.rows, aKey, bKey, picks, mode, rules);
   if (rows === draft.rows) return draft;
+  return letGoOfStanding(draft, rows, aKey, bKey);
+};
+
+/** The draft with these rows, the standing crew's bookkeeping let go of the two rows swapped. */
+const letGoOfStanding = (
+  draft: CrewDraft,
+  rows: readonly PlanRow[],
+  aKey: string,
+  bKey: string,
+): CrewDraft => {
   const touched = (key: string): boolean => key === aKey || key === bKey;
   const keys = draft.standingKeys;
   if (keys === null || !keys.some(touched)) return { ...draft, rows };
@@ -402,6 +453,178 @@ export const applySwapToDraft = (
         }),
   };
 };
+
+// ── Round 34 D — the arrows are ACTIONS ───────────────────────────────────────────────────────
+//
+// THE OWNER: «أنا مش عايز كده … أنا يعتبر محدد اللي في النص … ولما أنا أبقى هوفر يبقى يجيلي اللون
+// ده، أو لو أنا اخترت شمال أو يمين مثلا يفضل موجود لحد ما الداتا تتنقل ثانية أو ثانيتين ويقوم جاي
+// متشال». The window keeps no way «selected»: a press of an arrow MOVES the ticked items at once, on
+// a working copy of the two rows the window holds, and the next press works on what that one left.
+// The window keeps the presses (`SwapStep`), never the rows they made: the cards are the steps
+// replayed over the two rows as the board has them now (`replaySwap`), so another desk's save
+// under the open window shows on the cards with the moves on top, judged by the same rules; and
+// «تطبيق» replays the very same steps on the board's draft as ONE operation of «تراجع»
+// (`applySwapStepsToDraft`) — re-checked there against the board as it is at that press.
+
+/** One press of an arrow in the window: the ticks it read and the way it went. */
+export interface SwapStep {
+  picks: SwapPicks;
+  mode: SwapMode;
+}
+
+/** The two rows after every step in turn, and what each step did. */
+export interface SwapReplay {
+  a: PlanRow;
+  b: PlanRow;
+  /** Each step's own outcome, in order. */
+  results: readonly SwapResult[];
+}
+
+/**
+ * The steps replayed on two rows, each by `planSwap` on what the one before left — the board's
+ * rules judging every step against the rows as they are then. No steps → the two rows themselves.
+ * The two rows given are the window's OPENING (`home`): a person who goes back to his row goes
+ * back to his own seat on it (Round 34 D critic).
+ */
+export const replaySwap = (
+  a: PlanRow,
+  b: PlanRow,
+  steps: readonly SwapStep[],
+  rules: SwapRules,
+): SwapReplay => {
+  const home = { a, b };
+  let rows = { a, b };
+  const results: SwapResult[] = [];
+  for (const step of steps) {
+    const result = planSwap(rows.a, rows.b, step.picks, step.mode, rules, home);
+    results.push(result);
+    rows = { a: result.a, b: result.b };
+  }
+  return { ...rows, results };
+};
+
+/**
+ * Did the steps change either row — to the save (`sameRow`)? Moved there and back is no change:
+ * the person is back in his own seat (`replaySwap`'s `home`); back in the other «أخصائي» because
+ * his own was full meanwhile, he is a change, and said so on his card (`swapSlotChanges`).
+ */
+export const swapChanged = (
+  before: { a: PlanRow; b: PlanRow },
+  after: { a: PlanRow; b: PlanRow },
+): boolean => !sameRow(before.a, after.a) || !sameRow(before.b, after.b);
+
+/**
+ * «تطبيق» on the whole draft (Round 34 D): the window's steps replayed on the two rows AS THE DRAFT
+ * HOLDS THEM NOW — anything another desk's save changed under the open window is judged again by
+ * the same rules — the two rows replaced, every other row the same object, and the standing crew's
+ * bookkeeping let go of the two rows (as `applySwapToDraft`). The same draft when nothing changed
+ * in the end, a row is gone, or the two are one row: the board's history records nothing.
+ */
+export const applySwapStepsToDraft = (
+  draft: CrewDraft,
+  aKey: string,
+  bKey: string,
+  steps: readonly SwapStep[],
+  rules: SwapRules,
+): CrewDraft => {
+  if (aKey === bKey || steps.length === 0) return draft;
+  const a = draft.rows.find((row) => row.key === aKey);
+  const b = draft.rows.find((row) => row.key === bKey);
+  if (a === undefined || b === undefined) return draft;
+  const after = replaySwap(a, b, steps, rules);
+  if (!swapChanged({ a, b }, after)) return draft;
+  const rows = draft.rows.map((row) =>
+    row.key === aKey ? after.a : row.key === bKey ? after.b : row,
+  );
+  return letGoOfStanding(draft, rows, aKey, bKey);
+};
+
+/**
+ * What «تراجع» and the toast call the window's moves: every step one way, the same way → a move
+ * from the sending row to the other («نقل المحدد من 213 إلى 255»); anything else — a swap, or moves
+ * both ways — the swap between the two («التبديل بين 213 و255»).
+ */
+export const swapStepsOperation = (
+  steps: readonly SwapStep[],
+  names: { a: string; b: string },
+): UndoWhat & { kind: 'swap' | 'move' } => {
+  const modes = new Set(steps.map((step) => step.mode));
+  const only = modes.size === 1 ? (steps[0] as SwapStep).mode : 'swap';
+  return swapOperation(only, names);
+};
+
+/** Each card's items that came from the other row since the window opened — «من 213». */
+export interface SwapArrivals {
+  a: ReadonlySet<string>;
+  b: ReadonlySet<string>;
+}
+
+/**
+ * What arrived on each row, against the rows the window opened on: a person the other row held
+ * then; a field whose value is not the row's own any more (in the window a value only ever comes
+ * from the other row). Moved there and back, it is home again — no tag.
+ */
+export const swapArrivals = (
+  before: { a: PlanRow; b: PlanRow },
+  after: { a: PlanRow; b: PlanRow },
+): SwapArrivals => {
+  const people = (row: PlanRow): Set<string> =>
+    new Set(CREW_SLOTS.flatMap((slot) => row.slots[slot]));
+  const on = (side: SwapSide): Set<string> => {
+    const was = people(before[otherSide(side)]);
+    const arrived = new Set<string>();
+    for (const employeeId of people(after[side])) {
+      if (was.has(employeeId)) arrived.add(personItem(employeeId));
+    }
+    for (const field of SWAP_FIELDS) {
+      const value = after[side][field];
+      if (value !== null && value !== before[side][field]) arrived.add(fieldItem(field));
+    }
+    return arrived;
+  };
+  return { a: on('a'), b: on('b') };
+};
+
+/**
+ * A person back on the row he opened on but in another slot than he opened in — his own was full
+ * when he came back (Round 34 D critic: he came home in «أخصائي 2», unmarked, and the row read as
+ * changed). Said on his line, «من أخصائي 1»: by his slot when the window opened.
+ */
+export const swapSlotChanges = (
+  before: { a: PlanRow; b: PlanRow },
+  after: { a: PlanRow; b: PlanRow },
+): { a: ReadonlyMap<string, CrewSlot>; b: ReadonlyMap<string, CrewSlot> } => {
+  const on = (side: SwapSide): Map<string, CrewSlot> => {
+    const moved = new Map<string, CrewSlot>();
+    for (const slot of CREW_SLOTS) {
+      for (const employeeId of after[side].slots[slot]) {
+        const was = seatOn(before[side], employeeId);
+        if (was !== null && was.slot !== slot) moved.set(employeeId, was.slot);
+      }
+    }
+    return moved;
+  };
+  return { a: on('a'), b: on('b') };
+};
+
+/**
+ * A value a row held when the window opened that is on NEITHER row now — a field moved onto it one
+ * way (another value in its place), or moved there and back (none). Said where it was («بدلًا من
+ * 09:00»), so a value is never lost unsaid.
+ */
+export const swapReplacedValues = (
+  before: { a: PlanRow; b: PlanRow },
+  after: { a: PlanRow; b: PlanRow },
+): SwapReplaced[] =>
+  (['a', 'b'] as const).flatMap((side) =>
+    SWAP_FIELDS.flatMap((field): SwapReplaced[] => {
+      const was = before[side][field];
+      const now = after[side][field];
+      if (was === null || now === was) return [];
+      if (after.a[field] === was || after.b[field] === was) return [];
+      return [{ on: side, field, was }];
+    }),
+  );
 
 /**
  * What «تراجع» and the toast call the operation (Round 32 critic): «التبديل بين 213 و255» for an

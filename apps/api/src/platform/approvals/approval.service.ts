@@ -1,19 +1,25 @@
 // The engine, wired to the database: resolve a chain for a request, read its trail, decide on it.
 //
 // What a host module owes this service is small on purpose: the request's TYPE, the unit it belongs
-// to, and the decided entries it has stored. It gets back a trail, a status, and — on a decision —
-// the entries to append. It never learns who the approvers are, and the engine never learns what a
-// leave request is.
+// to, the decided entries it has stored, and the chain it pinned at submission. It gets back a
+// trail, a status, and — on a decision — the entries to append. It never learns who the approvers
+// are, and the engine never learns what a leave request is.
 //
 // One rule is worth stating before the code, because it is the one everything else follows from:
 // **nothing about people is stored.** Every «who is on this rung» is asked of the permission layer
 // at the moment it matters. A workflow that cached approvers would route this month's requests by
 // last month's org chart — and would do it silently, because a stale name looks exactly like a
 // current one.
+//
+// The RUNGS are a different fact, and the host keeps them (ADR-041 decision 4). Its decided entries
+// are keyed by rung index, so a request read against a chain somebody edited since would have its
+// decisions laid over other rungs. The pin holds the rungs a request was submitted on; the row can
+// then be edited, deactivated or deleted, and only new submissions follow it.
 import { Types } from 'mongoose';
 import {
   type ApprovalDecision,
   type ApprovalLevel,
+  type ApprovalStep,
   type ApprovalTrailDto,
   type ApprovalWorkflowDto,
   type SetApprovalWorkflow,
@@ -44,11 +50,27 @@ import { APPROVAL_OVERRIDE_KEY, overrideReaches } from './override-reach';
 
 export { APPROVAL_OVERRIDE_KEY } from './override-reach';
 
+/**
+ * The chain a request was submitted on, as its host stores it: the chosen row's id and its rungs,
+ * captions included, without their staffing, which is read afresh at every call.
+ */
+export interface ApprovalChainPin {
+  workflowId: string;
+  steps: readonly ApprovalStep[];
+}
+
 /** Everything the engine needs to know about one request. */
 export interface ApprovalSubject {
   requestType: string;
   unit: Unit;
   decisions: readonly DecidedEntry[];
+  /**
+   * The chain the host pinned at submission, which the request is decided on whatever has become
+   * of its row since. Null for a request submitted before its host pinned: that one reads the chain
+   * that applies now, as every request did before ADR-041 decision 4, because nobody can know which
+   * chain it was submitted on (decision 10).
+   */
+  pin: ApprovalChainPin | null;
 }
 
 /** A chain resolved against the org as it stands right now. */
@@ -63,20 +85,58 @@ export interface LiveChain {
   status: ChainStatus;
 }
 
-const toStep = (step: { permissionKey: string; level: ApprovalLevel; label: { ar: string; en: string } | null }): ChainStep => ({
+/** A rung as a chain row, or a host's pinned copy of one, stores it. */
+interface StoredRung {
+  permissionKey: string;
+  level: ApprovalLevel;
+  label?: { ar: string; en: string } | null;
+}
+
+/**
+ * A rung reduced to what the rules read, as a plain object. A pin read from a host's hydrated
+ * document holds its caption as a subdocument, which a trail must not hand to the screen as such.
+ */
+const toStep = (step: StoredRung): ChainStep => ({
   permissionKey: step.permissionKey,
   level: step.level,
-  label: step.label,
+  label:
+    step.label === null || step.label === undefined
+      ? null
+      : { ar: step.label.ar, en: step.label.en },
 });
+
+/**
+ * What a host stores at submission for the chain `chainFor` just gave it: the row's id and its
+ * rungs, without their staffing. Null when no row applies or the row has no rungs, because a pin
+ * of nothing would hold the request to a chain it can never be decided on.
+ */
+export const pinOf = (chain: LiveChain): ApprovalChainPin | null =>
+  chain.workflowId === null || chain.steps.length === 0
+    ? null
+    : { workflowId: chain.workflowId, steps: chain.steps.map(toStep) };
+
+/**
+ * The pin a host stored through `approvalPinFields`, read back from its document.
+ *
+ * Null when `approvalWorkflowId` is missing or null: a request submitted before its host pinned
+ * has neither field, and one read without its schema's defaults (`.lean()`) has them missing
+ * rather than null. Either way it is not pinned, and reads the chain that applies now.
+ */
+export const readApprovalPin = (doc: {
+  approvalWorkflowId?: Types.ObjectId | null;
+  approvalChainShape?: readonly StoredRung[] | null;
+}): ApprovalChainPin | null =>
+  doc.approvalWorkflowId === null || doc.approvalWorkflowId === undefined
+    ? null
+    : {
+        workflowId: String(doc.approvalWorkflowId),
+        steps: (doc.approvalChainShape ?? []).map(toStep),
+      };
 
 class ApprovalService {
   /**
-   * The chain that applies to one request, with each rung told whether anybody can stand on it.
-   *
-   * Staffing is asked once per distinct (key, level) rather than once per rung: a chain routinely
-   * names the same key at two levels, and each question is a fan-out across roles, assignments and
-   * delegations. Within one call the answer cannot change, and across calls it is deliberately not
-   * cached at all.
+   * The chain that applies to one request now, with each rung told whether anybody can stand on
+   * it: what a host reads at submission, and pins.
    */
   async chainFor(requestType: string, unit: Unit): Promise<LiveChain> {
     const rows = await approvalWorkflowRepository.findActiveForType(requestType);
@@ -89,19 +149,7 @@ class ApprovalService {
       unit,
     );
     if (chosen === null) return { workflowId: null, steps: [], status: 'noChain' };
-
-    const staffing = new Map<string, boolean>();
-    for (const step of chosen.value.steps) {
-      const at = `${step.permissionKey}::${step.level}`;
-      if (!staffing.has(at)) {
-        staffing.set(at, await hasApprovers(step.permissionKey, step.level, unit));
-      }
-    }
-    const steps = resolveChain(
-      chosen.value.steps.map(toStep),
-      (step) => staffing.get(`${step.permissionKey}::${step.level}`) === true,
-    );
-    return { workflowId: String(chosen.value._id), steps, status: statusOf(steps, []) };
+    return this.staffed(String(chosen.value._id), chosen.value.steps, unit);
   }
 
   /**
@@ -114,13 +162,13 @@ class ApprovalService {
    * approve the request for every host that read the word, without any of them having chosen to.
    */
   async statusFor(subject: ApprovalSubject): Promise<ChainStatus> {
-    const chain = await this.chainFor(subject.requestType, subject.unit);
+    const chain = await this.chainOf(subject);
     return statusOf(chain.steps, subject.decisions);
   }
 
   /** The full trail, plus what THIS reader may do about it. */
   async trailFor(subject: ApprovalSubject, viewer: AuthContext): Promise<ApprovalTrailDto> {
-    const chain = await this.chainFor(subject.requestType, subject.unit);
+    const chain = await this.chainOf(subject);
     const own = await ownStepsOf(viewer.userId, chain.steps, subject.unit);
     const decision = viewerDecision(chain.steps, subject.decisions, own);
     const target = rungToDecide(chain.steps, subject.decisions);
@@ -167,7 +215,7 @@ class ApprovalService {
     actor: AuthContext,
     input: { decision: ApprovalDecision; comment: string | null },
   ): Promise<{ entries: DecidedEntry[]; status: ChainStatus; stepIndex: number }> {
-    const chain = await this.chainFor(subject.requestType, subject.unit);
+    const chain = await this.chainOf(subject);
     // The chain's status first, then the actor: one answer per case (ADR-041 decision 3). A
     // request with no staffed rung left is still waiting, so it falls through to «not your step»
     // for anybody without an override that reaches it, rather than reading as decided.
@@ -235,7 +283,7 @@ class ApprovalService {
 
   /** Who is standing on the rung a request is waiting for — the notification list, read live. */
   async currentApprovers(subject: ApprovalSubject): Promise<string[]> {
-    const chain = await this.chainFor(subject.requestType, subject.unit);
+    const chain = await this.chainOf(subject);
     const index = this.liveIndex(chain.steps, subject.decisions);
     const step = index === null ? undefined : chain.steps[index];
     if (step === undefined) return [];
@@ -331,6 +379,47 @@ class ApprovalService {
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────
+
+  /**
+   * The chain one request is read and decided on: the one its host pinned, with no chain row read,
+   * or, for a request with no pin, the one that applies now.
+   *
+   * The pinned rungs are staffed for the Unit the host hands over at this call, so who stands on
+   * them follows the org; only which rungs there are, and their captions, were fixed at submission.
+   */
+  private async chainOf(subject: ApprovalSubject): Promise<LiveChain> {
+    if (subject.pin === null) return this.chainFor(subject.requestType, subject.unit);
+    return this.staffed(subject.pin.workflowId, subject.pin.steps, subject.unit);
+  }
+
+  /**
+   * One chain's rungs, each told whether anybody can stand on it, and its answer before anybody
+   * decides. A pin with no rungs comes out as any chain without them does, `noChain`: never
+   * approved, and refused for everybody, while the request stays readable for its host's cancel.
+   *
+   * Staffing is asked once per distinct (key, level) rather than once per rung: a chain routinely
+   * names the same key at two levels, and each question is a fan-out across roles, assignments and
+   * delegations. Within one call the answer cannot change, and across calls it is deliberately not
+   * cached at all.
+   */
+  private async staffed(
+    workflowId: string,
+    rungs: readonly StoredRung[],
+    unit: Unit,
+  ): Promise<LiveChain> {
+    const staffing = new Map<string, boolean>();
+    for (const step of rungs) {
+      const at = `${step.permissionKey}::${step.level}`;
+      if (!staffing.has(at)) {
+        staffing.set(at, await hasApprovers(step.permissionKey, step.level, unit));
+      }
+    }
+    const steps = resolveChain(
+      rungs.map(toStep),
+      (step) => staffing.get(`${step.permissionKey}::${step.level}`) === true,
+    );
+    return { workflowId, steps, status: statusOf(steps, []) };
+  }
 
   /** Whether the reader's override reaches the rung to decide, by that rung's level. */
   private overrideDecides(

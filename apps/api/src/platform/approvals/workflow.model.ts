@@ -41,6 +41,48 @@ const stepSchema = new Schema<WorkflowStep>(
   { _id: false },
 );
 
+/**
+ * Whether a write that pins a chain stores its rungs beside the id.
+ *
+ * Read through `get`, which a document answers with its own rungs and an update query run with
+ * `context: 'query'` answers with the rungs the same update sets: a pin is written whole, both
+ * fields in the write that starts a round (ADR-041 decision 4). Anything else that sets the id
+ * shows no rungs, and is refused with it.
+ */
+function pinHasRungs(
+  this: { get?: (path: string) => unknown } | null,
+  workflowId: unknown,
+): boolean {
+  if (workflowId === null || workflowId === undefined) return true;
+  const rungs = typeof this?.get === 'function' ? this.get('approvalChainShape') : undefined;
+  return Array.isArray(rungs) && rungs.length > 0;
+}
+
+/**
+ * The pin a host stores on each request it hands the engine: spread into its schema, as every
+ * schema spreads `baseFields`.
+ *
+ * `approvalWorkflowId` is the row `chainFor` chose, null while the request is not pinned, and
+ * `approvalChainShape` its rungs in order, captions included, stored in the chain row's own rung
+ * schema so a pinned rung is held to exactly what a chain row's is. The rungs, not the people:
+ * who stands on a pinned rung is still asked at every call. An id with no rungs is refused, because
+ * such a pin could only read `noChain`, and a request would then name a chain it cannot be decided
+ * on.
+ */
+export const approvalPinFields = {
+  approvalWorkflowId: {
+    type: Schema.Types.ObjectId,
+    default: null,
+    validate: {
+      validator: pinHasRungs,
+      message: 'a pinned approval chain must carry its rungs',
+    },
+  },
+  // Not `as const`, unlike `baseFields`: a host schema typed with a required array field refuses a
+  // readonly empty default.
+  approvalChainShape: { type: [stepSchema], default: [] },
+};
+
 const workflowSchema = new Schema<ApprovalWorkflowDoc>(
   {
     requestType: { type: String, required: true },

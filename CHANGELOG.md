@@ -11,6 +11,35 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **The approvals engine: a request is decided on the chain it was submitted on.** This is PX-1.4
+  of PX-1, which hardens the platform approvals engine before Administrative Affairs' money
+  approvals run on it (`docs/12-planning/administration-module-phase-px1.md` §3, §5, §6.5 and §10;
+  ADR-041 decisions 4 and 10). It fixes R1, the engine defect of a chain read again at every call
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §15.2.1): a request's decisions
+  are kept by rung number, so an edit to its chain laid them over other rungs, and a deleted or
+  deactivated chain fell back to a wider one or to none.
+  - **The host pins the chain at submission.** A host stores the row `chainFor` chose and its rungs,
+    captions included, in two fields it declares by spreading the engine's `approvalPinFields`
+    (`approvalWorkflowId`, null while not pinned, and `approvalChainShape`, in the chain row's own
+    rung schema; an id with no rungs is refused). `pinOf` turns `chainFor`'s answer into the pin, and
+    `readApprovalPin` reads it back from the host's document. `ApprovalSubject` gains `pin`: with one,
+    `statusFor`, `trailFor`, `decide` and `currentApprovers` take the rungs and captions from it and
+    read no chain row; who stands on each rung is still read at every call. A pin with no rungs
+    reads `noChain`. With `pin: null` they read the chain that applies now, as before.
+  - **For HR leave,** the engine's only host: a request submitted on a chain from this release
+    stores its pin in the same write that stamps it `pendingApproval` (`approvalWorkflowId` and
+    `approvalChainShape` on `hr_leave_requests`, no index), and hands it to the engine for its
+    decision, its trail and its notice. A chain edit no longer moves a request already submitted:
+    an administrator's edit, deactivation or deletion of a chain applies to new submissions only,
+    and the request keeps its rungs, their captions on its chain panel, and the decisions taken on
+    them. A request submitted after a chain is deleted takes leave's manager and HR path, as
+    before. Requests already waiting in `pendingApproval` have no pin and keep reading their chain
+    live, so an edit can still move them; nothing is backfilled, and no migration, command or boot
+    step ships. Who stands on a rung still follows the employee's current placement. Leave's
+    submission rule, its manager and HR path, its notices, its audit and its API are unchanged.
+  - Rollback (RK-30): reverting leaves the pin fields on requests written meanwhile; the older code
+    ignores them, and those requests read their chain live again.
+
 - **The approvals engine: only grants in force decide, and only active accounts staff a rung.**
   This is PX-1.3 of PX-1, which hardens the platform approvals engine before Administrative
   Affairs' money approvals run on it (`docs/12-planning/administration-module-phase-px1.md` §3,

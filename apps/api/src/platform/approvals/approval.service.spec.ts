@@ -3,22 +3,23 @@
 //
 // PX-1.1 wrote it over the code as it stood. A case that pins a defect a later pull request fixes
 // names it, so that pull request can show the case flip: PX-1.2 rewrote the R2 and R4 cases to the
-// fixed behavior and added its own beside them, and the R9 cases still pin today's save for
-// PX-1.6. R5's case is the 'engine' default, which PX-1.5 keeps for leave and sets its 'host'
-// cases beside; the rest is behavior the fixes keep. The seams are mocked — the chain rows, the
-// approver lookup, names, places, the permission registry and audit — while `approval-chain`,
-// `approval-trail` and `override-reach` run for real, because the rules are theirs and this service
-// only joins them to one request. A real leave request through the HTTP edge is
-// `tests/integration/approvals.spec.ts`.
-import { Types } from 'mongoose';
+// fixed behavior and added its own beside them, PX-1.4 added the pin's (R1), and the R9 cases
+// still pin today's save for PX-1.6. R5's case is the 'engine' default, which PX-1.5 keeps for
+// leave and sets its 'host' cases beside; the rest is behavior the fixes keep. The seams are
+// mocked — the chain rows, the approver lookup, names, places, the permission registry and audit —
+// while `approval-chain`, `approval-trail` and `override-reach` run for real, because the rules are
+// theirs and this service only joins them to one request. A real leave request through the HTTP
+// edge is `tests/integration/approvals.spec.ts`.
+import { Schema, Types, model } from 'mongoose';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type ApprovalLevel, type SetApprovalWorkflow } from '@ecms/contracts';
+import { type ApprovalLevel, type ApprovalStep, type SetApprovalWorkflow } from '@ecms/contracts';
 import { BusinessRuleError } from '../../shared/errors';
 import { type AuthContext } from '../../shared/types';
 import { type ChainStatus, type DecidedEntry } from './approval-trail';
 import { type Unit } from './approver-level';
-import { type ApprovalWorkflowDoc, type WorkflowStep } from './workflow.model';
+import { approvalPinFields, type ApprovalWorkflowDoc, type WorkflowStep } from './workflow.model';
 import { clearApprovalRequestTypes, registerApprovalRequestType } from './request-type.registry';
+import type { ApprovalChainPin } from './approval.service';
 
 const mocks = vi.hoisted(() => ({
   findActiveForType: vi.fn(),
@@ -62,7 +63,7 @@ vi.mock('../rbac/rbac.service', () => ({
 }));
 vi.mock('../audit', () => ({ auditService: { record: mocks.record } }));
 
-const { approvalService } = await import('./approval.service');
+const { approvalService, pinOf, readApprovalPin } = await import('./approval.service');
 
 const AT = new Date('2026-11-25T09:00:00.000Z');
 const BRANCH = new Types.ObjectId();
@@ -122,10 +123,12 @@ const entry = (
 });
 const ALL_APPROVED = [entry(0, 'approved'), entry(1, 'approved'), entry(2, 'approved')];
 
-const subject = (decisions: readonly DecidedEntry[] = []) => ({
+/** A request as its host hands it over; unpinned unless a case gives it the chain it pinned. */
+const subject = (decisions: readonly DecidedEntry[] = [], pin: ApprovalChainPin | null = null) => ({
   requestType: 'hr.leave',
   unit: UNIT,
   decisions,
+  pin,
 });
 
 const actor = (
@@ -647,6 +650,225 @@ describe('who is told (currentApprovers)', () => {
     chain(LADDER, []);
     expect(await approvalService.currentApprovers(subject())).toEqual([]);
     expect(mocks.approversFor).not.toHaveBeenCalled();
+  });
+});
+
+describe('the chain a request was submitted on (the pin, R1)', () => {
+  const UNIT_MANAGER = { ar: 'مدير الإدارة في الفرع', en: 'Unit manager' };
+  const HUMAN_RESOURCES = { ar: 'الموارد البشرية', en: 'Human resources' };
+  /** Two rungs with their captions, as a chain row stores them and a pin copies them. */
+  const CAPTIONED: ApprovalStep[] = [
+    { ...rung('unit'), label: UNIT_MANAGER },
+    { ...rung('organization'), label: HUMAN_RESOURCES },
+  ];
+
+  /** A host's schema with the two fields spread in, as leave's is. */
+  const Host = model(
+    'SpecApprovalPinHost',
+    new Schema<{ approvalWorkflowId: Types.ObjectId | null; approvalChainShape: ApprovalStep[] }>({
+      ...approvalPinFields,
+    }),
+  );
+
+  it('pinOf is null with no row or no rungs, and keeps the row’s id and rungs without their staffing', async () => {
+    expect(pinOf({ workflowId: null, steps: [], status: 'noChain' })).toBeNull();
+    expect(
+      pinOf({ workflowId: String(new Types.ObjectId()), steps: [], status: 'noChain' }),
+    ).toBeNull();
+    mocks.findActiveForType.mockResolvedValue([]);
+    expect(pinOf(await approvalService.chainFor('hr.leave', UNIT))).toBeNull();
+
+    const written = chain(CAPTIONED, ['unit']);
+    const live = await approvalService.chainFor('hr.leave', UNIT);
+    expect(live.steps.map((s) => s.staffed)).toEqual([true, false]);
+    // Strict: no `staffed` left on a rung, because staffing is read afresh at every call.
+    expect(pinOf(live)).toStrictEqual({ workflowId: String(written._id), steps: CAPTIONED });
+  });
+
+  it('readApprovalPin is null for a missing or null id, and hands back the stored rungs as plain objects', () => {
+    expect(readApprovalPin({})).toBeNull();
+    expect(readApprovalPin({ approvalWorkflowId: null, approvalChainShape: [] })).toBeNull();
+    // The id decides whether a request is pinned; rungs beside a null id pin nothing.
+    expect(readApprovalPin({ approvalWorkflowId: null, approvalChainShape: CAPTIONED })).toBeNull();
+
+    const id = new Types.ObjectId();
+    expect(
+      readApprovalPin({ approvalWorkflowId: id, approvalChainShape: CAPTIONED }),
+    ).toStrictEqual({
+      workflowId: String(id),
+      steps: CAPTIONED,
+    });
+    // Read from a host's hydrated document: a row from before its host pinned takes the schema's
+    // defaults, and a pinned one's captions come back as plain objects rather than subdocuments.
+    expect(readApprovalPin(Host.hydrate({ _id: new Types.ObjectId() }))).toBeNull();
+    const stored = Host.hydrate({
+      _id: new Types.ObjectId(),
+      approvalWorkflowId: id,
+      approvalChainShape: [...CAPTIONED, rung('branch')],
+    });
+    expect(readApprovalPin(stored)).toStrictEqual({
+      workflowId: String(id),
+      steps: [...CAPTIONED, rung('branch')],
+    });
+  });
+
+  it('approvalPinFields declares both fields with their defaults, holds a pinned rung to the chain row’s rung schema, and refuses an id with no rungs', () => {
+    const unpinned = new Host({});
+    expect(unpinned.validateSync()).toBeUndefined();
+    expect(unpinned.approvalWorkflowId).toBeNull();
+    expect([...unpinned.approvalChainShape]).toEqual([]);
+
+    const id = new Types.ObjectId();
+    expect(
+      new Host({ approvalWorkflowId: id, approvalChainShape: CAPTIONED }).validateSync(),
+    ).toBeUndefined();
+    const errorsOf = (doc: object): string[] =>
+      Object.keys(new Host(doc).validateSync()?.errors ?? {});
+    expect(errorsOf({ approvalWorkflowId: id, approvalChainShape: [] })).toEqual([
+      'approvalWorkflowId',
+    ]);
+    expect(errorsOf({ approvalWorkflowId: id })).toEqual(['approvalWorkflowId']);
+    expect(
+      errorsOf({
+        approvalWorkflowId: id,
+        approvalChainShape: [{ permissionKey: 'leave.approve', level: 'everywhere' }],
+      }),
+    ).toEqual(['approvalChainShape.0.level']);
+    expect(errorsOf({ approvalWorkflowId: id, approvalChainShape: [{ level: 'unit' }] })).toEqual([
+      'approvalChainShape.0.permissionKey',
+    ]);
+  });
+
+  it('decides a pinned request on its own rungs and captions when the row is edited, deactivated or deleted, and reads no chain row', async () => {
+    // Pinned on a department's own chain, so that once it stops applying a wider one would.
+    const specific = row(CAPTIONED, { departmentCatalogId: CATALOG });
+    const pin: ApprovalChainPin = { workflowId: String(specific._id), steps: CAPTIONED };
+    const since: [string, ApprovalWorkflowDoc[]][] = [
+      // Edited in place: the same row, now one other rung under another caption.
+      [
+        'edited',
+        [
+          {
+            ...specific,
+            steps: [{ ...rung('branch'), label: { ar: 'مدير الفرع', en: 'Branch manager' } }],
+            __v: 1,
+          },
+        ],
+      ],
+      // Deactivated: it no longer applies, and the company default falls in under it.
+      ['deactivated', [row([rung('department')])]],
+      // Deleted, with nothing wider to fall back to.
+      ['deleted', []],
+    ];
+    for (const [what, rows] of since) {
+      mocks.findActiveForType.mockReset();
+      mocks.findActiveForType.mockResolvedValue(rows);
+      mocks.hasApprovers.mockReset();
+      mocks.hasApprovers.mockResolvedValue(true);
+      mocks.record.mockClear();
+
+      expect(await approvalService.statusFor(subject([], pin)), what).toBe('pending');
+      // The staffing memo over the pinned rungs: one question per distinct key and level.
+      expect(mocks.hasApprovers, what).toHaveBeenCalledTimes(2);
+      expect(mocks.hasApprovers, what).toHaveBeenCalledWith('leave.approve', 'unit', UNIT);
+
+      mocks.ownStepsOf.mockResolvedValue([0]);
+      const trail = await approvalService.trailFor(subject([], pin), actor());
+      expect(trail, what).toMatchObject({
+        workflowId: String(specific._id),
+        currentStep: 0,
+        viewerMayDecide: true,
+        viewerStep: 0,
+      });
+      expect(
+        trail.steps.map((s) => [s.level, s.label]),
+        what,
+      ).toEqual([
+        ['unit', UNIT_MANAGER],
+        ['organization', HUMAN_RESOURCES],
+      ]);
+
+      const first = await approvalService.decide(subject([], pin), actor(), APPROVE);
+      expect(first, what).toMatchObject({ status: 'pending', stepIndex: 0 });
+      expect(auditedChanges(), what).toContainEqual({ field: 'level', old: null, new: 'unit' });
+
+      mocks.approversFor.mockResolvedValue(['u-hr']);
+      expect(await approvalService.currentApprovers(subject(first.entries, pin)), what).toEqual([
+        'u-hr',
+      ]);
+      expect(mocks.approversFor, what).toHaveBeenLastCalledWith(
+        'leave.approve',
+        'organization',
+        UNIT,
+      );
+
+      mocks.ownStepsOf.mockResolvedValue([1]);
+      const second = await approvalService.decide(subject(first.entries, pin), actor(), APPROVE);
+      expect(second, what).toMatchObject({ status: 'approved', stepIndex: 1 });
+      expect(mocks.findActiveForType, what).not.toHaveBeenCalled();
+    }
+
+    // Only the rungs are fixed. Who stands on them is read at each call, for the Unit handed over
+    // then: the pinned organization rung that loses its holders reads unstaffed after rung 0.
+    mocks.hasApprovers.mockImplementation((_key: string, level: ApprovalLevel) =>
+      Promise.resolve(level === 'unit'),
+    );
+    expect(await approvalService.statusFor(subject([entry(0, 'approved')], pin))).toBe('unstaffed');
+  });
+
+  it('reads a pin with no rungs as noChain: refused for everybody, never approved, and its trail still readable', async () => {
+    // Neither `pinOf` nor the host's schema lets one be stored; one written past both reads as any
+    // chain without rungs does, and the row that would apply now is not read in its place.
+    chain(LADDER);
+    const empty = subject([], { workflowId: String(new Types.ObjectId()), steps: [] });
+    expect(await approvalService.statusFor(empty)).toBe('noChain');
+    mocks.ownStepsOf.mockResolvedValue([0]);
+    for (const who of [actor(), ORG_OVERRIDE]) {
+      expect(await refusalOf(approvalService.decide(empty, who, APPROVE))).toBe(
+        'approvals.nothingToDecide',
+      );
+    }
+    expect(await approvalService.trailFor(empty, ORG_OVERRIDE)).toMatchObject({
+      workflowId: empty.pin?.workflowId,
+      steps: [],
+      currentStep: null,
+      viewerMayDecide: false,
+      viewerMayOverride: false,
+    });
+    expect(await approvalService.currentApprovers(empty)).toEqual([]);
+    expect(mocks.findActiveForType).not.toHaveBeenCalled();
+    expect(mocks.record).not.toHaveBeenCalled();
+  });
+
+  it('reads the current chain for a request with no pin (pin: null), and follows the row’s edits, as a pinned copy does not', async () => {
+    // A host row from before its host pinned has neither field, so the host hands over null.
+    const unpinned = readApprovalPin({});
+    expect(unpinned).toBeNull();
+    const written = chain(CAPTIONED);
+    const pin: ApprovalChainPin = { workflowId: String(written._id), steps: CAPTIONED };
+    const decided = [entry(0, 'approved')];
+    expect(
+      (await approvalService.trailFor(subject(decided, unpinned), actor())).steps,
+    ).toHaveLength(2);
+
+    // The row is edited in place to three rungs. The unpinned request now reads them, its rung-0
+    // approval laid over the edited row's rung 0; the pinned one keeps the two it was submitted on.
+    mocks.findActiveForType.mockResolvedValue([{ ...written, steps: LADDER, __v: 1 }]);
+    mocks.findActiveForType.mockClear();
+    const live = await approvalService.trailFor(subject(decided, unpinned), actor());
+    expect(mocks.findActiveForType).toHaveBeenCalledTimes(1);
+    expect(live.steps.map((s) => [s.level, s.outcome])).toEqual([
+      ['unit', 'approved'],
+      ['department', 'pending'],
+      ['organization', 'pending'],
+    ]);
+    expect(live.currentStep).toBe(1);
+    const kept = await approvalService.trailFor(subject(decided, pin), actor());
+    expect(kept.steps.map((s) => [s.level, s.outcome])).toEqual([
+      ['unit', 'approved'],
+      ['organization', 'pending'],
+    ]);
+    expect(mocks.findActiveForType).toHaveBeenCalledTimes(1);
   });
 });
 

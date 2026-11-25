@@ -37,7 +37,8 @@ let app: Express;
 // 140 → 144: Administrative Affairs' first four rows (P1a.W): its home, warehouses, items, and the
 // units and categories.
 // 144 → 145: its supplier register, «الموردون» (P1b.W).
-const SEEDED_APPLICATIONS = 145;
+// 145 → 146: Compliance and Risks' one page, «الملفات».
+const SEEDED_APPLICATIONS = 146;
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
@@ -297,8 +298,11 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/administration');
     expect(routes).toContain('/administration/warehouses');
     expect(routes).toContain('/administration/suppliers');
+    // Compliance and Risks' one page.
+    expect(routes).toContain('/compliance/files');
     // 31 (HR) + 24 (Fleet) + 19 (Operations) + 7 (Organization) + 18 (IT) + 12 (Gold Vault)
-    //   + 18 (ATM) + 5 (Administrative Affairs) + 11 (Administration) = 145 — Administrative
+    //   + 18 (ATM) + 5 (Administrative Affairs) + 11 (Administration) + 1 (Compliance and Risks)
+    //   = 146 — Administrative
     //   Affairs' five Phase 1 rows (four in P1a.W, the suppliers in P1b.W); Operations 19 since
     //   «الشحنات المسلَّمة» (Round 33 B). Re-counted from `seed-navigation.ts`, because an
     //   earlier breakdown said 103 while the constant beside it said 116 — it had

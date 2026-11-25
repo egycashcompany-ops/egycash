@@ -1741,6 +1741,31 @@ class RbacService {
       throw new NotFoundError('user for assignment not found');
     });
   }
+
+  /**
+   * The inverse of `ensureAssignment`: revoke the user's live assignments of `roleId` AT `scope`,
+   * and only those — a grant of the same role an administrator made at another scope is theirs and
+   * stays. Idempotent: nothing to revoke writes nothing and returns false.
+   *
+   * For a module that hands a managed role out by its own rule (Compliance's reader, given with the
+   * first folder shared and taken back with the last) and has to be able to take back exactly what
+   * it gave.
+   */
+  async removeAssignment(userId: string, roleId: string, scope: DataScope): Promise<boolean> {
+    const existing = await roleAssignmentRepository.findActiveForUser(userId);
+    const matching = existing.filter((a) => String(a.roleId) === roleId && a.scope === scope);
+    if (matching.length === 0) return false;
+    for (const assignment of matching) {
+      await roleAssignmentRepository.softDeleteById(String(assignment._id), { by: null });
+    }
+    await this.invalidateUser(userId).catch(() => undefined);
+    return true;
+  }
+
+  /** Users holding a live assignment of `roleId` at exactly `scope` — `removeAssignment`'s set. */
+  async userIdsWithRoleAtScope(roleId: string, scope: DataScope): Promise<string[]> {
+    return roleAssignmentRepository.distinctUserIdsForRoleAtExactScope(roleId, scope);
+  }
 }
 
 export const rbacService = new RbacService();

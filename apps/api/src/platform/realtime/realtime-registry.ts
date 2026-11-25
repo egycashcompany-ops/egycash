@@ -258,6 +258,13 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // supplier (§11.4).
   'administration.supplier': { permission: 'administrationSupplier.view' },
 
+  // ── Compliance and Risks ───────────────────────────────────────────────────
+  // The files shelf (docs/12-planning/compliance-files-design.md §9): a folder's and a file's
+  // writes refresh the responsible person's screens. Readers do not join — a signal names a folder
+  // id, and a reader is told only of the folders shared with them; their page reads again on focus.
+  'compliance.folder': { permission: 'complianceFile.manage' },
+  'compliance.document': { permission: 'complianceFile.manage' },
+
   // ── Automation ─────────────────────────────────────────────────────────────
   'automation.workflow': { permission: 'workflow.view' },
   'automation.variable': { permission: 'variable.view' },

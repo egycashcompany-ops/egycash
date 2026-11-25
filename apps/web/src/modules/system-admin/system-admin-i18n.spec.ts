@@ -17,6 +17,7 @@ import {
   ACCOUNT_STATUSES,
   AUDIT_ACTIONS,
   DATA_SCOPES,
+  EVENT_ACTION_NAMES,
   NOTIFICATION_CATEGORIES,
   NOTIFICATION_CHANNELS,
   NOTIFICATION_PRIORITIES,
@@ -50,7 +51,11 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
   { name: 'permission state', prefix: 'systemAdmin.effective.state', values: PERMISSION_STATES },
   { name: 'locale', prefix: 'systemAdmin.users.locale', values: ['ar', 'en'] },
   { name: 'delivery channel', prefix: 'systemAdmin.users.channel', values: ['whatsapp', 'email'] },
-  { name: 'timeline stream', prefix: 'systemAdmin.users.activity.stream', values: TIMELINE_SOURCES },
+  {
+    name: 'timeline stream',
+    prefix: 'systemAdmin.users.activity.stream',
+    values: TIMELINE_SOURCES,
+  },
   // P10 — all four rendered through TEMPLATE keys, so the source scan below cannot see them. Each
   // is driven by a contracts enum: a value added there cannot ship without a label on both sides.
   {
@@ -69,7 +74,11 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
     values: NOTIFICATION_CHANNELS,
   },
   { name: 'template status', prefix: 'systemAdmin.templates.status', values: TEMPLATE_STATUSES },
-  { name: 'template tab', prefix: 'systemAdmin.templates.tabs', values: ['content', 'versions', 'preview'] },
+  {
+    name: 'template tab',
+    prefix: 'systemAdmin.templates.tabs',
+    values: ['content', 'versions', 'preview'],
+  },
   { name: 'template language', prefix: 'systemAdmin.templates.language', values: ['ar', 'en'] },
 ];
 
@@ -102,10 +111,7 @@ const usedKeys = (): string[] => {
  * below as well — this narrower scan stays because the tab's own set must not drift either.
  */
 const translatedActions = (): string[] => {
-  const source = readFileSync(
-    resolve(HERE, 'users/components/UserActivityTab.tsx'),
-    'utf8',
-  );
+  const source = readFileSync(resolve(HERE, 'users/components/UserActivityTab.tsx'), 'utf8');
   const block = /TRANSLATED_ACTIONS = new Set\(\[([\s\S]*?)\]\)/.exec(source)?.[1] ?? '';
   return [...block.matchAll(/'([a-zA-Z]+)'/g)].flatMap((m) => (m[1] === undefined ? [] : [m[1]]));
 };
@@ -124,6 +130,23 @@ describe('every audited action the contract declares has a label', () => {
       expect(missing, `untranslated in ${locale}`).toEqual([]);
     });
   }
+});
+
+// OD-82 A (docs/12-planning/administration-module-phase-2.md §3, P2.0): a decision on one rung of
+// an approval chain is audited under a verb of its own, which the audit screen names in the event
+// catalog's words for the same act, so the audit trail and the events screen say the same thing.
+describe('an approval decision is an audited act of its own', () => {
+  it('is declared, so the audit trail can be filtered on it', () => {
+    expect(AUDIT_ACTIONS).toContain('approvalDecision');
+  });
+
+  it('is named as the event catalog names the act, in both locales', () => {
+    const words = EVENT_ACTION_NAMES.approvalDecided;
+    expect(words).toEqual({ en: 'approval decided', ar: 'البت في اعتماد' });
+    expect(translate('ar', 'systemAdmin.users.audit.approvalDecision')).toBe(words?.ar);
+    // Capitalized, as every English label on the audit screen is.
+    expect(translate('en', 'systemAdmin.users.audit.approvalDecision')).toBe('Approval decided');
+  });
 });
 
 describe('System Administration vocabularies are translated in every locale', () => {

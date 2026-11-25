@@ -37,7 +37,11 @@ const entry = (
 const trail = (over: Partial<ApprovalTrailDto> = {}): ApprovalTrailDto => ({
   requestType: 'hr.leave',
   workflowId: 'wf1',
-  steps: [entry('unit', 'pending'), entry('department', 'pending'), entry('organization', 'pending')],
+  steps: [
+    entry('unit', 'pending'),
+    entry('department', 'pending'),
+    entry('organization', 'pending'),
+  ],
   currentStep: 0,
   viewerMayDecide: false,
   viewerStep: null,
@@ -110,25 +114,55 @@ describe('what the reader is shown about the chain', () => {
     expect(markup).not.toContain('لا يوجد أحد على هذه الخطوة');
   });
 
-  it('prefers the chain’s own caption over the level, when one was written', () => {
-    const markup = render(
-      <ApprovalChainPanel
-        trail={trail({
-          steps: [entry('unit', 'pending', { label: { ar: 'مدير حركة المهندسين', en: 'x' } })],
-          currentStep: 0,
-        })}
-      />,
-    );
-    expect(markup).toContain('مدير حركة المهندسين');
+  // The caption is written in both languages on the chain screen, and the panel is read in either.
+  // Showing the Arabic one to every reader put Arabic on the English screen.
+  it('prefers the chain’s own caption over the level, in the reader’s language', () => {
+    const captioned = trail({
+      steps: [
+        entry('unit', 'pending', {
+          label: { ar: 'مدير حركة المهندسين', en: 'Engineering fleet manager' },
+        }),
+      ],
+      currentStep: 0,
+    });
+    const arabic = render(<ApprovalChainPanel trail={captioned} />, 'ar');
+    expect(arabic).toContain('مدير حركة المهندسين');
+    expect(arabic).not.toContain('Engineering fleet manager');
+    expect(arabic).not.toContain('مدير الإدارة في الفرع');
+    const english = render(<ApprovalChainPanel trail={captioned} />, 'en');
+    expect(english).toContain('Engineering fleet manager');
+    expect(english).not.toContain('مدير حركة المهندسين');
+    expect(english).not.toContain('Department manager in this branch');
   });
 
-  it('never invents a job title for a rung that carries no caption', () => {
-    // The chain stores a key and a level and nothing else. Naming a person or a post here would
-    // put a name on an authority the engine deliberately refuses to name.
-    const markup = render(<ApprovalChainPanel trail={trail()} />);
-    expect(markup).toContain('leave.approve');
-    expect(markup).toContain('organization');
+  it('names the level where the caption has no words in the reader’s language', () => {
+    // Never the other language's caption: the level's name is in the screen's own language and
+    // says what the rung means.
+    const half = trail({
+      steps: [entry('unit', 'pending', { label: { ar: 'مدير حركة المهندسين', en: '' } })],
+      currentStep: 0,
+    });
+    const english = render(<ApprovalChainPanel trail={half} />, 'en');
+    expect(english).toContain('Department manager in this branch');
+    expect(english).not.toContain('مدير حركة المهندسين');
+    expect(render(<ApprovalChainPanel trail={half} />, 'ar')).toContain('مدير حركة المهندسين');
   });
+
+  for (const [locale, level] of [
+    ['ar', 'على مستوى الشركة'],
+    ['en', 'Company-wide'],
+  ] as const) {
+    it(`never invents a job title for a rung that carries no caption, nor shows its key — ${locale}`, () => {
+      // The chain stores a key and a level and nothing else. Naming a person or a post here would
+      // put a name on an authority the engine deliberately refuses to name, and the key is a word
+      // the panel's readers, requesters and approvers, have no catalog to look up.
+      const markup = render(<ApprovalChainPanel trail={trail()} />, locale);
+      expect(markup).toContain(level);
+      expect(markup).not.toContain('leave.approve');
+      expect(markup).not.toContain('· organization');
+      expect(markup).not.toContain('· unit');
+    });
+  }
 });
 
 describe('what the reader is told before he acts', () => {
@@ -169,6 +203,8 @@ describe('what the reader is told before he acts', () => {
     expect(markup).not.toContain('decide-here');
   });
 
+  // The one key the panel shows: «الصلاحية/السبب» is one of the four facts the owner asked every
+  // decision to keep.
   it('shows the override permission on the rung it was used on', () => {
     const markup = render(
       <ApprovalChainPanel

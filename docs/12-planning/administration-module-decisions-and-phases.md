@@ -3454,6 +3454,28 @@ Repository-wide findings outside this module are listed for the owner in
     not have (the organization's MongoDB Atlas access for AI clients is off). PX-1.2 and PX-1.6 shipped on the safe side
     the plan states (a request nobody can decide waits; an off-type rung is unstaffed), and the counts stay the owner's
     or an operator's to run.
+- **P2.0 built** (2026-11-25). P2's first code pull request ships as the §3 row of
+  [administration-module-phase-2.md](administration-module-phase-2.md) says, on PX-1 as it closed, with no module code
+  (§18.1, §18.4): the audit verb `approvalDecision` (OD-82 A) with its en and ar labels, the approval panel's captions
+  in the reader's language with no rung key, and the chain screen's names in the reader's language. Where the code had
+  to choose what the re-detail leaves open:
+  - *The English label* is "Approval decided": the catalog's `approvalDecided` words
+    (`packages/contracts/src/events/catalog.ts:872`), capitalized as every English label on the audit screen is, and as
+    §10.2's cost note writes it. The Arabic is the catalog's «البت في اعتماد» as it stands.
+  - *A caption with no words in the reader's language* shows the level's name, never the other language's caption, so
+    the panel never mixes its languages. An empty caption is the empty string, as the panel read it before; no trimming
+    is added.
+  - *The census pin.* The census specs read `AUDIT_ACTIONS` and check only that each verb in it has a label, so nothing
+    failed if the verb were dropped. `system-admin-i18n.spec.ts`, which the re-detail's §12.3 keeps unchanged, gains one
+    case that pins the verb, and its two labels to the catalog's words.
+  - *The chain editor is pinned at its source.* Its dialog opens only on a click, which the web suite's static renders
+    cannot make (`apps/web/vitest.config.ts`), so `ApprovalWorkflowsPage.spec.tsx` renders the list in both locales and
+    reads the editor's three selects, and the page as a whole, from the source, as `roster-dialog-dismissal.spec.tsx`
+    reads its dialog.
+  - *Left as it is:* the approvals contract's caption comment still says an uncaptioned rung reads «من عنده <key> على
+    <level>» (`packages/contracts/src/platform/approvals.ts:44-47`), which the panel no longer shows from P2.0 on. The
+    file is outside P2.0's list (re-detail §13), so the comment is a finding for the engine's owner, not a P2.0
+    change.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

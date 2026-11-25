@@ -23,6 +23,11 @@ its entry here in the same PR.
   - The done tables and the mail log show 100 rows a page (50–500); the column filters, the sort and
     the files still cover every row («تظهرهم عادى على صفحات فى الجدول»).
   - The remaining whole-list walks (mail log, machine export) keep at most 4 pages in flight.
+  - Two guards that hold whatever a browser does: the done reads (the chunked one, and the paged
+    one a tab still on the old bundle asks for until it reloads) give up after 15 s instead of
+    running on for minutes after the browser left; and a database error while checking a request's
+    user is answered as the error it is — no longer as 401 «User no longer exists», which sent every
+    open tab to refresh at once and got thirteen sessions revoked as token reuse.
 
 - **The approvals engine: a request is decided on the chain it was submitted on.** This is PX-1.4
   of PX-1, which hardens the platform approvals engine before Administrative Affairs' money

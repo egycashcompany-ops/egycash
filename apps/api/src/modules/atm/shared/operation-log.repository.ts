@@ -5,7 +5,12 @@ import { Types, type ClientSession, type FilterQuery, type UpdateQuery } from 'm
 import { BaseRepository } from '../../../shared/base/base.repository';
 import { type BaseDocFields } from '../../../shared/base/base.model';
 import { type ScopeSelector } from '../../../shared/types';
-import { ATM_DONE_RANGE_CHUNK_ROWS, ATM_OPEN_BOARD_MAX_ROWS, type Paginated } from '@ecms/contracts';
+import {
+  ATM_DONE_RANGE_CHUNK_ROWS,
+  ATM_OPEN_BOARD_MAX_ROWS,
+  MAX_PAGE_SIZE,
+  type Paginated,
+} from '@ecms/contracts';
 import { cairoDayRange, cairoShiftWindow } from './cairo-time';
 import { boardNames, storedSpellingsOf } from './board-filter';
 import { OPEN_BOARD_ORDER } from './open-board-index';
@@ -103,6 +108,13 @@ export const parseDoneRangeCursor = (text: string | undefined): DoneRangeCursor 
 /** The text the screen hands back for the next chunk. */
 export const formatDoneRangeCursor = (cursor: DoneRangeCursor): string =>
   `${cursor.at.toISOString()}~${String(cursor.seen)}`;
+
+/**
+ * The longest a done read may hold the database. On 2026-11-25 a page the browser had long given up
+ * on (499) still ran for up to 170 s; a read this bounded is refused instead, and the screen offers
+ * to try again. An indexed chunk takes a fraction of it.
+ */
+export const DONE_READ_TIME_LIMIT_MS = 15_000;
 
 /** A done row's close time, in milliseconds (a done row always has one). */
 const closedAtOf = (row: unknown): number =>
@@ -300,15 +312,33 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
   }): Promise<Paginated<T>> {
     const { start } = cairoDayRange(params.from);
     const { end } = cairoDayRange(params.to);
-    return this.list({
-      filter: { closedAt: { $gte: start, $lt: end } } as FilterQuery<T>,
-      page: params.page,
-      pageSize: params.pageSize,
-      sortBy: 'closedAt',
-      sortDir: 'asc',
-      sortableFields: ['closedAt'],
-      scope: params.scope,
-    });
+    // Read here rather than through `list()`, for the time bound: a browser still running the
+    // bundle that walked every page at once (until it reloads) asks for exactly this read.
+    const filter = this.baseFilter(params.scope, {
+      closedAt: { $gte: start, $lt: end },
+    } as FilterQuery<T>);
+    const pageSize = Math.min(params.pageSize, MAX_PAGE_SIZE);
+    const page = Math.max(1, params.page);
+    const [items, totalItems] = await Promise.all([
+      this.model
+        .find(filter)
+        .sort(DONE_ORDER)
+        .skip((page - 1) * pageSize)
+        .limit(pageSize)
+        .maxTimeMS(DONE_READ_TIME_LIMIT_MS)
+        .lean<T[]>()
+        .exec(),
+      this.model.countDocuments(filter).maxTimeMS(DONE_READ_TIME_LIMIT_MS).exec(),
+    ]);
+    return {
+      items,
+      meta: {
+        page,
+        pageSize,
+        totalItems,
+        totalPages: Math.max(1, Math.ceil(totalItems / pageSize)),
+      },
+    };
   }
 
   /**
@@ -329,10 +359,13 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
     const resume = cursor !== null && cursor.at.getTime() >= start.getTime() ? cursor : null;
     const lower = resume?.at ?? start;
     const rows = await this.model
-      .find(this.baseFilter(params.scope, { closedAt: { $gte: lower, $lt: end } } as FilterQuery<T>))
+      .find(
+        this.baseFilter(params.scope, { closedAt: { $gte: lower, $lt: end } } as FilterQuery<T>),
+      )
       .sort(DONE_ORDER)
       .skip(resume?.seen ?? 0)
       .limit(size + 1)
+      .maxTimeMS(DONE_READ_TIME_LIMIT_MS)
       .lean<T[]>()
       .exec();
     if (rows.length <= size) return { items: rows, next: null };

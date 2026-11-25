@@ -28,6 +28,30 @@ its entry here in the same PR.
 
 ### Changed
 
+- **A shared counter for running numbers, and one Arabic name fold for every module.**
+  `apps/api/src/shared/base/counter.ts` (`defineCounter`) is Fleet's custody counter written as a factory: a module
+  names its own `<module>_counters` collection and gets `ensure` (create-if-missing, raised to a floor and never
+  lowered), `next` (inside the caller's transaction, so concurrent saves get consecutive numbers) and `peek`. IT's
+  `foldName`, which compares two spellings of one Arabic name («الأسكندرية» = «الاسكندرية», «قطعه» = «قطعة»), moved
+  to the contracts (`packages/contracts/src/common/fold-name.ts`); IT imports it, and its behavior is unchanged.
+  Fleet's and ATM's counters keep their copies. This is PC-13, the second prerequisite of the Administrative
+  Affairs module (`docs/12-planning/administration-module-decisions-and-phases.md` §18.1).
+
+- **ATM's branch-scope rule and organization-scope check are shared code.** The fail-closed rule for branch
+  records (`branchScopeMatch`, `branchScopeBranches`, `narrowToBranch`, `writableBranches`, `resolveWorkBranch`) and
+  the organization-scope check behind ATM's settings and banks now live in `apps/api/src/shared/base/branch-scope.ts`
+  and `org-authority.ts` (`assertOrganizationScope`). ATM re-exports them under the same names and keeps its
+  active-branch loader, so its behavior and messages are unchanged; a spec pins that ATM's register rule and the
+  shared `selectorBranches` agree on every selector shape. This is PC-12, the first prerequisite of the
+  Administrative Affairs module (`docs/12-planning/administration-module-decisions-and-phases.md` §18.1), which
+  reads the same rule instead of copying it.
+
+- **The zod advisory waiver runs to 2026-12-26.** «موافق على Zod». The waiver for
+  GHSA-mrhx-c7xc-m3w5 (zod 3, no patched release) ended on 2026-11-26, after which the dependency
+  audit would have failed every pull request. The owner renewed it for 30 days
+  (`scripts/dependency-audit.waivers.json`). The remedy is still the monorepo-wide zod 4
+  migration, as its own change, before the new date.
+
 - **A hand-over of several devices prints on ONE sheet.** «عند تسليم أكثر من أصل يتم عمل إيصال
   لكل أصل على حدي أنا عايز يتطبعوا فى ورقه واحده». A hand-over was already one «إقرار استلام»
   under one number, but it printed a page per device, each with its own statement and signature,
@@ -235,6 +259,125 @@ its entry here in the same PR.
     on its date, check-in, check-out and hours columns.
 
 ### Added
+
+- **Administrative Affairs («الشئون الإدارية»), third slice: warehouses, and the keeper picker.** The
+  stores of each branch, «المخازن», with the «Warehouse manager / responsible person» the owner's
+  request lists in a warehouse's master data, typed on the screens as the owner asked («لأ خلينا من
+  غير شيتات او بيانات دلوقتى»). This is P1a.3 of the design
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §19.1): the API only; the
+  Warehouses screen arrives with P1a.W.
+  - **Three keys and a page:** `administrationWarehouse.view`, `.create` and `.edit` («عرض المخازن»,
+    «إنشاء المخازن», «تعديل المخازن») on «المخازن», over `/api/v1/administration/warehouses` and
+    `/warehouses/:id`. Several stores per branch, each typed main, branch or sub (OD-10 A), with a
+    code unique in the company, a name unique in its branch (compared folded, under a unique index,
+    so two spellings typed at the same moment make one store); either clash answers 409
+    `ADMINISTRATION_DUPLICATE` naming the field (`code` or `name`). A store may name an owning
+    department of its own branch, which grants nothing, a location and notes. The branch is set once,
+    at the create, and never edited.
+  - **Read fail-closed, written in reach.** Every read goes through the shared branch rule: the
+    organization reads everything, narrowed by the top bar; a branch holder their branches; a
+    department or section holder, or a department copy by role or by delegation, the branch it sits in;
+    `own` nothing. A `branchId` filter outside the reader's reach is 400 `OUT_OF_REACH`, and a store
+    outside it 404. A create needs `.create` over the body's branch, an edit `.edit` over the store's,
+    which no department grant gives; a create files under the top bar's branch, so another branch is
+    400 `OUT_OF_REACH` on `body.branchId` (ADR-028); every row says whether its reader may edit it (`canEdit`), and
+    says so only when the edit would find it under the top bar's branch. A write outside the key's
+    reach is 403. A closed or unknown branch, or a department that is not an active copy in the
+    store's own branch, is 404. An edit that sends a branch is 400 `VALIDATION_FAILED`. An edit sent
+    with an old `version` answers 409 `STALE_DOCUMENT` before any rule judges it.
+  - **The branch options:** `GET /warehouses/branch-options` lists every active branch as the top
+    bar's switcher names and orders them, each with `canView` and `canCreate` for its reader, so the
+    screen's filter and create dialog offer only what the server would accept.
+  - **The keeper,** «أمين المخزن» (OD-10 keeper (i)), picked from `GET /api/v1/administration/people`
+    (and `/people/:employeeId`), which whoever may create or edit a warehouse reads through the
+    platform directory, never HR: the people who work here today, in the keys' reach, with seven
+    facts each. A keeper a save names must be one the picker would offer its writer: anybody outside
+    the keys' reach is 404, as the picker's by-id read answers, whatever their status. A keeper HR
+    answers as having left is refused, 422 `ADMINISTRATION_EMPLOYEE_EXITED`. The keeper is stored as
+    an id and named from HR at every read, so no name is copied onto the store.
+  - **Retiring** is `isActive: false`, refused while stock, transit or an open document holds the
+    store (OD-70 B, 422 `ADMINISTRATION_DEACTIVATION_BLOCKED`); nothing can hold one before stock
+    exists, so in this phase a store retires freely.
+  - **A workforce reset keeps the warehouses** (OD-64 A): a store outlives its keeper, whose id then
+    names nobody until another is named.
+  - Audited as `create`, `update`, `activate` and `deactivate`, each followed by one signal carrying
+    the store's branch, so branch-scoped screens refresh too. The six ready-made roles gain the
+    warehouse keys §6.5 gives them: the view key for «أمين المخزن», «موظف المشتريات», «مدير المشتريات»,
+    «مدير الشئون الإدارية» and «المراجع الداخلي», all three for «مسؤول البيانات الأساسية».
+
+- **Administrative Affairs («الشئون الإدارية»), second slice: items, and the «ITM-» code.** The
+  item master every store, request and order will name, with the «Category / Subcategory» the
+  owner's request lists among an item's fields, typed on the screens as he asked («لأ خلينا من غير
+  شيتات او بيانات دلوقتى»), so nothing is loaded at deploy. This is P1a.2 of the design
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §19.1): the API only; the
+  Items screen arrives with P1a.W.
+  - **Three keys and a page:** `administrationItem.view`, `.create` and `.edit` («عرض الأصناف»,
+    «إنشاء الأصناف», «تعديل الأصناف») on «الأصناف», over `/api/v1/administration/items` and
+    `/items/:id`. Any holder of `.view` reads the whole register; the writes need the key at
+    ORGANIZATION scope (OD-04 A), as the catalog's do. A retired item still resolves by its id.
+  - **A generated code, «ITM-00001»** (OD-05 A), taken inside the create's transaction from the
+    module's counter (`administration_counters`, the shared `defineCounter`): two creates at once
+    get consecutive codes, and a create refused inside the transaction gives its number back, so the
+    series has no gap. The seed raises the counter to the highest code already given, at any width,
+    and every create does again first, so a lost counter never comes back below a used code.
+  - **One item per name and per barcode.** The Arabic name is compared folded («قطعه» = «قطعة») under
+    a unique index, so two spellings typed at the same moment make one item; a barcode, optional,
+    belongs to one live item (OD-05 (i)) and its unique index is its only check. Either clash
+    answers 409 `ADMINISTRATION_DUPLICATE` naming the field (`name` or `barcode`). `search` reads
+    the code, both names and the barcode, so a scan finds its item.
+  - **Its rules, each refused with its own code:** the levels are whole numbers from 0 (OD-08; 400
+    `VALIDATION_FAILED`) and keep minimum ≤ reorder point ≤ maximum where set (OD-09; 422
+    `ADMINISTRATION_STOCK_LEVELS_ORDER`, naming the fields); a retired unit or category is not given
+    to an item, though an item keeps one that retired later (422
+    `ADMINISTRATION_REFERENCE_INACTIVE`); and an item is not filed in a category with active
+    subcategories — it names one of them (OD-06 (i); 422 `ADMINISTRATION_SUBCATEGORY_REQUIRED`). An
+    item filed before its category gained its first subcategory keeps it until its next edit, which
+    re-files it; retiring it or bringing it back, and nothing else, is not that edit. An edit sent with an old `version` answers 409 `STALE_DOCUMENT` before any rule
+    judges it, for units and categories too. The list labels each item with its category, that
+    category's parent and its unit, and `?categoryId=` of a category reads its subcategories' items
+    too.
+  - **An item reader reads the units and categories.** Both lists now take `administrationItem.view`
+    as well as `administrationCatalog.manage`, so the item form's lists populate; their realtime
+    topics move to the item key, beside the new `administration.item`.
+  - **Five more ready-made roles** (OD-78 A), seeded as managed roles with the item view key and
+    assigned to nobody: «أمين المخزن», «موظف المشتريات», «مدير المشتريات», «مدير الشئون الإدارية» and
+    «المراجع الداخلي»; «مسؤول البيانات الأساسية» gains the three item keys.
+  - Audited as `create`, `update`, `activate` and `deactivate`, with an explicit signal after a
+    (de)activation.
+
+- **Administrative Affairs («الشئون الإدارية»), first slice: units of measure and item categories.**
+  The owner's request of 2026-10-29 for warehouses and procurement starts with its master data; the
+  owner, 2026-11-24, on the open decisions: «اعمل انت الـ Recommendations من عندك دلوقتى وبعدين نبقى
+  نعدل», and on loading lists from files: «لأ خلينا من غير شيتات او بيانات دلوقتى» — so master data is
+  typed on the screens and nothing is loaded at deploy. This is P1a.1 of the design
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §19.1): the API only; the
+  screens, the menu category and its rows arrive with P1a.W.
+  - **A new module, `administration`**, with one key and one page: `administrationCatalog.manage`
+    («إدارة وحدات القياس وتصنيفات الأصناف») on «وحدات القياس والتصنيفات». It reads and writes
+    `/api/v1/administration/catalog-items?kind=unit` and `/api/v1/administration/item-categories`.
+    The writes need the key at ORGANIZATION scope (OD-04 A): one taxonomy serves every branch, so a
+    branch-scoped or delegated holder reads the lists and writes none of them (403).
+  - **Two spellings of one name are one row.** Each name is stored with `nameKey`, its Arabic
+    folded by the shared `foldName` («قطعه» = «قطعة», «الاثاث» = «الأثاث»), under a unique index —
+    per kind for units, per parent for categories — so two people typing both spellings at the same
+    moment get one unit, not two. A clash answers 409 `ADMINISTRATION_DUPLICATE` naming the field
+    (`name` or `code`). Nothing is deleted: `isActive: false` retires a row, which keeps its name.
+  - **Two category levels** (OD-06 A): a category, or a subcategory under a top-level one. A refused
+    parent answers 422 `ADMINISTRATION_CATEGORY_PARENT_INVALID` with its reason — itself, one of its
+    own subcategories, a subcategory, a retired parent, or a move of a category that has
+    subcategories. `?topLevel=true` lists the level a parent is picked from, `?parentId=` one
+    category's subcategories.
+  - **An Arabic name needs a letter or a digit.** A name of tatweel or harakat alone («ـ», «ً»)
+    folds to nothing, so it is refused as 400 `VALIDATION_FAILED`.
+  - **The indexes are the module's own to build.** Its seed builds them first through the shared
+    `syncDeclaredIndexes('apply', …)` and logs the report; each repository waits for its
+    collection's indexes before its first write, so a failed build refuses the write and the next
+    one tries again.
+  - **A ready-made role, «مسؤول البيانات الأساسية»** (`administration-master-data`, OD-78 A), seeded
+    as a managed role holding the catalog key and assigned to nobody.
+  - Audited as `create`, `update`, `activate` and `deactivate`; the realtime topics
+    `administration.catalogItem` and `administration.itemCategory`; the role matrix names the module
+    «الشئون الإدارية» / Administrative Affairs.
 
 - **«ساعات العمل»: the hours each department owes, edited on their own screen.** A new tab on
   «الإعدادات» (`/hr-settings/working-hours`) sets the working hours per department for employees

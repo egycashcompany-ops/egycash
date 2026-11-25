@@ -1514,6 +1514,16 @@ and P3 proceed anyway — they are cheap and non-breaking, and the engine is nev
 them. P4 waits for its owner. Nothing in this table is scheduled by this document; each item
 starts only on an explicit owner GO.
 
+> **P4's trigger has fired (2026-11-24).** The Procurement design P4 waits for is the
+> [Administrative Affairs design](administration-module-design.md) (its §20 and
+> OD-01). The owner adopted OD-01's recommended default, and
+> [ADR-040](../03-decisions/ADR-040-supplier-registry-module-owned-with-a-seam.md) records it: the
+> supplier registry is that module's `administration_suppliers` (P1b.1), not a platform registry
+> yet; IT and Fleet read it later through a platform seam; and `it_vendors` and Fleet's workshop
+> rows join it only on an owner GO, by an operator-run command that keeps the ObjectId of every
+> row with no duplicate. Until that merge stage, `it_vendors` stays IT's. This note adds the
+> decision; the row above is unchanged.
+
 ## 17. Review trail
 
 - **v1.0 DRAFT** (2026-08-03) — full architecture & domain design for review. Awaiting owner
@@ -2443,3 +2453,15 @@ starts only on an explicit owner GO.
 
   Nothing is stored differently: the receipt, its lines and its number are what they were, and a
   reprint of an older receipt of several devices prints the sheet.
+
+- **The external-party registry's trigger has fired** (2026-11-24) — §16 P4 waits for the
+  Procurement module design, and the
+  [Administrative Affairs design](administration-module-design.md) is it (§20,
+  OD-01). The owner adopted its recommended default, recorded as
+  [ADR-040](../03-decisions/ADR-040-supplier-registry-module-owned-with-a-seam.md): suppliers are
+  that module's own `administration_suppliers` for now, a platform seam on the directory pattern
+  comes later, and IT vendors and Fleet workshops join only on an owner GO, by an operator-run
+  command that keeps the ObjectId of every row with no duplicate. `it_vendors` stays IT's until
+  that merge stage: the collection, `/it/vendors`, its menu row and the asset, licence and
+  maintenance-order vendor checks are unchanged. A note under §16 says the same; nothing else in
+  this design changes.

@@ -4,8 +4,8 @@
     {
       "id": "GHSA-mrhx-c7xc-m3w5",
       "package": "zod",
-      "reason": "Owner-approved (2026-10-27) temporary waiver. zod 3 has no patched release; the fix starts at zod 4.6.6, so the remedy is the monorepo-wide zod 4 migration, done as its own change. Exposure is bounded meanwhile: every JSON body is capped at 1 MB (8 MB only on the authenticated custody-memo routes).",
-      "until": "2026-11-26"
+      "reason": "Owner-approved (2026-10-27) temporary waiver, renewed by the owner on 2026-11-24 for 30 days («موافق على Zod»). zod 3 has no patched release; the fix starts at zod 4.6.6, so the remedy is the monorepo-wide zod 4 migration, done as its own change. Exposure is bounded meanwhile: every JSON body is capped at 1 MB (8 MB only on the authenticated custody-memo routes).",
+      "until": "2026-12-26"
     }
   ],
   "outage": null

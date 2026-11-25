@@ -245,6 +245,14 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   gold_receiving_receipts: { action: 'keep', why: 'a printed financial record of received metal' },
   gold_delivery_receipts: { action: 'keep', why: 'a printed financial record of delivered metal' },
   gold_transfers: { action: 'keep', why: 'a financial record of metal moved between vaults' },
+  // A warehouse names its keeper («أمين المخزن»), and is a record in its own right that outlives
+  // them: from P5 the stock ledger and every store document cite it. Purged, those would point at
+  // nothing; kept, its keeper id resolves to nobody until somebody names another, which the
+  // screen flags (OD-64 A, keeper (i)).
+  administration_warehouses: {
+    action: 'keep',
+    why: 'a warehouse is a record in its own right and outlives its keeper',
+  },
 
   // ── Owned by the user rule, not this one ──
   //

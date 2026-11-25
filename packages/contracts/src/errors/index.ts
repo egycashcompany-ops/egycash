@@ -675,6 +675,59 @@ export const ErrorCodes = {
    */
   IT_CONSUMABLE_COUNTER_ABOVE_NEXT: 'IT_CONSUMABLE_COUNTER_ABOVE_NEXT',
 
+  // ── Administrative Affairs: master data (docs/12-planning/administration-module-design-flows.md §5.15)
+  /**
+   * 422 — an item category's parent is refused; nothing was written. One detail, `field`
+   * 'parentId', `code` one of `ADMINISTRATION_CATEGORY_PARENT_PROBLEMS`: 'self' (the category
+   * itself), 'cycle' (one of its own subcategories), 'tooDeep' (a subcategory: two levels, OD-06),
+   * 'inactive' (a retired parent) or 'hasChildren' (a category that has subcategories never moves
+   * under another).
+   */
+  ADMINISTRATION_CATEGORY_PARENT_INVALID: 'ADMINISTRATION_CATEGORY_PARENT_INVALID',
+  /**
+   * 409 — a live master row already holds this name, code or barcode; nothing was written. One
+   * detail whose `field` names what clashed: 'name' (compared folded, «قطعه» = «قطعة»: the
+   * `nameKey` of the Arabic name), 'code' or 'barcode' (an item's; its unique index is its only
+   * check). Retired rows still hold theirs: reactivate, never recreate. The answer to the
+   * service's own check and to a unique index that refused a racing write alike.
+   */
+  ADMINISTRATION_DUPLICATE: 'ADMINISTRATION_DUPLICATE',
+  /**
+   * 422 — an item's stock levels are out of order: where set, min ≤ reorder point ≤ max (OD-09),
+   * judged on the row the write would leave; nothing was written. One detail per field out of
+   * order, `field` one of `ADMINISTRATION_STOCK_LEVEL_FIELDS` and `code` 'outOfOrder': both ends
+   * of each comparison that fails.
+   */
+  ADMINISTRATION_STOCK_LEVELS_ORDER: 'ADMINISTRATION_STOCK_LEVELS_ORDER',
+  /**
+   * 422 — an item names a retired unit or category, on a create or by changing it; nothing was
+   * written. An item that already names one keeps it. One detail per retired reference, `field`
+   * 'unitId' or 'categoryId', `code` 'inactive'.
+   */
+  ADMINISTRATION_REFERENCE_INACTIVE: 'ADMINISTRATION_REFERENCE_INACTIVE',
+  /**
+   * 422 — an item names a category that has active subcategories: it names one of those instead
+   * (OD-06 (i)), on a create or by changing its category; nothing was written. An item whose
+   * category gained its first subcategory later keeps it. One detail, `field` 'categoryId', `code`
+   * 'subcategoryRequired'.
+   */
+  ADMINISTRATION_SUBCATEGORY_REQUIRED: 'ADMINISTRATION_SUBCATEGORY_REQUIRED',
+  /**
+   * 422 — a warehouse is given a keeper whom HR answers as having left (IT's rule: a positive
+   * `exited` only; an id the directory cannot read passes); nothing was written. A warehouse whose
+   * keeper left later keeps them until the keeper is changed. One detail, `field`
+   * 'responsibleEmployeeId', `code` 'exited'.
+   */
+  ADMINISTRATION_EMPLOYEE_EXITED: 'ADMINISTRATION_EMPLOYEE_EXITED',
+  /**
+   * 422 — a warehouse is retired while something still holds it (OD-70 B): stock on hand or in
+   * transit, or a document not yet ended that names it; nothing was written. One detail per hold,
+   * `field` 'isActive', `code` one of `ADMINISTRATION_DEACTIVATION_PROBLEMS`: 'holdsStock' or
+   * 'openDocument'. Nothing can hold a warehouse before stock and documents exist (P5), so the
+   * code is first met then.
+   */
+  ADMINISTRATION_DEACTIVATION_BLOCKED: 'ADMINISTRATION_DEACTIVATION_BLOCKED',
+
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */
 } as const;

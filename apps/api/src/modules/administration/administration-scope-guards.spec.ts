@@ -1,0 +1,205 @@
+// Every repository declares its scope, with its reason (design §7.1; the payroll
+// `department-scope-guards.spec.ts` shape).
+//
+// The defect this guards is invisible: `BaseRepository.scopeFilter` answers a scope whose field is
+// undeclared with an EMPTY filter, so a branch record whose repository forgets `branchField` does
+// not fail — it serves the whole organization to a branch-scoped reader. Nothing in the type system
+// catches it, because the options are optional by design. So each repository of this module is
+// listed here with the options §7.1 gives its collection, and must declare exactly those, on the
+// `super(...)` line, followed by a comment that says why. A repository added without a line here
+// fails the first test.
+//
+// Branch records (warehouses, P1a.3) go further: declaring `branchField` is not enough, because the
+// base repository then WIDENS a department- or section-scoped grant to the whole company and reads
+// `own` as its holder's rows. Their repositories answer every scoped read with the shared
+// fail-closed rule instead (PC-12), which has no precedent inside a repository — so it is pinned
+// here, with the service that must read through it and the department the row names but never
+// narrows by (§7.7).
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * §7.1, one row per repository as each slice ships it. `{}`: master data, read whole;
+ * `{ branchField: 'branchId' }`: a branch record, read fail-closed (§7.2).
+ */
+const REPOSITORIES = [
+  {
+    file: 'catalog/catalog-items/catalog-item.repository.ts',
+    collection: 'administration_catalog_items',
+    model: 'AdministrationCatalogItemModel',
+    options: '{}',
+  },
+  {
+    file: 'catalog/item-categories/item-category.repository.ts',
+    collection: 'administration_item_categories',
+    model: 'AdministrationItemCategoryModel',
+    options: '{}',
+  },
+  {
+    file: 'catalog/items/item.repository.ts',
+    collection: 'administration_items',
+    model: 'AdministrationItemModel',
+    options: '{}',
+  },
+  {
+    file: 'warehouses/warehouses/warehouse.repository.ts',
+    collection: 'administration_warehouses',
+    model: 'AdministrationWarehouseModel',
+    options: "{ branchField: 'branchId' }",
+  },
+] as const;
+
+/**
+ * §7.7: every model that stamps `departmentId` either declares it as a scope axis or is listed
+ * here as reference-only, with its reason. None declares it in Phase 1.
+ */
+const REFERENCE_ONLY_DEPARTMENTS = [
+  {
+    model: 'warehouses/warehouses/warehouse.model.ts',
+    why: 'the owning department of a store grants nothing while OD-10 keeps it reference-only (i)',
+  },
+] as const;
+
+const walk = (dir: string, out: string[] = []): string[] => {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) walk(full, out);
+    else if (entry.name.endsWith('.repository.ts')) out.push(relative(HERE, full));
+  }
+  return out;
+};
+
+const read = (file: string): string => readFileSync(join(HERE, file), 'utf8');
+
+/** The `super(Model, options); // reason` line of a repository, its parts named. */
+const superCall = (source: string) => {
+  const match = /super\((\w+),\s*(\{[^}]*\})\);[ \t]*\/\/[ \t]*(\S[^\n]*)/.exec(source);
+  return match === null
+    ? null
+    : {
+        model: match[1] ?? '',
+        options: (match[2] ?? '').replace(/\s+/g, ' '),
+        reason: match[3] ?? '',
+      };
+};
+
+describe('every repository of the module is listed here, with its scope', () => {
+  it('finds the repositories at all — a scan that matched nothing would pass', () => {
+    expect(walk(HERE).length).toBeGreaterThan(0);
+  });
+
+  it('lists exactly the repositories the module has', () => {
+    expect(walk(HERE).sort()).toEqual(REPOSITORIES.map((row) => row.file).sort());
+  });
+
+  it.each(REPOSITORIES)('$file declares §7.1’s options, with a reason', (row) => {
+    const declared = superCall(read(row.file));
+    expect(declared, 'super(Model, options); // reason — all on one line').not.toBeNull();
+    expect(declared?.model).toBe(row.model);
+    expect(declared?.options).toBe(row.options);
+    expect(declared?.reason.length ?? 0, 'the comment says why').toBeGreaterThan(10);
+  });
+
+  it.each(REPOSITORIES)('$file wraps the model that writes $collection', (row) => {
+    const modelFile = row.file.replace('.repository.ts', '.model.ts');
+    expect(read(modelFile)).toMatch(new RegExp(`'${row.collection}',?\\s*\\)`));
+  });
+});
+
+describe('master data is read whole (§7.1)', () => {
+  const master = REPOSITORIES.filter((row) => row.options === '{}');
+
+  it.each(master)('$file narrows by no scope field', (row) => {
+    const source = read(row.file);
+    for (const option of [
+      'branchField',
+      'departmentField',
+      'sectionField',
+      'ownerUserField',
+      'hasAssignees',
+    ]) {
+      expect(source, option).not.toContain(option);
+    }
+  });
+
+  it.each(master)('$file is never read under a caller’s scope selector', (row) => {
+    // A selector on an unscoped repository narrows nothing for branch scope, and for `own` it
+    // would read only the rows the caller created — not "the register".
+    const service = read(row.file.replace('.repository.ts', '.service.ts'));
+    expect(service).not.toContain('scopeSelector(');
+  });
+});
+
+describe('branch records are read fail-closed (§7.2)', () => {
+  const branch = REPOSITORIES.filter((row) => row.options !== '{}');
+
+  it('there is one in Phase 1 — the warehouses', () => {
+    expect(branch.map((row) => row.collection)).toEqual(['administration_warehouses']);
+  });
+
+  it.each(branch)('$file answers every scoped read with the shared rule', (row) => {
+    const source = read(row.file);
+    expect(source).toContain('protected override scopeFilter(');
+    expect(source).toContain('return branchScopeMatch(selector)');
+    // The rule is the shared one (PC-12), never ATM's copy or one of the module's own.
+    expect(source).toContain(
+      "import { branchScopeMatch } from '../../../../shared/base/branch-scope';",
+    );
+    expect(source).not.toMatch(/modules\/atm|orgScopeMatch\(/);
+  });
+
+  it.each(branch)('$file narrows by nothing but the branch', (row) => {
+    const source = read(row.file);
+    for (const option of ['departmentField', 'sectionField', 'ownerUserField', 'hasAssignees']) {
+      expect(source, option).not.toContain(option);
+    }
+  });
+
+  it.each(branch)('$file is read only under a selector for the key the act needs', (row) => {
+    const service = read(row.file.replace('.repository.ts', '.service.ts'));
+    // Every scoped read and the edit's write name the key's own selector, never a widest one.
+    expect(service).not.toContain('widestScopeSelector');
+    expect(service).toMatch(/repository\.findById\(id, scopeSelector\(ctx, VIEW\)\)/);
+    expect(service).toMatch(
+      /const scope = scopeSelector\(ctx, EDIT\);\s*const before = await repository\.findById\(id, scope\);/,
+    );
+    expect(service).toMatch(/version: input\.version,\s*scope,/);
+    // The list's browser branch only narrows, inside that reach.
+    expect(service).toContain('narrowToBranch(scope, branchId)');
+    // Writes ask the key's reach over the branch: the body's on a create, the row's on an edit.
+    expect(service).toContain('keyReachesBranch(ctx, CREATE, branchId)');
+    expect(service).toContain('keyReachesBranch(ctx, EDIT, branchId)');
+  });
+
+  it.each(branch)('$file writes its branch once, at the create, and never on an edit', (row) => {
+    const service = read(row.file.replace('.repository.ts', '.service.ts'));
+    const update = service.slice(service.indexOf('  async update('));
+    expect(update.length, 'the scan found the edit').toBeGreaterThan(100);
+    expect(update.slice(0, update.indexOf('\n  }\n'))).not.toMatch(/set\.branchId|branchId: new/);
+    expect(service.match(/branchId: new Types\.ObjectId\(branchId\)/g)).toHaveLength(1);
+  });
+});
+
+describe('a department a row names is reference-only (§7.7; OD-10 department (i))', () => {
+  it('lists every model of the module that stamps `departmentId`', () => {
+    const models = REPOSITORIES.map((row) => row.file.replace('.repository.ts', '.model.ts'));
+    const stamping = models.filter((model) => read(model).includes('departmentId:'));
+    expect(stamping).toEqual(REFERENCE_ONLY_DEPARTMENTS.map((row) => row.model));
+  });
+
+  it.each(REFERENCE_ONLY_DEPARTMENTS)('$model is no scope axis, with its reason', (row) => {
+    expect(read(row.model.replace('.model.ts', '.repository.ts'))).not.toContain('departmentField');
+    expect(row.why.length).toBeGreaterThan(20);
+  });
+
+  it.each(REFERENCE_ONLY_DEPARTMENTS)('$model holds it as a scalar the org merge sweeps', (row) => {
+    // Named exactly `departmentId`, an ObjectId outside any array or `Mixed` (§15.3.4).
+    expect(read(row.model)).toContain(
+      'departmentId: { type: Schema.Types.ObjectId, default: null }',
+    );
+  });
+});

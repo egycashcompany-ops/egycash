@@ -11,6 +11,38 @@ its entry here in the same PR.
 
 ### Added
 
+- **ATM — «استيراد السجل القديم»: the old system's replenishment and maintenance history, copied
+  into each branch** (`docs/12-planning/atm-legacy-history-import.md`). The owner (2026-11-25):
+  «تقدر تشوفهم أنت من Mongo مباشرة جوا maintenance و replenishment — وللأفرع كلها مش بس المهندسين
+  وأكتوبر .. ماعدا أسيوط». A card on `/atm/settings` (`atmSettings.manage`, company-wide) for the
+  five legacy deployments — `alex`, `portsaid`, `tanta`, `wsal`, `egycash` — each into the branch
+  its code names.
+  - **Only closed («Done») operations move** — the owner: «عايز اللى يتنقل بس سجل الصيانة والتغذية
+    اللى اتقفل Done». Done is `end: 1` with a close time, the two signals asked together; there is
+    no switch for open rows, and work still open in a legacy system is opened in ECMS by hand.
+  - **A preview first**, counted by the run's own rules: the rows to copy, and each row left out
+    under the first reason (deleted, no open time, not Done, closed after the branch began working
+    in ECMS, a machine the register lacks — its code listed).
+  - **Times read from the data**: a legacy row's id records when it was written, so each kind's open
+    times are read as true instants or as Cairo clock time (the replenishment bug), and a kind the
+    evidence does not decide ten to one is refused.
+  - **A cut at a moment**, suggested as the branch's first own ECMS row of the day's own work, not a
+    day: Shorouk switched mid-morning, and the morning's finished legacy work is kept; a plan
+    entered the evening before for the next day does not count (Alexandria's 23rd), so the 14
+    operations closed in the legacy system that evening are copied. The box sends a cut only when
+    complete and still; a half-typed one never means «no cut», and the preview names its cut in
+    Cairo time.
+  - **Insert-only** by legacy id, never changing a row already in ECMS; a run steps 2,000 rows at a
+    time under a lease, one run at a time, and resumes with «متابعة» (a run another window drives
+    is not offered it; one left half an hour may also be undone or started over); **«تراجع»**
+    removes a source's copies in batches, and its confirmation names the copies changed in ECMS
+    since. Copies carry `legacyImportRunId` (both operation logs, partial index, read with its
+    filter restated so it is used).
+  - «نقل البيانات» refuses while an import runs (`legacyImportRunning`); the ATM-7 command refuses a
+    branch with a register of its own. Error codes `ATM_LEGACY_IMPORT_RUNNING`,
+    `ATM_LEGACY_IMPORT_STATE`, `ATM_LEGACY_IMPORT_STEP_BUSY`, `ATM_LEGACY_IMPORT_UNREADABLE`; audit
+    action `atmLegacyImport` (one row as a run starts, one as it ends).
+
 - **Roles: quick selection by permission type, and a full-width role form** (`/system/roles`).
   «جنبها الصلاحيات فى جروبات أقدر أحددها مره واحده .. مثلاً قراءة فقط .. تعديل فقط».
   - Beside the permission tree, «تحديد سريع حسب النوع» ticks every permission of one type over every

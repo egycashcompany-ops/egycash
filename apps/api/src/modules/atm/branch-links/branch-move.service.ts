@@ -112,6 +112,7 @@ import { actorName } from '../shared/atm-context';
 import { asSettingsEditor, assertAtmSettingsManager } from '../shared/settings-authority';
 import { branchMoveAuditRef } from './branch-move-run.model';
 import { atmBranchMoveRunRepository } from './branch-move-run.repository';
+import { legacyImportRunning } from '../migration/legacy-history.service';
 import {
   BRANCH_MOVE_BATCH_SIZE,
   blockerDetails,
@@ -1123,6 +1124,9 @@ class AtmBranchMoveService {
       blockers.push({ kind: 'layoutImportRunning', bankCodes: layoutRuns.freshBanks });
     }
     if (await registerImportRunning(now)) blockers.push({ kind: 'registerImportRunning' });
+    // A legacy history import files rows under machines the move re-files and retires
+    // (migration/legacy-history.service.ts): one running refuses the move, as a register import does.
+    if (await legacyImportRunning(now)) blockers.push({ kind: 'legacyImportRunning' });
 
     merges.mailboxRepointed = (await mailboxRepoint(pair)) === null ? 0 : 1;
     const settings = await settingsRepoint(pair);

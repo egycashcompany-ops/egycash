@@ -937,6 +937,14 @@ Properties worth knowing before running it:
 `ops_emp`/`ops_emp2`/`leader` stay name snapshots; matching them to employee ids is best-effort
 enrichment for a later pass, never a requirement of the import.
 
+**The history of branches that already have their registers** (2026-11-25) does not go through this
+command: the legacy deployments' `replenishment` and `maintenance` rows are copied from
+`/atm/settings` («استيراد السجل القديم»), insert-only, under each branch's own register, with the
+time mode read from when each row was written and a cut at the moment the branch began working in
+ECMS — [atm-legacy-history-import.md](atm-legacy-history-import.md). This command refuses a branch
+that holds machines other than the deployment's own: it would write the legacy machines beside
+them.
+
 ## 8. Delivery record
 
 **What the integration suite caught on its first real run.** Worth recording, because it is the

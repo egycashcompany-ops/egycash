@@ -44,6 +44,7 @@ import { registerGraphMailSource } from './mail-tickets/graph-mail.source';
 import { buildAtmMailboxRouter } from './mail-tickets/mailbox.routes';
 import { rotateMailboxSecretKey } from './mail-tickets/mailbox-secret-rotation';
 import { buildAtmBranchLinksRouter } from './branch-links/branch-links.routes';
+import { buildAtmLegacyHistoryRouter } from './migration/legacy-history.routes';
 import { buildAtmLeadersRouter } from './leaders/leaders.routes';
 import { buildAtmDisplayRouter } from './display/display.routes';
 import { refineAtmAuthContext } from './branch-links/link-context';
@@ -484,6 +485,8 @@ export const atmModule: ModuleManifest = {
     // /atm/settings' cards.
     { prefix: '/atm/mailbox', router: buildAtmMailboxRouter() },
     { prefix: '/atm/branch-links', router: buildAtmBranchLinksRouter() },
+    // The old system's replenishments and maintenances, copied into their branches (2026-11-25).
+    { prefix: '/atm/legacy-import', router: buildAtmLegacyHistoryRouter() },
     // The leader pickers' names, and the /atm/settings card that says whose they are.
     { prefix: '/atm/leaders', router: buildAtmLeadersRouter() },
     // How every ATM page reads — read by all of them, written by the /atm/settings card.
@@ -515,6 +518,9 @@ export const atmModule: ModuleManifest = {
     // «نقل البيانات» (branch-links/branch-move-run.model.ts): one row per move of a linked source's
     // data to its target — the run lock and the run's record.
     'atm_branch_move_runs',
+    // «استيراد السجل القديم» (migration/legacy-history-run.model.ts): one row per run of a legacy
+    // deployment's history into its branch — the run lock, its cursor and its record.
+    'atm_legacy_import_runs',
   ],
   eventSubscriptions: [],
   scheduledTasks: [

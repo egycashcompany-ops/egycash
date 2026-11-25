@@ -133,6 +133,21 @@ export const importLegacyAtmDeployment = async (
       .collection('atm')
       .find({})
       .toArray()) as unknown as LegacyMachine[];
+    // A branch with a register of its own (2026-11-25: every branch has one) would get a second
+    // machine beside each of its own — this importer writes the legacy machines by their legacy
+    // ids. Its own earlier run's machines are those ids, so a re-run still goes through. The history
+    // goes through /atm/settings instead (legacy-history.service.ts), which files it under the
+    // register's machines and writes nothing else.
+    const ownMachines = await AtmMachineModel.exists({
+      branchId,
+      _id: { $nin: legacyMachines.map((doc) => doc._id) },
+    }).exec();
+    if (ownMachines !== null) {
+      throw new Error(
+        `--branch=${options.branchId} already has machines in ECMS: this importer would add the ` +
+          'legacy machines beside them. Import the history from /atm/settings («استيراد السجل القديم»).',
+      );
+    }
     const machines = legacyMachines.map((doc) => machineFromLegacy(doc, branchId, now));
     const machinesWritten = await writeRows(
       AtmMachineModel as unknown as mongoose.Model<never>,

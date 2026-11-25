@@ -25,11 +25,14 @@
 // None of the others declares `onError`: a refused write reaches the reader through the global
 // mutation toast in their own language (`shared/lib/query-client.ts`) — one failure, one message.
 // The move does, because its dialog words the 409 itself («ظهر ما يمنعه منذ المعاينة»), where the
-// global toast could only repeat the server's English sentence.
+// global toast could only repeat the server's English sentence; so does the legacy history's start,
+// whose dialog words its refusals (another run, a move, an unreadable source) the same way.
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type AtmDisplaySetting,
   type AtmBranchMovePreviewDto,
+  type AtmLegacyImportBody,
+  type AtmLegacySource,
   type SaveAtmBranchLinks,
   type SaveAtmLeaderDepartments,
   type SaveAtmMailboxConfigInput,
@@ -56,6 +59,10 @@ export const atmLeaderDepartmentsKey = (): readonly unknown[] =>
 export const atmDisplayKey = (): readonly unknown[] => listKey(MODULE, 'display');
 export const atmBranchMovePreviewKey = (sourceBranchId: string): readonly unknown[] =>
   detailKey(MODULE, 'branchMove', sourceBranchId);
+/** The legacy history card's sources, and one source's suggested cutover. */
+export const atmLegacySourcesKey = (): readonly unknown[] => listKey(MODULE, 'legacyImport');
+export const atmLegacyCutoverKey = (source: AtmLegacySource): readonly unknown[] =>
+  detailKey(MODULE, 'legacyImport', `${source}:cutover`);
 
 // ── The maintenance mailbox ─────────────────────────────────────────────────
 /**
@@ -200,4 +207,66 @@ export const useSaveAtmDisplay = () => {
       client.setQueryData(atmDisplayKey(), saved);
     },
   });
+};
+
+// ── The legacy history ──────────────────────────────────────────────────────
+// The start is a mutation; the run's steps and an undo are LOOPS the card drives (one step, one
+// batch per request), so they are plain calls (`settings-api.ts`): the card re-reads its sources
+// when a loop ends or stops. The preview is a read, kept per body: the dialog asks again when the
+// cut or the open-row switch changes, and keeps the last numbers on screen (dimmed) meanwhile.
+/**
+ * The card's rows. While a row shows a run another window drives (`active`, on the server's
+ * clock), the list is read again every 15 seconds — nothing else tells this window when that run
+ * pauses or ends (no realtime event, no refetch on focus).
+ */
+export const useAtmLegacySources = (enabled = true) =>
+  useQuery({
+    queryKey: atmLegacySourcesKey(),
+    queryFn: () => api.getLegacySources(),
+    enabled,
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((row) => row.lastRun?.active === true) ? 15_000 : false,
+  });
+
+/** The moment the source's branch began working in ECMS — asked when its dialog opens. */
+export const useAtmLegacyCutover = (source: AtmLegacySource | null) =>
+  useQuery({
+    queryKey: atmLegacyCutoverKey(source ?? 'alex'),
+    queryFn: () => api.getLegacyCutover(source as AtmLegacySource),
+    enabled: source !== null,
+    staleTime: 0,
+  });
+
+export const useAtmLegacyPreview = (body: AtmLegacyImportBody | null) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'legacyImport', JSON.stringify(body)),
+    queryFn: ({ signal }) => api.previewLegacyImport(body as AtmLegacyImportBody, signal),
+    enabled: body !== null,
+    staleTime: 0,
+    // A whole source is read: a failure is shown with its retry, never repeated unasked.
+    retry: false,
+    // The last numbers stay while a changed cut is read — never another source's.
+    placeholderData: (previous) =>
+      previous !== undefined && previous.source === body?.source ? previous : undefined,
+  });
+
+/**
+ * «استيراد» — starts a run; the card then steps it. It declares `onError`: the dialog words the
+ * refusal itself (another run, a move, an unreadable source), and the card re-reads either way —
+ * a 409 means the sources' rows are not what the card shows.
+ */
+export const useStartAtmLegacyImport = () => {
+  const client = useQueryClient();
+  const restale = (): void => void client.invalidateQueries({ queryKey: atmLegacySourcesKey() });
+  return useMutation({
+    mutationFn: (body: AtmLegacyImportBody) => api.startLegacyImport(body),
+    onSuccess: restale,
+    onError: restale,
+  });
+};
+
+/** Re-reads the card — after a loop ends, stops or fails. */
+export const useRestaleAtmLegacySources = () => {
+  const client = useQueryClient();
+  return (): void => void client.invalidateQueries({ queryKey: atmLegacySourcesKey() });
 };

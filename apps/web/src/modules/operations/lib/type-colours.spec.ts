@@ -11,6 +11,7 @@ import {
   type OperationsShiftTypeDto,
 } from '@ecms/contracts';
 import {
+  NO_ROW_COLOUR,
   PALETTE,
   colourWearers,
   freeColourFor,
@@ -21,6 +22,7 @@ import {
   paletteOverflow,
   resolveRowColour,
   rowColourChoices,
+  swatchPress,
   typeColourOf,
 } from './type-colours';
 
@@ -222,5 +224,66 @@ describe('the arrows in a grid of swatches', () => {
     expect(gridStep('End', 0, 9, 6, true)).toBe(8);
     expect(gridStep('Enter', 0, 9, 6, true)).toBeNull();
     expect(gridStep('ArrowLeft', 0, 0, 6, true)).toBeNull();
+  });
+});
+
+// Round 34 C — «ما انا عاوز مش لازم نوع يكون واخد اجبارى لون فاهم ولو انا مثبت لون للنوع ممكن لو تندى صف
+// اشيل لونه عادى»: a type may have no colour, and any row may be «بدون لون» over its type's.
+describe('Round 34 C — colours are optional: a type without one, a row «بدون لون»', () => {
+  const BARE = type('secured', null);
+
+  it('a row’s colour has three states — «لون النوع» (null), a colour picked, «بدون لون» picked', () => {
+    expect(NO_ROW_COLOUR).toBe('none');
+    // «بدون لون» wins over the type's colour, and is said to be the row's own choice.
+    expect(resolveRowColour('none', 'slate')).toEqual({ colour: null, source: 'none' });
+    expect(resolveRowColour('none', null)).toEqual({ colour: null, source: 'none' });
+    // null stays «لون النوع» — an old row keeps wearing its type's colour.
+    expect(resolveRowColour(null, 'slate')).toEqual({ colour: 'slate', source: 'type' });
+    expect(resolveRowColour('navy', 'slate')).toEqual({ colour: 'navy', source: 'row' });
+    // A type with no colour, «لون النوع» kept: drawn as an uncoloured row.
+    expect(resolveRowColour(null, null)).toEqual({ colour: null, source: null });
+  });
+
+  it('a type with no colour has none to give its rows', () => {
+    expect(typeColourOf([BARE, type('daily', 'rose')], 'secured')).toBeNull();
+    expect(typeColourOf([BARE, type('daily', 'rose')], 'daily')).toBe('rose');
+    expect(resolveRowColour(null, typeColourOf([BARE], 'secured')).colour).toBeNull();
+  });
+
+  it('a type with no colour still counts in the palette, and wears no swatch of it', () => {
+    const types = [type('daily', 'rose'), BARE, type('travel', 'orange')];
+    // Three live types: three swatches — the two worn, then the first unworn one.
+    expect(paletteFor(types)).toEqual(['rose', 'emerald', 'orange']);
+    expect(colourWearers(types, 'slate')).toEqual([]);
+    // A new type is still told apart: the first unworn colour of the palette it would see.
+    expect(freeColourFor(types)).toBe('emerald');
+    expect(paletteFor([BARE])).toEqual(['rose']);
+    expect(freeColourFor([BARE])).toBe('rose');
+  });
+
+  it('«بدون لون» is no swatch of the list, and a type with none is never «off the palette»', () => {
+    const palette = paletteFor(SEEDED);
+    expect(rowColourChoices(palette, 'none')).toEqual(
+      palette.map((colour) => ({ colour, outside: false })),
+    );
+    expect(
+      rowColourChoices(palette, 'none').some((choice) => choice.colour === ('none' as never)),
+    ).toBe(false);
+    expect(inPalette(palette, null)).toBe(true);
+    expect(inPalette(palette, 'navy')).toBe(false);
+  });
+
+  it('«ألوان الأنواع»: «بدون لون» pressed on a type with a colour saves; on one without, reads again', () => {
+    const can = { canEdit: true, busy: false };
+    expect(swatchPress('slate', null, can)).toBe('save');
+    expect(swatchPress(null, null, can)).toBe('reread');
+    expect(swatchPress(null, 'rose', can)).toBe('save');
+    expect(swatchPress('slate', null, { canEdit: false, busy: false })).toBe('none');
+    expect(swatchPress(null, 'rose', { canEdit: true, busy: true })).toBe('none');
+  });
+
+  it('a stored `none` reads as «بدون لون», never as «لون النوع»', () => {
+    expect(canonicalCrewRowColour('none')).toBe('none');
+    expect(canonicalCrewRowColour(null)).toBeNull();
   });
 });

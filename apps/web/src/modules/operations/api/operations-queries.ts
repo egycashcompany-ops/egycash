@@ -1283,7 +1283,8 @@ export const useRecolourOperationsShiftType = () => {
       colour,
     }: {
       type: Pick<OperationsShiftTypeDto, 'id' | 'version'>;
-      colour: OperationsShiftTypeColour;
+      /** A palette colour, or null — Round 34 C: the type's colour taken off. */
+      colour: OperationsShiftTypeColour | null;
     }) => api.updateOperationsShiftType(type.id, { colour, version: type.version }),
     onSuccess: (updated) => {
       qc.setQueriesData<Paginated<OperationsShiftTypeDto>>(

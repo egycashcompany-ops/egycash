@@ -708,7 +708,15 @@ export const CatalogsPage = (): JSX.Element => {
     {
       key: 'colour',
       header: t('operations.catalogs.shiftType.colour'),
-      render: (row) => t(`operations.catalogs.shiftType.colours.${row.colour}`),
+      // Round 34 C — a type may have no colour: said in words, never a raw key.
+      render: (row) =>
+        row.colour === null ? (
+          <span data-shift-type-colour="none" className="text-slate-500 dark:text-slate-400">
+            {t('operations.catalogs.shiftType.noColour')}
+          </span>
+        ) : (
+          t(`operations.catalogs.shiftType.colours.${row.colour}`)
+        ),
     },
     {
       key: 'status',

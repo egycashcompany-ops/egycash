@@ -47,6 +47,7 @@ import {
   type OperationsCrewMemberDto,
   type OperationsCrewRole,
   type OperationsCrewRowColour,
+  type OperationsCrewRowColourSetting,
   type OperationsDayBoardDriverDto,
   type OperationsDayBoardPersonDto,
   type OperationsDayBoardVehicleCrewDto,
@@ -76,14 +77,20 @@ export const SHIFT_TYPE_LIST = { page: 1, pageSize: MAX_PAGE_SIZE } as const;
  */
 export const CREW_ROW_COLOURS = OPERATIONS_CREW_ROW_COLOURS;
 export type CrewRowColour = OperationsCrewRowColour;
+/**
+ * What a row's `rowColour` holds besides null («لون النوع») — Round 34 C: a palette colour picked by
+ * hand, or `'none'`, «بدون لون» picked by hand over the type's colour.
+ */
+export type CrewRowColourSetting = OperationsCrewRowColourSetting;
 
 /**
  * A colour as the board will draw it, or none (`canonicalCrewRowColour`): a palette name as it is,
- * Round 20's six mapped (an older server, a row not migrated yet), and anything else — a colour a
- * NEWER server may add before this screen knows it — «no colour», never a class name built from
- * the wire.
+ * Round 20's six mapped (an older server, a row not migrated yet), «بدون لون» (`'none'`) as it is,
+ * and anything else — a colour a NEWER server may add before this screen knows it — «لون النوع»,
+ * never a class name built from the wire.
  */
-const knownColour = (value: string | null): CrewRowColour | null => canonicalCrewRowColour(value);
+const knownColour = (value: string | null): CrewRowColourSetting | null =>
+  canonicalCrewRowColour(value);
 
 // ── The rows ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -119,7 +126,8 @@ export interface PlanRow {
   plannedTime: string | null;
   /** «النوع» — a type of the catalog, by id; null until somebody picks one («اختر»). */
   shiftTypeId: string | null;
-  rowColour: CrewRowColour | null;
+  /** Null «لون النوع» (its type's), a palette colour, or `'none'` «بدون لون» (Round 34 C). */
+  rowColour: CrewRowColourSetting | null;
   notes: string | null;
   /**
    * Round 32 critic — what names the van when its Fleet code names nothing («0», «00» …): its plate

@@ -13014,6 +13014,8 @@ const en: Record<string, string> = {
   'operations.crewPlan.colour.autoOf': 'Type colour ({{colour}})',
   'operations.crewPlan.colour.autoHint':
     'The row takes its type’s colour by itself; a colour picked here overrides it',
+  'operations.crewPlan.colour.noneHint':
+    'The row is drawn with no colour, even when its type has one — “Type colour” gives it back',
   'operations.crewPlan.colour.noType': 'the row has no type',
   'operations.crewPlan.colour.palette': 'The types’ colours ({{count}})',
   'operations.crewPlan.colour.wornBy': '{{colour}} — worn by {{types}}',
@@ -13028,6 +13030,7 @@ const en: Record<string, string> = {
     'A colour for each type, from the palette ({{count}}) — two types may share one',
   'operations.crewPlan.typeColours.type': 'Type',
   'operations.crewPlan.typeColours.pick': '{{type}} in {{colour}}',
+  'operations.crewPlan.typeColours.pickNone': '{{type}} with no colour',
   'operations.crewPlan.typeColours.readOnly':
     'View only — the colours are changed by whoever keeps the reference data',
   'operations.crewPlan.typeColours.overflow':
@@ -13084,6 +13087,7 @@ const en: Record<string, string> = {
   'operations.crewPlan.undo.kind.type': 'the type of row {{row}}',
   'operations.crewPlan.undo.kind.colour': 'colouring row {{row}} {{colour}}',
   'operations.crewPlan.undo.kind.colourAuto': 'returning row {{row}} to its type’s colour',
+  'operations.crewPlan.undo.kind.colourNone': 'taking the colour off row {{row}}',
   'operations.crewPlan.undo.kind.notes': 'the notes of row {{row}}',
   'operations.crewPlan.undo.kind.addRow': 'adding a row without a vehicle',
   'operations.crewPlan.undo.kind.removeRow': 'deleting row {{row}}',
@@ -13098,7 +13102,6 @@ const en: Record<string, string> = {
   // Round 32 critic — a one-way move is said as one, never as a swap.
   'operations.crewPlan.undo.kind.move': 'moving the selected from {{from}} to {{to}}',
   'operations.crewPlan.swap.moved': 'Moved the selected from {{from}} to {{to}}',
-  'operations.crewPlan.swap.itemExchange': 'Exchange {{item}} with {{to}}',
   'operations.crewPlan.swap.reason.archivedPair':
     'the type on {{row}} is archived and stays there — so the two types are not exchanged',
   'operations.crewPlan.swap.shipments': 'Secured: {{count}}',
@@ -13112,7 +13115,6 @@ const en: Record<string, string> = {
   'operations.crewPlan.swap.first': 'First vehicle',
   'operations.crewPlan.swap.second': 'Second vehicle',
   'operations.crewPlan.swap.secondVan': 'the second vehicle',
-  'operations.crewPlan.swap.after': 'After applying',
   'operations.crewPlan.swap.drivers': 'Drivers (stay with the vehicle): {{names}}',
   'operations.crewPlan.swap.pickSecond': 'Choose the second vehicle',
   'operations.crewPlan.swap.pickSecondHint':
@@ -13131,20 +13133,32 @@ const en: Record<string, string> = {
   'operations.crewPlan.swap.colour': 'Row colour',
   'operations.crewPlan.swap.archived': 'Archived',
   'operations.crewPlan.swap.item': 'Move {{item}} to {{to}}',
-  'operations.crewPlan.swap.mode.group': 'How the ticked items go',
+  'operations.crewPlan.swap.mode.group': 'Move the ticked items between the two vehicles',
   'operations.crewPlan.swap.mode.swap': 'Swap selected between {{a}} and {{b}}, both ways',
   'operations.crewPlan.swap.mode.aToB': 'Move selected from {{a}} to {{b}}',
   'operations.crewPlan.swap.mode.bToA': 'Move selected from {{b}} to {{a}}',
+  // Round 34 D — the arrows are actions: a press moves the ticked items at once.
   'operations.crewPlan.swap.receiving': 'Receives',
-  'operations.crewPlan.swap.receivingHint':
-    'In a one-way move the receiving vehicle’s ticks are not read',
-  'operations.crewPlan.swap.preview': 'After applying — preview',
-  'operations.crewPlan.swap.previewHint':
-    'The board changes only on «Apply»; the secured shipments placed on a vehicle stay on it',
+  'operations.crewPlan.swap.why.playing': 'A move is still playing',
+  'operations.crewPlan.swap.why.nothingOn': 'Tick what goes from {{row}} first',
+  'operations.crewPlan.swap.why.nothingEither': 'Tick what is swapped on either vehicle first',
+  'operations.crewPlan.swap.keptLine': '{{item}} was not moved — {{reason}}',
+  'operations.crewPlan.swap.undoLast': 'Undo last move',
+  'operations.crewPlan.swap.undoLastTitle': 'Undo {{what}}',
+  'operations.crewPlan.swap.undoNone': 'No move to undo',
+  'operations.crewPlan.swap.nothingChanged': 'Nothing has changed yet',
+  'operations.crewPlan.swap.changeLocked':
+    'Apply the moves or undo them before changing the second vehicle',
+  // Round 34 D critic — closing with moves asks first; a seat changed on its own row is said.
+  'operations.crewPlan.swap.applyHint': 'The changes reach the board on «Apply»',
+  'operations.crewPlan.swap.closeAsk':
+    'The changes have not reached the board yet — apply them or discard them?',
+  'operations.crewPlan.swap.closeDiscard': 'Discard the changes',
+  'operations.crewPlan.swap.closeStay': 'Keep editing',
+  'operations.crewPlan.swap.fromSlot': 'from {{slot}}',
   'operations.crewPlan.swap.from': 'from {{row}}',
   'operations.crewPlan.swap.was': 'replaces',
-  'operations.crewPlan.swap.left': 'Goes to {{row}}: {{items}}',
-  'operations.crewPlan.swap.kept': 'Stays',
+  'operations.crewPlan.swap.kept': 'Not moved',
   'operations.crewPlan.swap.reason.absent': 'absent on this day',
   'operations.crewPlan.swap.reason.onLeave': 'on leave on this day',
   'operations.crewPlan.swap.reason.notCaptain':
@@ -13155,8 +13169,10 @@ const en: Record<string, string> = {
   'operations.crewPlan.swap.reason.specialistsFull': 'both specialist slots on {{row}} are full',
   'operations.crewPlan.swap.reason.archivedType':
     'an archived type — it is not given to another vehicle',
-  'operations.crewPlan.swap.summary': 'Crossing: {{moved}} · Staying: {{kept}}',
-  'operations.crewPlan.swap.nothing': 'Tick at least one item',
+  'operations.crewPlan.swap.summary': 'Moved: {{moved}} — Kept back: {{kept}}',
+  'operations.crewPlan.swap.summaryReplaced':
+    'Moved: {{moved}} — Replaced: {{replaced}} — Kept back: {{kept}}',
+  'operations.crewPlan.swap.nothing': 'Tick what goes, then press an arrow',
   'operations.crewPlan.swap.apply': 'Apply',
   'operations.crewPlan.swap.done': 'Swapped between {{a}} and {{b}}',
   'operations.crewPlan.swap.doneHint': 'Press «Save» to keep it, or «Undo» to take it back.',
@@ -13538,6 +13554,9 @@ const en: Record<string, string> = {
   'operations.catalogs.shiftType.nameEn': 'Name (English)',
   'operations.catalogs.shiftType.colour': 'Colour',
   'operations.catalogs.shiftType.colourHint': 'How the type reads on the crew board',
+  'operations.catalogs.shiftType.noColour': 'No colour',
+  'operations.catalogs.shiftType.noColourHint':
+    'The type has no colour: its rows are drawn uncoloured, unless a row is coloured by hand',
   'operations.catalogs.shiftType.nameTaken': 'Another type already has this name.',
   'operations.catalogs.shiftType.dragToOrder': 'Drag the row to change its place',
   'operations.catalogs.shiftType.moveUp': 'Move up',
@@ -28858,6 +28877,8 @@ const ar: Record<string, string> = {
   'operations.crewPlan.colour.autoOf': 'لون النوع ({{colour}})',
   'operations.crewPlan.colour.autoHint':
     'يأخذ الصف لون نوعه تلقائيًا، واللون المختار هنا يحل محله',
+  'operations.crewPlan.colour.noneHint':
+    'يظهر الصف بلا لون ولو كان لنوعه لون، ويعيده «لون النوع» إلى لون نوعه',
   'operations.crewPlan.colour.noType': 'لا نوع للصف',
   'operations.crewPlan.colour.palette': 'ألوان الأنواع ({{count}})',
   'operations.crewPlan.colour.wornBy': '{{colour}} — يحمله: {{types}}',
@@ -28872,6 +28893,7 @@ const ar: Record<string, string> = {
     'لكل نوع لون من ألوان اللوحة ({{count}})، ويجوز أن يشترك نوعان في لون واحد',
   'operations.crewPlan.typeColours.type': 'النوع',
   'operations.crewPlan.typeColours.pick': '{{type}} باللون {{colour}}',
+  'operations.crewPlan.typeColours.pickNone': '{{type}} بدون لون',
   'operations.crewPlan.typeColours.readOnly':
     'للعرض فقط — تُغيَّر الألوان بصلاحية إدارة البيانات المرجعية',
   'operations.crewPlan.typeColours.overflow':
@@ -28928,6 +28950,7 @@ const ar: Record<string, string> = {
   'operations.crewPlan.undo.kind.type': 'تغيير نوع الصف {{row}}',
   'operations.crewPlan.undo.kind.colour': 'تلوين الصف {{row}} باللون {{colour}}',
   'operations.crewPlan.undo.kind.colourAuto': 'إعادة الصف {{row}} إلى لون نوعه',
+  'operations.crewPlan.undo.kind.colourNone': 'إزالة لون الصف {{row}}',
   'operations.crewPlan.undo.kind.notes': 'تعديل ملاحظات الصف {{row}}',
   'operations.crewPlan.undo.kind.addRow': 'إضافة صف بدون سيارة',
   'operations.crewPlan.undo.kind.removeRow': 'حذف الصف {{row}}',
@@ -28942,7 +28965,6 @@ const ar: Record<string, string> = {
   // Round 32 critic — النقل باتجاه واحد يُسمّى نقلًا، لا تبديلًا.
   'operations.crewPlan.undo.kind.move': 'نقل المحدد من {{from}} إلى {{to}}',
   'operations.crewPlan.swap.moved': 'تم نقل المحدد من {{from}} إلى {{to}}',
-  'operations.crewPlan.swap.itemExchange': 'تبديل {{item}} مع {{to}}',
   'operations.crewPlan.swap.reason.archivedPair':
     'نوع {{row}} مؤرشف ويبقى عليها — فلا يُبادَل النوعان',
   'operations.crewPlan.swap.shipments': 'محصنات: {{count}}',
@@ -28956,7 +28978,6 @@ const ar: Record<string, string> = {
   'operations.crewPlan.swap.first': 'السيارة الأولى',
   'operations.crewPlan.swap.second': 'السيارة الثانية',
   'operations.crewPlan.swap.secondVan': 'السيارة الثانية',
-  'operations.crewPlan.swap.after': 'بعد التطبيق',
   'operations.crewPlan.swap.drivers': 'السائقون (يبقون مع السيارة): {{names}}',
   'operations.crewPlan.swap.pickSecond': 'اختر السيارة الثانية',
   'operations.crewPlan.swap.pickSecondHint': 'أي صف آخر في اللوحة، ومنها الصفوف بدون سيارة.',
@@ -28974,20 +28995,31 @@ const ar: Record<string, string> = {
   'operations.crewPlan.swap.colour': 'لون الصف',
   'operations.crewPlan.swap.archived': 'مؤرشف',
   'operations.crewPlan.swap.item': 'نقل {{item}} إلى {{to}}',
-  'operations.crewPlan.swap.mode.group': 'طريقة نقل المحدد',
+  'operations.crewPlan.swap.mode.group': 'نقل المحدد بين السيارتين',
   'operations.crewPlan.swap.mode.swap': 'تبديل المحدد بين {{a}} و{{b}} في الاتجاهين',
   'operations.crewPlan.swap.mode.aToB': 'نقل المحدد من {{a}} إلى {{b}}',
   'operations.crewPlan.swap.mode.bToA': 'نقل المحدد من {{b}} إلى {{a}}',
+  // Round 34 D — الأسهم أفعال: الضغط على سهم ينقل المحدد في الحال.
   'operations.crewPlan.swap.receiving': 'تستقبل',
-  'operations.crewPlan.swap.receivingHint':
-    'في النقل باتجاه واحد لا تُقرأ تحديدات السيارة المستقبِلة',
-  'operations.crewPlan.swap.preview': 'بعد التطبيق — معاينة',
-  'operations.crewPlan.swap.previewHint':
-    'لا تتغير اللوحة إلا عند «تطبيق»، والمحصنات الموزَّعة على سيارة تبقى عليها',
+  'operations.crewPlan.swap.why.playing': 'النقل الجاري لم يكتمل بعد',
+  'operations.crewPlan.swap.why.nothingOn': 'حدّد ما يُنقل من {{row}} أولًا',
+  'operations.crewPlan.swap.why.nothingEither': 'حدّد ما يُبدَّل على إحدى السيارتين أولًا',
+  'operations.crewPlan.swap.keptLine': 'لم يُنقل {{item}} — {{reason}}',
+  'operations.crewPlan.swap.undoLast': 'تراجع عن آخر نقل',
+  'operations.crewPlan.swap.undoLastTitle': 'تراجع عن {{what}}',
+  'operations.crewPlan.swap.undoNone': 'لا يوجد نقل للتراجع عنه',
+  'operations.crewPlan.swap.nothingChanged': 'لم يتغيّر شيء بعد',
+  'operations.crewPlan.swap.changeLocked': 'طبِّق النقل أو تراجع عنه قبل تغيير السيارة الثانية',
+  // Round 34 D critic — الإغلاق مع وجود تغييرات يسأل أولًا، ويُذكر تغيّر الخانة على السيارة نفسها.
+  'operations.crewPlan.swap.applyHint': 'تنتقل التغييرات إلى اللوحة عند «تطبيق»',
+  'operations.crewPlan.swap.closeAsk':
+    'لم تنتقل التغييرات إلى اللوحة بعد — هل تريد تطبيقها أم تجاهلها؟',
+  'operations.crewPlan.swap.closeDiscard': 'تجاهل التغييرات',
+  'operations.crewPlan.swap.closeStay': 'متابعة التعديل',
+  'operations.crewPlan.swap.fromSlot': 'من {{slot}}',
   'operations.crewPlan.swap.from': 'من {{row}}',
   'operations.crewPlan.swap.was': 'بدلًا من',
-  'operations.crewPlan.swap.left': 'ينتقل إلى {{row}}: {{items}}',
-  'operations.crewPlan.swap.kept': 'لا يُنقل',
+  'operations.crewPlan.swap.kept': 'لم يُنقل',
   'operations.crewPlan.swap.reason.absent': 'غائب في هذا اليوم',
   'operations.crewPlan.swap.reason.onLeave': 'في إجازة في هذا اليوم',
   'operations.crewPlan.swap.reason.notCaptain': 'ليس قائدًا — خانة القائد للقادة فقط',
@@ -28995,8 +29027,10 @@ const ar: Record<string, string> = {
   'operations.crewPlan.swap.reason.captainFull': 'خانة القائد في {{row}} ممتلئة',
   'operations.crewPlan.swap.reason.specialistsFull': 'خانتا الأخصائيين في {{row}} ممتلئتان',
   'operations.crewPlan.swap.reason.archivedType': 'نوع مؤرشف — لا يُعطى لسيارة أخرى',
-  'operations.crewPlan.swap.summary': 'يُنقل: {{moved}} · لا يُنقل: {{kept}}',
-  'operations.crewPlan.swap.nothing': 'حدّد عنصرًا واحدًا على الأقل',
+  'operations.crewPlan.swap.summary': 'نُقل: {{moved}} — بقي: {{kept}}',
+  'operations.crewPlan.swap.summaryReplaced':
+    'نُقل: {{moved}} — استُبدل: {{replaced}} — بقي: {{kept}}',
+  'operations.crewPlan.swap.nothing': 'حدّد ما يُنقل ثم اضغط سهمًا',
   'operations.crewPlan.swap.apply': 'تطبيق',
   'operations.crewPlan.swap.done': 'تم التبديل بين {{a}} و{{b}}',
   'operations.crewPlan.swap.doneHint': 'اضغط «حفظ» لحفظه، أو «تراجع» لإلغائه.',
@@ -29359,6 +29393,9 @@ const ar: Record<string, string> = {
   'operations.catalogs.shiftType.nameEn': 'الاسم (إنجليزي)',
   'operations.catalogs.shiftType.colour': 'اللون',
   'operations.catalogs.shiftType.colourHint': 'هكذا يظهر النوع في لوحة التشغيلة',
+  'operations.catalogs.shiftType.noColour': 'بدون لون',
+  'operations.catalogs.shiftType.noColourHint':
+    'لا لون لهذا النوع، فتظهر صفوفه بلا لون إلا ما لُوِّن منها يدويًا',
   'operations.catalogs.shiftType.nameTaken': 'يوجد نوع آخر بهذا الاسم.',
   'operations.catalogs.shiftType.dragToOrder': 'اسحب الصف لتغيير ترتيبه',
   'operations.catalogs.shiftType.moveUp': 'نقل لأعلى',

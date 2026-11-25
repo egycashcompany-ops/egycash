@@ -810,6 +810,8 @@ const CREW_PLAN_KEYS = [
     'unworn',
     'outside',
     'empty',
+    // Round 34 C — «بدون لون» picked on a row, over its type's colour.
+    'noneHint',
   ].map((key) => `operations.crewPlan.colour.${key}`),
   ...[
     'open',
@@ -824,12 +826,14 @@ const CREW_PLAN_KEYS = [
     'empty',
     'saved',
     'stale',
+    'pickNone',
   ].map((key) => `operations.crewPlan.typeColours.${key}`),
   // Round 24 — «تراجع», one operation a press: the button's words, and each operation's (Round 24b:
   // a colour picked, and a row given back its type's).
   ...['title', 'none', 'done'].map((key) => `operations.crewPlan.undo.${key}`),
   ...[
-    ...['place', 'free', 'direction', 'time', 'type', 'colour', 'colourAuto', 'notes'],
+    ...['place', 'free', 'direction', 'time', 'type', 'colour', 'colourAuto', 'colourNone'],
+    'notes',
     ...['addRow', 'removeRow', 'clearRow', 'giveVan', 'dropVan', 'standingLoad', 'standingClear'],
     'restoreRow',
   ].map((key) => `operations.crewPlan.undo.kind.${key}`),
@@ -931,6 +935,9 @@ const SHIFT_TYPE_KEYS = [
     'restore',
     'archived',
     'restored',
+    // Round 34 C — «مش لازم نوع يكون واخد اجبارى لون».
+    'noColour',
+    'noColourHint',
   ].map((key) => `operations.catalogs.shiftType.${key}`),
   ...OPERATIONS_SHIFT_TYPE_COLOURS.map(
     (colour) => `operations.catalogs.shiftType.colours.${colour}`,

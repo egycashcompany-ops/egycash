@@ -85,6 +85,26 @@ export default {
           '0%': { opacity: '0', transform: 'translateY(10px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
+        // Round 34 D — «تبديل بين سيارتين»: a pressed arrow's glyph nudges toward the card that
+        // receives (along its own arrow in the drawing — the glyph's turn carries it on screen),
+        // twice in the 1.4s it stays filled (`SWAP_HOLD_MS`); what arrives settles in, and what a
+        // rule keeps back flashes rose, in the same time.
+        'swap-nudge': {
+          '0%, 100%': { transform: 'translateX(0)' },
+          '50%': { transform: 'translateX(3px)' },
+        },
+        'swap-nudge-back': {
+          '0%, 100%': { transform: 'translateX(0)' },
+          '50%': { transform: 'translateX(-3px)' },
+        },
+        'swap-arrive': {
+          '0%': { opacity: '0.2', transform: 'scale(0.97)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+        'swap-flash': {
+          '0%, 100%': { backgroundColor: 'rgb(244 63 94 / 0.12)' },
+          '50%': { backgroundColor: 'rgb(244 63 94 / 0.34)' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 150ms ease-out',
@@ -93,6 +113,10 @@ export default {
         'dialog-in': 'dialog-in 280ms cubic-bezier(0.16, 1, 0.3, 1)',
         'menu-in': 'menu-in 130ms cubic-bezier(0.16, 1, 0.3, 1)',
         'slide-up': 'slide-up 220ms cubic-bezier(0.16, 1, 0.3, 1)',
+        'swap-nudge': 'swap-nudge 700ms cubic-bezier(0.45, 0, 0.55, 1) 2',
+        'swap-nudge-back': 'swap-nudge-back 700ms cubic-bezier(0.45, 0, 0.55, 1) 2',
+        'swap-arrive': 'swap-arrive 450ms cubic-bezier(0.16, 1, 0.3, 1)',
+        'swap-flash': 'swap-flash 700ms ease-in-out 2',
       },
     },
   },

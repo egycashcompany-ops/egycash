@@ -18,12 +18,26 @@
 // where each arrow then points, in the order the eye meets them on screen; the spec turns the
 // drawing by the classes' own matrix and holds the two to each other.
 //
-// THE COLOURS. The two one-way arrows share ONE hue, sky; the swap, the default way, the brand's
-// indigo — two hues apart from each other and from the preview's emerald «من 213» and rose «يبقى».
-// Off: a tinted outline and a soft fill in the way's hue; on: the hue solid, the glyph white, a ring
-// in the hue around it and its shadow. The keyboard's focus is a neutral outline outside that ring.
+// THE COLOURS (Round 34 D — «السهم اللي فوق رصاصي والسهم اللي تحت رصاصي واللي في النص بنفسجي …
+// البنفسجي ده هو اللون الأشمل للويب سايت. أنا عايز تكون ألوان مختلفة»). Never grey, never the site's
+// violet: the two one-way arrows share ONE hue, sky; the swap another, orange — both apart from the
+// brand, from the cards' emerald «من 213» and rose «لم يُنقل», and from the amber «إجازة». At REST
+// each arrow is plainly in its own colour (a tinted fill, a coloured border and glyph); under the
+// pointer or the keyboard's focus it fills solid in it with a white glyph; PRESSED, it stays so
+// while the data moves (`held`), its glyph nudging toward the receiving card (not under reduced
+// motion), then rests again. The keyboard's focus also has a neutral outline outside the ring.
+//
+// NO WAY IS «SELECTED» (Round 34 D — «أنا يعتبر محدد اللي في النص»): the arrows are ACTIONS. A
+// toolbar of three buttons — one in the Tab order, the arrow keys moving the focus among them in the
+// reading direction (`modeStepOf`), Enter and Space pressing the one focused. An arrow that cannot
+// act says why in its tooltip and its name (`aria-disabled`, still focusable, so the reason is read).
+//
+// AN ARROW THAT CANNOT ACT (Round 34 D critic) is what the window shows most — at opening nothing is
+// ticked, and after a press the ticks it read are gone — so it keeps its colour whole: the same
+// glyph as at rest (sky-700 5.9:1, orange-700 5.2:1 on white; dark sky-300 / orange-300), on no
+// tint, a lighter border; under the pointer its own colour comes as a soft tint, never the solid
+// fill that a press would follow. It was softened to 60% — 2.6:1 and 2.5:1, faded.
 import { cn } from '../../../shared/lib/cn';
-import { StrokeIcon } from '../../../shared/ui/StrokeIcon';
 import { SWAP_MODES, modeStepOf, type SwapMode } from '../lib/crew-swap';
 
 /** A physical direction on the screen. */
@@ -52,27 +66,80 @@ export type SwapArrowTone = 'oneWay' | 'swap';
 export const swapArrowTone = (mode: SwapMode): SwapArrowTone =>
   mode === 'swap' ? 'swap' : 'oneWay';
 
-/** Each hue off and on, dark and light (white on sky-600 4.1:1, on brand-600 6.3:1). */
-export const SWAP_ARROW_LOOK: Record<SwapArrowTone, { off: string; on: string }> = {
+/**
+ * Each hue at rest, under the pointer or the focus (`active`), pressed (`held`), and unable to act
+ * (`off`) — light and dark. Solid: white on sky-600 #0284c7 4.10:1, on orange-600 #ea580c 3.56:1 (a
+ * glyph: 3:1 is the bar). At rest: sky-700 on sky-50 5.6:1, orange-700 on orange-50 4.9:1; dark,
+ * sky-300 / orange-300 on their 15% tint over the window's navy, above 8:1. Off: the same glyphs on
+ * the window itself (5.9:1, 5.2:1; dark above 9:1), a soft tint of their own under the pointer
+ * (sky-100 5.2:1, orange-100 4.5:1).
+ */
+export const SWAP_ARROW_LOOK: Record<
+  SwapArrowTone,
+  { rest: string; active: string; held: string; focus: string; off: string }
+> = {
   oneWay: {
-    off: 'border-sky-300 bg-sky-50 text-sky-700 hover:border-sky-500 hover:bg-sky-100 dark:border-sky-400/45 dark:bg-sky-400/10 dark:text-sky-300 dark:hover:border-sky-300 dark:hover:bg-sky-400/20',
-    on: 'border-sky-600 bg-sky-600 text-white ring-2 ring-sky-500/70 ring-offset-2 ring-offset-white shadow-[0_8px_20px_-8px_rgba(2,132,199,0.95)] dark:border-sky-500 dark:ring-sky-400/70 dark:ring-offset-[#121c3f]',
+    off: 'border-sky-300 bg-white text-sky-700 hover:border-sky-400 hover:bg-sky-100 dark:border-sky-400/40 dark:bg-transparent dark:text-sky-300 dark:hover:border-sky-400/60 dark:hover:bg-sky-400/15',
+    focus:
+      'focus-visible:ring-2 focus-visible:ring-sky-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#121c3f]',
+    rest: 'border-sky-500 bg-sky-50 text-sky-700 dark:border-sky-400/70 dark:bg-sky-400/15 dark:text-sky-300',
+    active:
+      'hover:border-sky-600 hover:bg-sky-600 hover:text-white focus-visible:border-sky-600 focus-visible:bg-sky-600 focus-visible:text-white dark:hover:border-sky-500 dark:hover:bg-sky-600 dark:hover:text-white dark:focus-visible:border-sky-500 dark:focus-visible:bg-sky-600 dark:focus-visible:text-white',
+    held: 'border-sky-600 bg-sky-600 text-white ring-2 ring-sky-500/60 ring-offset-2 ring-offset-white shadow-[0_8px_20px_-8px_rgba(2,132,199,0.95)] dark:border-sky-500 dark:bg-sky-600 dark:text-white dark:ring-sky-400/60 dark:ring-offset-[#121c3f]',
   },
   swap: {
-    off: 'border-brand-300 bg-brand-50 text-brand-700 hover:border-brand-500 hover:bg-brand-100 dark:border-brand-400/45 dark:bg-brand-400/10 dark:text-brand-200 dark:hover:border-brand-300 dark:hover:bg-brand-400/20',
-    on: 'border-brand-600 bg-brand-600 text-white ring-2 ring-brand-500/70 ring-offset-2 ring-offset-white shadow-[0_8px_20px_-8px_rgba(79,70,229,0.95)] dark:border-brand-500 dark:bg-brand-500 dark:ring-brand-400/70 dark:ring-offset-[#121c3f]',
+    off: 'border-orange-300 bg-white text-orange-700 hover:border-orange-400 hover:bg-orange-100 dark:border-orange-400/40 dark:bg-transparent dark:text-orange-300 dark:hover:border-orange-400/60 dark:hover:bg-orange-400/15',
+    focus:
+      'focus-visible:ring-2 focus-visible:ring-orange-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#121c3f]',
+    rest: 'border-orange-500 bg-orange-50 text-orange-700 dark:border-orange-400/70 dark:bg-orange-400/15 dark:text-orange-300',
+    active:
+      'hover:border-orange-600 hover:bg-orange-600 hover:text-white focus-visible:border-orange-600 focus-visible:bg-orange-600 focus-visible:text-white dark:hover:border-orange-500 dark:hover:bg-orange-600 dark:hover:text-white dark:focus-visible:border-orange-500 dark:focus-visible:bg-orange-600 dark:focus-visible:text-white',
+    held: 'border-orange-600 bg-orange-600 text-white ring-2 ring-orange-500/60 ring-offset-2 ring-offset-white shadow-[0_8px_20px_-8px_rgba(234,88,12,0.95)] dark:border-orange-500 dark:bg-orange-600 dark:text-white dark:ring-orange-400/60 dark:ring-offset-[#121c3f]',
   },
 };
 
-/** The button's frame, either hue: ≥ 44px on touch, the focus outside the selected ring. */
+/**
+ * The button's frame, either hue: ≥ 44px on touch; the keyboard's focus a neutral outline outside
+ * the ring, the ring in the arrow's own hue (`focus` — never the base layer's brand ring: none of an
+ * arrow is the site's violet).
+ */
 export const SWAP_ARROW_BUTTON =
-  'flex h-12 w-16 shrink-0 items-center justify-center rounded-xl border transition-colors lg:w-14 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[5px] focus-visible:outline-slate-900 dark:focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none';
+  'flex h-12 w-16 shrink-0 items-center justify-center rounded-xl border transition-colors duration-150 lg:w-14 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[5px] focus-visible:outline-slate-900 dark:focus-visible:outline-white';
 
-/** Drawn pointing right: one arrow, or the swap's two (top → , bottom ←). */
-const GLYPH: Record<SwapArrowTone, readonly string[]> = {
-  oneWay: ['M4 12h15', 'M13 6l6 6-6 6'],
-  swap: ['M4 8h15', 'M15 4l4 4-4 4', 'M20 16H5', 'M9 12l-4 4 4 4'],
+/**
+ * An arrow that cannot act now, and is not the one playing: whole in its own colour (never grey —
+ * «مش عايز … رصاصي» — and never faded), on no tint, its reason in its tooltip; under the pointer a
+ * soft tint of its colour (`SWAP_ARROW_LOOK[…].off`), never the solid fill of an arrow that acts.
+ */
+export const SWAP_ARROW_OFF = 'cursor-not-allowed';
+
+/**
+ * An arrow's classes: its hue at rest, filled under the pointer and the focus, filled while held;
+ * unable to act, its colour whole on no tint.
+ */
+export const swapArrowClasses = (
+  mode: SwapMode,
+  state: { held: boolean; disabled: boolean },
+): string => {
+  const look = SWAP_ARROW_LOOK[swapArrowTone(mode)];
+  if (state.held) return cn(SWAP_ARROW_BUTTON, look.focus, look.held);
+  if (state.disabled) return cn(SWAP_ARROW_BUTTON, look.focus, look.off, SWAP_ARROW_OFF);
+  return cn(SWAP_ARROW_BUTTON, look.focus, look.rest, look.active);
 };
+
+/**
+ * Drawn pointing right, each arrow its own group so a held glyph can nudge it toward where it
+ * points: one arrow, or the swap's two (top → , bottom ←).
+ */
+const GLYPH: Record<SwapArrowTone, readonly (readonly string[])[]> = {
+  oneWay: [['M4 12h15', 'M13 6l6 6-6 6']],
+  swap: [
+    ['M4 8h15', 'M15 4l4 4-4 4'],
+    ['M20 16H5', 'M9 12l-4 4 4 4'],
+  ],
+};
+/** Each group's nudge while held — along its own arrow in the drawing, so the turn carries it. */
+const NUDGE = ['motion-safe:animate-swap-nudge', 'motion-safe:animate-swap-nudge-back'] as const;
 
 /**
  * The turn that makes the drawing point where `swapArrowAim` says, per layout. (Tailwind composes
@@ -95,8 +162,16 @@ export const swapArrowTurn = (mode: SwapMode, rtl: boolean): string => {
   return cn(stacked, wide);
 };
 
-/** A way's arrow (or the swap's two), turned for the layout and the language. */
-export const SwapArrowGlyph = ({ mode, rtl }: { mode: SwapMode; rtl: boolean }): JSX.Element => {
+/** A way's arrow (or the swap's two), turned for the layout and the language; nudging while held. */
+export const SwapArrowGlyph = ({
+  mode,
+  rtl,
+  moving = false,
+}: {
+  mode: SwapMode;
+  rtl: boolean;
+  moving?: boolean;
+}): JSX.Element => {
   const aim = swapArrowAim(mode, rtl);
   return (
     <span
@@ -106,74 +181,102 @@ export const SwapArrowGlyph = ({ mode, rtl }: { mode: SwapMode; rtl: boolean }):
       data-swap-points-stacked={aim.stacked.join(' ')}
       className={cn('flex h-7 w-7 items-center justify-center', swapArrowTurn(mode, rtl))}
     >
-      <StrokeIcon d={GLYPH[swapArrowTone(mode)]} className="h-7 w-7" width={2.4} />
+      <svg
+        className="h-7 w-7 overflow-visible"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        {GLYPH[swapArrowTone(mode)].map((part, at) => (
+          <g
+            key={part.join(' ')}
+            data-swap-nudge={moving ? String(at) : undefined}
+            className={moving ? NUDGE[at] : undefined}
+          >
+            {part.map((d) => (
+              <path key={d} d={d} strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.4} />
+            ))}
+          </g>
+        ))}
+      </svg>
     </span>
   );
 };
 
 /**
- * The three ways as a radio group between the two cards — the arrows, one in the Tab order, the
- * arrow keys stepping in the reading direction (`modeStepOf`: in Arabic «←» is the next way, the
- * row running right to left; «↓» in the column). No hooks of its own: the window hands it the way
- * on, the names and what to do on a pick — so what a key does is the element's own handler, which
- * a suite can call.
+ * The three arrows between the two cards — a toolbar of ACTIONS. No hooks of its own: the window
+ * hands it each arrow's name, why it cannot act (or null), the one held, the one in the Tab order,
+ * and what a press does — so what a key or a click does is the element's own handler, which a suite
+ * can call.
  */
-export const SwapWays = ({
-  mode,
+export const SwapArrows = ({
   rtl,
-  groupLabel,
+  label,
   nameOf,
-  disabled,
-  onPick,
+  whyOf,
+  held,
+  focusWay,
+  onFocusWay,
+  onPress,
   buttonRef,
 }: {
-  mode: SwapMode;
   rtl: boolean;
-  groupLabel: string;
-  /** Each way's name and tooltip — what it does, with both vans. */
+  /** The toolbar's name. */
+  label: string;
+  /** Each arrow's name and tooltip — what it does, with both vans. */
   nameOf: (mode: SwapMode) => string;
-  /** No second van yet: none to press. */
-  disabled: boolean;
-  /** A way picked — by a click, or by an arrow key (the window then moves the focus to it). */
-  onPick: (mode: SwapMode, by: 'click' | 'key') => void;
+  /** Why the arrow cannot act now, in words — or null when it can. */
+  whyOf: (mode: SwapMode) => string | null;
+  /** The arrow just pressed, filled while the data moves — or null, all at rest. */
+  held: SwapMode | null;
+  /** The arrow in the Tab order (the toolbar's roving stop). */
+  focusWay: SwapMode;
+  /** The focus moved to an arrow — by the arrow keys (the window then focuses it), or by Tab. */
+  onFocusWay: (mode: SwapMode, by: 'key' | 'focus') => void;
+  /** An arrow pressed (a click, Enter or Space) — only ever one that can act. */
+  onPress: (mode: SwapMode) => void;
   buttonRef?: (mode: SwapMode, node: HTMLButtonElement | null) => void;
 }): JSX.Element => (
   <div
-    role="radiogroup"
-    aria-label={groupLabel}
+    role="toolbar"
+    aria-label={label}
     data-swap-modes="true"
     onKeyDown={(event) => {
       const by = modeStepOf(event.key, rtl);
       if (by === 0) return;
       event.preventDefault();
-      const at = SWAP_MODES.indexOf(mode);
-      onPick(SWAP_MODES[(at + by + SWAP_MODES.length) % SWAP_MODES.length] as SwapMode, 'key');
+      const at = SWAP_MODES.indexOf(focusWay);
+      onFocusWay(SWAP_MODES[(at + by + SWAP_MODES.length) % SWAP_MODES.length] as SwapMode, 'key');
     }}
     className="flex flex-row items-center justify-center gap-3.5 lg:flex-col"
   >
     {/* Round 34 A — each way an ARROW from the sending card to the receiving one (side by side:
         left or right by the language; stacked: down or up), the two one-way arrows in one hue
         and the swap's two, one under the other, in another. No word on the button: its name and
-        its tooltip say what it does, with both vans' names. */}
+        its tooltip say what it does, with both vans' names — and, when it cannot act, why. */}
     {SWAP_MODES.map((one) => {
-      const on = mode === one;
-      const label = nameOf(one);
+      const why = whyOf(one);
+      const isHeld = held === one;
+      const name = why === null ? nameOf(one) : `${nameOf(one)} — ${why}`;
       return (
         <button
           key={one}
           ref={buttonRef === undefined ? undefined : (node) => buttonRef(one, node)}
           type="button"
-          role="radio"
-          aria-checked={on}
-          aria-label={label}
-          tabIndex={on ? 0 : -1}
+          aria-label={name}
+          aria-disabled={why === null ? undefined : true}
+          tabIndex={focusWay === one ? 0 : -1}
           data-swap-mode={one}
-          disabled={disabled}
-          title={label}
-          onClick={() => onPick(one, 'click')}
-          className={cn(SWAP_ARROW_BUTTON, SWAP_ARROW_LOOK[swapArrowTone(one)][on ? 'on' : 'off'])}
+          data-swap-held={isHeld ? 'true' : undefined}
+          title={name}
+          onFocus={() => onFocusWay(one, 'focus')}
+          onClick={() => {
+            if (why === null) onPress(one);
+          }}
+          className={swapArrowClasses(one, { held: isHeld, disabled: why !== null })}
         >
-          <SwapArrowGlyph mode={one} rtl={rtl} />
+          <SwapArrowGlyph mode={one} rtl={rtl} moving={isHeld} />
         </button>
       );
     })}

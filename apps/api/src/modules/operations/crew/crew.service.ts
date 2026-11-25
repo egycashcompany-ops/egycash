@@ -78,7 +78,7 @@ import {
   OPERATIONS_CREW_FREE_VEHICLE_GROUPS,
   type OperationsCrewBoardFreeVehicleDto,
   type OperationsCrewFreeVehicleGroup,
-  type OperationsCrewRowColour,
+  type OperationsCrewRowColourSetting,
   type PlanOperationsCrew,
   type PlanOperationsCrewRow,
 } from '@ecms/contracts';
@@ -258,7 +258,8 @@ interface NextRow {
   plannedTime: string | null;
   notes: string | null;
   shiftTypeId: string | null;
-  rowColour: OperationsCrewRowColour | null;
+  /** Null «لون النوع», a palette colour, or `'none'` «بدون لون» (Round 34 C). */
+  rowColour: OperationsCrewRowColourSetting | null;
 }
 
 class OperationsCrewService {

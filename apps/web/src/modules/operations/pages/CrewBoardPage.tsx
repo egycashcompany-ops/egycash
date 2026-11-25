@@ -86,9 +86,11 @@
 //
 // ROUND 32 — «لما بجيب السجل فى لوحة التشغيل بيخلى اعدل وانا عاوزها اظهار فقط»: a PAST day opens as
 // its RECORD, view only for everyone (`lib/crew-record.ts`): every act asks `canPlan`, which a record
-// shuts — no drag, no list, no van, no row, no box, no «الطاقم الثابت», no «تراجع», no «حفظ». A calm
-// notice says so, and «العودة إلى اليوم» stands where the acts were; the filters and the hover cards
-// still work. The server refuses the day's save whatever is sent (422 `OPERATIONS_CREW_DAY_IN_PAST`).
+// shuts — no drag, no list, no van, no row, no box, no «الطاقم الثابت», no «تراجع», no «حفظ». The
+// record's mark says so («سجل · للعرض فقط» — since Round 34 H on the toolbar's line, the words of the
+// notice that stood under the bar in its tooltip), and «العودة إلى اليوم» stands where the acts were;
+// the filters and the hover cards still work. The server refuses the day's save whatever is sent
+// (422 `OPERATIONS_CREW_DAY_IN_PAST`).
 //
 // ROUND 32 C — «انا عاوز بقى اقدر اعمل اسوابنج بين عربيتين واقدر احدد هنقل ايه بالظبط للعربيه
 // التانيه»: a row's «⇄» opens «تبديل بين سيارتين» (`CrewSwapDialog`) — the two vans' cards side by
@@ -103,6 +105,10 @@
 // or chosen takes a line of its own: a chip picked up lies over the totals in their box, «المعروض N
 // من M» comes at the bar's end in room the line keeps, and the totals scroll sideways inside their
 // box — the hidden edge fading — rather than wrap.
+//
+// ROUND 34 H — the owner: «اعمل الافضل واعمل ميرج». A past day drops no line either: the record's
+// notice under the bar is gone, its words the mark's on the toolbar's line (`RecordMark`); and
+// «إضافة صف بدون سيارة», an icon alone from 1280 to 1759, is rows and a plus, not a bare «+».
 //
 // `?date=` is the only thing in the URL: empty means TOMORROW, resolved by the server — crews are
 // planned a day ahead (the legacy default).
@@ -160,7 +166,7 @@ import {
 import { CrewVehicleHoverCode } from '../components/BoardCrewCards';
 import { CrewPlanChip } from '../components/CrewPlanChip';
 import {
-  CREW_PLAN_BAR,
+  CREW_PLAN_BAR_LINE,
   CREW_PLAN_CELLS,
   CREW_PLAN_GRID,
   CREW_PLAN_POOL_HEIGHT,
@@ -171,8 +177,10 @@ import {
   FilteredCount,
   filteredCountAt,
   HEAD_CHIP,
+  HEAD_FIGURE,
   HEAD_STRIP,
   PlainDot,
+  RecordMark,
   ReturnPickedButton,
   ViewOnlyMark,
   countChipTone,
@@ -193,7 +201,7 @@ import { CrewSlotPicker } from '../components/CrewSlotPicker';
 import { CrewSwapDialog } from '../components/CrewSwapDialog';
 import { CrewVehiclePicker, NoCodeTag } from '../components/CrewVehiclePicker';
 import { PLAN_ICON } from '../components/crew-plan-icons';
-import { DayBox, RecordNotice, dayText } from '../components/SecuredDistributionParts';
+import { DayBox, dayText } from '../components/SecuredDistributionParts';
 import { ADD_BUTTON, BRAND_BUTTON } from '../components/ShipmentsBoard';
 import { SHIPMENT_PATH } from '../components/shipment-icons';
 import { ON_TINT, ShiftTypeDot, rowTint, shiftTypeName } from '../components/shift-type-look';
@@ -331,13 +339,6 @@ const PLAN_TABLE = cn(
 );
 
 /**
- * Round 34 E — the board's bar on ONE line from 1280 (8px between its boxes): the day, the van, the
- * person, the direction, the type and — at its end, when the filters narrow — «المعروض N من M». The
- * totals left it for the toolbar; «الطاقم الثابت» keeps the shared bar as it was.
- */
-const CREW_PLAN_BAR_LINE = cn(CREW_PLAN_BAR, 'min-[1280px]:flex-nowrap min-[1280px]:gap-x-2');
-
-/**
  * Round 34 E — the acts beside the totals. From 1280 to 1759 the totals share the acts' ONE line, and
  * each act but «حفظ» is its icon in a 34px square, its word still its name (`ACT_WORD`, read by a
  * screen reader) and its tooltip: eleven types, «الإجمالي», «بدون نوع» and «صيانة» in 2–3 figures
@@ -354,8 +355,24 @@ const ICON_ACT =
 const ACT_WORD = 'max-[819px]:sr-only min-[1280px]:max-[1759px]:sr-only';
 /** An act in words — «حفظ», a past day's mark and «العودة إلى اليوم» — below 820 as high as the icons. */
 const WORD_ACT = 'max-[819px]:h-11';
-/** A total's figure, beside its name: 11px (11.5 from 1440), the figures' face. */
-const HEAD_FIGURE = 'text-[11px] font-black min-[1440px]:text-[11.5px]';
+/**
+ * Round 34 H — a past day's two acts in words beside «ألوان الأنواع» and «Excel» are 331px in Arabic
+ * and 345 in English (with a count of unsaved work, 20 more), of the 328 a 360 phone gives the board
+ * (343 at 375): the line wrapped and the table went 48px down on opening a past day. Below 400 the
+ * words carry them alone — the lock and the calendar left out, 2px less inside.
+ */
+const NARROW_WORD_ACT = 'max-[399px]:px-1.5';
+const NARROW_WORD_ICON = 'max-[399px]:hidden';
+/**
+ * Round 34 H critic — below 360 no one line holds every state's acts. A day to plan: its six acts are
+ * 299px in Arabic and 302 in English, two lines at 320–339 (the board has 288–307); from the first
+ * change («حفظ (١)», 313 / 317) two lines up to 349. A past day's record: one line in Arabic (287),
+ * two in English at 320–339 (301). So the table went 48px up or down on opening a past day, on «العودة
+ * إلى اليوم», and on the first change. Below 360 the acts' line keeps the room of two rows of 44px
+ * squares and the 4px between them, whatever it holds — one line stands in its middle — and the
+ * table stands still at every width. From 360 every state's acts fit one line.
+ */
+const NARROW_ACTS_ROOM = 'max-[359px]:min-h-[92px]';
 
 export const CrewBoardPage = (): JSX.Element => {
   const t = useT();
@@ -465,7 +482,8 @@ export const CrewBoardPage = (): JSX.Element => {
   const dirty = pending > 0;
   const guard = useUnsavedGuard({ dirty });
   // Round 32 — the board left open past midnight with work not saved: the record no longer draws it
-  // and the leave guard lets go, so it is SAID, once as it happens and on the notice while it stands.
+  // and the leave guard lets go, so it is SAID, once as it happens and on the record's mark while it
+  // stands (Round 34 H — the mark on the toolbar's line, amber and counted).
   const lostOnRecord = isRecord ? changeCount(planChanges(history.now.rows, serverRows)) : 0;
   useEffect(() => {
     if (lostOnRecord === 0) return;
@@ -1909,24 +1927,29 @@ export const CrewBoardPage = (): JSX.Element => {
               />
             )}
           </CrewPlanHand>
-          <span className="ms-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 min-[1280px]:flex-nowrap">
+          <span
+            className={cn(
+              'ms-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 min-[1280px]:flex-nowrap',
+              NARROW_ACTS_ROOM,
+            )}
+            data-crew-plan-acts="true"
+          >
             {/* Without the planning grant: the board is read only — said by a lock and «للعرض فقط»,
                 why in full in its tooltip (Round 34 E: no line of words over the totals). */}
             {!canPlan && !isRecord && <ViewOnlyMark className={WORD_ACT} />}
             {/* Round 32 — a record has no acts: the day says it is one, and the way back to today (a
-                move between days, not a change — for every reader). */}
+                move between days, not a change — for every reader). Round 34 H — the mark carries
+                what the notice under the bar said (its tooltip and its words), and work the day's end
+                left unsaved: no line of its own. */}
             {isRecord && (
               <>
-                <span
-                  data-crew-record-mark="true"
-                  className={cn(
-                    'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-[11px] font-black text-sky-800 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:border-sky-400/30 dark:bg-sky-400/10 dark:text-sky-200',
-                    WORD_ACT,
-                  )}
-                >
-                  <BoardIcon d={[...PATH.lock]} className="h-3.5 w-3.5" />
-                  {t('operations.crewPlan.record.mark')}
-                </span>
+                <RecordMark
+                  day={day}
+                  dayLabel={dayText(`${day}T00:00:00.000Z`)}
+                  lost={lostOnRecord}
+                  className={cn(WORD_ACT, NARROW_WORD_ACT)}
+                  iconClassName={NARROW_WORD_ICON}
+                />
                 <button
                   type="button"
                   data-crew-record-today="true"
@@ -1934,9 +1957,12 @@ export const CrewBoardPage = (): JSX.Element => {
                   title={t('operations.crewPlan.record.todayHint', {
                     day: dayText(`${liveToday}T00:00:00.000Z`),
                   })}
-                  className={cn(BRAND_BUTTON, WORD_ACT)}
+                  className={cn(BRAND_BUTTON, WORD_ACT, NARROW_WORD_ACT)}
                 >
-                  <BoardIcon d={[...SHIPMENT_PATH.calendar]} className="h-3.5 w-3.5" />
+                  <BoardIcon
+                    d={[...SHIPMENT_PATH.calendar]}
+                    className={cn('h-3.5 w-3.5', NARROW_WORD_ICON)}
+                  />
                   {t('operations.crewPlan.record.today')}
                 </button>
               </>
@@ -1994,7 +2020,8 @@ export const CrewBoardPage = (): JSX.Element => {
                 onClick={addRow}
                 className={cn(BRAND_BUTTON, ICON_ACT)}
               >
-                <BoardIcon d={PATH.plus} className="h-3.5 w-3.5" width={2.5} />
+                {/* Round 34 H — rows and a plus: told apart from any «+» at the icon-only widths. */}
+                <BoardIcon d={PLAN_ICON.addRow} className="h-3.5 w-3.5 rtl:-scale-x-100" />
                 <span className={ACT_WORD}>{t('operations.crewPlan.addRow')}</span>
               </button>
             )}
@@ -2166,24 +2193,6 @@ export const CrewBoardPage = (): JSX.Element => {
             </span>
           )}
         </div>
-
-        {/* Round 32 — a past day: the record's notice, calm, under the bar. */}
-        {isRecord && (
-          <RecordNotice
-            data-crew-record={day}
-            title={t('operations.crewPlan.record.title', {
-              day: dayText(`${day}T00:00:00.000Z`),
-            })}
-            body={t('operations.crewPlan.record.body')}
-            unsaved={
-              lostOnRecord === 0
-                ? null
-                : t('operations.crewPlan.record.unsaved', {
-                    count: formatNumber(lostOnRecord, locale),
-                  })
-            }
-          />
-        )}
 
         <CrewRosterNotice rosterIsDerived={directory.data?.rosterIsDerived} />
 

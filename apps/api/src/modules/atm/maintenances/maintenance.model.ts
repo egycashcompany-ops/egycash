@@ -52,6 +52,12 @@ export interface AtmMaintenanceDoc extends BaseDocFields {
   openedByName: string | null;
   closedById: Types.ObjectId | null;
   closedByName: string | null;
+  /**
+   * The legacy history run that copied this row from the old system (migration/legacy-history.ts,
+   * 2026-11-25); null on every row made in ECMS. It marks the row as a copy, keeps copies out of the
+   * cutover the screen suggests, and is what that run's undo removes.
+   */
+  legacyImportRunId: Types.ObjectId | null;
 }
 
 /** The unique index that admits one live maintenance per mail ticket (see its declaration). */
@@ -108,6 +114,7 @@ const maintenanceSchema = new Schema<AtmMaintenanceDoc>(
     openedByName: { type: String, default: null },
     closedById: { type: Schema.Types.ObjectId, default: null },
     closedByName: { type: String, default: null },
+    legacyImportRunId: { type: Schema.Types.ObjectId, default: null },
     ...baseFields,
   },
   baseSchemaOptions,
@@ -115,6 +122,16 @@ const maintenanceSchema = new Schema<AtmMaintenanceDoc>(
 
 maintenanceSchema.index({ branchId: 1, closedAt: 1, area: -1 }, { name: 'ix_branch_open_area' });
 maintenanceSchema.index({ branchId: 1, closedAt: -1 }, { name: 'ix_branch_closed' });
+// The copies one legacy history run made (migration/legacy-history.service.ts): what its source's undo
+// removes, in batches, and what the suggested cutover leaves out. Every row made in ECMS (null) is
+// outside it.
+maintenanceSchema.index(
+  { legacyImportRunId: 1 },
+  {
+    name: 'ix_legacy_import_run',
+    partialFilterExpression: { legacyImportRunId: { $type: 'objectId' } },
+  },
+);
 // The done pages' range in their own order (shared/done-board-index.ts): without it every done
 // read sorted the whole range in memory — the hang of 2026-11-25. Built at boot by atm-indexes.ts.
 maintenanceSchema.index(doneRangeIndexKeys(), {

@@ -10993,6 +10993,7 @@ const en: Record<string, string> = {
   'systemAdmin.users.audit.atmSettlementPrint': 'Printed replenishment papers',
   // ATM branch links — one row per run that moves a linked branch's ATM data to its target.
   'systemAdmin.users.audit.atmBranchMove': 'Moved ATM data between linked branches',
+  'systemAdmin.users.audit.atmLegacyImport': "Imported the old system's ATM history",
   'systemAdmin.users.audit.applicantFolderDeleted': "Emptied an applicant's documents folder",
   // One rung of an approval chain decided (OD-82 A): the event catalog's `approvalDecided` words.
   'systemAdmin.users.audit.approvalDecision': 'Approval decided',
@@ -12714,9 +12715,8 @@ const en: Record<string, string> = {
   'operations.standingCrew.removeVehicle': 'Remove {{code}} from the cash-transfer fleet',
   'operations.standingCrew.emptyHint':
     'This list is explicit, not derived: add the vehicles that carry cash, then give each its usual crew.',
-  // Round 27 — «الطاقم الثابت» in «لوحة التشغيلة»’s look: the board’s hands, without the day.
-  'operations.standingCrew.hint':
-    'Press «+ Choose» in a slot, or drag a name onto a vehicle’s row or a slot; a captain moves with his crew. Drag it back onto a list to free it.',
+  // Round 27 — «الطاقم الثابت» in «لوحة التشغيلة»’s look: the board’s hands, without the day. Round 34 G —
+  // its hint went with the board’s (the legend’s line); `viewOnly` is `ViewOnlyMark`’s why, on this screen.
   'operations.standingCrew.viewOnly':
     'You can view the standing crew; changing it needs the crew-planning permission.',
   'operations.standingCrew.toBoard': 'Crew board',
@@ -16101,8 +16101,89 @@ const en: Record<string, string> = {
     'A Full list import is running in {{source}} for these banks: {{banks}}. Wait until it finishes.',
   'atm.settings.move.blocker.registerImportRunning':
     'A register file import is running. Wait until it finishes, then try again.',
+  'atm.settings.move.blocker.legacyImportRunning':
+    "An import of the old system's history is running. Wait until it finishes, then try again.",
   'atm.settings.move.blocker.moveRunning':
     'Another data move is running. Wait until it finishes, then try again.',
+  'atm.settings.legacy.title': 'Import the old history',
+  'atm.settings.legacy.hint':
+    'Copies only the replenishments and maintenances closed (Done) in the old system into the branch each belonged to. Nothing already in the new system is changed, and each source can be undone.',
+  'atm.settings.legacy.row': '«{{source}}» into {{branch}}',
+  'atm.settings.legacy.noBranch': "No active branch carries this source's code.",
+  'atm.settings.legacy.never': 'Not imported yet',
+  'atm.settings.legacy.paused': 'Import paused at {{done}} of {{total}} operations',
+  'atm.settings.legacy.runningElsewhere':
+    'Importing now in another window — {{done}} of {{total}} operations read',
+  'atm.settings.legacy.stale':
+    'Import left at {{done}} of {{total}} operations for over half an hour — continue it, undo it or start again',
+  'atm.settings.legacy.last.done': 'Last import finished',
+  'atm.settings.legacy.last.failed': 'Last import stopped',
+  'atm.settings.legacy.last.undone': 'Last import undone',
+  'atm.settings.legacy.copied': '{{count}} operations copied',
+  'atm.settings.legacy.preview': 'Preview',
+  'atm.settings.legacy.previewFor': 'Preview «{{source}}»',
+  'atm.settings.legacy.resume': 'Continue',
+  'atm.settings.legacy.resumeFor': 'Continue «{{source}}»',
+  'atm.settings.legacy.undo': 'Undo',
+  'atm.settings.legacy.undoFor': 'Undo «{{source}}»',
+  'atm.settings.legacy.progress.run': 'Read {{done}} of {{total}} operations',
+  'atm.settings.legacy.progress.undo': 'Removed {{done}} of {{total}} operations',
+  'atm.settings.legacy.done': 'The history of «{{source}}» is imported.',
+  'atm.settings.legacy.summary':
+    'Replenishments: {{replenishment}} — Maintenances: {{maintenance}} — already in the new system: {{existing}}',
+  'atm.settings.legacy.undone': 'The copies of «{{source}}» are removed.',
+  'atm.settings.legacy.undoStopped':
+    'The undo of «{{source}}» stopped with {{count}} operations left. Try again.',
+  'atm.settings.legacy.undoTitle': 'Undo the import of «{{source}}»?',
+  'atm.settings.legacy.undoBody':
+    '{{count}} operations copied from «{{source}}» will be removed, including any reopened or edited since. The old system keeps its own.',
+  'atm.settings.legacy.undoChanged':
+    '{{count}} of them were changed in the new system after they were copied (closed, edited or reopened there); those changes go with them.',
+  'atm.settings.legacy.dialogTitle': 'Import «{{source}}» into {{branch}}',
+  'atm.settings.legacy.intro':
+    'The replenishments and maintenances closed (Done) in «{{source}}» are copied into {{branch}}, as the old system recorded them. Operations still open there are not copied.',
+  'atm.settings.legacy.keeps':
+    'An operation already in the new system is never changed; importing again adds only what is missing. Nothing is written to the old system.',
+  'atm.settings.legacy.cutover': 'Started on the new system at',
+  'atm.settings.legacy.cutoverHint':
+    "Operations closed from this moment on are the branch's own work and are not copied. Empty: copy them all.",
+  'atm.settings.legacy.cutAt': 'Counted from the start on the new system at {{at}} (Cairo time).',
+  'atm.settings.legacy.cutNone':
+    'Counted with no start moment: every closed operation of the source is copied.',
+  'atm.settings.legacy.cutIncomplete':
+    'Complete the date and time, or empty the box to copy every closed operation.',
+  'atm.settings.legacy.confirm': 'Import',
+  'atm.settings.legacy.nothing': 'The old system holds no operation for this source.',
+  'atm.settings.legacy.noneToCopy': 'No operation would be copied with these settings.',
+  'atm.settings.legacy.counts': 'Operations',
+  'atm.settings.legacy.kind.replenishment': 'Replenishment',
+  'atm.settings.legacy.kind.maintenance': 'Maintenance',
+  'atm.settings.legacy.count.total': 'In the old system',
+  'atm.settings.legacy.count.deleted': 'Deleted there',
+  'atm.settings.legacy.count.noOpenTime': 'Without an open time',
+  'atm.settings.legacy.count.open': 'Not closed (not Done)',
+  'atm.settings.legacy.count.afterCutover': 'Closed after the start on the new system',
+  'atm.settings.legacy.count.unresolved': 'Machine not in the ATM register',
+  'atm.settings.legacy.count.toImport': 'To copy',
+  'atm.settings.legacy.times': 'Times',
+  'atm.settings.legacy.mode.utc':
+    '{{kind}}: recorded as true times ({{matching}} of {{rows}} operations show it) — kept as they are.',
+  'atm.settings.legacy.mode.cairoLabelled':
+    '{{kind}}: open times recorded as Cairo clock time ({{matching}} of {{rows}} operations show it) — corrected when copied.',
+  'atm.settings.legacy.unresolved':
+    "Machine codes not in the branch's ATM register — their operations are not copied. Add the machine, then import again:",
+  'atm.settings.legacy.unclear':
+    'How the old system recorded the times of {{kinds}} cannot be told with confidence, so nothing will be imported.',
+  'atm.settings.legacy.error.running':
+    'Another import of the old history is running. Wait until it finishes, then try again.',
+  'atm.settings.legacy.error.state':
+    'This import is no longer running — the card now shows where it stands.',
+  'atm.settings.legacy.error.busy':
+    'Another request is still working on this import. Try again in a minute.',
+  'atm.settings.legacy.error.unreadable':
+    "The new system cannot read this source's database. Ask the administrator to grant read access, then try again.",
+  'atm.settings.legacy.error.moveRunning':
+    'A branch data move is running. Wait until it finishes, then try again.',
   // ── The attendance handoff of 22 November ───────────────────────────────────
   // «ساعات العمل» as a settings tab, the repeated-scan log, the daily sheet's new table and
   // hero, the employee pop-up, and «ملفات الموظفين» as folders.
@@ -27299,6 +27380,7 @@ const ar: Record<string, string> = {
   'systemAdmin.users.audit.atmSettlementPrint': 'طباعة أوراق التغذية',
   // ATM branch links — one row per run that moves a linked branch's ATM data to its target.
   'systemAdmin.users.audit.atmBranchMove': 'نقل بيانات الصراف الآلي بين فرعين مرتبطين',
+  'systemAdmin.users.audit.atmLegacyImport': 'استيراد سجل الصراف الآلي من النظام القديم',
   'systemAdmin.users.audit.applicantFolderDeleted': 'إفراغ مجلد مستندات أحد المتقدمين',
   // One rung of an approval chain decided (OD-82 A): the event catalog's `approvalDecided` words.
   'systemAdmin.users.audit.approvalDecision': 'البت في اعتماد',
@@ -28969,9 +29051,8 @@ const ar: Record<string, string> = {
   'operations.standingCrew.removeVehicle': 'إخراج {{code}} من أسطول نقل الأموال',
   'operations.standingCrew.emptyHint':
     'هذه القائمة صريحة وليست مشتقّة: أضف المركبات التي تنقل الأموال، ثم عيّن لكل واحدة طاقمها المعتاد.',
-  // الجولة 27 — «الطاقم الثابت» بشكل «لوحة التشغيلة»: أدوات اللوحة نفسها، دون اليوم.
-  'operations.standingCrew.hint':
-    'اضغط «+ اختيار» في الخانة، أو اسحب الاسم إلى صف السيارة أو إلى الخانة؛ ينتقل القائد ومعه طاقمه. أعِده إلى القائمة لإخلائه.',
+  // الجولة 27 — «الطاقم الثابت» بشكل «لوحة التشغيلة»: أدوات اللوحة نفسها، دون اليوم. الجولة 34 G — حُذف
+  // التلميح مع سطر الدلالة، و`viewOnly` سبب «للعرض فقط» على هذه الشاشة.
   'operations.standingCrew.viewOnly':
     'يمكنك الاطلاع على الطاقم الثابت؛ أما تعديله فيحتاج صلاحية تخطيط الطاقم.',
   'operations.standingCrew.toBoard': 'لوحة التشغيلة',
@@ -32245,8 +32326,87 @@ const ar: Record<string, string> = {
     'يجري الآن استيراد من Full list في {{source}} لهذه البنوك: {{banks}}. انتظر حتى ينتهي.',
   'atm.settings.move.blocker.registerImportRunning':
     'يجري الآن استيراد ملف لسجل الماكينات. انتظر حتى ينتهي، ثم أعد المحاولة.',
+  'atm.settings.move.blocker.legacyImportRunning':
+    'يجري الآن استيراد سجل النظام القديم. انتظر حتى ينتهي، ثم أعد المحاولة.',
   'atm.settings.move.blocker.moveRunning':
     'يجري الآن نقل بيانات آخر. انتظر حتى ينتهي، ثم أعد المحاولة.',
+  'atm.settings.legacy.title': 'استيراد السجل القديم',
+  'atm.settings.legacy.hint':
+    'ينسخ التغذية والصيانة المغلقة (Done) فقط من النظام القديم إلى الفرع الذي كانت له. لا يتغيّر شيء موجود في النظام الجديد، ويمكن التراجع عن كل مصدر.',
+  'atm.settings.legacy.row': '«{{source}}» إلى {{branch}}',
+  'atm.settings.legacy.noBranch': 'لا يوجد فرع نشط بكود هذا المصدر.',
+  'atm.settings.legacy.never': 'لم يُستورد بعد',
+  'atm.settings.legacy.paused': 'الاستيراد متوقف عند {{done}} من {{total}} عملية',
+  'atm.settings.legacy.runningElsewhere':
+    'يجري الاستيراد الآن في نافذة أخرى — قُرئت {{done}} من {{total}} عملية',
+  'atm.settings.legacy.stale':
+    'الاستيراد متوقف عند {{done}} من {{total}} عملية منذ أكثر من نصف ساعة — تابعه، أو تراجع عنه، أو ابدأ من جديد',
+  'atm.settings.legacy.last.done': 'اكتمل آخر استيراد',
+  'atm.settings.legacy.last.failed': 'توقف آخر استيراد',
+  'atm.settings.legacy.last.undone': 'تم التراجع عن آخر استيراد',
+  'atm.settings.legacy.copied': '{{count}} عملية منسوخة',
+  'atm.settings.legacy.preview': 'معاينة',
+  'atm.settings.legacy.previewFor': 'معاينة «{{source}}»',
+  'atm.settings.legacy.resume': 'متابعة',
+  'atm.settings.legacy.resumeFor': 'متابعة «{{source}}»',
+  'atm.settings.legacy.undo': 'تراجع',
+  'atm.settings.legacy.undoFor': 'تراجع عن «{{source}}»',
+  'atm.settings.legacy.progress.run': 'قُرئت {{done}} من {{total}} عملية',
+  'atm.settings.legacy.progress.undo': 'حُذفت {{done}} من {{total}} عملية',
+  'atm.settings.legacy.done': 'تم استيراد سجل «{{source}}».',
+  'atm.settings.legacy.summary':
+    'التغذية: {{replenishment}} — الصيانة: {{maintenance}} — موجودة من قبل في النظام الجديد: {{existing}}',
+  'atm.settings.legacy.undone': 'تم حذف ما نُسخ من «{{source}}».',
+  'atm.settings.legacy.undoStopped':
+    'توقف التراجع عن «{{source}}» وبقيت {{count}} عملية. أعد المحاولة.',
+  'atm.settings.legacy.undoTitle': 'التراجع عن استيراد «{{source}}»؟',
+  'atm.settings.legacy.undoBody':
+    'ستُحذف {{count}} عملية منسوخة من «{{source}}»، ومعها ما أُعيد فتحه أو عُدّل بعد النسخ. يبقى النظام القديم كما هو.',
+  'atm.settings.legacy.undoChanged':
+    'منها {{count}} عملية تغيّرت في النظام الجديد بعد نسخها (أُغلقت أو عُدّلت أو أُعيد فتحها هناك)، وتُحذف هذه التغييرات معها.',
+  'atm.settings.legacy.dialogTitle': 'استيراد «{{source}}» إلى {{branch}}',
+  'atm.settings.legacy.intro':
+    'تُنسخ التغذية والصيانة المغلقة (Done) في «{{source}}» إلى {{branch}} كما سجّلها النظام القديم. لا تُنسخ العمليات التي ما زالت مفتوحة فيه.',
+  'atm.settings.legacy.keeps':
+    'لا تتغيّر أي عملية موجودة في النظام الجديد، وإعادة الاستيراد تضيف الناقص فقط. لا يُكتب شيء في النظام القديم.',
+  'atm.settings.legacy.cutover': 'بدأ العمل على النظام الجديد في',
+  'atm.settings.legacy.cutoverHint':
+    'العمليات المغلقة من هذه اللحظة فصاعداً من عمل الفرع على النظام الجديد ولا تُنسخ. إن تُرك فارغاً تُنسخ كلها.',
+  'atm.settings.legacy.cutAt': 'محسوبة على بدء العمل على النظام الجديد في {{at}} (بتوقيت القاهرة).',
+  'atm.settings.legacy.cutNone': 'محسوبة بلا لحظة بدء: تُنسخ كل العمليات المغلقة في المصدر.',
+  'atm.settings.legacy.cutIncomplete':
+    'أكمل التاريخ والوقت، أو أفرغ الحقل لنسخ كل العمليات المغلقة.',
+  'atm.settings.legacy.confirm': 'استيراد',
+  'atm.settings.legacy.nothing': 'لا توجد عمليات لهذا المصدر في النظام القديم.',
+  'atm.settings.legacy.noneToCopy': 'لا توجد عمليات تُنسخ بهذه الإعدادات.',
+  'atm.settings.legacy.counts': 'العمليات',
+  'atm.settings.legacy.kind.replenishment': 'التغذية',
+  'atm.settings.legacy.kind.maintenance': 'الصيانة',
+  'atm.settings.legacy.count.total': 'في النظام القديم',
+  'atm.settings.legacy.count.deleted': 'محذوفة هناك',
+  'atm.settings.legacy.count.noOpenTime': 'بلا وقت فتح',
+  'atm.settings.legacy.count.open': 'لم تُغلق (ليست Done)',
+  'atm.settings.legacy.count.afterCutover': 'أُغلقت بعد بدء العمل على النظام الجديد',
+  'atm.settings.legacy.count.unresolved': 'الماكينة غير موجودة في سجل الماكينات',
+  'atm.settings.legacy.count.toImport': 'ستُنسخ',
+  'atm.settings.legacy.times': 'الأوقات',
+  'atm.settings.legacy.mode.utc':
+    '{{kind}}: مسجلة بالوقت الصحيح ({{matching}} من {{rows}} عملية تُظهر ذلك) — تبقى كما هي.',
+  'atm.settings.legacy.mode.cairoLabelled':
+    '{{kind}}: أوقات الفتح مسجلة بساعة القاهرة ({{matching}} من {{rows}} عملية تُظهر ذلك) — تُصحَّح عند النسخ.',
+  'atm.settings.legacy.unresolved':
+    'أكواد ماكينات غير موجودة في سجل ماكينات الفرع — لا تُنسخ عملياتها. أضف الماكينة ثم أعد الاستيراد:',
+  'atm.settings.legacy.unclear':
+    'لا يمكن التأكد من طريقة تسجيل أوقات {{kinds}} في النظام القديم، لذلك لن يُستورد شيء.',
+  'atm.settings.legacy.error.running':
+    'يجري الآن استيراد آخر للسجل القديم. انتظر حتى ينتهي، ثم أعد المحاولة.',
+  'atm.settings.legacy.error.state': 'لم يعد هذا الاستيراد جارياً — تعرض البطاقة الآن ما وصل إليه.',
+  'atm.settings.legacy.error.busy':
+    'ما زال طلب آخر يعمل على هذا الاستيراد. أعد المحاولة بعد دقيقة.',
+  'atm.settings.legacy.error.unreadable':
+    'لا يستطيع النظام الجديد قراءة قاعدة بيانات هذا المصدر. اطلب من المسؤول منح صلاحية القراءة، ثم أعد المحاولة.',
+  'atm.settings.legacy.error.moveRunning':
+    'يجري الآن نقل بيانات فرع. انتظر حتى ينتهي، ثم أعد المحاولة.',
   // ── The attendance handoff of 22 November ───────────────────────────────────
   // «ساعات العمل» as a settings tab, the repeated-scan log, the daily sheet's new table and
   // hero, the employee pop-up, and «ملفات الموظفين» as folders.

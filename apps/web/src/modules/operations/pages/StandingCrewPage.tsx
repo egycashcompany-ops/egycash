@@ -46,6 +46,15 @@
 //   · «حفظ (n)» sends the vehicles taken out (one DELETE each — removal is its own act on the server)
 //     and then the changed rows in ONE PUT, whose body is `toStandingPayloadRows`' as before.
 //
+// ROUND 34 G — THE HEAD, AS THE BOARD'S. The owner, of the board's head: «واسمح الحاجات اللى فوق دى وحط
+// مكاناها الاجماليات بدل ما انت لما بختار حاجه بينزل سطر ل تحت», then «اعمل الافضل واعمل ميرج». The
+// legend and the hint are gone from the toolbar's start; the counters («السيارات», «طاقم مكتمل»,
+// «طاقم ناقص», «بدون طاقم» — each a chip that filters) stand there, on the acts' line from 1280, in
+// the board's compact strip (`HEAD_STRIP`, `HEAD_CHIP`, `lib/side-scroll`); somebody picked stands at
+// that line's start (`CrewPlanHand`); the bar is the filters on ONE line from 1280, «المعروض N من M»
+// where the board puts it (`filteredCountAt`); a reader without the grant gets `ViewOnlyMark`. No
+// choice moves the table.
+//
 // The pools' searches and icon filters are remembered in the URL across visits, as they were.
 import { useEffect, useMemo, useRef, useState, type DragEvent, type HTMLAttributes } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -92,8 +101,7 @@ import {
 import { CrewVehicleHoverCode } from '../components/BoardCrewCards';
 import { DirectionPicker, TimePicker } from '../components/CrewPlanControls';
 import {
-  COUNT_CHIP,
-  CREW_PLAN_BAR,
+  CREW_PLAN_BAR_LINE,
   CREW_PLAN_CELLS,
   CREW_PLAN_GRID,
   CREW_PLAN_POOL_HEIGHT,
@@ -102,9 +110,14 @@ import {
   CREW_PLAN_TABLE_SIDE,
   CrewPlanHand,
   FilteredCount,
+  HEAD_CHIP,
+  HEAD_FIGURE,
+  HEAD_STRIP,
   PlainDot,
   ReturnPickedButton,
+  ViewOnlyMark,
   countChipTone,
+  filteredCountAt,
   targetAt,
   unknownMember,
 } from '../components/CrewPlanFrame';
@@ -182,6 +195,7 @@ import {
 import { vanName, type VehicleChoice } from '../lib/crew-vehicles';
 import { saveReportWorkbook } from '../lib/report-export';
 import { cairoToday } from '../lib/shipment-history';
+import { sideFade, useSideScroll } from '../lib/side-scroll';
 import {
   STANDING_CREW_STATES,
   newStandingPlanRow,
@@ -223,6 +237,29 @@ const STATE_DOT: Record<StandingCrewState, string> = {
 
 /** The table: the board's (`CREW_PLAN_TABLE`), its cells' sides and tops after. */
 const STANDING_TABLE = cn(CREW_PLAN_TABLE, CREW_PLAN_CELLS);
+
+/**
+ * Round 34 G — the acts, where their words do not fit one line. Measured: «لوحة التشغيلة», «إضافة
+ * سيارة», «Excel», «تراجع» and «حفظ» are 459px in Arabic and 484px in English at the sizes they take
+ * from 640 — beside the four counters on the toolbar's one line from 1280 (the line 1,160px at 1280),
+ * and on a line of their own down to 640.
+ *
+ * Round 34 G critic — below 640 the buttons take their smaller size (8px inside, 11px), and there the
+ * five words are 391px in Arabic and 414px in English («حفظ (n)» 15 to 22 more): one line from 440 in
+ * Arabic and from 480 in English (the toolbar gives 408 and 448). They had turned to icons from 639
+ * down — a phone held sideways, a small tablet — where the words fit. Now they keep their words down
+ * to 480, and below it each act but «حفظ» is its icon in a 44px square, its word still its name (read
+ * by a screen reader) and its tooltip; «حفظ (n)» keeps its word. Below 640 every act is 44px high —
+ * a finger's size, as the board's below 820 — in words or not.
+ *
+ * A reader without the planning grant has «للعرض فقط», «لوحة التشغيلة» and «Excel» alone — 262px,
+ * one line at 320 (288) — so his keep their words at every width (`ICON_ACT` and `ACT_WORD` are a
+ * planner's only).
+ */
+const ICON_ACT = 'max-[479px]:w-11 max-[479px]:justify-center max-[479px]:!px-0';
+const ACT_WORD = 'max-[479px]:sr-only';
+/** Every act below 640 — in words or an icon — as high as a finger needs. */
+const WORD_ACT = 'max-[639px]:h-11';
 
 export const StandingCrewPage = (): JSX.Element => (
   <CrewPlanScopeProvider value="standing">
@@ -436,6 +473,11 @@ const StandingCrewBoard = (): JSX.Element => {
 
   // ── A slot's list (Round 22 E) — one for the screen; a phone gets the bottom sheet ──────────────
   const phone = !useMinWidth(640);
+  // «المعروض N من M» where the board puts it (Round 34 G): at the bar's end from 1280, else at the end
+  // of the counters' line — a line that never wraps — in figures only on a phone.
+  const countAt = filteredCountAt({ oneLineHead: useMinWidth(1280) });
+  /** The toolbar's counters — read for the fade over the edge that hides chips. */
+  const stripRef = useRef<HTMLDivElement>(null);
   const [picker, setPicker] = useState<{ key: string; slot: CrewSlot } | null>(null);
   const pickerAnchor = useRef<HTMLElement | null>(null);
   const pickerTrigger = useRef<HTMLElement | null>(null);
@@ -1023,42 +1065,90 @@ const StandingCrewBoard = (): JSX.Element => {
         data-standing-count={state ?? 'all'}
         aria-pressed={on}
         onClick={() => setStateFilter(on || state === null ? null : state)}
-        className={cn(COUNT_CHIP, countChipTone(on, count))}
+        className={cn(HEAD_CHIP, countChipTone(on, count))}
       >
         {dot}
         {label}
-        <span className={cn(NUM, 'text-[12.5px] font-black text-slate-900 dark:text-white')}>
+        <span className={cn(NUM, HEAD_FIGURE, 'text-slate-900 dark:text-white')}>
           {formatNumber(count, locale)}
         </span>
       </button>
     );
   };
+  // The counters' line scrolls sideways if it ever outgrows its room: the hidden edge fades.
+  const stripEdges = useSideScroll(stripRef);
+  const stripFade = sideFade(stripEdges, locale === 'ar');
 
   return (
     <PageContainer fullHeight>
       <div className={BOARD_FRAME} data-crew-plan="true" data-standing-crew="true" {...frameDrop}>
-        {/* The toolbar: what the hands do at the start; the acts at the end — the board's. */}
+        {/* The toolbar (Round 34 G — the board's): the COUNTERS at the start, where the legend and the
+            hint were, and the acts at the end, on ONE line from 1280 (the counters on a line of their
+            own below). Somebody picked stands at the counters' start, on their line — nothing moves. */}
         <div
-          className="flex flex-wrap items-center justify-between gap-2"
+          className="flex flex-wrap items-center gap-2 min-[1280px]:flex-nowrap"
           data-crew-plan-toolbar="true"
         >
           <CrewPlanHand
             pickedName={pickedName}
             onCancel={() => setSelected(null)}
-            hint={
-              canPlan ? t('operations.standingCrew.hint') : t('operations.standingCrew.viewOnly')
-            }
-          />
-          <span className="ms-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
+            className="basis-full min-[1280px]:basis-0 min-[1280px]:flex-1"
+          >
+            <div
+              ref={stripRef}
+              role="group"
+              aria-label={t('operations.standingCrew.counts')}
+              title={t('operations.standingCrew.countsHint')}
+              className={HEAD_STRIP}
+              style={{ maskImage: stripFade, WebkitMaskImage: stripFade }}
+              data-standing-counts="true"
+              data-strip-more={
+                stripEdges.start || stripEdges.end
+                  ? [stripEdges.start && 'start', stripEdges.end && 'end'].filter(Boolean).join(' ')
+                  : undefined
+              }
+            >
+              {stateChip(
+                null,
+                t('operations.standingCrew.total'),
+                counts.total,
+                <PlainDot tone="bg-brand-500" />,
+              )}
+              {STANDING_CREW_STATES.map((state) =>
+                stateChip(
+                  state,
+                  t(`operations.standingCrew.state.${state}`),
+                  counts[state],
+                  <PlainDot tone={STATE_DOT[state]} />,
+                ),
+              )}
+            </div>
+            {/* Below 1280: what the filters leave, at the end of the counters' line — a line that
+                never wraps, so the count can never take a line of its own. */}
+            {filtering && countAt === 'head' && (
+              <FilteredCount
+                shown={shown.length}
+                total={rows.length}
+                onClear={clearFilters}
+                compact={phone}
+              />
+            )}
+          </CrewPlanHand>
+          <span className="ms-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 min-[1280px]:flex-nowrap">
+            {/* Without the planning grant: read only — a lock and «للعرض فقط», why in full in its
+                tooltip (the hint's line is gone). */}
+            {!canPlan && <ViewOnlyMark className={WORD_ACT} />}
             {/* Where this list goes: each day's board loads it («الطاقم الثابت» there). */}
             <Link
               to="/operations/crew-board"
               data-standing-to-board="true"
-              title={t('operations.standingCrew.toBoardHint')}
-              className={BRAND_BUTTON}
+              title={`${t('operations.standingCrew.toBoard')} — ${t('operations.standingCrew.toBoardHint')}`}
+              className={cn(BRAND_BUTTON, WORD_ACT, canPlan && ICON_ACT)}
             >
               <BoardIcon d={PLAN_ICON.layers} className="h-3.5 w-3.5" />
-              {t('operations.standingCrew.toBoard')}
+              <span className={canPlan ? ACT_WORD : undefined}>
+                {t('operations.standingCrew.toBoard')}
+              </span>
             </Link>
             {canPlan && (
               <button
@@ -1066,25 +1156,34 @@ const StandingCrewBoard = (): JSX.Element => {
                 data-standing-add="true"
                 aria-haspopup="dialog"
                 aria-expanded={adding}
+                title={t('operations.standingCrew.addVehicle')}
                 onClick={(event) => openAdding(event.currentTarget)}
-                className={BRAND_BUTTON}
+                className={cn(BRAND_BUTTON, WORD_ACT, ICON_ACT)}
               >
-                <BoardIcon d={PATH.plus} className="h-3.5 w-3.5" width={2.5} />
-                {t('operations.standingCrew.addVehicle')}
+                {/* Round 34 G critic — a van and a plus: below 480 the act is its icon alone, and a
+                    bare «+» said nothing of what it adds. */}
+                <BoardIcon d={PLAN_ICON.addVan} className="h-3.5 w-3.5 rtl:-scale-x-100" />
+                <span className={ACT_WORD}>{t('operations.standingCrew.addVehicle')}</span>
               </button>
             )}
             <button
               type="button"
               data-crew-plan-excel="true"
               disabled={rows.length === 0}
+              title="Excel"
               onClick={exportExcel}
-              className={cn(BRAND_BUTTON, 'disabled:cursor-not-allowed disabled:opacity-50')}
+              className={cn(
+                BRAND_BUTTON,
+                WORD_ACT,
+                canPlan && ICON_ACT,
+                'disabled:cursor-not-allowed disabled:opacity-50',
+              )}
             >
               <BoardIcon
                 d={PATH.excel}
                 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
               />
-              Excel
+              <span className={canPlan ? ACT_WORD : undefined}>Excel</span>
             </button>
             {canPlan && (
               <button
@@ -1104,10 +1203,15 @@ const StandingCrewBoard = (): JSX.Element => {
                 }
                 aria-keyshortcuts="Control+Z Meta+Z"
                 onClick={undoLast}
-                className={cn(BRAND_BUTTON, 'disabled:cursor-not-allowed disabled:opacity-50')}
+                className={cn(
+                  BRAND_BUTTON,
+                  WORD_ACT,
+                  ICON_ACT,
+                  'disabled:cursor-not-allowed disabled:opacity-50',
+                )}
               >
                 <BoardIcon d={SHIPMENT_PATH.undo} className="h-3.5 w-3.5" />
-                {t('operations.crewPlan.discard')}
+                <span className={ACT_WORD}>{t('operations.crewPlan.discard')}</span>
               </button>
             )}
             {canPlan && (
@@ -1119,6 +1223,7 @@ const StandingCrewBoard = (): JSX.Element => {
                 onClick={() => void save()}
                 className={cn(
                   dirty ? ADD_BUTTON : BRAND_BUTTON,
+                  WORD_ACT,
                   'disabled:cursor-not-allowed disabled:opacity-50',
                 )}
               >
@@ -1138,8 +1243,9 @@ const StandingCrewBoard = (): JSX.Element => {
         </div>
 
         {/* The bar: where the board has its day, this list says it has none; then the vehicle, the
-            person and the direction, and the counters of the crews. */}
-        <div className={CREW_PLAN_BAR} data-crew-plan-bar="true">
+            person and the direction — ONE line from 1280 (the board's), «المعروض N من M» at its end
+            when they narrow. The counters went up to the toolbar (Round 34 G). */}
+        <div className={CREW_PLAN_BAR_LINE} data-crew-plan-bar="true">
           <span
             data-standing-dayless="true"
             title={t('operations.standingCrew.daylessHint')}
@@ -1203,31 +1309,12 @@ const StandingCrewBoard = (): JSX.Element => {
               onChange={(next) => setRowFilter((current) => ({ ...current, directions: next }))}
             />
           </FilterWithIcon>
-          {filtering && (
-            <FilteredCount shown={shown.length} total={rows.length} onClear={clearFilters} />
+          {/* From 1280: what the filters leave, at the bar's end — and one press to show every row. */}
+          {filtering && countAt === 'bar' && (
+            <span className="flex shrink-0 min-[1280px]:ms-auto">
+              <FilteredCount shown={shown.length} total={rows.length} onClear={clearFilters} />
+            </span>
           )}
-          <div
-            role="group"
-            aria-label={t('operations.standingCrew.counts')}
-            title={t('operations.standingCrew.countsHint')}
-            className="flex w-full min-w-0 flex-wrap items-center gap-1 sm:w-auto sm:flex-1"
-            data-standing-counts="true"
-          >
-            {stateChip(
-              null,
-              t('operations.standingCrew.total'),
-              counts.total,
-              <PlainDot tone="bg-brand-500" />,
-            )}
-            {STANDING_CREW_STATES.map((state) =>
-              stateChip(
-                state,
-                t(`operations.standingCrew.state.${state}`),
-                counts[state],
-                <PlainDot tone={STATE_DOT[state]} />,
-              ),
-            )}
-          </div>
         </div>
 
         <CrewRosterNotice rosterIsDerived={directory.data?.rosterIsDerived} />

@@ -101,6 +101,30 @@ export const PLAN_ICON = {
   pen: ['M4 20h4L19 9l-4-4L4 16z', 'M13.5 6.5l4 4'],
   // «تبديل بين سيارتين» (Round 32 C) — two arrows crossing the other way: ⇄.
   swap: ['M4 8h15', 'M15 4l4 4-4 4', 'M20 16H5', 'M9 12l-4 4 4 4'],
+  // «إضافة صف بدون سيارة» (Round 34 H) — the table's rows and a plus beside the last: a ROW added,
+  // never a bare «+» (from 1280 to 1759 the act is its icon alone). Drawn for left-to-right; the
+  // board mirrors it in Arabic, the plus at the rows' end.
+  //
+  // Round 34 H critic — drawn on the pixels it lands on. It is shown at 14px (`h-3.5`), 7/12 of its
+  // 24 units, where a 2-unit stroke is 1.17px: a line is sharp only when it lands on a pixel's middle
+  // (y × 7/12 = n + ½, so y = 4.29, 6, 7.71 … 11.14, 12.86 … 18). Rows at 6, 12 and 18 put the
+  // middle one on a pixel's edge — two half-grey pixels, a smear — and the 7-unit plus was 4px.
+  // Now: rows at 4.29, 11.14 and 18 (pixels 2½, 6½, 10½ — 4px apart), the plus 8 units across
+  // (4.7px) on pixel 10½ × 8½, beside the two short rows.
+  addRow: ['M4 4.29h16', 'M4 11.14h6', 'M4 18h6', 'M18 10.57v8', 'M14 14.57h8'],
+  // «إضافة سيارة» on «الطاقم الثابت» (Round 34 H critic) — a van and a plus over its cab, where the
+  // act is its icon alone (below 480): never a bare «+», told apart from the board's rows-and-plus.
+  // Snapped to the 14px grid as `addRow` is; drawn for left-to-right, mirrored in Arabic (the van
+  // drives toward the reading's end, the plus there).
+  addVan: [
+    'M14.57 18V9.43H2.57V18h1.72',
+    'M9.43 18h5.14',
+    'M14.57 12.86H18l3.43 3.43V18h-.86',
+    ring(6.86, 18.86, 1.5),
+    ring(18, 18.86, 1.5),
+    'M19.71 .86v6.86',
+    'M16.28 4.29h6.86',
+  ],
 } as const;
 
 /**

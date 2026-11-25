@@ -1,8 +1,8 @@
 // The approvals engine against a real database (R12's baseline, PX-1.1 of
 // docs/12-planning/administration-module-phase-px1.md §7; exit criteria 3 and 5): a chain written
 // through `PUT /api/v1/platform/approvals`, and an HR leave request — the engine's only host —
-// driven through it to approved and to rejected, over today's behavior. PX-1.2, PX-1.3, PX-1.4 and
-// PX-1.6 add their cases here; PX-1.5 keeps the audit case green.
+// driven through it to approved and to rejected. PX-1.1's cases hold across the fixes; PX-1.2,
+// PX-1.3, PX-1.4 and PX-1.6 add theirs here, and PX-1.5 keeps the audit case green.
 //
 // The leave suite's helpers are copied rather than shared, because exit criterion 5 keeps
 // `hr-leave.spec.ts` unchanged. Nobody here holds `super-admin`: the boot sync hands that role every
@@ -27,9 +27,15 @@ import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
-import { APPROVAL_OVERRIDE_KEY } from '../../src/platform/approvals';
+import {
+  APPROVAL_OVERRIDE_KEY,
+  approvalService,
+  type ChainStatus,
+} from '../../src/platform/approvals';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
 import { rbacService } from '../../src/platform/rbac';
+import { roleAssignmentRepository } from '../../src/platform/rbac/rbac.repository';
+import { LeaveRequestModel } from '../../src/modules/hr/leave-management/leave-requests/leave-request.model';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
@@ -41,12 +47,17 @@ const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminToken: string;
+let ADMIN_ID = '';
 let BRANCH_ID = '';
+/** The second branch, where nobody files: the place an override that misses the request reaches. */
+let OTHER_BRANCH_ID = '';
 let CATALOG_ID = '';
 /** The branch's copy of the company department `CATALOG_ID`, where the requesters work. */
 let DEPARTMENT_ID = '';
 let JOB_TITLE_ID = '';
 let ANNUAL_ID = '';
+/** The role behind every `leave.approve` grant, for cases that empty a rung and fill it again. */
+let APPROVER_ROLE_ID = '';
 let phoneCounter = 71_000_000;
 let nidCounter = 0;
 
@@ -213,6 +224,14 @@ let unitApprover: Person;
 let hrApprover: Person;
 /** `leave.view` company-wide, and an organization-scope `approval.override` that ended yesterday. */
 let lapsedOverride: Person;
+/** `leave.view` company-wide, and `approval.override` at organization scope. */
+let orgOverride: Person;
+/** `leave.view` company-wide, and `approval.override` over the requesters' whole branch. */
+let branchOverride: Person;
+/** `leave.view` company-wide, and `approval.override` over the other branch only. */
+let otherBranchOverride: Person;
+/** Placed in the requesters' branch, holding nothing until a case grants it a `branch` rung. */
+let branchApproverId = '';
 
 /** One single-day annual leave, filed by the employee on the first countable day from `from`. */
 const file = async (from: number): Promise<LeaveRequestDto> => {
@@ -230,6 +249,7 @@ beforeAll(async () => {
   app = buildApp();
 
   const adminId = await mkUser('admin@ecms.local');
+  ADMIN_ID = adminId;
   const adminRole = await rbacService.createRole(
     {
       name: { ar: 'مسؤول مسارات الاعتماد', en: 'Approvals administrator' },
@@ -267,6 +287,10 @@ beforeAll(async () => {
     return (res.body as { data: { id: string } }).data.id;
   };
   BRANCH_ID = await created('branches', { code: '001', name: { ar: 'المركز', en: 'HQ' } });
+  OTHER_BRANCH_ID = await created('branches', {
+    code: '002',
+    name: { ar: 'أكتوبر', en: 'October' },
+  });
   CATALOG_ID = await created('department-catalog', {
     code: 'DC-AP-1',
     name: { ar: 'العمليات', en: 'Operations' },
@@ -290,6 +314,7 @@ beforeAll(async () => {
       (await rbacService.createRole({ name: { ar, en }, permissionKeys: [key] }, adminId))._id,
     );
   const approverRole = await roleOf('Leave approver', 'معتمد الإجازات', 'leave.approve');
+  APPROVER_ROLE_ID = approverRole;
   const overrideRole = await roleOf(
     'Approval override',
     'تجاوز مسار الاعتماد',
@@ -321,6 +346,23 @@ beforeAll(async () => {
   unitApprover = { userId: unitId, token: await login('unit@ecms.local') };
   hrApprover = { userId: hrId, token: await login('hr@ecms.local') };
   lapsedOverride = { userId: lapsedId, token: await login('lapsed@ecms.local') };
+
+  // The overrides PX-1.2 reads by reach. A branch grant reaches its holder's home branch, so each
+  // is placed in the branch it is about, and written as an administrator writes it.
+  const overrider = async (
+    email: string,
+    branchId: string | null,
+    scope: 'organization' | 'branch',
+  ): Promise<Person> => {
+    const userId = await mkUser(email, branchId);
+    await rbacService.ensureAssignment(userId, viewerRole, 'organization');
+    await rbacService.assignRole({ userId, roleId: overrideRole, scope }, adminId);
+    return { userId, token: await login(email) };
+  };
+  orgOverride = await overrider('override@ecms.local', null, 'organization');
+  branchOverride = await overrider('override-branch@ecms.local', BRANCH_ID, 'branch');
+  otherBranchOverride = await overrider('override-other@ecms.local', OTHER_BRANCH_ID, 'branch');
+  branchApproverId = await mkUser('branch@ecms.local', BRANCH_ID);
 
   emp = await regEmployee();
   ess = await activateEssLogin(emp);
@@ -445,5 +487,231 @@ describe('a leave chain written through the API, and leave run on it (R12)', () 
       'approvals.notYourStep',
     );
     expect((await readAs(created.id, adminToken)).status).toBe('pendingApproval');
+  });
+});
+
+describe('no staffed rung is an answer, and an override decides within its reach (PX-1.2: R2, R4)', () => {
+  const UNIT_RUNG = {
+    permissionKey: 'leave.approve',
+    level: 'unit',
+    label: { ar: 'مدير الإدارة في الفرع', en: 'Unit manager' },
+  };
+  const BRANCH_RUNG = {
+    permissionKey: 'leave.approve',
+    level: 'branch',
+    label: { ar: 'مدير الفرع', en: 'Branch manager' },
+  };
+  const DEPARTMENT_RUNG = {
+    permissionKey: 'leave.approve',
+    level: 'department',
+    label: { ar: 'مدير عام الإدارة', en: 'General department manager' },
+  };
+  const ORGANIZATION_RUNG = {
+    permissionKey: 'leave.approve',
+    level: 'organization',
+    label: { ar: 'الموارد البشرية', en: 'Human resources' },
+  };
+
+  /** The company default, replaced: every request below files under it. */
+  const writeChain = async (steps: object[]): Promise<void> => {
+    const res = await request(app).put('/api/v1/platform/approvals').set(auth(adminToken)).send({
+      requestType: 'hr.leave',
+      departmentCatalogId: null,
+      branchId: null,
+      steps,
+      isActive: true,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+  };
+
+  /**
+   * The engine's own answer for a request, read in-process: no DTO carries it. The Unit is the
+   * one the requesters were placed in.
+   */
+  const chainStatus = async (id: string): Promise<ChainStatus> => {
+    const row = await LeaveRequestModel.findById(id).lean().exec();
+    expect(row).not.toBeNull();
+    return approvalService.statusFor({
+      requestType: 'hr.leave',
+      unit: { branchId: BRANCH_ID, departmentCatalogId: CATALOG_ID, departmentId: DEPARTMENT_ID },
+      decisions: (row?.approvalSteps ?? []).map((entry) => ({
+        stepIndex: entry.stepIndex,
+        outcome: entry.outcome,
+        deciderUserId: entry.deciderUserId === null ? null : String(entry.deciderUserId),
+        decidedAt: entry.decidedAt,
+        comment: entry.comment,
+        overriddenWith: entry.overriddenWith,
+      })),
+    });
+  };
+
+  const refusedWith = (res: request.Response, key: string): void => {
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect((res.body as { error: { message: string } }).error.message).toBe(key);
+  };
+
+  const outcomes = (dto: LeaveRequestDto) =>
+    dto.approvalTrail?.steps.map((s) => [s.outcome, s.overriddenWith]);
+
+  it('R2, R4: a request whose only rung nobody holds waits unstaffed; an override over the other branch is refused, an organization-scope one approves it', async () => {
+    // Nobody holds `leave.approve` over a whole branch. Before PX-1.2 this request read approved
+    // to the engine while leave kept it pending, and nobody could decide it.
+    await writeChain([BRANCH_RUNG]);
+    const created = await file(35);
+    expect(created.status).toBe('pendingApproval');
+    expect(await chainStatus(created.id)).toBe('unstaffed');
+
+    expect((await readAs(created.id, otherBranchOverride.token)).approvalTrail).toMatchObject({
+      currentStep: 0,
+      viewerMayDecide: false,
+      viewerMayOverride: false,
+    });
+    refusedWith(
+      await decide(created.id, 'approve', created.version, otherBranchOverride.token),
+      'approvals.notYourStep',
+    );
+
+    expect((await readAs(created.id, orgOverride.token)).approvalTrail).toMatchObject({
+      currentStep: 0,
+      viewerMayOverride: true,
+    });
+    const res = await decide(created.id, 'approve', created.version, orgOverride.token);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const done = res.body.data as LeaveRequestDto;
+    expect(done.status).toBe('approved');
+    expect(outcomes(done)).toEqual([['approved', APPROVAL_OVERRIDE_KEY]]);
+    expect(done.approvalTrail?.steps[0]?.decidedBy?.id).toBe(orgOverride.userId);
+  });
+
+  it('R2, R4: the unit holder’s approval leaves a request with nobody on its organization rung waiting unstaffed; an override over the branch is refused there, an organization-scope one approves it', async () => {
+    // The HR approver is the organization rung's only holder; this case needs that rung empty,
+    // and gives the grant back after it.
+    const held = await roleAssignmentRepository.findActiveForUser(hrApprover.userId);
+    for (const grant of held) await rbacService.revokeAssignment(String(grant._id), ADMIN_ID);
+    try {
+      await writeChain([UNIT_RUNG, ORGANIZATION_RUNG]);
+      const created = await file(42);
+      expect(await chainStatus(created.id)).toBe('pending');
+
+      // Before PX-1.2 this approval closed the empty rung above it and approved the request.
+      const first = await decide(created.id, 'approve', created.version, unitApprover.token);
+      expect(first.status, JSON.stringify(first.body)).toBe(200);
+      const half = first.body.data as LeaveRequestDto;
+      expect(half.status).toBe('pendingApproval');
+      expect(outcomes(half)).toEqual([
+        ['approved', null],
+        ['pending', null],
+      ]);
+      expect(half.approvalTrail?.currentStep).toBe(1);
+      expect(await chainStatus(created.id)).toBe('unstaffed');
+
+      expect((await readAs(created.id, branchOverride.token)).approvalTrail).toMatchObject({
+        currentStep: 1,
+        viewerMayOverride: false,
+      });
+      refusedWith(
+        await decide(created.id, 'approve', half.version, branchOverride.token),
+        'approvals.notYourStep',
+      );
+
+      const res = await decide(created.id, 'approve', half.version, orgOverride.token);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const done = res.body.data as LeaveRequestDto;
+      expect(done.status).toBe('approved');
+      expect(outcomes(done)).toEqual([
+        ['approved', null],
+        ['approved', APPROVAL_OVERRIDE_KEY],
+      ]);
+    } finally {
+      await rbacService.ensureAssignment(hrApprover.userId, APPROVER_ROLE_ID, 'organization');
+    }
+  });
+
+  it('R4: on a staffed chain, an override over the request’s branch decides its branch rung and is refused on its organization rung', async () => {
+    // Both rungs are staffed: the branch rung by an approver granted for this case, the
+    // organization rung by HR. Before PX-1.2 the branch-wide override decided both.
+    const grant = await rbacService.assignRole(
+      { userId: branchApproverId, roleId: APPROVER_ROLE_ID, scope: 'branch' },
+      ADMIN_ID,
+    );
+    try {
+      await writeChain([BRANCH_RUNG, ORGANIZATION_RUNG]);
+      const created = await file(49);
+      expect((await readAs(created.id, branchOverride.token)).approvalTrail).toMatchObject({
+        currentStep: 0,
+        viewerMayDecide: false,
+        viewerMayOverride: true,
+      });
+      const first = await decide(created.id, 'approve', created.version, branchOverride.token);
+      expect(first.status, JSON.stringify(first.body)).toBe(200);
+      const half = first.body.data as LeaveRequestDto;
+      expect(half.status).toBe('pendingApproval');
+      expect(outcomes(half)).toEqual([
+        ['approved', APPROVAL_OVERRIDE_KEY],
+        ['pending', null],
+      ]);
+
+      expect((await readAs(created.id, branchOverride.token)).approvalTrail).toMatchObject({
+        currentStep: 1,
+        viewerMayOverride: false,
+      });
+      refusedWith(
+        await decide(created.id, 'approve', half.version, branchOverride.token),
+        'approvals.notYourStep',
+      );
+      const done = await decide(created.id, 'approve', half.version, hrApprover.token);
+      expect(done.status, JSON.stringify(done.body)).toBe(200);
+      expect((done.body.data as LeaveRequestDto).status).toBe('approved');
+    } finally {
+      await rbacService.revokeAssignment(String(grant._id), ADMIN_ID);
+    }
+  });
+
+  it('leave’s trail offers no decision on a cancelled request, whether its waiting rung is staffed or it is unstaffed', async () => {
+    const cancel = async (dto: LeaveRequestDto): Promise<void> => {
+      const res = await request(app)
+        .post(`/api/v1/hr/leave-requests/${dto.id}/cancel`)
+        .set(auth(ess.token))
+        .send({ version: dto.version });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect((res.body.data as LeaveRequestDto).status).toBe('cancelled');
+    };
+
+    // Waiting on HR, who holds that rung: cancelled, it offers HR nothing.
+    await writeChain([UNIT_RUNG, ORGANIZATION_RUNG]);
+    const staffed = await file(56);
+    const first = await decide(staffed.id, 'approve', staffed.version, unitApprover.token);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    const waiting = first.body.data as LeaveRequestDto;
+    expect((await readAs(staffed.id, hrApprover.token)).approvalTrail).toMatchObject({
+      viewerMayDecide: true,
+      viewerStep: 1,
+    });
+    await cancel(waiting);
+    // Off `pendingApproval` leave clears the reader's flags (re-detail §6.1) and marks no rung as
+    // waiting: nothing waits on a cancelled request.
+    expect((await readAs(staffed.id, hrApprover.token)).approvalTrail).toMatchObject({
+      currentStep: null,
+      viewerMayDecide: false,
+      viewerStep: null,
+      viewerCovers: [],
+      viewerMayOverride: false,
+    });
+
+    // Left with nobody on the department rung: cancelled, it offers the override nothing.
+    await writeChain([UNIT_RUNG, DEPARTMENT_RUNG]);
+    const stuck = await file(63);
+    const decided = await decide(stuck.id, 'approve', stuck.version, unitApprover.token);
+    expect(decided.status, JSON.stringify(decided.body)).toBe(200);
+    const unstaffed = decided.body.data as LeaveRequestDto;
+    expect(unstaffed.status).toBe('pendingApproval');
+    expect(await chainStatus(stuck.id)).toBe('unstaffed');
+    expect((await readAs(stuck.id, orgOverride.token)).approvalTrail?.viewerMayOverride).toBe(true);
+    await cancel(unstaffed);
+    expect((await readAs(stuck.id, orgOverride.token)).approvalTrail).toMatchObject({
+      currentStep: null,
+      viewerMayDecide: false,
+      viewerMayOverride: false,
+    });
   });
 });

@@ -35,8 +35,15 @@ export interface DecidedEntry {
   overriddenWith: string | null;
 }
 
-/** Where a request stands as a whole. */
-export type ChainStatus = 'pending' | 'approved' | 'rejected';
+/**
+ * Where a request stands as a whole.
+ *
+ * `unstaffed` and `noChain` are answers of their own, never `approved` (ADR-041 decision 2): a
+ * request nobody can decide, or one no chain applies to, is a fact the host acts on with its own
+ * policy, and an engine that folded either into «approved» would approve it for every host that
+ * read the word.
+ */
+export type ChainStatus = 'pending' | 'approved' | 'rejected' | 'unstaffed' | 'noChain';
 
 /**
  * How far the chain has been settled — the first rung with no entry.
@@ -55,13 +62,37 @@ export const progressOf = (decisions: readonly DecidedEntry[]): number =>
  * Overturning a rejection is a different act with a different name — the requester files again, or
  * somebody with `approval.override` decides explicitly and is recorded doing it — and folding it
  * into "the next approver said yes" would make a rejection something a chain quietly forgets.
+ *
+ * Approved only when every rung is settled. «Nothing is waiting» has two readings, and only one of
+ * them is a finished chain: the other is rungs left that nobody holds, which is `unstaffed` — the
+ * request is stuck, not done, and only an override within reach moves it.
  */
 export const statusOf = (
   steps: readonly ResolvedStep[],
   decisions: readonly DecidedEntry[],
 ): ChainStatus => {
   if (decisions.some((entry) => entry.outcome === 'rejected')) return 'rejected';
-  return liveStep(steps, progressOf(decisions)) === null ? 'approved' : 'pending';
+  if (steps.length === 0) return 'noChain';
+  const progress = progressOf(decisions);
+  if (liveStep(steps, progress) !== null) return 'pending';
+  return progress >= steps.length ? 'approved' : 'unstaffed';
+};
+
+/**
+ * The rung a decision on this request settles now, or null when there is none to settle.
+ *
+ * On a `pending` chain it is the waiting rung. On an `unstaffed` one it is the first unsettled
+ * rung, which only an override can decide: the rungs above it are not its to pass, because each
+ * one asks for its own level, and an override that settled several at once would settle rungs it
+ * may not reach (ADR-041 decision 3).
+ */
+export const rungToDecide = (
+  steps: readonly ResolvedStep[],
+  decisions: readonly DecidedEntry[],
+): number | null => {
+  const status = statusOf(steps, decisions);
+  if (status === 'pending') return liveStep(steps, progressOf(decisions))?.index ?? null;
+  return status === 'unstaffed' ? progressOf(decisions) : null;
 };
 
 /**
@@ -71,6 +102,11 @@ export const statusOf = (
  * which is `skipped` when nobody could have stood on it and `covered` when somebody could have and
  * a superior answered first. Telling those two apart is the difference between «مفيش مدير فرع» and
  * «المدير العام وافق قبله», and a reader who cannot tell them apart cannot audit either.
+ *
+ * Nothing ABOVE the decided rung is written, whatever the decision. An empty rung is passed only on
+ * the way to a staffed one that decides — «يتخطى المستوى ده ويروح للـGeneral Department Manager» —
+ * so an approval that leaves only empty rungs above it leaves the chain `unstaffed`, waiting for an
+ * override, instead of finishing it over rungs nobody reached (ADR-041 decision 2).
  *
  * Returns the entries to APPEND, in rung order. The caller concatenates; nothing here mutates.
  */
@@ -105,26 +141,6 @@ export const entriesForDecision = (
     comment: at.comment,
     overriddenWith: at.overriddenWith,
   });
-
-  // An approval that finishes the chain closes the rungs above it too, all of them unstaffed by
-  // the definition of «no live rung left». Writing them now rather than leaving them blank is what
-  // makes a finished trail readable a year later, when the rung may have somebody in it again and
-  // an empty row would look like an oversight.
-  if (at.decision === 'approved') {
-    const after = [...decisions, ...written];
-    if (liveStep(steps, progressOf(after)) === null) {
-      for (let i = at.stepIndex + 1; i < steps.length; i += 1) {
-        written.push({
-          stepIndex: i,
-          outcome: 'skipped',
-          deciderUserId: null,
-          decidedAt: now,
-          comment: null,
-          overriddenWith: null,
-        });
-      }
-    }
-  }
   return written;
 };
 
@@ -135,6 +151,9 @@ export const entriesForDecision = (
  * and delegations by the caller. Someone who satisfies a rung ABOVE the one that is waiting may
  * still decide, and cancels what is below him: «لو المدير العام وافق مش محتاج مدير الفرع». What
  * comes after him is untouched.
+ *
+ * Null for everybody unless the chain is `pending`. On an `unstaffed` chain nobody stands on a
+ * rung that is left, so the one way forward is an override, which is not a decision of one's own.
  */
 export const viewerDecision = (
   steps: readonly ResolvedStep[],

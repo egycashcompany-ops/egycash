@@ -11,6 +11,49 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **The approvals engine: a request nobody can decide no longer reads approved, and an override
+  decides only within its reach.** This is PX-1.2 of PX-1, which hardens the platform approvals
+  engine before Administrative Affairs' money approvals run on it
+  (`docs/12-planning/administration-module-phase-px1.md` §3, §6.1 and §6.2; ADR-041 decisions 2,
+  3 and 6). It fixes two of the engine defects the design lists, R2 and R4
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §15.2.1).
+  - **No chain and no staffed rung are answers of their own (R2).** A chain now reads `pending`,
+    `approved`, `rejected`, `unstaffed` or `noChain`, and `chainFor` returns that answer at
+    submission. Approved means every rung is settled. A chain with rungs left that nobody holds
+    reads `unstaffed`, and a request no chain applies to reads `noChain`; both read approved before.
+    An approval no longer closes the empty rungs above it: an empty rung is still passed when the
+    holder of a later rung decides, and only then. The trail's `currentStep` marks the rung to
+    decide on an `unstaffed` chain too, the first rung nobody holds, so the screen shows where the
+    request stopped.
+  - **An override reaches as far as the rung's level asks (R4).** `approval.override` decides an
+    organization rung only at organization scope, a department rung only over that department in
+    every branch, a branch rung only over that whole branch, and a unit rung only over that
+    department in that branch; `own` and `section` reach none, and below organization scope a rung
+    whose request lacks the place its level names fails closed (`override-reach.ts`). An override
+    held at any scope decided any rung before. On an `unstaffed` chain it decides one rung at a
+    time, and nothing above it.
+  - **`decide` answers by the chain's status, then the actor:** `approvals.nothingToDecide` with no
+    chain, `approvals.alreadyDecided` once approved or rejected, and `approvals.notYourStep` to
+    anyone with neither a rung of their own nor an override that reaches the rung to decide.
+  - **For HR leave,** the engine's only host: a request whose remaining rungs have nobody on them
+    now waits in `pendingApproval` instead of being approved by the lower approval, and one
+    submitted with nobody on any rung waits as before. A holder of `approval.override` who reaches
+    the rung can now decide either, one rung at a time, and anyone else is refused
+    `approvals.notYourStep` (a request that waited with nobody on its remaining rungs was refused
+    `approvals.alreadyDecided` before); nobody who can decide such a request is notified of it. On
+    a request whose chain was deleted or deactivated, with no wider chain to fall back to, `decide`
+    now refuses `approvals.nothingToDecide` for everyone, where it refused
+    `approvals.alreadyDecided`. A holder of an override that does not reach the rung no longer sees
+    Approve and Reject on it, and a cancelled request offers nobody a decision and marks no rung as
+    waiting on its chain panel. Leave's
+    submission rule, its manager and HR path, its notices and its audit are unchanged. What leave
+    should do with a request nobody can approve is the owner's question PXQ-1 (re-detail §2); until
+    it is answered, such a request waits for an override. The chain screen's hint says so, in
+    English and Arabic.
+  - Rollback (RK-30): reverting restores the old reading and leaves nothing stored behind; a leave
+    request left waiting under it stays `pendingApproval`, as one with nobody on any rung did
+    before.
+
 - **ATM: a machine code written with a space inside is searched and filtered whole.** «لما بعمل
   بحث هنا /atm/machines على الماكينة دى HDB-ATM 9501 بسبب المسافة اللى فيها بتتقسم كأنها
   ماكينتين ! فمبتظهرش». The ID filter on «كل الماكينات» took every space as the end of a code, so

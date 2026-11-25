@@ -653,12 +653,18 @@ class LeaveRequestService {
    *
    * Null for a request the two-desk machine is running — not an empty trail, because those are
    * different facts and a screen must not draw an empty chain over a request that never had one.
+   *
+   * A request that is no longer `pendingApproval` keeps its trail and offers nobody a decision on
+   * it. The engine reads only the chain, and a cancelled request's chain may still be waiting on a
+   * staffed rung, or be `unstaffed`, which offers the override. The detail page shows Approve and
+   * Reject whenever the trail says so, and `decide` would only refuse the click («only a pending
+   * request can be decided»).
    */
   async trailFor(request: LeaveRequestDoc, ctx: AuthContext): Promise<ApprovalTrailDto | null> {
     if (request.approvalSteps.length === 0 && request.status !== 'pendingApproval') return null;
     const employee = await employeeRepository.findById(String(request.employeeId));
     if (employee === null) return null;
-    return approvalService.trailFor(
+    const trail = await approvalService.trailFor(
       {
         requestType: LEAVE_REQUEST_TYPE,
         unit: await this.unitOf(employee),
@@ -673,6 +679,17 @@ class LeaveRequestService {
       },
       ctx,
     );
+    if (request.status === 'pendingApproval') return trail;
+    // Off `pendingApproval` nothing waits on any rung, so the panel marks none ("waiting here now")
+    // — a cancelled request's chain still reads pending or unstaffed to the engine.
+    return {
+      ...trail,
+      currentStep: null,
+      viewerMayDecide: false,
+      viewerStep: null,
+      viewerCovers: [],
+      viewerMayOverride: false,
+    };
   }
 
   /** Whoever is standing on the rung the request now waits for — read live, never stored. */
@@ -690,10 +707,11 @@ class LeaveRequestService {
       unit,
       decisions,
     });
-    // Nobody to tell is not an error here: the engine has already established that the rung is
-    // staffed, and a lookup that comes back empty a moment later means somebody just left. The
-    // request stays where it is and the screen still shows it; a thrown error would lose the
-    // decision that was just written.
+    // Nobody to tell is not an error here. A decision can leave the request `unstaffed`, with
+    // nobody on any rung that is left, and then there is nobody to tell: it waits for an override,
+    // which no notice reaches. A lookup can also come back empty because somebody just left the
+    // rung. Either way the request stays where it is and the screen still shows it; a thrown error
+    // would lose the decision that was just written.
     if (userIds.length === 0) return;
     await notificationsService
       .notify({

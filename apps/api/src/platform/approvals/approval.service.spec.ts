@@ -1,19 +1,21 @@
-// The engine's service as it stands before PX-1's fixes (R12's baseline, PX-1.1 of
-// docs/12-planning/administration-module-phase-px1.md §7).
+// The engine's service: R12's baseline, PX-1.1 of
+// docs/12-planning/administration-module-phase-px1.md §7, and each fix's cases after it.
 //
-// Every case passes on today's code. A case that pins a defect a later pull request fixes names it
-// (R2, R4, R9), so that pull request can show the case flip. R5's case is the 'engine' default,
-// which PX-1.5 keeps for leave and sets its 'host' cases beside; the rest is behavior the fixes
-// keep. The seams are mocked — the chain rows, the approver lookup, names, places, the permission
-// registry and audit — while `approval-chain` and `approval-trail` run for real, because the rules
-// are theirs and this service only joins them to one request. A real leave request through the
-// HTTP edge is `tests/integration/approvals.spec.ts`.
+// PX-1.1 wrote it over the code as it stood. A case that pins a defect a later pull request fixes
+// names it, so that pull request can show the case flip: PX-1.2 rewrote the R2 and R4 cases to the
+// fixed behavior and added its own beside them, and the R9 cases still pin today's save for
+// PX-1.6. R5's case is the 'engine' default, which PX-1.5 keeps for leave and sets its 'host'
+// cases beside; the rest is behavior the fixes keep. The seams are mocked — the chain rows, the
+// approver lookup, names, places, the permission registry and audit — while `approval-chain`,
+// `approval-trail` and `override-reach` run for real, because the rules are theirs and this service
+// only joins them to one request. A real leave request through the HTTP edge is
+// `tests/integration/approvals.spec.ts`.
 import { Types } from 'mongoose';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ApprovalLevel, type SetApprovalWorkflow } from '@ecms/contracts';
 import { BusinessRuleError } from '../../shared/errors';
 import { type AuthContext } from '../../shared/types';
-import { type DecidedEntry } from './approval-trail';
+import { type ChainStatus, type DecidedEntry } from './approval-trail';
 import { type Unit } from './approver-level';
 import { type ApprovalWorkflowDoc, type WorkflowStep } from './workflow.model';
 import { clearApprovalRequestTypes, registerApprovalRequestType } from './request-type.registry';
@@ -126,7 +128,10 @@ const subject = (decisions: readonly DecidedEntry[] = []) => ({
   decisions,
 });
 
-const actor = (permissions: AuthContext['permissions'] = {}): AuthContext => ({
+const actor = (
+  permissions: AuthContext['permissions'] = {},
+  placement: Partial<Pick<AuthContext, 'branchId' | 'departmentId'>> = {},
+): AuthContext => ({
   userId: 'u-actor',
   sessionId: 'spec',
   branchId: null,
@@ -136,7 +141,16 @@ const actor = (permissions: AuthContext['permissions'] = {}): AuthContext => ({
   permissions,
   permissionVersion: 1,
   isPrivileged: false,
+  ...placement,
 });
+
+/** Overrides by reach (ADR-041 decision 6): the company, the request's branch, another branch. */
+const ORG_OVERRIDE = actor({ 'approval.override': 'organization' });
+const BRANCH_OVERRIDE = actor({ 'approval.override': 'branch' }, { branchId: UNIT.branchId });
+const OTHER_BRANCH_OVERRIDE = actor(
+  { 'approval.override': 'branch' },
+  { branchId: String(new Types.ObjectId()) },
+);
 
 const APPROVE = { decision: 'approved', comment: null } as const;
 
@@ -190,6 +204,7 @@ describe('which chain applies (chainFor)', () => {
         { ...rung('unit'), staffed: true },
         { ...rung('organization'), staffed: false },
       ],
+      status: 'pending',
     });
     expect(mocks.hasApprovers).toHaveBeenCalledWith('leave.approve', 'unit', UNIT);
 
@@ -201,8 +216,19 @@ describe('which chain applies (chainFor)', () => {
     expect(await approvalService.chainFor('hr.leave', UNIT)).toEqual({
       workflowId: null,
       steps: [],
+      status: 'noChain',
     });
     expect(mocks.hasApprovers).not.toHaveBeenCalled();
+  });
+
+  it('R2: answers pending, unstaffed or noChain before anybody decides, never approved', async () => {
+    // What a host reads at submission to apply its own policy (ADR-041 decision 3).
+    chain(LADDER, ['organization']);
+    expect((await approvalService.chainFor('hr.leave', UNIT)).status).toBe('pending');
+    chain(LADDER, []);
+    expect((await approvalService.chainFor('hr.leave', UNIT)).status).toBe('unstaffed');
+    mocks.findActiveForType.mockResolvedValue([]);
+    expect((await approvalService.chainFor('hr.leave', UNIT)).status).toBe('noChain');
   });
 
   it('asks staffing once per distinct key and level within a call, and afresh at the next call', async () => {
@@ -310,33 +336,93 @@ describe('deciding (decide)', () => {
     chain(LADDER);
     mocks.ownStepsOf.mockResolvedValue([0, 1, 2]);
     for (const decisions of [ALL_APPROVED, [entry(0, 'rejected')]]) {
-      expect(await refusalOf(approvalService.decide(subject(decisions), actor(), APPROVE))).toBe(
-        'approvals.alreadyDecided',
-      );
+      for (const who of [actor(), ORG_OVERRIDE]) {
+        expect(await refusalOf(approvalService.decide(subject(decisions), who, APPROVE))).toBe(
+          'approvals.alreadyDecided',
+        );
+      }
     }
   });
 
-  it('R2 (today): no chain, or no staffed rung, reads approved and is refused as already decided', async () => {
-    const overrider = actor({ 'approval.override': 'organization' });
-    expect(await approvalService.statusFor(subject())).toBe('approved');
-    expect(await refusalOf(approvalService.decide(subject(), overrider, APPROVE))).toBe(
-      'approvals.alreadyDecided',
+  it('R2: no chain and no staffed rung are not approved, and neither is refused as already decided', async () => {
+    // No chain: nothing to decide, for anybody. Before PX-1.2 both read approved, and both were
+    // refused as already decided, so a request nobody could decide looked finished.
+    expect(await approvalService.statusFor(subject())).toBe('noChain');
+    expect(await refusalOf(approvalService.decide(subject(), ORG_OVERRIDE, APPROVE))).toBe(
+      'approvals.nothingToDecide',
     );
+    // No staffed rung: still waiting, so «not your step» to anyone without an override that
+    // reaches the rung.
     chain(LADDER, []);
-    expect(await approvalService.statusFor(subject())).toBe('approved');
-    expect(await refusalOf(approvalService.decide(subject(), overrider, APPROVE))).toBe(
-      'approvals.alreadyDecided',
+    expect(await approvalService.statusFor(subject())).toBe('unstaffed');
+    expect(await refusalOf(approvalService.decide(subject(), actor(), APPROVE))).toBe(
+      'approvals.notYourStep',
     );
     expect(mocks.record).not.toHaveBeenCalled();
   });
 
-  it('R4 (today): an approval.override at any scope, own included, decides the waiting rung', async () => {
+  it('answers each row of the refusal table, the chain’s status first and then the actor (R2, R4)', async () => {
+    // docs/12-planning/administration-module-phase-px1.md §4. The waiting rung of LADDER is the
+    // `unit` rung, which the request's branch reaches, and another branch does not. Each row: the
+    // chain's status, which levels anybody holds (null: no chain), the host's entries, the actor,
+    // the rungs the actor stands on, and the answer — a refusal key, or who decided.
+    const ALL = LADDER.map((s) => s.level);
+    const NOBODY: ApprovalLevel[] = [];
+    const OWN_RUNG = 'own rung';
+    type Row = [
+      ChainStatus,
+      readonly ApprovalLevel[] | null,
+      readonly DecidedEntry[],
+      AuthContext,
+      number[],
+      string,
+    ];
+    const rows: Row[] = [
+      ['noChain', null, [], ORG_OVERRIDE, [0], 'approvals.nothingToDecide'],
+      ['approved', ALL, ALL_APPROVED, ORG_OVERRIDE, [], 'approvals.alreadyDecided'],
+      ['rejected', ALL, [entry(0, 'rejected')], ORG_OVERRIDE, [], 'approvals.alreadyDecided'],
+      ['pending', ALL, [], actor(), [1], OWN_RUNG],
+      ['pending', ALL, [], BRANCH_OVERRIDE, [], 'approval.override'],
+      ['unstaffed', NOBODY, [], BRANCH_OVERRIDE, [], 'approval.override'],
+      ['pending', ALL, [], actor(), [], 'approvals.notYourStep'],
+      ['pending', ALL, [], OTHER_BRANCH_OVERRIDE, [], 'approvals.notYourStep'],
+      ['unstaffed', NOBODY, [], actor(), [], 'approvals.notYourStep'],
+      ['unstaffed', NOBODY, [], OTHER_BRANCH_OVERRIDE, [], 'approvals.notYourStep'],
+      // Nobody stands on a rung an unstaffed chain has left, whatever the lookup says of a reader.
+      ['unstaffed', NOBODY, [], actor(), [0], 'approvals.notYourStep'],
+    ];
+    for (const [status, staffed, decisions, who, ownSteps, answer] of rows) {
+      if (staffed === null) mocks.findActiveForType.mockResolvedValue([]);
+      else chain(LADDER, staffed);
+      mocks.ownStepsOf.mockResolvedValue(ownSteps);
+      expect(await approvalService.statusFor(subject(decisions)), status).toBe(status);
+      const decided = approvalService.decide(subject(decisions), who, APPROVE);
+      if (answer.startsWith('approvals.')) {
+        expect(await refusalOf(decided), `${status}: ${answer}`).toBe(answer);
+        continue;
+      }
+      const settled = (await decided).entries.at(-1);
+      expect(settled?.overriddenWith ?? OWN_RUNG, status).toBe(answer);
+      expect(settled?.stepIndex, status).toBe(answer === OWN_RUNG ? 1 : 0);
+    }
+  });
+
+  it('R4: an override decides the waiting rung only where it reaches that rung’s level', async () => {
+    // The waiting rung is the `unit` rung. `own` and `section` reach no Unit, and a branch-wide
+    // override over another branch does not reach this one; before PX-1.2 any of them decided.
     chain(LADDER);
-    const outcome = await approvalService.decide(
-      subject(),
+    for (const out of [
       actor({ 'approval.override': 'own' }),
-      APPROVE,
-    );
+      actor({ 'approval.override': 'section' }),
+      OTHER_BRANCH_OVERRIDE,
+    ]) {
+      expect(await refusalOf(approvalService.decide(subject(), out, APPROVE))).toBe(
+        'approvals.notYourStep',
+      );
+    }
+    expect(mocks.record).not.toHaveBeenCalled();
+
+    const outcome = await approvalService.decide(subject(), BRANCH_OVERRIDE, APPROVE);
     expect(outcome.entries.map((e) => [e.stepIndex, e.deciderUserId, e.overriddenWith])).toEqual([
       [0, 'u-actor', 'approval.override'],
     ]);
@@ -347,17 +433,44 @@ describe('deciding (decide)', () => {
       new: 'approval.override',
     });
 
-    // One who also stands on a rung decides as themselves, and nothing records an override.
+    // On the `organization` rung the same branch-wide override reaches nothing.
+    expect(
+      await refusalOf(
+        approvalService.decide(
+          subject([entry(0, 'approved'), entry(1, 'approved')]),
+          BRANCH_OVERRIDE,
+          APPROVE,
+        ),
+      ),
+    ).toBe('approvals.notYourStep');
+
+    // One who also stands on a rung decides as themselves, however far their override reaches: the
+    // rung, the rungs it covers and the third fact stay theirs, and nothing records an override.
     mocks.ownStepsOf.mockResolvedValue([1]);
-    const own = await approvalService.decide(
-      subject(),
-      actor({ 'approval.override': 'own' }),
-      APPROVE,
-    );
+    const own = await approvalService.decide(subject(), ORG_OVERRIDE, APPROVE);
     expect(own.entries.map((e) => [e.stepIndex, e.outcome, e.overriddenWith])).toEqual([
       [0, 'covered', null],
       [1, 'approved', null],
     ]);
+    const ownChanges = (mocks.record.mock.calls.at(-1)?.[0] as { changes: { field: string }[] })
+      .changes;
+    expect(ownChanges.map((change) => change.field)).not.toContain('overriddenWith');
+    expect(ownChanges).toContainEqual({ field: 'covers', old: null, new: '0' });
+  });
+
+  it('R2: an override within reach decides the first unsettled rung of an unstaffed chain, and settles nothing above it', async () => {
+    chain(LADDER, []);
+    const outcome = await approvalService.decide(subject(), BRANCH_OVERRIDE, APPROVE);
+    expect(outcome.entries.map((e) => [e.stepIndex, e.outcome, e.overriddenWith])).toEqual([
+      [0, 'approved', 'approval.override'],
+    ]);
+    expect(outcome).toMatchObject({ status: 'unstaffed', stepIndex: 0 });
+
+    // The next rung asks for the department in every branch, which a branch-wide override does
+    // not reach: it is not settled by the override below it, and not by this one either.
+    expect(
+      await refusalOf(approvalService.decide(subject(outcome.entries), BRANCH_OVERRIDE, APPROVE)),
+    ).toBe('approvals.notYourStep');
   });
 
   it('an organization-scope override decides the waiting rung, not an empty rung below it', async () => {
@@ -372,6 +485,44 @@ describe('deciding (decide)', () => {
       [1, 'approved', 'approval.override'],
     ]);
     expect(outcome).toMatchObject({ status: 'pending', stepIndex: 1 });
+  });
+
+  it('R4: an override is read on the rung to decide, not on another rung of the chain it happens to reach', async () => {
+    // Pending: the branch-wide override reaches the empty unit rung below, not the organization
+    // rung that waits.
+    chain([rung('unit'), rung('organization')], ['organization']);
+    expect(await refusalOf(approvalService.decide(subject(), BRANCH_OVERRIDE, APPROVE))).toBe(
+      'approvals.notYourStep',
+    );
+    expect(await approvalService.trailFor(subject(), BRANCH_OVERRIDE)).toMatchObject({
+      currentStep: 1,
+      viewerMayOverride: false,
+    });
+
+    // Unstaffed: the first unsettled rung is out of reach and the next is within it. Refused, and
+    // nothing is written skipped below a rung the override does reach.
+    chain([rung('department'), rung('branch')], []);
+    expect(await refusalOf(approvalService.decide(subject(), BRANCH_OVERRIDE, APPROVE))).toBe(
+      'approvals.notYourStep',
+    );
+    expect(await approvalService.trailFor(subject(), BRANCH_OVERRIDE)).toMatchObject({
+      currentStep: 0,
+      viewerMayOverride: false,
+    });
+
+    // Pending: the waiting rung is out of reach and a rung above it is within reach. An override
+    // never decides early.
+    chain([rung('branch'), rung('department')], ['branch', 'department']);
+    const everywhere: AuthContext = {
+      ...actor({ 'approval.override': 'department' }),
+      keyReach: {
+        'approval.override': { branchIds: [], departments: [], everywhere: [String(CATALOG)] },
+      },
+    };
+    expect(await refusalOf(approvalService.decide(subject(), everywhere, APPROVE))).toBe(
+      'approvals.notYourStep',
+    );
+    expect(mocks.record).not.toHaveBeenCalled();
   });
 });
 
@@ -428,35 +579,56 @@ describe('the trail and what its reader may do (trailFor)', () => {
     expect((await approvalService.trailFor(subject(), actor())).currentStep).toBe(1);
   });
 
-  it('R4 (today): offers the override at any scope to a reader on no rung, never on a finished chain', async () => {
+  it('R4: offers the override only to a reader with no decision of their own whose override reaches the rung to decide, never on a finished chain', async () => {
     chain(LADDER);
-    const overrider = actor({ 'approval.override': 'own' });
-    expect(await approvalService.trailFor(subject(), overrider)).toMatchObject({
+    for (const out of [actor({ 'approval.override': 'own' }), OTHER_BRANCH_OVERRIDE]) {
+      expect((await approvalService.trailFor(subject(), out)).viewerMayOverride).toBe(false);
+    }
+    expect(await approvalService.trailFor(subject(), BRANCH_OVERRIDE)).toMatchObject({
       viewerMayDecide: false,
       viewerStep: null,
       viewerMayOverride: true,
     });
+    // A reader on a rung decides as themselves, however far their override reaches.
     mocks.ownStepsOf.mockResolvedValue([0]);
-    expect((await approvalService.trailFor(subject(), overrider)).viewerMayOverride).toBe(false);
+    expect(await approvalService.trailFor(subject(), ORG_OVERRIDE)).toMatchObject({
+      viewerMayDecide: true,
+      viewerMayOverride: false,
+    });
 
     mocks.ownStepsOf.mockResolvedValue([]);
-    const approved = await approvalService.trailFor(subject(ALL_APPROVED), overrider);
+    const approved = await approvalService.trailFor(subject(ALL_APPROVED), ORG_OVERRIDE);
     expect(approved).toMatchObject({ currentStep: null, viewerMayOverride: false });
-    const rejected = await approvalService.trailFor(subject([entry(0, 'rejected')]), overrider);
+    const rejected = await approvalService.trailFor(subject([entry(0, 'rejected')]), ORG_OVERRIDE);
     expect(rejected).toMatchObject({ currentStep: null, viewerMayOverride: false });
     expect(rejected.steps.map((s) => s.outcome)).toEqual(['rejected', 'unreached', 'unreached']);
   });
 
-  it('R2 (today): with no staffed rung the trail reads finished — nothing waits, nobody may act', async () => {
+  it('R2: with no staffed rung the trail marks the first unsettled rung, and offers it only to an override that reaches it', async () => {
     chain(LADDER, []);
-    const overrider = actor({ 'approval.override': 'organization' });
-    const trail = await approvalService.trailFor(subject(), overrider);
-    expect(trail).toMatchObject({
-      currentStep: null,
+    expect(await approvalService.trailFor(subject(), ORG_OVERRIDE)).toMatchObject({
+      currentStep: 0,
       viewerMayDecide: false,
-      viewerMayOverride: false,
+      viewerMayOverride: true,
     });
-    expect(trail.steps.map((s) => s.outcome)).toEqual(['pending', 'pending', 'pending']);
+    const out = await approvalService.trailFor(subject(), OTHER_BRANCH_OVERRIDE);
+    expect(out).toMatchObject({ currentStep: 0, viewerMayDecide: false, viewerMayOverride: false });
+    expect(out.steps.map((s) => s.outcome)).toEqual(['pending', 'pending', 'pending']);
+  });
+
+  it('R2: on a chain with two empty rungs the rung to decide is the first, then the second, while the chain reads unstaffed', async () => {
+    chain([rung('unit'), rung('organization')], []);
+    expect((await approvalService.trailFor(subject(), ORG_OVERRIDE)).currentStep).toBe(0);
+
+    const first = await approvalService.decide(subject(), ORG_OVERRIDE, APPROVE);
+    expect(first).toMatchObject({ status: 'unstaffed', stepIndex: 0 });
+    const after = await approvalService.trailFor(subject(first.entries), ORG_OVERRIDE);
+    expect(after).toMatchObject({ currentStep: 1, viewerMayOverride: true });
+    expect(after.steps.map((s) => s.outcome)).toEqual(['approved', 'pending']);
+    expect(await approvalService.statusFor(subject(first.entries))).toBe('unstaffed');
+
+    const second = await approvalService.decide(subject(first.entries), ORG_OVERRIDE, APPROVE);
+    expect(second).toMatchObject({ status: 'approved', stepIndex: 1 });
   });
 });
 

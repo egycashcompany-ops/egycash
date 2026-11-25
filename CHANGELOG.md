@@ -11,6 +11,26 @@ its entry here in the same PR.
 
 ### Added
 
+- **Roles: quick selection by permission type, and a full-width role form** (`/system/roles`).
+  «جنبها الصلاحيات فى جروبات أقدر أحددها مره واحده .. مثلاً قراءة فقط .. تعديل فقط».
+  - Beside the permission tree, «تحديد سريع حسب النوع» ticks every permission of one type over every
+    module or one chosen module: View (read only), Add, Edit, Delete, Export/print/download, Import,
+    Approvals and decisions, Manage lists and settings, Workflow actions, Sensitive data,
+    Emergency (break-glass). Each shows the same tri-state and «x من y» counter as the tree; a
+    second press clears the type.
+  - The type is the registry's own `action` (`lib/action-groups.ts`). Sensitive reads (pay,
+    national IDs, machine keys and the safe-door combination, a fuel card's password) are never
+    part of View, and a break-glass key sits only in its own type; an action the table does not
+    name falls to Workflow actions. 449 permissions on 2026-11-25: 109 View, 67 Add, 66 Edit,
+    37 Delete, 17 export, 5 import, 24 approve, 64 manage, 46 workflow, 8 sensitive, 6 break-glass.
+  - It goes through the tree's own `applyBulk`, so it reaches only what the administrator may
+    grant and never clears a carried key he could not have given; the payload and the server's
+    guards are unchanged.
+  - The role form is the width of the screen with one scrollbar (the list no longer scrolls inside
+    the form), the quick selection stays in view beside the tree, the permission rows run four
+    columns on a wide screen, and a click outside no longer closes a half-built role (× and
+    Escape do).
+
 - **Compliance and Risks — a new module, «الالتزام والمخاطر», with one page: «الملفات»**
   (`docs/12-planning/compliance-files-design.md`). Folders on a shelf shaped like HR's
   «مستندات المتقدمين», drawn with the module's own copy of that folder.

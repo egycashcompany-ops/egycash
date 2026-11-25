@@ -11298,6 +11298,31 @@ const en: Record<string, string> = {
   'systemAdmin.roles.confirmDeleteDetail':
     'The role is removed and stops appearing anywhere. Its history stays in the audit trail. A role somebody holds cannot be deleted at all.',
   'systemAdmin.roles.deleted': 'Role deleted.',
+  'systemAdmin.roles.quick.title': 'Quick selection by type',
+  'systemAdmin.roles.quick.hint':
+    'Ticks every permission of a type within the scope — only those you may grant. Press again to clear them.',
+  'systemAdmin.roles.quick.scope': 'Scope',
+  'systemAdmin.roles.quick.allModules': 'All modules',
+  'systemAdmin.roles.quick.counter': '{{selected}} / {{total}}',
+  'systemAdmin.roles.quick.empty': 'No permissions in this scope.',
+  'systemAdmin.roles.quick.group.view': 'View (read only)',
+  'systemAdmin.roles.quick.group.create': 'Add',
+  'systemAdmin.roles.quick.group.edit': 'Edit',
+  'systemAdmin.roles.quick.group.delete': 'Delete',
+  'systemAdmin.roles.quick.group.export': 'Export, print and download',
+  'systemAdmin.roles.quick.group.import': 'Import from files',
+  'systemAdmin.roles.quick.group.approve': 'Approvals and decisions',
+  'systemAdmin.roles.quick.group.manage': 'Manage lists and settings',
+  'systemAdmin.roles.quick.group.other': 'Workflow actions',
+  'systemAdmin.roles.quick.group.sensitive': 'Sensitive data',
+  'systemAdmin.roles.quick.group.breakGlass': 'Emergency (break-glass)',
+  'systemAdmin.roles.quick.groupHint.manage':
+    'Full management of a list or a setting, as each module names it.',
+  'systemAdmin.roles.quick.groupHint.other': 'Close, send, receive, plan, cancel and similar steps.',
+  'systemAdmin.roles.quick.groupHint.sensitive':
+    'Pay, national IDs, machine keys and passwords — never part of View.',
+  'systemAdmin.roles.quick.groupHint.breakGlass':
+    'Permanent deletion and similar — never part of any other type.',
   'systemAdmin.roles.matrix.selectAll': 'Select all permissions',
   'systemAdmin.roles.matrix.counter': 'Selected: {{selected}} / {{total}}',
   'systemAdmin.roles.matrix.searchPlaceholder': 'Search permissions…',
@@ -27567,6 +27592,31 @@ const ar: Record<string, string> = {
   'systemAdmin.roles.confirmDeleteDetail':
     'سيُحذف الدور ويختفي من كل الشاشات. يبقى تاريخه في سجل التدقيق. والدور الذي يحمله أحد لا يمكن حذفه أصلًا.',
   'systemAdmin.roles.deleted': 'تم حذف الدور.',
+  'systemAdmin.roles.quick.title': 'تحديد سريع حسب النوع',
+  'systemAdmin.roles.quick.hint':
+    'يُحدِّد كل صلاحيات النوع داخل النطاق، مما يمكنك منحه فقط. اضغط مرة أخرى لإلغاء تحديدها.',
+  'systemAdmin.roles.quick.scope': 'النطاق',
+  'systemAdmin.roles.quick.allModules': 'كل الموديولات',
+  'systemAdmin.roles.quick.counter': '{{selected}} من {{total}}',
+  'systemAdmin.roles.quick.empty': 'لا توجد صلاحيات في هذا النطاق.',
+  'systemAdmin.roles.quick.group.view': 'العرض (قراءة فقط)',
+  'systemAdmin.roles.quick.group.create': 'الإضافة',
+  'systemAdmin.roles.quick.group.edit': 'التعديل',
+  'systemAdmin.roles.quick.group.delete': 'الحذف',
+  'systemAdmin.roles.quick.group.export': 'التصدير والطباعة والتنزيل',
+  'systemAdmin.roles.quick.group.import': 'الاستيراد من الملفات',
+  'systemAdmin.roles.quick.group.approve': 'الاعتماد والقرارات',
+  'systemAdmin.roles.quick.group.manage': 'إدارة القوائم والإعدادات',
+  'systemAdmin.roles.quick.group.other': 'إجراءات سير العمل',
+  'systemAdmin.roles.quick.group.sensitive': 'البيانات الحساسة',
+  'systemAdmin.roles.quick.group.breakGlass': 'صلاحيات الطوارئ',
+  'systemAdmin.roles.quick.groupHint.manage':
+    'الإدارة الكاملة لقائمة أو إعداد كما يسمّيها كل موديول.',
+  'systemAdmin.roles.quick.groupHint.other': 'الإغلاق والإرسال والاستلام والتخطيط والإلغاء وما يماثلها.',
+  'systemAdmin.roles.quick.groupHint.sensitive':
+    'الأجور والأرقام القومية ومفاتيح الماكينات وكلمات السر — لا تدخل ضمن العرض.',
+  'systemAdmin.roles.quick.groupHint.breakGlass':
+    'الحذف النهائي وما يماثله — لا تدخل ضمن أي نوع آخر.',
   'systemAdmin.roles.matrix.selectAll': 'تحديد كل الصلاحيات',
   'systemAdmin.roles.matrix.counter': 'المحدَّد: {{selected}} من {{total}}',
   'systemAdmin.roles.matrix.searchPlaceholder': 'ابحث في الصلاحيات…',

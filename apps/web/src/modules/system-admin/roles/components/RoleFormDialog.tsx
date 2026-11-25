@@ -17,7 +17,9 @@ import { duplicateName, duplicatePayload } from '../lib/role-duplication';
 import { useT } from '../../../../platform/localization/useT';
 import { Button, Dialog, Field, Form, Input, Select, Textarea, toast } from '../../../../shared/ui';
 import { useAppSelector } from '../../../../store';
+import { cn } from '../../../../shared/lib/cn';
 import { type Locale } from '@ecms/contracts';
+import { PermissionQuickGroups } from './PermissionQuickGroups';
 import { RolePermissionMatrix } from './RolePermissionMatrix';
 import {
   useCreateRole,
@@ -80,6 +82,8 @@ export const RoleFormDialog = ({
   const { data: departments = [] } = useDepartmentCatalog(open);
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const busy = create.isPending || update.isPending;
+  // A managed role is read-only throughout (the matrix says why), so it gets no bulk control here.
+  const quickSelection = (role?.managed ?? 'none') === 'none';
 
   const toggle = (key: string, next: boolean): void => {
     setKeys((previous) =>
@@ -136,7 +140,14 @@ export const RoleFormDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
-      size="lg"
+      // The width of the screen — «عايز الفورم تبقى بعرض الشاشة» — because the form IS the
+      // permission tree: 449 rows read in three or four columns, with the quick selection beside
+      // them, and one scrollbar (the dialog's) instead of a list scrolling inside a scrolling form.
+      size="full"
+      tall
+      // A form, not a glance: a stray click outside must not throw away a half-built role. The ×
+      // and Escape remain the ways out.
+      dismissOnOutsideClick={false}
       title={t(
         isDuplicate
           ? 'systemAdmin.roles.form.duplicateTitle'
@@ -165,48 +176,66 @@ export const RoleFormDialog = ({
       }
     >
       <Form onSubmit={submit}>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Field label={t('systemAdmin.roles.form.nameAr')} required>
             <Input dir="rtl" value={nameAr} onChange={(e) => setNameAr(e.target.value)} required />
           </Field>
           <Field label={t('systemAdmin.roles.form.nameEn')} required>
             <Input dir="ltr" value={nameEn} onChange={(e) => setNameEn(e.target.value)} required />
           </Field>
+          <Field
+            label={t('systemAdmin.roles.department')}
+            hint={t('systemAdmin.roles.departmentHint')}
+          >
+            <Select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+              <option value="">{t('systemAdmin.roles.noDepartment')}</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name[locale]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label={t('systemAdmin.roles.form.description')}>
+            <Textarea
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </Field>
         </div>
-        <Field
-          label={t('systemAdmin.roles.department')}
-          hint={t('systemAdmin.roles.departmentHint')}
-        >
-          <Select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
-            <option value="">{t('systemAdmin.roles.noDepartment')}</option>
-            {departments.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name[locale]}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label={t('systemAdmin.roles.form.description')}>
-          <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
-        </Field>
 
-        <div className="max-h-[45vh] overflow-auto">
-          <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-            {t('systemAdmin.roles.form.permissions', { count: keys.length })}
+        <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+          {t('systemAdmin.roles.form.permissions', { count: keys.length })}
+        </p>
+        {catalogUnavailable && (
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            {t('systemAdmin.permissions.noAccess')}
           </p>
-          {catalogUnavailable && (
-            <p className="mb-2 text-xs text-amber-700 dark:text-amber-400">
-              {t('systemAdmin.permissions.noAccess')}
-            </p>
+        )}
+        {/* The quick selection sits BESIDE the tree on a wide screen and stays in view while the
+            tree scrolls under it; on a narrow one it comes first. */}
+        <div
+          className={cn(
+            'grid grid-cols-1 gap-4',
+            quickSelection && 'lg:grid-cols-[17rem_minmax(0,1fr)]',
           )}
-          <RolePermissionMatrix
-            catalog={catalog}
-            pages={pages}
-            selected={keys}
-            managed={role?.managed ?? 'none'}
-            onToggle={toggle}
-            onBulkChange={replaceKeys}
-          />
+        >
+          {quickSelection && (
+            <div className="lg:sticky lg:top-0 lg:max-h-[calc(100vh-13rem)] lg:self-start lg:overflow-y-auto">
+              <PermissionQuickGroups catalog={catalog} selected={keys} onBulkChange={replaceKeys} />
+            </div>
+          )}
+          <div className="min-w-0">
+            <RolePermissionMatrix
+              catalog={catalog}
+              pages={pages}
+              selected={keys}
+              managed={role?.managed ?? 'none'}
+              onToggle={toggle}
+              onBulkChange={replaceKeys}
+            />
+          </div>
         </div>
       </Form>
     </Dialog>

@@ -1937,6 +1937,9 @@ words in «». An answer that changes this design is applied as a revision (§22
 | OD-68 | B: typed by hand through the screens; no go-live file load in Phase 1 | 2026-11-24 | «لأ خلينا من غير شيتات او بيانات دلوقتى» |
 | Delivery (Status, §18) | one phase at a time; each phase is closed, its exit criteria met and the owner told, before the next starts | 2026-11-24 | «وامشى Phase واحده وبعد ما نقفل كل واحده ندخل على اللى بعدها» |
 | RK-09, the zod waiver | renewed for 30 days, to 2026-12-26; the zod 4 migration stays its own change | 2026-11-24 | «موافق على Zod» |
+| Phase 1's readings (the close report of 2026-11-25; §22, "P1a.2 built" to "Phase 1 closed") | kept as built: a retire or bring-back re-files no item; stock levels whole numbers 0 to 1,000,000 in order; the item unit editable until P2 or P5; no new warehouse in a closed branch; a warehouse names an active department of its own branch; a keeper from another branch allowed; top-bar filing (ADR-028); tax numbers compared as typed and a repeat only warned; VAT status hidden until OD-29; a retired supplier's papers list open; role titles §6.5's candidates (OD-67) | 2026-11-25 | «موافق على كل التوصيات، كمّل» |
+| PXQ-1 (PX-1 re-detail §2), a leave request nobody can approve | (1): it goes to HR, down leave's manager and HR path at submission and to HR for the remaining steps after earlier approvals; applied in an HR slice of its own after PX-1.6, option 3 holding until then | 2026-11-25 | «موافق على كل التوصيات، كمّل» |
+| PRQ-1 to PRQ-4 (P2 re-detail §2) | each its recommendation: PRQ-1 (1), a returned PR keeps the lowered quantities and a line cut to nothing is removed; PRQ-2 (a) 1 and (b) 1, the procurement manager hears of approvals and the override holders who reach every rung left and can open the PR hear of a stuck one; PRQ-3 (1), no PR roles in production before P4; PRQ-4 (1), a different person settles each empty level | 2026-11-25 | «موافق على كل التوصيات، كمّل» |
 
 ---
 
@@ -3404,6 +3407,17 @@ Repository-wide findings outside this module are listed for the owner in
     `GET /platform/me/applications`; the §7.2 rows for several listed branches and for section scope are covered by the
     shared rule's unit specs, not by a warehouse integration case; and no spec pins the module's label in the role
     matrix (§6.1 says nothing catches the omission; the label is present today).
+- **P2 re-detailed** (2026-11-25). Phase 2, purchase requests, is re-detailed in
+  [administration-module-phase-2.md](administration-module-phase-2.md), as §18 and §21 ask, under the owner's
+  adoption of every recommended default (§16.12). Its drift check, on `main` at `de38fd71`, found no change since
+  `9efdcbd9` in the platform code P2 relies on. P2 is written against the engine as ADR-041 leaves it, which PX-1's code
+  pull requests have yet to build, so P2's code waits for PX-1 to close (§18.2), and a second drift check reads the
+  merged engine, in a docs pull request of its own, before P2.0. ADR-041 supersedes five points of the P2 text, and the
+  code Phase 1 left differs from it in eight places; the re-detail's §1.2 details each, with the plan-of-record changes
+  it makes. It plans eleven code pull requests, P2.0 to P2.W2, and records four questions for the owner, PRQ-1 to
+  PRQ-4, which P2 does not wait for. Its design review, Full preset, ran on 2026-11-25 and is recorded in its §18: 148
+  findings over two rounds, 146 fixed, one escalated (PRQ-3) and one dropped, and a few parts dropped under (a) and
+  (d), one of which went to the owner as PRQ-4. It is the gate before P2.0.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

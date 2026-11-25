@@ -155,6 +155,8 @@ with the numbers, before PX-1.2 deploys.
   3. Keep it waiting in both cases until an override decides it (none: what PX-1 does).
 - **Recommendation.** 1: the employee is not blocked by a chain nobody staffs, and a person
   responsible for leave still decides.
+- **Answered** (2026-11-25, design §16.12): option 1, the recommendation, «موافق على كل التوصيات، كمّل». It is applied in an
+  HR slice of its own after PX-1.6, as below; PX-1 does not carry it, and option 3 holds until that slice ships.
 - **Until the owner answers.** Option 3.
 - **Arabic.** إذا وصل طلب إجازة إلى مرحلة لا يوجد فيها من يستطيع اعتماد الخطوات الباقية في مسار
   اعتماده، سواء من البداية أو بعد اعتماد خطوات سابقة، فماذا يحدث؟ (١) يُحوَّل إلى الموارد البشرية

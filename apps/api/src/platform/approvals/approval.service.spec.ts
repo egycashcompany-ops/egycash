@@ -13,7 +13,7 @@
 import { Schema, Types, model } from 'mongoose';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ApprovalLevel, type ApprovalStep, type SetApprovalWorkflow } from '@ecms/contracts';
-import { BusinessRuleError } from '../../shared/errors';
+import { BusinessRuleError, ConflictError } from '../../shared/errors';
 import { type AuthContext } from '../../shared/types';
 import { type ChainStatus, type DecidedEntry } from './approval-trail';
 import { type Unit } from './approver-level';
@@ -64,6 +64,7 @@ vi.mock('../rbac/rbac.service', () => ({
 vi.mock('../audit', () => ({ auditService: { record: mocks.record } }));
 
 const { approvalService, pinOf, readApprovalPin } = await import('./approval.service');
+const { auditService } = await import('../audit');
 
 const AT = new Date('2026-11-25T09:00:00.000Z');
 const BRANCH = new Types.ObjectId();
@@ -526,6 +527,138 @@ describe('deciding (decide)', () => {
       'approvals.notYourStep',
     );
     expect(mocks.record).not.toHaveBeenCalled();
+  });
+});
+
+describe('who audits a decision (decide, R5)', () => {
+  // docs/12-planning/administration-module-phase-px1.md §6.6; ADR-041 decision 7. The stub host is
+  // the only host that opts in during PX-1: its type registers `audit: 'host'`, as P2's will, and it
+  // does what such a host owes the engine — decide, commit its own write, and only then record the
+  // decision on its own document. Its type declares the key its rungs name.
+  const STUB_TYPE = 'spec.hostAudited';
+  const STUB_LADDER = [rung('unit', 'stub.approve'), rung('organization', 'stub.approve')];
+  const registerStub = (audit: 'engine' | 'host') =>
+    registerApprovalRequestType(
+      {
+        key: STUB_TYPE,
+        moduleId: 'spec',
+        name: { ar: 'نوع اختبار يسجل مضيفه قيد التدقيق', en: 'Spec type audited by its host' },
+        permissionKeys: ['stub.approve'],
+      },
+      { audit },
+    );
+  const stubSubject = (decisions: readonly DecidedEntry[] = []) => ({
+    ...subject(decisions),
+    requestType: STUB_TYPE,
+  });
+
+  const STUB_DOCUMENT = String(new Types.ObjectId());
+  const stubHost = async (who: AuthContext, commit: (entries: DecidedEntry[]) => Promise<void>) => {
+    const outcome = await approvalService.decide(stubSubject(), who, APPROVE);
+    await commit(outcome.entries);
+    await auditService.record({
+      entityRef: { moduleId: 'spec', entityType: 'stubRequest', entityId: STUB_DOCUMENT },
+      action: 'update',
+      changes: outcome.auditChanges,
+    });
+    return outcome;
+  };
+
+  it('R5: a host type writes no row and hands back auditChanges, the facts the engine’s row carries', async () => {
+    registerStub('host');
+    // Early, over the rung below: the decision, its rung and the rungs it covers.
+    chain(STUB_LADDER);
+    mocks.ownStepsOf.mockResolvedValue([1]);
+    const early = await approvalService.decide(stubSubject(), actor(), APPROVE);
+    expect(early).toMatchObject({ status: 'approved', stepIndex: 1 });
+    expect(early.auditChanges).toEqual([
+      { field: 'decision', old: null, new: 'approved' },
+      { field: 'step', old: null, new: '1' },
+      { field: 'level', old: null, new: 'organization' },
+      { field: 'permissionKey', old: null, new: 'stub.approve' },
+      { field: 'covers', old: null, new: '0' },
+    ]);
+
+    // An override on a chain nobody staffs: the third fact, `overriddenWith`, comes back too.
+    chain(STUB_LADDER, []);
+    mocks.ownStepsOf.mockResolvedValue([]);
+    const overridden = await approvalService.decide(stubSubject(), ORG_OVERRIDE, APPROVE);
+    expect(overridden).toMatchObject({ status: 'unstaffed', stepIndex: 0 });
+    expect(overridden.auditChanges).toEqual([
+      { field: 'decision', old: null, new: 'approved' },
+      { field: 'step', old: null, new: '0' },
+      { field: 'level', old: null, new: 'unit' },
+      { field: 'permissionKey', old: null, new: 'stub.approve' },
+      { field: 'overriddenWith', old: null, new: 'approval.override' },
+    ]);
+    expect(mocks.record).not.toHaveBeenCalled();
+  });
+
+  it('R5: a stub host that commits and then records writes one row, naming its own document', async () => {
+    registerStub('host');
+    chain(STUB_LADDER);
+    mocks.ownStepsOf.mockResolvedValue([0]);
+    const order: string[] = [];
+    mocks.record.mockImplementation(() => {
+      order.push('record');
+      return Promise.resolve();
+    });
+
+    await stubHost(actor(), () => {
+      order.push('commit');
+      return Promise.resolve();
+    });
+    expect(order).toEqual(['commit', 'record']);
+    expect(mocks.record).toHaveBeenCalledTimes(1);
+    expect(mocks.record).toHaveBeenCalledWith({
+      entityRef: { moduleId: 'spec', entityType: 'stubRequest', entityId: STUB_DOCUMENT },
+      action: 'update',
+      changes: [
+        { field: 'decision', old: null, new: 'approved' },
+        { field: 'step', old: null, new: '0' },
+        { field: 'level', old: null, new: 'unit' },
+        { field: 'permissionKey', old: null, new: 'stub.approve' },
+      ],
+    });
+  });
+
+  it('R5: a stub host whose commit throws records nothing', async () => {
+    // Leave's conditional write refuses this way when a second decision got there first; for a
+    // host type the refused decision leaves no row behind.
+    registerStub('host');
+    chain(STUB_LADDER);
+    mocks.ownStepsOf.mockResolvedValue([0]);
+    const refused = stubHost(actor(), () =>
+      Promise.reject(new ConflictError('the request was already decided')),
+    );
+    await expect(refused).rejects.toBeInstanceOf(ConflictError);
+    expect(mocks.record).not.toHaveBeenCalled();
+  });
+
+  it('R5: an engine type, the default and leave’s, is recorded by the engine as today, with the same changes handed back', async () => {
+    // `hr.leave` registers without the option (beforeEach), as leave does, and the stub type here
+    // names `'engine'` outright: both are recorded before the host writes, as every type was.
+    for (const [registered, who] of [
+      ['hr.leave', subject()],
+      [STUB_TYPE, stubSubject()],
+    ] as const) {
+      if (registered === STUB_TYPE) registerStub('engine');
+      mocks.record.mockClear();
+      chain(registered === STUB_TYPE ? STUB_LADDER : LADDER);
+      mocks.ownStepsOf.mockResolvedValue([0]);
+      const outcome = await approvalService.decide(who, actor(), APPROVE);
+      expect(mocks.record, registered).toHaveBeenCalledTimes(1);
+      expect(mocks.record, registered).toHaveBeenCalledWith({
+        entityRef: { moduleId: 'platform', entityType: 'approval', entityId: `${registered}:0` },
+        action: 'update',
+        changes: outcome.auditChanges,
+      });
+      expect(outcome.auditChanges, registered).toContainEqual({
+        field: 'decision',
+        old: null,
+        new: 'approved',
+      });
+    }
   });
 });
 

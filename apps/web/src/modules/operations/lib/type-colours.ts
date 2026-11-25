@@ -18,14 +18,27 @@
 //     (`rowColourChoices`).
 //   · Two types may share a colour: nothing here assumes a colour names one type
 //     (`colourWearers` lists every one).
+//
+// Round 34 C — «ما انا عاوز مش لازم نوع يكون واخد اجبارى لون فاهم ولو انا مثبت لون للنوع ممكن لو تندى صف
+// اشيل لونه عادى»: COLOURS ARE OPTIONAL. A type may have none (its `colour` null — drawn neutral), and
+// a row's colour has three states (`rowColour`): null «لون النوع» (its type's, or none when the type
+// has none), a palette colour picked by hand, or `'none'` «بدون لون» picked by hand — which wins over
+// the type's colour (`resolveRowColour`). A colour once given can be taken off, by either way.
 import {
+  OPERATIONS_CREW_ROW_NO_COLOUR,
   OPERATIONS_SHIFT_TYPE_COLOURS,
-  type OperationsCrewRowColour,
+  type OperationsCrewRowColourSetting,
   type OperationsShiftTypeColour,
   type OperationsShiftTypeDto,
 } from '@ecms/contracts';
 
 export type PaletteColour = OperationsShiftTypeColour;
+
+/** «بدون لون» on a row — `rowColour: 'none'` (Round 34 C). */
+export const NO_ROW_COLOUR = OPERATIONS_CREW_ROW_NO_COLOUR;
+
+/** What a row's `rowColour` holds besides null («لون النوع»): a palette colour, or «بدون لون». */
+export type RowColourSetting = OperationsCrewRowColourSetting;
 
 /** The palette in full, in its order. */
 export const PALETTE: readonly PaletteColour[] = OPERATIONS_SHIFT_TYPE_COLOURS;
@@ -45,12 +58,21 @@ export const catalogStateOf = (read: { data?: unknown; isError: boolean }): Cata
 export const liveTypes = (types: readonly OperationsShiftTypeDto[]): OperationsShiftTypeDto[] =>
   types.filter((type) => type.isActive);
 
+/** The palette colours the live types wear — a type with no colour (Round 34 C) wears none. */
+const wornColours = (types: readonly OperationsShiftTypeDto[]): Set<PaletteColour> =>
+  new Set(
+    liveTypes(types)
+      .map((type) => type.colour)
+      .filter((colour): colour is PaletteColour => colour !== null),
+  );
+
 /**
  * The swatches shown for this catalog: as many as its live types (plus `adding`, the types a form is
  * about to add — the catalog's form for a new type counts it: N + 1), never more than the palette
  * holds. Which ones: EVERY colour a live type wears — a live type is never off the palette — then
  * the palette's first colours nobody live wears, until there are that many; all in the palette's
- * order. Two types sharing a colour leave room for one more unworn swatch.
+ * order. Two types sharing a colour leave room for one more unworn swatch; so does a type with no
+ * colour (Round 34 C) — it is still a type, and still counts.
  */
 export const paletteFor = (
   types: readonly OperationsShiftTypeDto[],
@@ -61,7 +83,7 @@ export const paletteFor = (
     0,
     Math.min(live.length + Math.max(0, Math.floor(adding)), PALETTE.length),
   );
-  const worn = new Set<PaletteColour>(live.map((type) => type.colour));
+  const worn = wornColours(types);
   let unworn = Math.max(0, count - worn.size);
   return PALETTE.filter((colour) => {
     if (worn.has(colour)) return true;
@@ -82,22 +104,28 @@ export const typeColourOf = (
 ): PaletteColour | null =>
   shiftTypeId === null ? null : (types.find((type) => type.id === shiftTypeId)?.colour ?? null);
 
-/** Where a row's colour comes from: picked by hand on the row, its type's, or none at all. */
-export type RowColourSource = 'row' | 'type' | null;
+/**
+ * Where a row's colour comes from: picked by hand on the row (`row`), its type's (`type`), «بدون لون»
+ * picked by hand over the type's (`none`, Round 34 C), or nothing at all (null — no type, or a type
+ * with no colour, and «لون النوع» kept).
+ */
+export type RowColourSource = 'row' | 'type' | 'none' | null;
 
 /**
  * The colour a row is drawn in — «تلقائي ويتغيّر يدوي»: the one picked by hand on the row, else its
- * type's, else none.
+ * type's, else none. Round 34 C: «بدون لون» picked by hand is none, whatever the type wears.
  */
 export const resolveRowColour = (
-  rowColour: OperationsCrewRowColour | null,
+  rowColour: RowColourSetting | null,
   typeColour: PaletteColour | null,
 ): { colour: PaletteColour | null; source: RowColourSource } =>
-  rowColour !== null
-    ? { colour: rowColour, source: 'row' }
-    : typeColour !== null
-      ? { colour: typeColour, source: 'type' }
-      : { colour: null, source: null };
+  rowColour === NO_ROW_COLOUR
+    ? { colour: null, source: 'none' }
+    : rowColour !== null
+      ? { colour: rowColour, source: 'row' }
+      : typeColour !== null
+        ? { colour: typeColour, source: 'type' }
+        : { colour: null, source: null };
 
 /**
  * The live types that wear a colour — every one (two may share), in the catalog's order. What a
@@ -122,15 +150,22 @@ export interface RowColourChoice {
  */
 export const rowColourChoices = (
   palette: readonly PaletteColour[],
-  current: OperationsCrewRowColour | null,
+  current: RowColourSetting | null,
 ): RowColourChoice[] => [
   ...palette.map((colour) => ({ colour, outside: false })),
-  ...(current !== null && !palette.includes(current) ? [{ colour: current, outside: true }] : []),
+  ...(current !== null && current !== NO_ROW_COLOUR && !palette.includes(current)
+    ? [{ colour: current, outside: true }]
+    : []),
 ];
 
-/** Is a type's colour among the swatches shown? (The card marks one that is not.) */
-export const inPalette = (palette: readonly PaletteColour[], colour: PaletteColour): boolean =>
-  palette.includes(colour);
+/**
+ * Is a type's colour among the swatches shown? (The card marks one that is not.) A type with no colour
+ * (Round 34 C) is never «off the palette»: it has nothing to be off it with.
+ */
+export const inPalette = (
+  palette: readonly PaletteColour[],
+  colour: PaletteColour | null,
+): boolean => colour === null || palette.includes(colour);
 
 /**
  * The first colour of the shown palette no live type wears yet — a NEW type starts told apart from
@@ -138,12 +173,12 @@ export const inPalette = (palette: readonly PaletteColour[], colour: PaletteColo
  * already (N + 1), so it always holds an unworn colour while the palette has one.
  */
 export const freeColourFor = (types: readonly OperationsShiftTypeDto[]): PaletteColour => {
-  const worn = new Set(liveTypes(types).map((type) => type.colour));
+  const worn = wornColours(types);
   return paletteFor(types, 1).find((colour) => !worn.has(colour)) ?? PALETTE[0] ?? 'rose';
 };
 
 /**
- * What a press on a swatch of «ألوان الأنواع» does:
+ * What a press on a swatch of «ألوان الأنواع» does — a swatch, or (Round 34 C) its «بدون لون», null:
  *   · `none`   — read only (no `operationsCatalog.manage`), or another type's colour is on its way;
  *   · `save`   — a colour the card does not show the type in: the catalog's PATCH, at the version read;
  *   · `reread` — the colour the card ALREADY shows it in. The card's list may be older than the
@@ -154,8 +189,8 @@ export const freeColourFor = (types: readonly OperationsShiftTypeDto[]): Palette
 export type SwatchPress = 'none' | 'save' | 'reread';
 
 export const swatchPress = (
-  shown: PaletteColour,
-  pressed: PaletteColour,
+  shown: PaletteColour | null,
+  pressed: PaletteColour | null,
   { canEdit, busy }: { canEdit: boolean; busy: boolean },
 ): SwatchPress => (!canEdit || busy ? 'none' : shown === pressed ? 'reread' : 'save');
 

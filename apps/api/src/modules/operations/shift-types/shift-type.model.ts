@@ -12,7 +12,13 @@ export interface OperationsShiftTypeDoc extends BaseDocFields {
   /** The Arabic name the board shows. */
   name: string;
   nameEn: string | null;
-  colour: OperationsShiftTypeColour;
+  /**
+   * A palette colour, or null — Round 34 C: «مش لازم نوع يكون واخد اجبارى لون». Optional on the type
+   * for the same reason: a type saved before Round 34 always holds one, and one saved since may not
+   * hold the field at all; every reader goes through `?? null`. No data migration: the existing
+   * types keep their colours.
+   */
+  colour?: OperationsShiftTypeColour | null;
   /** The catalog's dragged order, 0 first; null until somebody arranges the list. */
   sortOrder?: number | null;
   /**
@@ -29,7 +35,8 @@ const shiftTypeSchema = new Schema<OperationsShiftTypeDoc>(
   {
     name: { type: String, required: true },
     nameEn: { type: String, required: false, default: null },
-    colour: { type: String, required: true, enum: OPERATIONS_SHIFT_TYPE_COLOURS },
+    // Round 34 C — optional: null is «بدون لون». (Mongoose's enum lets null through by itself.)
+    colour: { type: String, default: null, enum: [...OPERATIONS_SHIFT_TYPE_COLOURS, null] },
     sortOrder: { type: Number, default: null },
     seedKey: { type: String, default: null },
     isActive: { type: Boolean, required: true, default: true },

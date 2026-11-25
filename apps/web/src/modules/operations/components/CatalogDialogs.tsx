@@ -46,7 +46,7 @@ import { SHIPMENT_PATH } from './shipment-icons';
 import { errorMessage } from '../../../shared/lib/errors';
 import { ApiError } from '../../../shared/lib/api-client';
 import { useAppSelector } from '../../../store';
-import { SHIFT_TYPE_TONE, ShiftTypeTag } from './shift-type-look';
+import { NoColourSwatch, SHIFT_TYPE_TONE, ShiftTypeTag } from './shift-type-look';
 import { freeColourFor, paletteFor } from '../lib/type-colours';
 import { branchSaveErrorKey } from '../lib/shipment-form';
 import {
@@ -726,14 +726,15 @@ export const freeShiftTypeColour = (
  * عدد النوع»: the board's palette (`paletteFor` — every colour a live type wears, then the first
  * unworn ones), as many colours as there are live types — counting the one being added — and an
  * archived type's own colour at the end when it is not among them (kept, and shown as its). A live
- * type's own colour is always among them.
+ * type's own colour is always among them. «بدون لون» (Round 34 C) is no swatch of it: the form offers
+ * it on its own, first.
  */
 export const shiftTypeFormPalette = (
   types: readonly OperationsShiftTypeDto[],
   shiftType: OperationsShiftTypeDto | null,
 ): OperationsShiftTypeColour[] => {
   const palette = paletteFor(types, shiftType === null ? 1 : 0);
-  return shiftType !== null && !palette.includes(shiftType.colour)
+  return shiftType !== null && shiftType.colour !== null && !palette.includes(shiftType.colour)
     ? [...palette, shiftType.colour]
     : palette;
 };
@@ -743,6 +744,10 @@ export const shiftTypeFormPalette = (
  * البيانات المرجعيه». The areas' form (an Arabic name, an optional English one) and a colour from
  * the contract's palette, chosen by swatch, with the type drawn as the board will draw it. Archiving
  * is not here: the tab's own button says it in one click (`isActive`), as the server takes it.
+ *
+ * Round 34 C — «مش لازم نوع يكون واخد اجبارى لون»: «بدون لون» is the first choice (`colour: null`);
+ * a type saved with a colour can be set back to it, and a colour given again. A new type still opens
+ * on a free colour of the palette (`freeShiftTypeColour`), «بدون لون» one press away.
  */
 export const ShiftTypeDialog = ({
   open,
@@ -763,7 +768,8 @@ export const ShiftTypeDialog = ({
 
   const [name, setName] = useState('');
   const [nameEn, setNameEn] = useState('');
-  const [colour, setColour] = useState<OperationsShiftTypeColour>('rose');
+  /** The colour picked — or null, «بدون لون» (Round 34 C). */
+  const [colour, setColour] = useState<OperationsShiftTypeColour | null>('rose');
   /** A name another type holds (409) — said on the name's own box. */
   const [taken, setTaken] = useState(false);
 
@@ -771,7 +777,7 @@ export const ShiftTypeDialog = ({
     if (!open) return;
     setName(shiftType?.name ?? '');
     setNameEn(shiftType?.nameEn ?? '');
-    setColour(shiftType?.colour ?? freeShiftTypeColour(types));
+    setColour(shiftType === null ? freeShiftTypeColour(types) : shiftType.colour);
     setTaken(false);
     // `types` is left out on purpose: the catalog is read once per opening, so a refetch behind
     // an open form never moves the colour the planner is looking at.
@@ -855,6 +861,26 @@ export const ShiftTypeDialog = ({
               className="flex flex-wrap gap-2"
               data-shift-type-palette="true"
             >
+              <button
+                type="button"
+                role="radio"
+                // Not a swatch of the palette — the type's colour taken off (`colour: null`).
+                data-colour-off="true"
+                aria-checked={colour === null}
+                aria-label={t('operations.catalogs.shiftType.noColour')}
+                title={t('operations.catalogs.shiftType.noColourHint')}
+                onClick={() => setColour(null)}
+                className={cn(
+                  'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border pe-3 ps-1 text-[12.5px] font-bold text-slate-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:text-slate-200 dark:focus-visible:ring-offset-slate-900',
+                  // Checked as a swatch is: the ring of the page's ink around it.
+                  colour === null
+                    ? 'border-solid border-slate-900 ring-1 ring-slate-900 dark:border-white dark:ring-white'
+                    : 'border-dashed border-slate-300 hover:border-slate-400 dark:border-slate-600',
+                )}
+              >
+                <NoColourSwatch size="lg" />
+                {t('operations.catalogs.shiftType.noColour')}
+              </button>
               {shiftTypeFormPalette(types, shiftType).map((option) => {
                 const label = t(`operations.catalogs.shiftType.colours.${option}`);
                 return (

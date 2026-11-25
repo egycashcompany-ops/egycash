@@ -200,28 +200,43 @@ export const DesignSave = ({
   busy = false,
   label,
   disabled = false,
+  why,
   ...rest
 }: {
   onClick: () => void;
   busy?: boolean;
   label?: string;
   disabled?: boolean;
+  /**
+   * Why it is off, in words (Round 34 D — «تبديل بين سيارتين»'s «تطبيق»): the button is off and SAYS
+   * so — in its tooltip and its name, and still reachable by the keyboard (`aria-disabled`, not
+   * `disabled`, Round 34 D critic: a native `disabled` hid the reason from the keyboard and the
+   * screen reader). A press does nothing.
+   */
+  why?: string;
 } & Record<`data-${string}`, string>): JSX.Element => {
   const t = useT();
+  const text = label ?? t('common.save');
+  const off = why !== undefined;
   return (
     <button
       type="button"
       {...rest}
+      title={why}
+      aria-label={off ? `${text} — ${why}` : undefined}
+      aria-disabled={off ? true : undefined}
       aria-busy={busy}
-      disabled={disabled || busy}
-      onClick={onClick}
+      disabled={!off && (disabled || busy)}
+      onClick={() => {
+        if (!off) onClick();
+      }}
       className={cn(
-        'flex items-center gap-2 rounded-xl py-2.5 text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-60',
+        'flex items-center gap-2 rounded-xl py-2.5 text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-60 aria-disabled:cursor-not-allowed aria-disabled:opacity-60 aria-disabled:active:scale-100',
         look.save,
       )}
     >
       {busy && <Spinner className="h-4 w-4" />}
-      <span>{label ?? t('common.save')}</span>
+      <span>{text}</span>
     </button>
   );
 };

@@ -610,6 +610,11 @@ and this section then names it.
   3. the web view helpers and their spec, the detail page and the i18n keys;
   4. with LQ-1 option 1 only: the repository read, the service method, the task's handler and N8;
   5. the CHANGELOG and the docs of 16.7.
+- **As built (recorded deviation).** Steps 1, 2, 3 and 5 landed as one commit, and the review's
+  fixes as a second; step 4 does not apply under LQ-1 option 3. History is not rewritten to split
+  them. The pull request is squash-merged under its title (`CONTRIBUTING.md:26`), so `main` gets
+  one commit either way. It opens under the title above, not under the first commit's subject, and
+  its description records this.
 - **Depends on.** PX-1 closed; this plan's design review; LQ-1 to LQ-3 do not block (16.3).
 - **Description.** The PR template's checklist filled in (`CONTRIBUTING.md:56-57`); its size and CI
   minutes (RK-01, the 45-minute budget); count LC1 (16.10); the new cases failing on the base commit
@@ -813,8 +818,12 @@ export const showsHandedToHr = (request: LeaveRequestDto): boolean =>
   decision as any manager and HR request is, and every other case reads as today. The comment says
   that the trail's flags answer only while the request is on the chain.
 - `:195`: the card's condition becomes `showsDeskCard(request)`, so a handed-over request shows the
-  card beside the chain panel. The comment at `:190-192` says that the two are drawn together only
-  on a handed-over request, under different headings, and why.
+  card beside the chain panel. As built, the panel and the card share one grid item, the page's
+  third column, as the side column of the HR detail pages does
+  (`apps/web/src/modules/hr/employee-management/employee-files/pages/EmployeeFileDetailPage.tsx:148`),
+  so the card sits under the panel it explains; as two items of the three-column grid, the card
+  wrapped to a row of its own under the details card. The comment at `:190-192` says that the two
+  are drawn together only on a handed-over request, under different headings, and why.
 - `:198`: the heading is `t(showsHandedToHr(request) ? 'leave.detail.hrStep' : 'leave.detail.approvals')`,
   so the two cards never share the title "Approval chain". Under it, when `showsHandedToHr(request)`,
   one line, `t('leave.detail.handedToHr')`, in the panel's notice style
@@ -832,6 +841,26 @@ export const showsHandedToHr = (request: LeaveRequestDto): boolean =>
 |---|---|---|
 | `leave.detail.hrStep` | HR step | خطوة الموارد البشرية |
 | `leave.detail.handedToHr` | Nobody on the approval chain could decide the remaining steps, so the request went to HR. | لم يكن في مسار الموافقة من يستطيع البتّ في الخطوات الباقية، فحُوِّل الطلب إلى الموارد البشرية. |
+
+**A third key, which this list missed (recorded deviation).** The chain screen's hint,
+`approvals.editor.stepsHint` (`i18n.ts:1927-1928`, `:18301-18302`), is shown above the rungs of
+every chain being edited (`apps/web/src/modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx:325`).
+Its second sentence said that a request with nobody left on its remaining steps waits until a
+holder of the override permission decides it: PX-1.2's text for PXQ-1's open state (PX-1
+re-detail §6.1, "Text that R2 makes untrue"). After this slice that is untrue for `hr.leave`, the
+engine's only host, so the sentence is rewritten as PX-1.2 rewrote the hint, in both languages,
+and keeps LQ-1's window, which this pull request leaves as it is (16.3):
+
+- English: "What follows for a request with nobody on its remaining steps is its module's rule. A
+  leave request takes the manager and HR path when it is filed, and goes to HR's step after an
+  approval; if the holders of its step leave while it waits, it waits until a holder of the
+  override permission decides it."
+- Arabic: أما الطلب الذي لا يبقى أحد يستوفي خطواته الباقية فتحكمه قاعدة النظام الذي يتبعه: فطلب
+  الإجازة يسلك مسار المدير ثم الموارد البشرية عند تقديمه، ويُحوَّل إلى خطوة الموارد البشرية بعد
+  اعتماد خطوة فيه، وإذا فقد أصحاب الخطوة التي ينتظرها صلاحيتهم وهو ينتظر بقي منتظرًا حتى يقرر
+  فيه من يملك صلاحية التجاوز.
+
+The first sentence stays. The CHANGELOG entry says that the hint changed.
 
 **`CHANGELOG.md`**, `[Unreleased]`, `### Changed`, one entry:
 
@@ -906,22 +935,22 @@ late in the year: every request that is neither rejected nor cancelled keeps its
 new `describe`'s `beforeAll` registers its own employee, `nEmp`, with `regEmployee`,
 `activateEssLogin` and `grantNextYearHeadroom`, and every N case files for it, except N2, whose
 employee is registered the same three ways with a manager. Each case files on its own offset, one
-annual day unless stated: N1 7, N2 7 (its own employee), N3 14, N4 21, N5 28, N6 35, N7 42, N8 49
-(A), 56 (B) and 63 (C), N9 70, N10 77, N11 84 (sick leave, which reserves nothing). At most nine of
-`nEmp`'s requests keep a day, within its 21-day grant or its 15 days of headroom, whichever year
-they fall in.
+annual day unless stated: N1 7, N2 7 and 14 (its own employee), N3 14, N4 21, N5 28, N6 35, N7
+42, N8 49 (A), 56 (B) and 63 (C), N9 70, N10 77, N11 84 (sick leave, which reserves nothing). At
+most nine of `nEmp`'s requests keep a day, within its 21-day grant or its 15 days of headroom,
+whichever year they fall in.
 
 | # | Case | Checks |
 |---|---|---|
 | N1 | A chain whose only rung nobody holds (`[BRANCH_RUNG]`) sends a new request down the manager and HR path. `nEmp` has no manager | `pendingHr`; `approvalTrail` null; `pendingStep` `hr`; on the row, `approvalWorkflowId` null and `approvalChainShape` empty; the `leaveRequest` audit row carries `unstaffedChain` with the chain's id; `leave.requestSubmitted` to the HR approver, one more; HR approves: `approved`, `approvals` is one `{ step: 'hr' }` by HR, `approvalSteps` empty; no `platform/approval` row under that decision's request id |
-| N2 | The same chain, for an employee with a manager (a new account placed in the branch, set as `managerId`) | `pendingManager`; `leave.requestSubmitted` to the manager; the manager approves by relationship: `approved` (annual is `managerOnly`), `approvals` is one `{ step: 'manager' }` |
-| N3 | `[UNIT_RUNG, BRANCH_RUNG]`: the unit holder approves, and nobody holds the branch rung that is left | `pendingHr`; `pendingStep` `hr`; trail outcomes `approved`, `pending`, `currentStep` null; `chainStatus` reads `unstaffed`; `leave.requestSubmitted` to the HR approver, one more; one `leaveDecision` row with `status` `pendingHr` and one `platform/approval` row `hr.leave:0`; the organization-scope override reads `viewerMayOverride: false` and is refused 403; HR approves: `approved`, `approvals` is one `{ step: 'hr' }` by HR, `approvalSteps` still one entry, `leaveDecision` statuses `pendingHr` then `approved`, and still one `platform/approval` row for the request |
+| N2 | The same chain, for an employee with a manager (a new account placed in the branch, set as `managerId`) | `pendingManager`; `leave.requestSubmitted` to the manager; the manager approves by relationship: `approved` (annual is `managerOnly`), `approvals` is one `{ step: 'manager' }`. Then, for the same employee, a request on `[UNIT_RUNG, BRANCH_RUNG]` handed over by the unit holder's approval: `pendingHr`, `pendingStep` `hr`; no `leave.requestSubmitted` to the manager and one more to the HR approver; the manager's approval refused 403 `this step requires leave.approve`; HR approves: `approved`, `approvals` one `{ step: 'hr' }`. Without the manager, item 2 could not be told from item 1 |
+| N3 | `[UNIT_RUNG, BRANCH_RUNG]`: the unit holder approves, and nobody holds the branch rung that is left | `pendingHr`; `pendingStep` `hr`; trail outcomes `approved`, `pending`, `currentStep` null; `chainStatus` reads `unstaffed`; `leave.requestSubmitted` to the HR approver, one more, and no `leave.requestApproved` to the employee; one `leaveDecision` row with `status` `pendingHr` and one `platform/approval` row `hr.leave:0`; the pin unchanged (`approvalWorkflowId` the chain's id, `approvalChainShape` its two rungs), and after the company chain is rewritten to `[ORGANIZATION_RUNG]` the trail still reads `approved`, `pending`; the organization-scope override reads `viewerMayOverride: false` and is refused 403; HR approves: `approved`, one `leave.requestApproved` to the employee, `approvals` is one `{ step: 'hr' }` by HR, `approvalSteps` still one entry, `leaveDecision` statuses `pendingHr` then `approved`, and still one `platform/approval` row for the request |
 | N4 | As N3 to the hand-over; then a branch grant of `leave.approve` to `branch@ecms.local` staffs the branch rung, which nobody held in N3; the case logs that account in, and revokes the grant in `finally` | `chainStatus` reads `pending`, and the request stays `pendingHr`; the branch holder reads `currentStep` null and no flags; the branch holder's approval is HR's step (`{ step: 'hr' }`) and gives `approved`; `approvalSteps` unchanged |
 | N5 | As N3 to the hand-over; HR rejects | `rejected`; the year's reserved days back to their value before the request; `leave.requestRejected` to the employee |
 | N6 | As N3 to the hand-over; the employee cancels | `cancelled`; no flags on the trail; the days released; `leave.requestCancelled` to the HR approver (no manager) |
 | N7 | LQ-2. `[BRANCH_RUNG, ORGANIZATION_RUNG]`, with a branch grant to `branch@ecms.local` (logged in after it, revoked in `finally`), and HR's organization grant revoked for the case and restored in `finally`. The branch holder approves, and the request is handed over | with option 1, the branch holder decides HR's step to `approved`; with option 2, the same decision is refused 403 with `you decided an earlier step of this request`. Either way, with nobody holding `leave.approve` company-wide in force, no `leave.requestSubmitted` for this request goes out at the hand-over (16.12, LR-2) |
 | N8 | LQ-1 option 1. Request A on `[BRANCH_RUNG]` with a branch grant to `branch@ecms.local`, which is then revoked (`unstaffed`, no decision); request B on `[UNIT_RUNG]` (`pending`); request C on `[UNIT_RUNG]` with its pin fields unset, as the criterion 4 guard does (`:921-924`), and that chain then deleted (`noChain`). `stale` moves A, B and C four days back, so the reminder reads them as stale | the ids `handOverStuckToHr()` returns include A and C and not B (other rows of the shared database may move too, so the case asserts membership, not the whole list); A and C are `pendingHr`, each with one `update` audit row (`status` and `chainStatus`), and the HR approver is told of each (`told`, by request); B stays `pendingApproval`; a second run's ids include neither A nor C; `remindPendingApprovals` with the first run's set sends `leave.approvalReminder` with B's `entityRef` and none with A's or C's |
-| N9 | 16.2 item 2, an override's decision. `[BRANCH_RUNG, DEPARTMENT_RUNG]`, filed while a branch grant to `branch@ecms.local` staffs the first rung, the grant revoked in a `finally` around the filing, so the request reads `unstaffed` at rung 0 with nobody on rung 1. The organization-scope override approves | `pendingHr`; outcomes `['approved', APPROVAL_OVERRIDE_KEY]`, `['pending', null]`; one `leaveDecision` row with `status` `pendingHr`; `leave.requestSubmitted` for this request to the HR approver; HR approves: `approved` |
+| N9 | 16.2 item 2, an override's decision. `[BRANCH_RUNG, DEPARTMENT_RUNG]`, filed while a branch grant to `branch@ecms.local` staffs the first rung, the grant revoked in a `finally` around the filing, so the request reads `unstaffed` at rung 0 with nobody on rung 1. The organization-scope override approves | `pendingHr`, and no `leave.requestApproved` to the employee; outcomes `['approved', APPROVAL_OVERRIDE_KEY]`, `['pending', null]`; one `leaveDecision` row with `status` `pendingHr`; `leave.requestSubmitted` for this request to the HR approver; HR approves: `approved` |
 | N10 | 16.2 item 2, a request with no pin. As N3, with its pin fields unset right after filing, as the criterion 4 guard does (`:921-924`) | after the unit holder's approval, `pendingHr`, its trail drawn on the live chain (`workflowId` the live row's id, outcomes `approved`, `pending`); HR approves: `approved` |
 | N11 | 16.9, the certificate gate. Sick leave (`SICK_ID`, `requiresAttachment` with the default `beforeApproval`) on `[UNIT_RUNG, BRANCH_RUNG]`, filed with no attachment; the unit holder approves | the hand-over needs no attachment: `pendingHr` (`leave-request.service.ts:605-611`); HR's approve is refused 422 with `an attachment is required before approval` (`leave-request.service.ts:510-518`); the employee attaches a file (`POST /:id/attachments`, as `hr-leave.spec.ts:578-582`); HR approves: `approved` |
 
@@ -931,9 +960,10 @@ they fall in.
 |---|---|---|
 | E1, PX-1.2, "a request whose only rung nobody holds waits unstaffed" (`approvals.spec.ts:588-616`) | a new request on `[BRANCH_RUNG]` waits `unstaffed` | it would take the manager and HR path. It reaches `unstaffed` another way: a branch grant to `branch@ecms.local` staffs the rung, the request is filed (`pending`) inside a `try` whose `finally` revokes the grant, and the chain then reads `unstaffed`. Its R2 and R4 assertions stay: `currentStep` 0, the other branch's override refused `approvals.notYourStep`, the organization-scope override approves. Its name becomes "R2, R4: a request whose only rung loses its holder after submission waits unstaffed; an override over the other branch is refused, an organization-scope one approves it" |
 | E2, PX-1.2, "the unit holder's approval leaves a request with nobody on its organization rung waiting unstaffed" (`:618-660`) | the request stays `pendingApproval`, and an organization-scope override approves it | the approval hands it to HR's step: `pendingHr`, outcomes `approved`, `pending`, `currentStep` null, `chainStatus` `unstaffed`; the branch and organization-scope overrides read no flags and are refused 403. The case ends there, and its `finally` restores HR's grant. The R4 rule by level stays covered by `:662-700`, and an override's decision that hands a request over by N9. Its name becomes "R2, PXQ-1: the unit holder's approval, with nobody on the organization rung, hands the request to HR's step, where no override decides" |
-| E3, PX-1.2, the cancelled-request case, its second half (`:733-747`) | an approval leaves `[UNIT_RUNG, DEPARTMENT_RUNG]` unstaffed | its chain becomes `[BRANCH_RUNG]`, and it reaches `unstaffed` as E1 does, with no decision: the branch grant, the filing, the revoke in `finally`. The organization-scope override reads `viewerMayOverride` true; the employee cancels; the trail reads no flags. The unit rung stays out of it, because the unit approver holds it for the whole suite |
+| E3, PX-1.2, the cancelled-request case, its second half (`:733-747`) | an approval leaves `[UNIT_RUNG, DEPARTMENT_RUNG]` unstaffed | as built: `[UNIT_RUNG, BRANCH_RUNG]`, with a branch grant to `branch@ecms.local` held around the filing and the unit holder's approval (`pendingApproval`, the branch rung waiting) and revoked in `finally`, so the request waits `unstaffed` on the branch rung with one entry. The organization-scope override reads `viewerMayOverride` true; the employee cancels; the trail reads no flags. First planned on `[BRANCH_RUNG]` with no decision, as E1 does; that cannot work, because a request cancelled with no entry has no trail to assert on (`trailFor`, `leave-request.service.ts:712`), so the case needs one (recorded deviation) |
 | E4, PX-1.3, R8, its second half (`:809-813`) | a request on a rung held only by a suspended account waits `unstaffed` | it takes the manager and HR path: `pendingHr`, trail null, no pin. Its name (`:782`) becomes "R8: a rung whose only holder is suspended is passed when a staffed rung follows, and as the only rung sends the request down the manager and HR path" |
-| PX-1.6's off-type case (not on this tree) | a new request on a chain with an off-type rung reads that rung unstaffed | if the chain has no other staffed rung, the new request takes the manager and HR path; the case asserts that |
+| PX-1.6's first off-type case, the stored chain `[OFF_TYPE_RUNG]` alone (not on this tree; `approvals.spec.ts:1137` as built) | a new request reads that rung unstaffed, and an override within reach decides it | the new request takes the manager and HR path: `pendingHr`, `chainStatus` `unstaffed`, no trail, no pin; the stored chain's save checks stay. Its override assertions go, because the request is no longer on the chain: that an override within reach decides an off-type rung stays covered by `apps/api/src/platform/approvals/approval.service.spec.ts`'s R9 cases (`:1081-1118`) |
+| PX-1.6's second off-type case, `[UNIT_RUNG, OFF_TYPE_RUNG]` (not on this tree; `approvals.spec.ts:1176` as built) | the unit holder's approval leaves the request waiting `unstaffed` on the off-type rung | the unit holder's approval hands the request to HR's step: `pendingHr`, outcomes `approved`, `pending`, `currentStep` null, `chainStatus` `unstaffed`; the early-decision refusal before it stays |
 
 **Unchanged.** The suite's other cases: PX-1.1's (`:411-521`), the R4 staffed-chain case
 (`:662-700`), the R3 case (`:752-780`), the first half of the R8 case, both PX-1.4 cases
@@ -1027,7 +1057,7 @@ they fall in.
 
 1. **The rule, tested.** N1 to N7 and N9 to N11 pass, and N8 with LQ-1 option 1. Each fails on the
    base commit, which the description shows.
-2. **The rewritten cases pass.** E1 to E4, and PX-1.6's off-type case as 16.8 says.
+2. **The rewritten cases pass.** E1 to E4, and PX-1.6's two off-type cases as 16.8 says.
 3. **The unit specs.** `leave-request.routing.spec.ts` exists beside the routing file and passes in
    `npm run test:unit -w apps/api`. `leave-request-view.spec.ts` exists beside the view helpers,
    covers cases (a) to (f) of 16.8's Web list, and passes in `npm run test -w apps/web`; the page

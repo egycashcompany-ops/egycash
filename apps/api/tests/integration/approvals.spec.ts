@@ -1322,7 +1322,7 @@ describe('a leave request nobody on its chain can approve goes to HR (PXQ-1, lea
     expect(await engineRowsUnder(decisions[0]?.requestId ?? null)).toEqual([]);
   });
 
-  it('N2: the same chain, for an employee with a manager, sends the request to the manager, who approves it by relationship', async () => {
+  it('N2: the same chain, for an employee with a manager, sends the request to the manager, who approves it by relationship; a hand-over for that employee goes to HR’s step, never to the manager', async () => {
     const managerId = await mkUser('n2-manager@ecms.local', BRANCH_ID);
     const managerToken = await login('n2-manager@ecms.local');
     const managed = await regEmployee({ managerId });
@@ -1342,11 +1342,44 @@ describe('a leave request nobody on its chain can approve goes to HR (PXQ-1, lea
     expect(done.status).toBe('approved');
     expect(done.approvals).toHaveLength(1);
     expect(done.approvals[0]).toMatchObject({ step: 'manager', deciderUserId: managerId });
+
+    // A manager tells item 2 from item 1: after the unit holder's approval the request goes to HR's
+    // step, as for an employee with none, and the manager is neither told nor able to decide it
+    // (leave design §16.2 item 2, "to HR for the remaining steps").
+    await writeChain([UNIT_RUNG, BRANCH_RUNG]);
+    const onChain = await file(14, { emp: managed, ess: managedEss });
+    expect(onChain.status).toBe('pendingApproval');
+    const toldHrBefore = await told(
+      hrApprover.userId,
+      HrLeaveTemplates.RequestSubmitted,
+      onChain.id,
+    );
+    const first = await decide(onChain.id, 'approve', onChain.version, unitApprover.token);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    const handed = first.body.data as LeaveRequestDto;
+    expect(handed.status).toBe('pendingHr');
+    expect(handed.pendingStep).toBe('hr');
+    expect(await told(managerId, HrLeaveTemplates.RequestSubmitted, onChain.id)).toBe(0);
+    expect(await told(hrApprover.userId, HrLeaveTemplates.RequestSubmitted, onChain.id)).toBe(
+      toldHrBefore + 1,
+    );
+    const byManager = await decide(onChain.id, 'approve', handed.version, managerToken);
+    expect(byManager.status, JSON.stringify(byManager.body)).toBe(403);
+    expect((byManager.body as { error: { message: string } }).error.message).toBe(
+      'this step requires leave.approve',
+    );
+
+    const byHr = await decide(onChain.id, 'approve', handed.version, hrApprover.token);
+    expect(byHr.status, JSON.stringify(byHr.body)).toBe(200);
+    const closed = byHr.body.data as LeaveRequestDto;
+    expect(closed.status).toBe('approved');
+    expect(closed.approvals).toHaveLength(1);
+    expect(closed.approvals[0]).toMatchObject({ step: 'hr', deciderUserId: hrApprover.userId });
   });
 
-  it('N3: the unit holder’s approval, with nobody on the branch rung left, hands the request to HR’s step, where no override decides and HR approves it with no engine row', async () => {
+  it('N3: the unit holder’s approval, with nobody on the branch rung left, hands the request to HR’s step with its pin and without telling the employee; no override decides it, and HR approves it with no engine row', async () => {
     // Before PXQ-1 the approval left the request waiting unstaffed on the chain for an override.
-    await writeChain([UNIT_RUNG, BRANCH_RUNG]);
+    const chain = await putChain([UNIT_RUNG, BRANCH_RUNG]);
     const created = await file(14, byN());
     expect(created.status).toBe('pendingApproval');
     const toldBefore = await told(hrApprover.userId, HrLeaveTemplates.RequestSubmitted, created.id);
@@ -1365,6 +1398,8 @@ describe('a leave request nobody on its chain can approve goes to HR (PXQ-1, lea
     expect(await told(hrApprover.userId, HrLeaveTemplates.RequestSubmitted, created.id)).toBe(
       toldBefore + 1,
     );
+    // The employee hears only of HR's decision, as on the manager and HR path (§16.2 item 6).
+    expect(await told(nEss.userId, HrLeaveTemplates.RequestApproved, created.id)).toBe(0);
 
     // The hand-over is one decision: leave's row moves the status to HR's step, and the engine's
     // row from the same HTTP request is rung 0's.
@@ -1373,6 +1408,17 @@ describe('a leave request nobody on its chain can approve goes to HR (PXQ-1, lea
       'pendingHr',
     ]);
     expect(await engineRowsUnder(atHandOver[0]?.requestId ?? null)).toEqual(['hr.leave:0']);
+
+    // The pin stays as written at submission (§16.2 item 4), and the trail is still drawn on it
+    // once the company's chain changes: read live, it would show the one organization rung.
+    const pinned = await LeaveRequestModel.findById(created.id).lean().exec();
+    expect(String(pinned?.approvalWorkflowId)).toBe(chain.id);
+    expect(pinned?.approvalChainShape).toEqual([UNIT_RUNG, BRANCH_RUNG]);
+    await writeChain([ORGANIZATION_RUNG]);
+    expect(outcomes(await readAs(created.id, hrApprover.token))).toEqual([
+      ['approved', null],
+      ['pending', null],
+    ]);
 
     // HR's step is not a rung: the company-wide override reads nothing to decide, and is refused.
     expect((await readAs(created.id, orgOverride.token)).approvalTrail?.viewerMayOverride).toBe(
@@ -1385,6 +1431,7 @@ describe('a leave request nobody on its chain can approve goes to HR (PXQ-1, lea
     expect(second.status, JSON.stringify(second.body)).toBe(200);
     const done = second.body.data as LeaveRequestDto;
     expect(done.status).toBe('approved');
+    expect(await told(nEss.userId, HrLeaveTemplates.RequestApproved, created.id)).toBe(1);
     expect(done.approvals).toHaveLength(1);
     expect(done.approvals[0]).toMatchObject({ step: 'hr', deciderUserId: hrApprover.userId });
     expect(
@@ -1469,10 +1516,15 @@ describe('a leave request nobody on its chain can approve goes to HR (PXQ-1, lea
   it('N7, LQ-2 until answered: the branch holder who approved rung 0 decides HR’s step too, and with nobody holding leave.approve company-wide nobody is told at the hand-over', async () => {
     // HR is the organization rung's only holder, and the only company-wide holder in force of
     // `leave.approve`; the case needs both empty, and gives the grant back after it.
+    // Both setup steps run inside the `try`: a failed login in `grantBranchRung` must still give HR
+    // its grant back, or the cases after this one fail with nobody to decide HR's step.
     const held = await roleAssignmentRepository.findActiveForUser(hrApprover.userId);
-    for (const grant of held) await rbacService.revokeAssignment(String(grant._id), ADMIN_ID);
-    const { grantId, token } = await grantBranchRung();
+    let grantId: string | null = null;
     try {
+      for (const grant of held) await rbacService.revokeAssignment(String(grant._id), ADMIN_ID);
+      const branch = await grantBranchRung();
+      grantId = branch.grantId;
+      const token = branch.token;
       await writeChain([BRANCH_RUNG, ORGANIZATION_RUNG]);
       const created = await file(42, byN());
       expect(created.status).toBe('pendingApproval');
@@ -1494,7 +1546,7 @@ describe('a leave request nobody on its chain can approve goes to HR (PXQ-1, lea
       expect(done.status).toBe('approved');
       expect(done.approvals[0]).toMatchObject({ step: 'hr', deciderUserId: branchApproverId });
     } finally {
-      await rbacService.revokeAssignment(grantId, ADMIN_ID);
+      if (grantId !== null) await rbacService.revokeAssignment(grantId, ADMIN_ID);
       await rbacService.ensureAssignment(hrApprover.userId, APPROVER_ROLE_ID, 'organization');
     }
   });
@@ -1508,6 +1560,7 @@ describe('a leave request nobody on its chain can approve goes to HR (PXQ-1, lea
     expect(first.status, JSON.stringify(first.body)).toBe(200);
     const handed = first.body.data as LeaveRequestDto;
     expect(handed.status).toBe('pendingHr');
+    expect(await told(nEss.userId, HrLeaveTemplates.RequestApproved, created.id)).toBe(0);
     expect(outcomes(handed)).toEqual([
       ['approved', APPROVAL_OVERRIDE_KEY],
       ['pending', null],

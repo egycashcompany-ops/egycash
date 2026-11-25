@@ -226,11 +226,15 @@ its entry here in the same PR.
   any rung goes to the employee's manager, or to HR when there is none, as a request with no chain
   does; its `leaveRequest` audit row names the chain (`unstaffedChain`). A request whose remaining
   rungs nobody holds after an approval, by a rung's holder or an override, goes to HR's step,
-  keeping the chain's record; its page shows the chain and, beside it, the HR step with a line
+  keeping the chain's record; its page shows the chain and, under it, the HR step with a line
   saying why. Managers and HR receive requests that used to wait on the chain with no notice to
   anyone who could decide them. Requests already waiting on such a chain are not moved. The
-  approvals engine is unchanged. Count LC1 (leave design §16.10) is in the pull request.
-  Rollback: revert API and web together; nothing in the data is undone (leave design §16.13).
+  approvals engine is unchanged. For HR leave this replaces the wait for an override that the
+  PX-1.2, PX-1.3 and PX-1.6 entries above describe: the engine still answers `unstaffed`, and
+  leave now sends such a request to HR; a request whose rung's holders leave while it waits still
+  waits for an override. The chain screen's hint says so, in English and Arabic. Count LC1 (leave
+  design §16.10) is in the pull request. Rollback: revert API and web together; nothing in the
+  data is undone (leave design §16.13).
 
 - **A shared counter for running numbers, and one Arabic name fold for every module.**
   `apps/api/src/shared/base/counter.ts` (`defineCounter`) is Fleet's custody counter written as a factory: a module

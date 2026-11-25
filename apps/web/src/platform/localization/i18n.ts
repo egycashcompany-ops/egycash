@@ -1925,7 +1925,7 @@ const en: Record<string, string> = {
     'Leave both as “any” for the company-wide default. The most specific row wins: department and branch together beat either alone.',
   'approvals.editor.steps': 'Steps, in order',
   'approvals.editor.stepsHint':
-    'A step nobody in the company can stand on is passed when the holder of a later step decides, and the trail shows that it was. A request with nobody left on its remaining steps waits until a holder of the override permission decides it.',
+    'A step nobody in the company can stand on is passed when the holder of a later step decides, and the trail shows that it was. What follows for a request with nobody on its remaining steps is its module’s rule. A leave request takes the manager and HR path when it is filed, and goes to HR’s step after an approval; if the holders of its step leave while it waits, it waits until a holder of the override permission decides it.',
   'approvals.editor.addStep': 'Add step',
   'leave.status.approved': 'Approved',
   'leave.status.active': 'On leave',
@@ -18299,7 +18299,7 @@ const ar: Record<string, string> = {
     'اترك الحقلين على «الكل» ليكون هذا هو المسار الافتراضي على مستوى الشركة. والأكثر تحديدًا هو المُقدَّم: اجتماع الإدارة والفرع معًا يسبق أيًّا منهما منفردًا.',
   'approvals.editor.steps': 'الخطوات بالترتيب',
   'approvals.editor.stepsHint':
-    'الخطوة التي لا يستوفيها أحد في الشركة تُتخطّى حين يقرر في الطلب صاحبُ خطوة تليها، ويُبيِّن المسار أنها تُخطِّيت. أما الطلب الذي لا يبقى أحد يستوفي خطواته الباقية فينتظر حتى يقرر فيه من يملك صلاحية التجاوز.',
+    'الخطوة التي لا يستوفيها أحد في الشركة تُتخطّى حين يقرر في الطلب صاحبُ خطوة تليها، ويُبيِّن المسار أنها تُخطِّيت. أما الطلب الذي لا يبقى أحد يستوفي خطواته الباقية فتحكمه قاعدة النظام الذي يتبعه: فطلب الإجازة يسلك مسار المدير ثم الموارد البشرية عند تقديمه، ويُحوَّل إلى خطوة الموارد البشرية بعد اعتماد خطوة فيه، وإذا فقد أصحاب الخطوة التي ينتظرها صلاحيتهم وهو ينتظر بقي منتظرًا حتى يقرر فيه من يملك صلاحية التجاوز.',
   'approvals.editor.addStep': 'إضافة خطوة',
   'leave.status.approved': 'معتمدة',
   'leave.status.active': 'في إجازة',

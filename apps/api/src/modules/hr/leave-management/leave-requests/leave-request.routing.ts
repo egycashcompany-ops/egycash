@@ -5,7 +5,7 @@
 // (ADR-041 decisions 2 and 3); what a host does with that answer is the host's policy. Leave's is
 // the owner's answer to PXQ-1: a request nobody on its chain can approve goes to HR, down the
 // manager and HR path at submission and to HR's step after a decision.
-import type { ChainStatus } from '../../../../platform/approvals';
+import { type ChainStatus } from '../../../../platform/approvals';
 
 /**
  * Where a new request starts: on the chain only when a rung of it is staffed (16.2 item 1).

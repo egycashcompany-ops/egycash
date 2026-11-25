@@ -3477,6 +3477,31 @@ Repository-wide findings outside this module are listed for the owner in
   - *Next.* Nothing in the engine holds P2 back: P2.0 may open once PX-1.6 and this docs pull request have merged.
     Phase 1's criterion 9 (the owner's acceptance on staging) is still owed; it does not hold P2, under the owner's
     instruction of 2026-11-25 to finish P2 and stop there (§16.12).
+- **P2.0 built** (2026-11-25). P2's first code pull request ships as the §3 row of
+  [administration-module-phase-2.md](administration-module-phase-2.md) says, on PX-1 as it closed, with no module code
+  (§18.1, §18.4): the audit verb `approvalDecision` (OD-82 A) with its en and ar labels, the approval panel's captions
+  in the reader's language with no rung key, and the chain screen's names in the reader's language. Where the code had
+  to choose what the re-detail leaves open:
+  - *The English label* is "Approval decided": the catalog's `approvalDecided` words
+    (`packages/contracts/src/events/catalog.ts:872`), capitalized as every English label on the audit screen is, and as
+    §10.3's cost note writes it (`administration-module-design-integration.md:566`). The Arabic is the catalog's
+    «البت في اعتماد» as it stands.
+  - *A caption with no words in the reader's language* shows the level's name, never the other language's caption, so
+    the panel never mixes its languages. An empty caption is the empty string, as the panel read it before; no trimming
+    is added.
+  - *The census pin.* The census specs read `AUDIT_ACTIONS` and check only that each verb in it has a label, so nothing
+    failed if the verb were dropped. `system-admin-i18n.spec.ts`, which the re-detail's §12.3 had kept unchanged, gains
+    one case that pins the verb, and its two labels to the catalog's words. The re-detail's §12.3 and §13 now list it, as
+    its §13 asks of a pull request that deviates.
+  - *The chain editor is pinned at its source.* Its dialog opens only on a click, which the web suite's static renders
+    cannot make (`apps/web/vitest.config.ts`), so `ApprovalWorkflowsPage.spec.tsx` renders the list in both locales and
+    reads the editor's three selects, and the page as a whole, from the source, as `roster-dialog-dismissal.spec.tsx`
+    reads its dialog.
+  - *The caption's contract comment is corrected.* It said an uncaptioned rung reads «من عنده <key> على <level>»
+    (`packages/contracts/src/platform/approvals.ts:44-47`), which the panel no longer shows from P2.0 on; it now says
+    the approval panel names the rung's level, never its key. Only the comment changes, so no behavior does. The file
+    was not on the re-detail's §13 list, and its §14 does not bar it (§14 bars the engine's folder, rbac and the
+    permission contracts); §13 now lists it.
 - **P2.1 built** (2026-11-25). Phase 2's first module pull request ships as the P2 re-detail's §3 row says
   ([administration-module-phase-2.md](administration-module-phase-2.md)), under the owner's answers (§16.12): the yearly
   formatter and parser in the contracts, the yearly series and its floor in `shared/document-number.ts`,

@@ -11,6 +11,31 @@ its entry here in the same PR.
 
 ### Added
 
+- **Roles: quick selection by permission type, and a full-width role form** (`/system/roles`).
+  «جنبها الصلاحيات فى جروبات أقدر أحددها مره واحده .. مثلاً قراءة فقط .. تعديل فقط».
+  - Beside the permission tree, «تحديد سريع حسب النوع» ticks every permission of one type over every
+    module or one chosen module: View (read only), Add, Edit, Delete, Export/print/download, Import,
+    Approvals and decisions, Manage lists and settings, Workflow actions, Sensitive data,
+    Exceptional permissions. Each shows the same tri-state and «x من y» counter as the tree; a
+    second press clears the type.
+  - The type is the registry's own `action` (`lib/action-groups.ts`), corrected by name where the
+    action understates the key. «البيانات الحساسة» holds pay and payroll (runs, adjustments,
+    loans, payroll reports, the contract paper), medical files and the pre-hire medical and
+    security checks, national IDs, the audit log (its rows carry pay amounts), machine keys and
+    the safe-door combination, a fuel card's password — none of it is part of View or Export.
+    «الصلاحيات الاستثنائية» holds every break-glass key and the two overrides (another's approval
+    step, rehire against ineligibility). The status alias that suspends an employee sits with
+    Manage, and the two portal-only grants belong to no type. An action the table does not name
+    falls to Workflow actions. 449 permissions on 2026-11-25: 97 View, 67 Add, 65 Edit, 37 Delete,
+    13 export, 5 import, 23 approve, 65 manage, 45 workflow, 22 sensitive, 8 exceptional.
+  - It goes through the tree's own `applyBulk`, so it reaches only what the administrator may
+    grant and never clears a carried key he could not have given; the payload and the server's
+    guards are unchanged.
+  - The role form is the width of the screen with one scrollbar (the list no longer scrolls inside
+    the form), the quick selection stays in view beside the tree (whole, at 1280×720 and up), the
+    permission rows run four columns on a wide screen, and a click outside no longer closes a
+    half-built role (× and Escape do).
+
 - **Compliance and Risks — a new module, «الالتزام والمخاطر», with one page: «الملفات»**
   (`docs/12-planning/compliance-files-design.md`). Folders on a shelf shaped like HR's
   «مستندات المتقدمين», drawn with the module's own copy of that folder.
@@ -52,6 +77,15 @@ its entry here in the same PR.
     running on for minutes after the browser left; and a database error while checking a request's
     user is answered as the error it is — no longer as 401 «User no longer exists», which sent every
     open tab to refresh at once and got thirteen sessions revoked as token reuse.
+
+- **Accepting or restoring a mail ticket no longer reads the branch's whole maintenance log.** The
+  read of a ticket's maintenances inside the accept and restore transactions (`findFromTicket`)
+  must see deleted rows too, so it could not use `ux_maintenance_per_mail_ticket`, which leaves them
+  out. It walked `ix_branch_closed` over the ticket's branch instead: ~39,000 keys and 0.2–0.3 s per
+  ticket on 2026-11-25 (Atlas slow log). A new partial index, `ix_maintenance_from_ticket`
+  (`{ mailTicketId, branchId }` over every row opened from a ticket), built at boot, holds it; the
+  read states the index's predicate (`$type: 'objectId'`), which the planner does not infer from an
+  equality, and now reads the ticket's own rows only.
 
 - **The approvals engine: a chain save names its request type's keys and the chain it replaces.**
   This is PX-1.6, the last of PX-1's pull requests, which harden the platform approvals engine
@@ -261,6 +295,32 @@ its entry here in the same PR.
   («NBE» above «- 1056») would otherwise run into the code below it.
 
 ### Changed
+
+- **ATM maintenance close: the crew leader on the row is the one the close keeps.** The owner
+  (2026-11-25): «لما بيتم تقفيل صيانة لماكينة ATM كان بيطلب منه اسم الشخص اللى قفلها / عايز اسم
+  الموظف دا يجي تلقائي من قائد الطاقم فى الجدول لو مُعين .. لو لأ خليه يدخله هو». The close dialog
+  on `/atm/maintenance` shows each selected row's «قائد الطاقم» and asks for an employee only while
+  a row has none; the pick is written on those rows only. `POST /atm/maintenances/close` takes
+  `leaderEmployeeId` as optional and refuses (422) a set with a row without a leader when it is
+  missing, before anything closes. A leader written by name (an edit or a shift cascade) now
+  clears the row's `leaderEmployeeId`, which only the close sets, so a reopened row given another
+  leader never keeps the earlier employee's id (`docs/12-planning/atm-operations-port.md` §6e).
+
+- **HR leave: a request nobody on its approval chain can approve takes the manager and HR path
+  (PXQ-1).** «موافق على كل التوصيات، كمّل». The owner's answer to PXQ-1, option 1
+  (`docs/12-planning/leave-management-design.md` §16). A new request on a chain with nobody holding
+  any rung goes to the employee's manager, or to HR when there is none, as a request with no chain
+  does; its `leaveRequest` audit row names the chain (`unstaffedChain`). A request whose remaining
+  rungs nobody holds after an approval, by a rung's holder or an override, goes to HR's step,
+  keeping the chain's record; its page shows the chain and, under it, the HR step with a line
+  saying why. Managers and HR receive requests that used to wait on the chain with no notice to
+  anyone who could decide them. Requests already waiting on such a chain are not moved. The
+  approvals engine is unchanged. For HR leave this replaces the wait for an override that the
+  PX-1.2, PX-1.3 and PX-1.6 entries above describe: the engine still answers `unstaffed`, and
+  leave now sends such a request to HR; a request whose rung's holders leave while it waits still
+  waits for an override. The chain screen's hint says so, in English and Arabic. Count LC1 (leave
+  design §16.10) is in the pull request. Rollback: revert API and web together; nothing in the
+  data is undone (leave design §16.13).
 
 - **A shared counter for running numbers, and one Arabic name fold for every module.**
   `apps/api/src/shared/base/counter.ts` (`defineCounter`) is Fleet's custody counter written as a factory: a module
@@ -563,6 +623,33 @@ its entry here in the same PR.
     `stockTracked` may be left out; no screen changes.
   - Rollback (RK-30): reverting removes the field from the contracts, the API and the DTO; items
     saved with it keep it, unread, and nothing else is stored.
+
+- **Approvals: an audit verb for an approval decision, and the approval panel and the chain screen
+  in the reader's language.** This is P2.0, the platform prerequisites of Administrative Affairs'
+  Phase 2, purchase requests (`docs/12-planning/administration-module-phase-2.md` §3; design
+  §18.1), shipped on their own, with no module code.
+  - **The verb.** `approvalDecision` joins `AUDIT_ACTIONS` (OD-82 A): a decision on one rung of an
+    approval chain, by the rung's holder or by an override, recorded under a verb of its own that
+    the audit trail can be filtered on. The audit screen names it «البت في اعتماد» / "Approval
+    decided", the event catalog's words for the same act. Nothing writes it yet: purchase-request
+    decisions (P2.4) are its first writer. It is not a broadcast verb.
+  - **The approval panel,** on every record that carries an approval chain (today HR leave's),
+    names each rung by its caption in the reader's language, or by its level's name («مدير الفرع» /
+    "Branch manager") where the caption has no words in that language; it showed the Arabic caption
+    to every reader. It no longer prints a rung's raw `permissionKey · level` line, a key that its
+    readers, requesters and approvers, have no catalog to look up. A rung decided by an override
+    still shows the key used, `approval.override`.
+  - **The chain screen** (`/system/approvals`, for administrators holding `approval.configure`)
+    names request types, departments and branches in the reader's language, in its list and in
+    the editor's request-type, department and branch selects; it showed the Arabic names in both
+    languages. The rung keys an administrator chooses stay as they are.
+  - `ApprovalChainPanel.spec.tsx` checks the caption in each locale, the level's name without one,
+    and no key line; the new `ApprovalWorkflowsPage.spec.tsx` renders the list in both locales and
+    pins the editor's three selects; `system-admin-i18n.spec.ts` pins the verb and its labels.
+  - **Deploy.** At least one release before P2.4, or P2.4's api and worker deployed together: a
+    worker that predates the verb refuses an audit job that carries it (RK-29).
+  - Rollback (RK-30): reverting removes the verb, which no row holds before P2.4, and restores the
+    Arabic-only names and the key line; nothing stored changes.
 
 - **The approvals engine's baseline: its tests over today's behavior.** This is PX-1.1, the first
   code slice of PX-1, which hardens the platform approvals engine before Administrative Affairs'

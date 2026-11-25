@@ -15,6 +15,8 @@ import {
   ATM_REF_LABEL_ORIGINS,
   AtmOpenBoardQuerySchema,
   AtmRefLabelOptionsQuerySchema,
+  atmLeaderNamed,
+  CloseAtmMaintenancesSchema,
   CreateAtmRefLabelSchema,
   ListAtmRefLabelsQuerySchema,
   readTypedAtmMachineCodes,
@@ -271,5 +273,27 @@ describe('machine codes written with a space inside', () => {
     // A word of letters alone may still become «HDB - 1234»; once a digit follows, it was not.
     expect(readTypedAtmMachineCodes('HDB ')).toEqual({ chosen: [], typing: 'HDB ' });
     expect(readTypedAtmMachineCodes('NBE 1056 ')).toEqual({ chosen: ['NBE', '1056'], typing: '' });
+  });
+});
+
+describe('the maintenance close and the crew leader (2026-11-25)', () => {
+  const ID = '650000000000000000000201';
+
+  it('a leader is any name with a visible character — blank or spacing names nobody', () => {
+    expect(atmLeaderNamed('سامح فؤاد')).toBe(true);
+    expect(atmLeaderNamed(' كريم ')).toBe(true);
+    for (const none of [null, undefined, '', ' ', '\t\n  \r\f']) {
+      expect(atmLeaderNamed(none)).toBe(false);
+    }
+  });
+
+  it('takes the employee as optional — the server asks for it only for rows with no leader', () => {
+    expect(CloseAtmMaintenancesSchema.parse({ ids: [ID] })).toEqual({ ids: [ID] });
+    expect(CloseAtmMaintenancesSchema.parse({ ids: [ID], leaderEmployeeId: ID })).toEqual({
+      ids: [ID],
+      leaderEmployeeId: ID,
+    });
+    expect(() => CloseAtmMaintenancesSchema.parse({ ids: [ID], leaderEmployeeId: '' })).toThrow();
+    expect(() => CloseAtmMaintenancesSchema.parse({ ids: [] })).toThrow();
   });
 });

@@ -4,7 +4,13 @@
 // (`ADMINISTRATION_SUBCATEGORY_REQUIRED`) — each subcategory judged on its own `isActive`.
 import { describe, expect, it } from 'vitest';
 import { category, unit } from '../screen-fixtures';
-import { categoryLabel, categoryOptions, unitOptions, withCurrent } from './CatalogSelect';
+import {
+  catalogSelectState,
+  categoryLabel,
+  categoryOptions,
+  unitOptions,
+  withCurrent,
+} from './CatalogSelect';
 
 const INKS = category();
 const LASER = category({
@@ -72,5 +78,19 @@ describe('the unit select', () => {
     expect(withCurrent([], 'u-x', 'قطعة')).toEqual([{ value: 'u-x', label: 'قطعة' }]);
     expect(withCurrent([{ value: 'u-x', label: 'قطعة' }], 'u-x', 'other')).toHaveLength(1);
     expect(withCurrent([], '', 'قطعة')).toEqual([]);
+  });
+});
+
+describe('a select whose catalog could not be read', () => {
+  it('says so in red instead of looking like an empty catalog', () => {
+    expect(
+      catalogSelectState({ isPending: false, isError: true }, 'الكل', 'تعذّر التحميل'),
+    ).toEqual({ loading: false, failed: true, placeholder: 'تعذّر التحميل' });
+    expect(
+      catalogSelectState({ isPending: true, isError: false }, 'الكل', 'تعذّر التحميل'),
+    ).toEqual({ loading: true, failed: false, placeholder: 'الكل' });
+    expect(
+      catalogSelectState({ isPending: false, isError: false }, undefined, 'تعذّر التحميل'),
+    ).toEqual({ loading: false, failed: false, placeholder: undefined });
   });
 });

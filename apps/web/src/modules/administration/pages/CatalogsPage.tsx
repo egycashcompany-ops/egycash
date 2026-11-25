@@ -31,6 +31,7 @@ import { Button } from '../../../shared/ui/Button';
 import { RowActions } from '../../../shared/ui/RowActions';
 import { Select } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
+import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { formatNumber, localized } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useAdministrationCategories, useAdministrationUnits } from '../api/catalog-queries';
@@ -108,7 +109,7 @@ export const CatalogsPage = (): JSX.Element => {
       key: 'name.ar',
       header: t('administration.catalogs.fields.nameAr'),
       sortable: true,
-      render: (row) => row.name.ar,
+      render: (row) => <span dir="rtl">{row.name.ar}</span>,
     },
     {
       key: 'name.en',
@@ -141,7 +142,7 @@ export const CatalogsPage = (): JSX.Element => {
       : []),
     {
       key: 'status',
-      header: t('administration.catalogs.columns.status'),
+      header: t('common.status'),
       render: (row) => (
         <StatusBadge
           tone={row.isActive ? 'success' : 'neutral'}
@@ -229,7 +230,7 @@ export const CatalogsPage = (): JSX.Element => {
 
         <FilterBar hasActiveFilters={active !== ''} onClear={() => patch({ active: null })}>
           <Select
-            aria-label={t('administration.catalogs.columns.status')}
+            aria-label={t('common.status')}
             value={active}
             onChange={(e) => patch({ active: e.target.value || null })}
             className="w-auto"
@@ -250,7 +251,7 @@ export const CatalogsPage = (): JSX.Element => {
             onRetry={() => void list.refetch()}
             sort={sort}
             onSortChange={changeSort}
-            empty={t(`administration.catalogs.${kind}.empty`)}
+            empty={<EmptyState title={t(`administration.catalogs.${kind}.empty`)} />}
             stickyHead
           />
         </div>

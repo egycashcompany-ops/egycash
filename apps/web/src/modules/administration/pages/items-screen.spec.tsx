@@ -108,7 +108,7 @@ describe('the item register', () => {
       ar('administration.items.columns.barcode'),
       ar('administration.items.columns.category'),
       ar('administration.items.columns.unit'),
-      ar('administration.items.columns.status'),
+      ar('common.status'),
       ar('administration.items.columns.actions'),
     ]);
     const cells = rowOf(html, 'ITM-00001');
@@ -164,7 +164,7 @@ describe('the item register', () => {
 
   it('filters by one category, one unit and one status — the live items by default', () => {
     const html = render();
-    expect(html).toContain(`aria-label="${ar('administration.items.columns.status')}"`);
+    expect(html).toContain(`aria-label="${ar('common.status')}"`);
     expect(html).toMatch(/<option value="true" selected="">/u);
     // Both levels, a subcategory under its parent's name — a top-level category reads its
     // subcategories' items too.
@@ -280,12 +280,30 @@ describe('the item form', () => {
     expect([...named].sort()).toEqual(
       ['barcode', 'categoryId', 'maxQty', 'minQty', 'nameAr', 'reorderPointQty', 'unitId'].sort(),
     );
-    for (const field of ['nameAr', 'barcode', 'categoryId', 'unitId']) {
+    for (const field of ['nameAr', 'categoryId', 'unitId']) {
       expect(FORM, field).toContain(`error={refusedWord('${field}')}`);
     }
+    // The barcode: the form's own check first (a space inside), then the server's word.
+    expect(FORM).toContain(
+      "barcodeWrong ? t('administration.items.errors.barcodeSpaces') : refusedWord('barcode')",
+    );
     // The three levels: the form's own checks first, then the server's word for the box.
     expect(FORM).toContain('error={levelWord(field)}');
     expect(FORM).toContain('return fieldRefusal(refused, field, t);');
+  });
+
+  it('marks a barcode with a space, and levels out of order, on the press that names what is missing', () => {
+    // The contract's refusal of a spaced barcode is a plain 400 naming no box, so the form says it.
+    expect(FORM).toContain('const pressed = tried || required.attempt > 0;');
+    expect(FORM).toContain("problem === 'outOfOrder' && pressed");
+    expect(FORM).toContain("barcodeWrong ? t('administration.items.errors.barcodeSpaces')");
+    expect(FORM).toContain('!barcodeOk(form.barcode)) return;');
+  });
+
+  it('rebases on the item as it now is after a stale save, so the next Save is taken', () => {
+    expect(FORM).toContain('isStaleRefusal(error)');
+    expect(FORM).toContain('setRebased(fresh)');
+    expect(FORM).toContain('version: base.version');
   });
 
   it('files an item under a subcategory where its category has one', () => {

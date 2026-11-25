@@ -2,8 +2,9 @@
 // A, D, E): the board frame; the keeper as HR answers today — named, marked when they have left,
 // flagged when HR no longer knows them; an edit offered only where the server says it would be
 // taken (`canEdit`); the branch filter offering only the branches the reader may read, and a
-// stray remembered branch never asked for; and the form — the branch chosen once, from the
-// branches a store may be opened in, and the keeper through the module's own picker.
+// stray remembered branch never asked for; «add» only while some branch takes a store; and the
+// form — the branch chosen once, from the branches a store may be opened in, a retired department
+// the store names kept and marked, and the keeper through the module's own picker.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,10 +12,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { ErrorCodes } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 import {
+  departmentNamesKey,
   departmentOptionsKey,
   warehouseBranchOptionsKey,
   warehouseListKey,
 } from '../api/administration-keys';
+import { useAdministrationWarehouses } from '../api/warehouses-queries';
 import {
   ar,
   branchOption,
@@ -27,13 +30,25 @@ import {
 } from '../screen-fixtures';
 import { WarehouseFormDialog, storedKeeperLabel } from '../components/WarehouseFormDialog';
 import { refusalFieldKeys } from '../lib/refusals';
-import { WarehousesPage, strayBranch, viewableBranches } from './WarehousesPage';
+import { WarehousesPage, canOpenWarehouse, strayBranch, viewableBranches } from './WarehousesPage';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('react-dom');
   return { ...actual, createPortal: (node: unknown) => node };
 });
+// The register's list read, watched: a server render runs no query, so what the page ASKS for is
+// read off the hook's arguments — the key and whether the read is enabled.
+vi.mock('../api/warehouses-queries', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('../api/warehouses-queries');
+  return {
+    ...actual,
+    useAdministrationWarehouses: vi.fn(
+      actual.useAdministrationWarehouses as (...args: unknown[]) => unknown,
+    ),
+  };
+});
+const listRead = vi.mocked(useAdministrationWarehouses);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SOURCE = readFileSync(join(HERE, 'WarehousesPage.tsx'), 'utf8');
@@ -117,7 +132,7 @@ describe('the warehouse register', () => {
       ar('administration.warehouses.columns.branch'),
       ar('administration.warehouses.columns.type'),
       ar('administration.warehouses.columns.keeper'),
-      ar('administration.warehouses.columns.status'),
+      ar('common.status'),
       ar('administration.warehouses.columns.actions'),
     ]);
     const cells = rowOf(html, 'CAI-01');
@@ -156,6 +171,36 @@ describe('the warehouse register', () => {
     );
   });
 
+  it('offers «add» only while some branch takes a new store — never a form with no branch to choose', () => {
+    const CREATOR = ['administrationWarehouse.view', 'administrationWarehouse.create'];
+    const closed = OPTIONS.map((option) => ({ ...option, canCreate: false }));
+    const html = renderScreen({
+      element: <WarehousesPage />,
+      route: '/administration/warehouses',
+      path: '/administration/warehouses',
+      keys: CREATOR,
+      seed: [
+        [warehouseBranchOptionsKey(), closed],
+        [warehouseListKey(FIRST_PAGE), pageOf([KEPT])],
+      ],
+    });
+    expect(html).not.toContain(ar('administration.warehouses.create'));
+    // Nor while the options cannot be read: the form's branch box would offer nothing.
+    const unread = renderScreen({
+      element: <WarehousesPage />,
+      route: '/administration/warehouses',
+      path: '/administration/warehouses',
+      keys: CREATOR,
+      seed: [[warehouseListKey(FIRST_PAGE), pageOf([KEPT])]],
+      failing: [warehouseBranchOptionsKey()],
+    });
+    expect(unread).not.toContain(ar('administration.warehouses.create'));
+    expect(canOpenWarehouse(true, OPTIONS)).toBe(true);
+    expect(canOpenWarehouse(false, OPTIONS)).toBe(false);
+    expect(canOpenWarehouse(true, closed)).toBe(false);
+    expect(canOpenWarehouse(true, undefined)).toBe(false);
+  });
+
   it('offers only the branches the reader may read, named as the top bar names them', () => {
     const html = render();
     expect(html).toContain('<option value="b-cai">القاهرة</option>');
@@ -171,15 +216,23 @@ describe('the warehouse register', () => {
     expect(strayBranch(OPTIONS, 'b-tnt')).toBe(true);
     expect(strayBranch(OPTIONS, 'b-cai')).toBe(false);
     expect(strayBranch(OPTIONS, '')).toBe(false);
-    // The list keyed by the stray branch is never read: the table waits instead.
+    // The list keyed by the stray branch is never read: the read is held off, and the table waits.
+    listRead.mockClear();
     const html = render(undefined, '/administration/warehouses?branch=b-tnt', [
       [warehouseListKey({ ...FIRST_PAGE, branchId: 'b-tnt' }), pageOf([KEPT])],
     ]);
     expect(html).not.toContain('CAI-01');
+    expect(listRead).toHaveBeenCalledWith(expect.objectContaining({ branchId: 'b-tnt' }), false);
+    expect(listRead).not.toHaveBeenCalledWith(expect.objectContaining({ branchId: 'b-tnt' }), true);
+    // A branch the server offers is asked for at once.
+    listRead.mockClear();
+    render(undefined, '/administration/warehouses?branch=b-cai');
+    expect(listRead).toHaveBeenCalledWith(expect.objectContaining({ branchId: 'b-cai' }), true);
     expect(SOURCE).toContain('setSp(next, { replace: true })');
   });
 
   it('asks for the linked branch when the options cannot be read, rather than loading for ever', () => {
+    listRead.mockClear();
     const html = renderScreen({
       element: <WarehousesPage />,
       route: '/administration/warehouses',
@@ -189,6 +242,7 @@ describe('the warehouse register', () => {
       failing: [warehouseBranchOptionsKey()],
     });
     expect(html).toContain('CAI-01');
+    expect(listRead).toHaveBeenCalledWith(expect.objectContaining({ branchId: 'b-cai' }), true);
   });
 
   it('says so when nothing matches, and offers a retry when the list failed', () => {
@@ -221,6 +275,7 @@ describe('the warehouse form', () => {
   const dialog = (
     keys: string[],
     subject: Parameters<typeof WarehouseFormDialog>[0]['warehouse'],
+    extra: readonly (readonly [readonly unknown[], unknown])[] = [],
   ): string =>
     renderScreen({
       element: <WarehouseFormDialog open onClose={() => undefined} warehouse={subject} />,
@@ -230,6 +285,7 @@ describe('the warehouse form', () => {
       seed: [
         [warehouseBranchOptionsKey(), OPTIONS],
         [departmentOptionsKey(), DEPARTMENTS],
+        ...extra,
       ],
     });
 
@@ -254,6 +310,38 @@ describe('the warehouse form', () => {
     expect(html).toContain('<option value="d-cai-admin">الشئون الإدارية</option>');
     expect(html).not.toContain('d-alx-admin');
     expect(html).toContain(ar('administration.warehouses.fields.isActive'));
+  });
+
+  it('keeps a department the store names after it was retired — named, marked, and still chosen', () => {
+    const RETIRED = {
+      id: 'd-cai-old',
+      code: 'OLD',
+      name: { ar: 'الخدمات العامة', en: 'General services' },
+      parentId: 'b-cai',
+      catalogId: null,
+    };
+    const named = warehouse({ departmentId: 'd-cai-old' });
+    const html = dialog(['administrationWarehouse.edit'], named, [
+      [departmentNamesKey(), [...DEPARTMENTS, RETIRED]],
+    ]);
+    expect(html).toContain(
+      `<option value="d-cai-old" selected="">الخدمات العامة — ${ar('administration.status.inactive')}</option>`,
+    );
+    expect(html).not.toMatch(/<option value="" selected="">بلا إدارة<\/option>/u);
+    // A department no read names any more still holds the box, rather than «no department».
+    const gone = dialog(['administrationWarehouse.edit'], warehouse({ departmentId: 'd-gone' }));
+    expect(gone).toContain('<option value="d-gone" selected="">—</option>');
+    expect(FORM).toContain('useDepartmentNames(');
+  });
+
+  it('marks a code in the wrong pattern on the same press that names a missing value', () => {
+    expect(FORM).toContain('(tried || required.attempt > 0) && filled.code');
+  });
+
+  it('rebases on the store as it now is after a stale save, so the next Save is taken', () => {
+    expect(FORM).toContain('isStaleRefusal(error)');
+    expect(FORM).toContain('setRebased(fresh)');
+    expect(FORM).toContain('version: base.version');
   });
 
   it('shows the stored keeper on its chip — as one who left, or flagged when HR does not know them', () => {

@@ -10,8 +10,11 @@
 // بتاع السيستم غير اللى فى الفلاتر»).
 //
 // A row's edit is offered when the server says the edit would be taken (`canEdit`): `can()` is
-// blind to scope, so a key held for another branch would offer an edit the server refuses. A store
-// retires through its form, never deleted (§5.3). Its keeper is shown as HR answers today: a keeper
+// blind to scope, so a key held for another branch would offer an edit the server refuses. «Add»
+// is held the same way: offered only while some branch takes a new store (`canCreate`) — the top
+// bar narrowed to a branch the create key does not reach, or options that could not be read, would
+// open a form whose branch box offers nothing. A store retires through its form, never deleted
+// (§5.3). Its keeper is shown as HR answers today: a keeper
 // who has left is marked, and one HR no longer knows is flagged until a keeper is named again
 // (OD-64 keeper (i)).
 import { useEffect, useMemo, useState } from 'react';
@@ -24,7 +27,7 @@ import {
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
-import { Can } from '../../../platform/rbac/Can';
+import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
@@ -36,6 +39,7 @@ import { Button } from '../../../shared/ui/Button';
 import { RowActions } from '../../../shared/ui/RowActions';
 import { Select } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
+import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { localized } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useAdministrationWarehouses, useWarehouseBranchOptions } from '../api/warehouses-queries';
@@ -76,7 +80,7 @@ const KeeperCell = ({ warehouse }: { warehouse: AdministrationWarehouseDto }): J
     );
   }
   return (
-    <span className="flex flex-col gap-0.5">
+    <span className="flex flex-col items-start gap-0.5">
       <span className="flex flex-wrap items-center gap-1.5">
         <span>{warehouse.keeper.fullNameAr}</span>
         {warehouse.keeper.status === 'exited' && (
@@ -92,8 +96,15 @@ const KeeperCell = ({ warehouse }: { warehouse: AdministrationWarehouseDto }): J
   );
 };
 
+/** Whether «add» may open the form: the create key, and a branch the server says takes a store. */
+export const canOpenWarehouse = (
+  canCreateKey: boolean,
+  options: readonly AdministrationWarehouseBranchOptionDto[] | undefined,
+): boolean => canCreateKey && (options ?? []).some((option) => option.canCreate);
+
 export const WarehousesPage = (): JSX.Element => {
   const t = useT();
+  const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
@@ -204,7 +215,7 @@ export const WarehousesPage = (): JSX.Element => {
     },
     {
       key: 'status',
-      header: t('administration.warehouses.columns.status'),
+      header: t('common.status'),
       render: (row) => (
         <StatusBadge
           tone={row.isActive ? 'success' : 'neutral'}
@@ -245,7 +256,7 @@ export const WarehousesPage = (): JSX.Element => {
             { label: t('administration.nav.warehouses') },
           ]}
           actions={
-            <Can permission="administrationWarehouse.create">
+            canOpenWarehouse(can('administrationWarehouse.create'), branches.data) ? (
               <Button
                 size="sm"
                 leftIcon={<PlusIcon className="h-4 w-4" />}
@@ -253,7 +264,7 @@ export const WarehousesPage = (): JSX.Element => {
               >
                 {t('administration.warehouses.create')}
               </Button>
-            </Can>
+            ) : undefined
           }
         />
 
@@ -294,7 +305,7 @@ export const WarehousesPage = (): JSX.Element => {
             ))}
           </Select>
           <Select
-            aria-label={t('administration.warehouses.columns.status')}
+            aria-label={t('common.status')}
             value={active}
             onChange={(e) => patch({ active: e.target.value === 'true' ? null : e.target.value })}
             className="w-auto"
@@ -315,7 +326,7 @@ export const WarehousesPage = (): JSX.Element => {
             onRetry={() => void refetch()}
             {...(sort === null ? {} : { sort })}
             onSortChange={changeSort}
-            empty={t('administration.warehouses.empty')}
+            empty={<EmptyState title={t('administration.warehouses.empty')} />}
             stickyHead
           />
         </div>

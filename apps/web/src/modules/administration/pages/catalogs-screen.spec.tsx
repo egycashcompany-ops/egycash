@@ -94,7 +94,7 @@ describe('the catalogs screen', () => {
       ar('administration.catalogs.fields.nameAr'),
       ar('administration.catalogs.fields.nameEn'),
       ar('administration.catalogs.fields.code'),
-      ar('administration.catalogs.columns.status'),
+      ar('common.status'),
       ar('administration.catalogs.columns.actions'),
     ]);
     const box = rowOf(html, 'علبة');
@@ -128,6 +128,10 @@ describe('the catalogs screen', () => {
   it('says so when nothing matches, and offers a retry when the list failed', () => {
     const empty = render(undefined, [[catalogListKey({ kind: 'unit', ...SORTED }), pageOf([])]]);
     expect(empty).toContain(ar('administration.catalogs.unit.empty'));
+    // The shared panel, padded — and, with no filter set by default, no claim that one hides rows.
+    expect(empty).toContain('py-16');
+    expect(ar('administration.catalogs.unit.empty')).not.toMatch(/تصفية|فلتر/u);
+    expect(ar('administration.catalogs.category.empty')).not.toMatch(/تصفية|فلتر/u);
     const failed = render(undefined, [], MANAGER, [catalogListKey({ kind: 'unit', ...SORTED })]);
     expect(failed).toContain(ar('common.error.title'));
     expect(failed).toContain(ar('common.retry'));
@@ -159,6 +163,15 @@ describe('the unit and category dialogs', () => {
     expect(html).not.toContain('type="number"');
     expect(html.match(/<span class="text-red-500"> \*<\/span>/gu)).toHaveLength(2);
     expect(html).not.toContain(ar('administration.catalogs.fields.isActive'));
+  });
+
+  it('rebase on the row as it now is after a stale save, so the next Save is taken', () => {
+    for (const file of ['UnitDialog.tsx', 'ItemCategoryDialog.tsx']) {
+      const source = readFileSync(join(HERE, '../components', file), 'utf8');
+      expect(source, file).toContain('isStaleRefusal(error)');
+      expect(source, file).toContain('setRebased(fresh)');
+      expect(source, file).toContain('version: base.version');
+    }
   });
 
   it('retire through Active on an edit — never a delete', () => {

@@ -3270,7 +3270,10 @@ Repository-wide findings outside this module are listed for the owner in
   - *Names from the reads that carry them.* The branch filter and the create dialog name branches from
     `GET /warehouses/branch-options`, which carries them, so no `/platform/branches/options` hook is written. The
     department is picked from `/platform/departments/options`, narrowed to the store's branch by `parentId`; the one
-    a store already names stays. The register shows no department, since the DTO names none (§19.4).
+    a store already names stays — when it has been retired since, the active list no longer holds it, so it is named
+    from the same read with `?includeInactive=true` (the platform's rule: for naming, never for choosing) and marked
+    «موقوف», and one no read names still holds the box as «—» rather than «بلا إدارة». The register shows no
+    department, since the DTO names none (§19.4).
   - *The keeper picker searches the reach, not the dialog's branch:* no `branchId` is sent, so the box offers whom
     the server would accept; whether a keeper must work in the store's branch is the question P1a.3 left open.
   - *Defaults.* The registers open on the live rows with the server's own order, the catalogs on every status sorted
@@ -3279,15 +3282,33 @@ Repository-wide findings outside this module are listed for the owner in
     reference register's (IT's consumables, «الأصناف النشطة» / «الأصناف الموقوفة»), «نشط» also the product's
     commonest.
   - *Before the round trip.* The item's levels are checked as the server checks them — whole numbers to 1,000,000
-    as typed, the order on Save — and the server still decides. A stale edit (409 `STALE_DOCUMENT`) re-reads the
-    register and the record; the dialog edits the record as it was when it opened, from the register and from the
-    item's own page alike, so it keeps the typing and the refusal, and reopening it loads the new version.
+    as typed, the order on Save — and so is a barcode with a space inside, whose contract refusal is a plain 400
+    naming no box; the order, the barcode and a warehouse code in the wrong pattern are marked on the same press of
+    Save that names a missing value. The server still decides. A stale edit (409 `STALE_DOCUMENT`) re-reads the
+    register and the record, and the open dialog rebases on the record as it now is (the item and the warehouse by
+    id, a unit or category from its catalog read whole): the refusal stays in the alert box, the boxes show what was
+    saved meanwhile, and the next Save carries the new version. Keeping the reader's typing on the old version
+    would only meet the same refusal again — or, sent with the new version, silently undo the other person's save.
+    A re-read underneath with no refusal (a realtime signal) still leaves the typing alone.
   - *A stray branch is never asked for.* While the branch options are on their way, a remembered branch is not
     sent: one the reader no longer reaches would answer 400 before the page could drop it. If the options cannot
     be read at all, the branch is sent as the URL says, so the page shows the server's answer — rows, or the error
     panel with its retry — rather than loading for ever.
   - *The home* counts the live warehouses and items, each under its read's key; the catalogs' key reads no
-    register, so it gets a tile and no count.
+    register, so it gets a tile and no count. Each count opens its register on the view it counts
+    (`?active=true`, as IT's help-desk counts carry theirs): a bare link would restore the reader's remembered
+    filters, and the list could disagree with the figure.
+  - *«Add warehouse»* shows only while some branch takes a new store (`canCreate` of the branch options): `can()` is
+    blind to scope, and with the top bar on a branch the create key does not reach — or the options unread — the
+    form's branch box would offer nothing.
+  - *Empty registers* draw the shared `EmptyState` panel with the module's sentence, not the bare string the
+    reference passes (the checklist's default, item 6): `DataTable` puts a string in an unpadded cell. The catalogs'
+    sentence claims no filter, since they open on every status. Codes and names in the other script are isolated
+    in a `<span dir>` inside their cell or `<dd>`, never on the `<dd>` itself, so in Arabic they sit under their
+    label; the item's Arabic name keeps its order in the English screen.
+  - *Words.* The English says «warehouse» throughout (the glossary's term; «store» was a second name for it). A
+    keeper who has left is «منتهي الخدمة», HR's and IT's word. The duplicate refusal no longer says the holder is
+    active: a retired record holds its name, code and barcode too, and the registers open on active rows.
   - *§19.7's case* runs the boot's `syncNavigationCatalog` in the warehouses suite: an `administrationWarehouse.view`
     holder's whole sidebar is the Warehouses row, and the super-admin sees the four rows (five from P1b.W).
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which

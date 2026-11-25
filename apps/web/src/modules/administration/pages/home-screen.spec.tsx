@@ -8,14 +8,40 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { itemListKey, warehouseListKey } from '../api/administration-keys';
+import { useAdministrationItems } from '../api/catalog-queries';
+import { useAdministrationWarehouses } from '../api/warehouses-queries';
 import { ar, item, pageOf, renderScreen, text, warehouse } from '../screen-fixtures';
-import { ADMINISTRATION_SHORTCUTS, AdministrationHomePage } from './AdministrationHomePage';
+import {
+  ADMINISTRATION_SHORTCUTS,
+  AdministrationHomePage,
+  COUNT_LINKS,
+} from './AdministrationHomePage';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('react-dom');
   return { ...actual, createPortal: (node: unknown) => node };
 });
+// The two count reads, watched: a server render runs no query, so what the home ASKS for is read
+// off the hooks' arguments — the key and whether the read is enabled.
+vi.mock('../api/catalog-queries', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('../api/catalog-queries');
+  return {
+    ...actual,
+    useAdministrationItems: vi.fn(actual.useAdministrationItems as (...args: unknown[]) => unknown),
+  };
+});
+vi.mock('../api/warehouses-queries', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('../api/warehouses-queries');
+  return {
+    ...actual,
+    useAdministrationWarehouses: vi.fn(
+      actual.useAdministrationWarehouses as (...args: unknown[]) => unknown,
+    ),
+  };
+});
+const itemRead = vi.mocked(useAdministrationItems);
+const warehouseRead = vi.mocked(useAdministrationWarehouses);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SOURCE = readFileSync(join(HERE, 'AdministrationHomePage.tsx'), 'utf8');
@@ -76,6 +102,30 @@ describe('the Administrative Affairs home', () => {
     const itemsOnly = render(['administrationItem.view']);
     expect(itemsOnly).toContain(ar('administration.home.activeItems'));
     expect(itemsOnly).not.toContain(ar('administration.home.activeWarehouses'));
+  });
+
+  it('asks each count only under the key its read takes — never a read the server refuses', () => {
+    itemRead.mockClear();
+    warehouseRead.mockClear();
+    render(['administrationItem.view']);
+    expect(itemRead).toHaveBeenCalledWith(COUNT, true);
+    expect(warehouseRead).toHaveBeenCalledWith(COUNT, false);
+    expect(warehouseRead).not.toHaveBeenCalledWith(COUNT, true);
+    itemRead.mockClear();
+    warehouseRead.mockClear();
+    render(['administrationWarehouse.view']);
+    expect(warehouseRead).toHaveBeenCalledWith(COUNT, true);
+    expect(itemRead).not.toHaveBeenCalledWith(COUNT, true);
+  });
+
+  it('opens each count on the view it counts, never on the reader’s remembered filters', () => {
+    const html = render(ALL);
+    expect(COUNT_LINKS).toEqual({
+      warehouses: '/administration/warehouses?active=true',
+      items: '/administration/items?active=true',
+    });
+    expect(html).toContain('href="/administration/warehouses?active=true"');
+    expect(html).toContain('href="/administration/items?active=true"');
   });
 
   it('says a count could not be read rather than showing 0', () => {

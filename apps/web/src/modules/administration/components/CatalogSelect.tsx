@@ -13,6 +13,9 @@
 //   • `field` — where an item may be filed: a top-level category that has active subcategories is
 //     not offered, its subcategories are (OD-06 (i), `ADMINISTRATION_SUBCATEGORY_REQUIRED`).
 //
+// A catalog that could not be read says so in the box, in red («تعذّر التحميل»), rather than
+// looking like an empty catalog: the reader can tell «nothing to choose» from «not loaded».
+//
 // The option lists are the pure helpers below the component, proven without a browser.
 import { useMemo } from 'react';
 import {
@@ -20,6 +23,7 @@ import {
   type AdministrationItemCategoryDto,
   type Locale,
 } from '@ecms/contracts';
+import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { localized } from '../../../shared/lib/format';
 import { SearchableSelect, type SearchableOption } from '../../../shared/ui/SearchableSelect';
@@ -54,6 +58,7 @@ export const CatalogSelect = ({
   currentLabel?: string;
   testId?: string;
 }): JSX.Element => {
+  const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const units = useWholeUnits(kind === 'unit');
   const categories = useWholeCategories(kind === 'category');
@@ -64,21 +69,36 @@ export const CatalogSelect = ({
         : categoryOptions(categories.data ?? [], mode, value, locale);
     return withCurrent(listed, value, currentLabel);
   }, [kind, mode, value, locale, currentLabel, units.data, categories.data]);
-  const loading = kind === 'unit' ? units.isPending : categories.isPending;
+  const read = kind === 'unit' ? units : categories;
+  const shown = catalogSelectState(read, placeholder, t('common.error.title'));
   return (
     <SearchableSelect
       value={value}
       onChange={onChange}
       options={options}
-      loading={loading}
-      error={error}
-      {...(placeholder === undefined ? {} : { placeholder })}
+      loading={shown.loading}
+      error={error || shown.failed}
+      {...(shown.placeholder === undefined ? {} : { placeholder: shown.placeholder })}
       {...(ariaLabel === undefined ? {} : { ariaLabel })}
       {...(id === undefined ? {} : { id })}
       testId={testId ?? `administration-${kind}`}
     />
   );
 };
+
+/**
+ * How the box reads its catalog's read: loading while it is asked, and — when it failed — red,
+ * saying it could not be loaded in place of the placeholder, never an empty list that looks like
+ * an empty catalog.
+ */
+export const catalogSelectState = (
+  read: { isPending: boolean; isError: boolean },
+  placeholder: string | undefined,
+  failedWords: string,
+): { loading: boolean; failed: boolean; placeholder: string | undefined } =>
+  read.isError
+    ? { loading: false, failed: true, placeholder: failedWords }
+    : { loading: read.isPending, failed: false, placeholder };
 
 /** «الأحبار — حبر ليزر» for a subcategory; a top-level category by its own name. */
 export const categoryLabel = (category: AdministrationItemCategoryDto, locale: Locale): string =>

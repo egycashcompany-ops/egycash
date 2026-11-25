@@ -63,6 +63,16 @@ export const ADMINISTRATION_SHORTCUTS: Shortcut[] = [
 /** The live rows of a register: only `meta.totalItems` is wanted. */
 const COUNT_PARAMS = { page: 1, pageSize: 1, isActive: true } as const;
 
+/**
+ * Where a count opens: its register under the view it counts. A bare URL would restore the
+ * reader's remembered filters (a branch, a kind, «retired»), so the list could disagree with the
+ * figure that opened it — the query string says what is counted, as IT's help-desk counts do.
+ */
+export const COUNT_LINKS = {
+  warehouses: '/administration/warehouses?active=true',
+  items: '/administration/items?active=true',
+} as const;
+
 /** A count tile's figure, its loading, or the caption that says it could not be read. */
 const useCountTile = (query: {
   isError: boolean;
@@ -89,7 +99,7 @@ const Counts = ({ warehouses, items }: { warehouses: boolean; items: boolean }):
         <StatCard
           label={t('administration.home.activeWarehouses')}
           icon={WarehouseIcon}
-          to="/administration/warehouses"
+          to={COUNT_LINKS.warehouses}
           {...warehouseCount}
         />
       )}
@@ -97,7 +107,7 @@ const Counts = ({ warehouses, items }: { warehouses: boolean; items: boolean }):
         <StatCard
           label={t('administration.home.activeItems')}
           icon={BoxIcon}
-          to="/administration/items"
+          to={COUNT_LINKS.items}
           {...itemCount}
         />
       )}

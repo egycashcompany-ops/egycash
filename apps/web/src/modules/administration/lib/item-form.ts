@@ -102,6 +102,15 @@ export const levelProblems = (
   return problems;
 };
 
+/**
+ * The barcode as the contract takes it: empty (none), or what a scan types — no space inside
+ * (`/^\S+$/`). Judged here because the contract's refusal is a plain 400 that names no box.
+ */
+export const barcodeOk = (text: string): boolean => {
+  const value = text.trim();
+  return value === '' || /^\S+$/u.test(value);
+};
+
 const orNull = (value: string): string | null => (value.trim() === '' ? null : value.trim());
 
 export const itemCreateBody = (form: ItemForm): CreateAdministrationItem => {

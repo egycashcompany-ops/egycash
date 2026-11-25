@@ -27,6 +27,7 @@ import { Button } from '../../../shared/ui/Button';
 import { RowActions } from '../../../shared/ui/RowActions';
 import { Select } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
+import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { localized } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useAdministrationItems } from '../api/catalog-queries';
@@ -136,7 +137,7 @@ export const ItemsPage = (): JSX.Element => {
     },
     {
       key: 'status',
-      header: t('administration.items.columns.status'),
+      header: t('common.status'),
       render: (item) => (
         <StatusBadge
           tone={item.isActive ? 'success' : 'neutral'}
@@ -200,7 +201,7 @@ export const ItemsPage = (): JSX.Element => {
             value={search}
             onChange={(value) => patch({ q: value || null })}
             placeholder={t('administration.items.searchPlaceholder')}
-            className="w-64"
+            className="w-80"
           />
           <div className="w-56">
             <CatalogSelect
@@ -222,7 +223,7 @@ export const ItemsPage = (): JSX.Element => {
             />
           </div>
           <Select
-            aria-label={t('administration.items.columns.status')}
+            aria-label={t('common.status')}
             value={active}
             onChange={(e) => patch({ active: e.target.value === 'true' ? null : e.target.value })}
             className="w-auto"
@@ -244,7 +245,7 @@ export const ItemsPage = (): JSX.Element => {
             {...(sort === null ? {} : { sort })}
             onSortChange={changeSort}
             onRowClick={(item) => navigate(`/administration/items/${item.id}`)}
-            empty={t('administration.items.empty')}
+            empty={<EmptyState title={t('administration.items.empty')} />}
             stickyHead
           />
         </div>

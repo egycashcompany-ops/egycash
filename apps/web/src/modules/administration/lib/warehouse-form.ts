@@ -67,19 +67,46 @@ export const warehouseRequired = (
   type: form.type !== '',
 });
 
+/** A department the form offers, and whether it is a retired one kept because it is stored. */
+export interface DepartmentChoice {
+  department: OrgUnitOptionDto;
+  retired: boolean;
+}
+
 /**
- * The departments a warehouse may name: the copies in its own branch (the server refuses any
- * other), and the one it already names whatever it has become, so an edit never drops it.
+ * The departments a warehouse may name: the active copies in its own branch (the server refuses
+ * any other), and the one it already names whatever it has become, so an edit never drops it. The
+ * active options hold no retired department, so a retired stored one is named from `named` — the
+ * options read with the inactive units — and marked as retired.
  */
 export const branchDepartments = (
-  departments: readonly OrgUnitOptionDto[],
+  active: readonly OrgUnitOptionDto[],
+  named: readonly OrgUnitOptionDto[],
   branchId: string,
   current: string,
-): OrgUnitOptionDto[] =>
-  departments.filter(
-    (department) =>
-      (branchId !== '' && department.parentId === branchId) || department.id === current,
-  );
+): DepartmentChoice[] => {
+  const choices = active
+    .filter(
+      (department) =>
+        (branchId !== '' && department.parentId === branchId) || department.id === current,
+    )
+    .map((department) => ({ department, retired: false }));
+  if (current !== '' && !active.some((department) => department.id === current)) {
+    const kept = named.find((department) => department.id === current);
+    if (kept !== undefined) choices.push({ department: kept, retired: true });
+  }
+  return choices;
+};
+
+/**
+ * Whether the stored department must be named from the read with the retired units: it is set,
+ * the active options have answered, and they do not hold it.
+ */
+export const storedDepartmentRetired = (
+  active: readonly OrgUnitOptionDto[] | undefined,
+  current: string,
+): boolean =>
+  current !== '' && active !== undefined && !active.some((department) => department.id === current);
 
 const orNull = (value: string): string | null => (value.trim() === '' ? null : value.trim());
 

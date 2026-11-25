@@ -5,7 +5,8 @@
 // The two names are two boxes, the Arabic right to left and the English left to right; the code is
 // a symbol («pcs», «kg»), left to right. The sort order is a whole number, digits only. Writes are
 // held at organization scope on the server (OD-04 A): a holder below it meets the refusal in the
-// alert box, in the reader's language.
+// alert box, in the reader's language. A save refused because someone saved the unit meanwhile
+// (`STALE_DOCUMENT`) rebases the form on the unit as it now is, so the next Save can be taken.
 import { useEffect, useState } from 'react';
 import { type AdministrationCatalogItemDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -14,7 +15,7 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { Checkbox, Field, Input, Textarea } from '../../../shared/ui/form';
 import { useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { useCreateUnit, useUpdateUnit } from '../api/catalog-queries';
+import { useCreateUnit, useRereadUnit, useUpdateUnit } from '../api/catalog-queries';
 import {
   CATALOG_CODE_MAX,
   DESCRIPTION_MAX,
@@ -26,7 +27,7 @@ import {
   unitCreateBody,
   type CatalogForm,
 } from '../lib/catalog-form';
-import { fieldRefusal, refusalFieldKeys, type RefusalField } from '../lib/refusals';
+import { fieldRefusal, isStaleRefusal, refusalFieldKeys, type RefusalField } from '../lib/refusals';
 import { AdministrationDialogFrame } from './AdministrationDialogFrame';
 
 export const UnitDialog = ({
@@ -41,10 +42,14 @@ export const UnitDialog = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // The unit as a stale save re-read it, kept only while the form edits that same unit.
+  const [rebased, setRebased] = useState<AdministrationCatalogItemDto | null>(null);
+  const base = unit !== null && rebased?.id === unit.id ? rebased : unit;
   const [form, setForm] = useState<CatalogForm>(catalogFormFrom(unit));
   const [failure, setFailure] = useState<unknown>(null);
   useEffect(() => {
     if (!open) return;
+    setRebased(null);
     setForm(catalogFormFrom(unit));
     setFailure(null);
   }, [open, unit]);
@@ -53,6 +58,7 @@ export const UnitDialog = ({
 
   const create = useCreateUnit();
   const update = useUpdateUnit();
+  const rereadUnit = useRereadUnit();
   const filled = catalogRequired(form);
   const sortOrderWrong = Number.isNaN(sortOrderOf(form.sortOrder));
   const required = useRequiredFields(
@@ -69,19 +75,26 @@ export const UnitDialog = ({
     if (sortOrderWrong) return;
     setFailure(null);
     try {
-      if (unit === null) {
+      if (base === null) {
         await create.mutateAsync(unitCreateBody(form));
         toast.success(t('administration.catalogs.unit.created'));
       } else {
         await update.mutateAsync({
-          id: unit.id,
-          body: { ...unitChanges(form, unit), version: unit.version },
+          id: base.id,
+          body: { ...unitChanges(form, base), version: base.version },
         });
         toast.success(t('administration.catalogs.unit.updated'));
       }
       onClose();
     } catch (error) {
       setFailure(error);
+      if (base !== null && isStaleRefusal(error)) {
+        const fresh = await rereadUnit(base.id).catch(() => null);
+        if (fresh !== null) {
+          setRebased(fresh);
+          setForm(catalogFormFrom(fresh));
+        }
+      }
     }
   };
 
@@ -90,7 +103,7 @@ export const UnitDialog = ({
       open={open}
       onClose={onClose}
       title={
-        unit === null
+        base === null
           ? t('administration.catalogs.unit.add')
           : t('administration.catalogs.unit.edit')
       }
@@ -159,7 +172,7 @@ export const UnitDialog = ({
           onChange={(e) => set('description', e.target.value)}
         />
       </Field>
-      {unit !== null && (
+      {base !== null && (
         <Checkbox
           label={t('administration.catalogs.fields.isActive')}
           checked={form.isActive}

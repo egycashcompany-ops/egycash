@@ -1,15 +1,18 @@
 // TanStack Query hooks for the warehouses (ADR-013). A warehouse write re-reads the register; the
 // branch options and the department options are their own subtrees, since no warehouse write
 // changes what a key reaches or which departments exist.
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  type AdministrationWarehouseDto,
   type CreateAdministrationWarehouse,
   type UpdateAdministrationWarehouse,
 } from '@ecms/contracts';
 import {
   administrationKeys,
+  departmentNamesKey,
   departmentOptionsKey,
   warehouseBranchOptionsKey,
+  warehouseKey,
   warehouseListKey,
 } from './administration-keys';
 import { type AdministrationListParams } from './catalog-api';
@@ -35,24 +38,50 @@ export const useWarehouseBranchOptions = (enabled = true) =>
     enabled,
   });
 
-/** The platform's departments — rarely change, so cached for a while. */
+/** The platform's active departments — rarely change, so cached for a while. */
 export const useDepartmentOptions = (enabled = true) =>
   useQuery({
     queryKey: departmentOptionsKey(),
-    queryFn: api.listDepartmentOptions,
+    queryFn: () => api.listDepartmentOptions(),
     staleTime: 5 * 60_000,
     enabled,
   });
 
+/**
+ * Every department, the retired ones too — read only to NAME a department a warehouse already
+ * points at that the active list no longer holds, never to offer one.
+ */
+export const useDepartmentNames = (enabled = true) =>
+  useQuery({
+    queryKey: departmentNamesKey(),
+    queryFn: () => api.listDepartmentOptions(true),
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+
+/** One warehouse as it now is — what a form rebases on after a stale save. */
+export const useRereadWarehouse = (): ((id: string) => Promise<AdministrationWarehouseDto>) => {
+  const qc = useQueryClient();
+  return (id) =>
+    qc.fetchQuery({
+      queryKey: warehouseKey(id),
+      queryFn: () => api.getWarehouse(id),
+      staleTime: 0,
+    });
+};
+
+/** A warehouse is shown on its register and the home's count, both under `warehouses`. */
+export const WAREHOUSE_SUBTREES = [administrationKeys.warehouses] as const;
+
 export const useCreateWarehouse = () =>
   useAdministrationWrite(
     (body: CreateAdministrationWarehouse) => api.createWarehouse(body),
-    [administrationKeys.warehouses],
+    WAREHOUSE_SUBTREES,
   );
 
 export const useUpdateWarehouse = () =>
   useAdministrationWrite(
     ({ id, body }: { id: string; body: UpdateAdministrationWarehouse }) =>
       api.updateWarehouse(id, body),
-    [administrationKeys.warehouses],
+    WAREHOUSE_SUBTREES,
   );

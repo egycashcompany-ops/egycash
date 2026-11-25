@@ -10,6 +10,7 @@ import {
 } from '@ecms/contracts';
 import { item } from '../screen-fixtures';
 import {
+  barcodeOk,
   itemChanges,
   itemCreateBody,
   itemFormFrom,
@@ -52,6 +53,24 @@ describe('a new item', () => {
     });
     expect(CreateAdministrationItemSchema.safeParse(body).success).toBe(true);
     expect(body).not.toHaveProperty('code');
+  });
+});
+
+describe('the barcode', () => {
+  it('is what a scan types — none, or no space inside — as the contract judges it', () => {
+    expect(barcodeOk('')).toBe(true);
+    expect(barcodeOk('  ')).toBe(true);
+    expect(barcodeOk('6221234567890')).toBe(true);
+    expect(barcodeOk(' 6221234567890 '), 'the edges are trimmed, as the body is').toBe(true);
+    expect(barcodeOk('123 456')).toBe(false);
+    expect(barcodeOk('123\t456')).toBe(false);
+    // The form's judgement and the contract's agree, so a barcode it lets through is taken.
+    for (const barcode of ['6221234567890', '123 456']) {
+      const body = itemCreateBody(filled({ barcode }));
+      expect(CreateAdministrationItemSchema.safeParse(body).success, barcode).toBe(
+        barcodeOk(barcode),
+      );
+    }
   });
 });
 

@@ -105,8 +105,21 @@ describe('every endpoint the module’s client calls exists on the API', () => {
     expect(WAREHOUSE_CLIENT).toContain(
       'patch<AdministrationWarehouseDto>(`/administration/warehouses/${id}`',
     );
-    // The department options are the platform's own reference read, not another module's.
-    expect(WAREHOUSE_CLIENT).toContain("'/platform/departments/options'");
+    // One store, re-read after a stale save.
+    expect(WAREHOUSE_CLIENT).toContain(
+      'get<AdministrationWarehouseDto>(`/administration/warehouses/${id}`)',
+    );
+    // The department options are the platform's own reference read, not another module's — with
+    // the retired units only to name the one a store already points at, as the platform's options
+    // read takes it (`?includeInactive=true`).
+    expect(WAREHOUSE_CLIENT).toContain(
+      "`/platform/departments/options${includeInactive ? '?includeInactive=true' : ''}`",
+    );
+    const orgUnitHttp = readFileSync(
+      resolve(HERE, '../../../../api/src/platform/organization/shared/org-unit.http.ts'),
+      'utf8',
+    );
+    expect(orgUnitHttp).toContain("includeInactive: z.enum(['true', 'false']).optional()");
     expect(WAREHOUSE_CLIENT).not.toMatch(/modules\/(?!administration)/u);
   });
 

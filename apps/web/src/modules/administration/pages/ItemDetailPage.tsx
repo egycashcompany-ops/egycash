@@ -24,26 +24,40 @@ import { formatNumber, localized } from '../../../shared/lib/format';
 import { useAdministrationItem } from '../api/catalog-queries';
 import { ItemFormDialog, itemCategoryLabel } from '../components/ItemFormDialog';
 
-/** One label/value row. `value` is already formatted — this only lays it out. */
+/**
+ * One label/value row. `value` is already formatted — this only lays it out. A code is set in mono
+ * and read left to right; a name in the other language's script keeps its own order (`dir`). Only
+ * the value is isolated, never the `<dd>`: the row stays aligned with its label in either language.
+ */
 const Fact = ({
   label,
   value,
   mono = false,
+  dir,
 }: {
   label: string;
   value: string | null;
   mono?: boolean;
-}): JSX.Element => (
-  <div className="py-2">
-    <dt className="text-xs text-slate-500 dark:text-slate-400">{label}</dt>
-    <dd
-      className={`mt-0.5 text-sm text-slate-800 dark:text-slate-100 ${mono ? 'font-mono' : ''}`}
-      {...(mono ? { dir: 'ltr' as const } : {})}
-    >
-      {value === null || value === '' ? '—' : value}
-    </dd>
-  </div>
-);
+  dir?: 'ltr' | 'rtl';
+}): JSX.Element => {
+  const direction = mono ? 'ltr' : dir;
+  return (
+    <div className="py-2">
+      <dt className="text-xs text-slate-500 dark:text-slate-400">{label}</dt>
+      <dd
+        className={`mt-0.5 text-sm text-slate-800 dark:text-slate-100 ${mono ? 'font-mono' : ''}`}
+      >
+        {value === null || value === '' ? (
+          '—'
+        ) : direction === undefined ? (
+          value
+        ) : (
+          <span dir={direction}>{value}</span>
+        )}
+      </dd>
+    </div>
+  );
+};
 
 export const ItemDetailPage = (): JSX.Element => {
   const t = useT();
@@ -51,8 +65,9 @@ export const ItemDetailPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const { id = '' } = useParams<{ id: string }>();
   const { data: item, isPending, isError, error, refetch } = useAdministrationItem(id);
-  // The item as it was when its form opened: a re-read underneath (a stale save re-reads the
-  // record) must not reset what is being typed, nor the refusal the form is showing.
+  // The item as it was when its form opened: a re-read underneath (a realtime signal, another
+  // screen's save) must not reset what is being typed. A stale save is the form's own to answer —
+  // it rebases on the record as it now is, keeping the refusal in view.
   const [editing, setEditing] = useState<AdministrationItemDto | null>(null);
 
   if (isPending) {
@@ -103,9 +118,7 @@ export const ItemDetailPage = (): JSX.Element => {
             <dl className="grid gap-x-6 sm:grid-cols-2">
               <Fact label={t('administration.items.columns.code')} value={item.code} mono />
               <div className="py-2">
-                <dt className="text-xs text-slate-500 dark:text-slate-400">
-                  {t('administration.items.columns.status')}
-                </dt>
+                <dt className="text-xs text-slate-500 dark:text-slate-400">{t('common.status')}</dt>
                 <dd className="mt-0.5">
                   <StatusBadge
                     tone={item.isActive ? 'success' : 'neutral'}
@@ -117,15 +130,16 @@ export const ItemDetailPage = (): JSX.Element => {
                   />
                 </dd>
               </div>
-              <Fact label={t('administration.items.fields.nameAr')} value={item.name.ar} />
-              <div className="py-2">
-                <dt className="text-xs text-slate-500 dark:text-slate-400">
-                  {t('administration.items.fields.nameEn')}
-                </dt>
-                <dd className="mt-0.5 text-sm text-slate-800 dark:text-slate-100" dir="ltr">
-                  {item.name.en}
-                </dd>
-              </div>
+              <Fact
+                label={t('administration.items.fields.nameAr')}
+                value={item.name.ar}
+                dir="rtl"
+              />
+              <Fact
+                label={t('administration.items.fields.nameEn')}
+                value={item.name.en}
+                dir="ltr"
+              />
               <Fact label={t('administration.items.fields.barcode')} value={item.barcode} mono />
               <Fact
                 label={t('administration.items.fields.category')}

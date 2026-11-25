@@ -6,7 +6,9 @@
 // What the server refuses of a parent — the category itself, one of its own subcategories, a
 // subcategory, a retired one, or a move of a category that has subcategories
 // (`ADMINISTRATION_CATEGORY_PARENT_INVALID`) — is said in the alert box and, in its own words,
-// under the parent's box. The category itself is never offered as its own parent.
+// under the parent's box. The category itself is never offered as its own parent. A save refused
+// because someone saved the category meanwhile (`STALE_DOCUMENT`) rebases the form on the category
+// as it now is, so the next Save can be taken.
 import { useEffect, useMemo, useState } from 'react';
 import { type AdministrationItemCategoryDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -17,7 +19,12 @@ import { Checkbox, Field, Input, Textarea } from '../../../shared/ui/form';
 import { useRequiredFields } from '../../../shared/ui/required-fields';
 import { SearchableSelect, type SearchableOption } from '../../../shared/ui/SearchableSelect';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { useCreateCategory, useUpdateCategory, useWholeCategories } from '../api/catalog-queries';
+import {
+  useCreateCategory,
+  useRereadCategory,
+  useUpdateCategory,
+  useWholeCategories,
+} from '../api/catalog-queries';
 import {
   CATALOG_CODE_MAX,
   DESCRIPTION_MAX,
@@ -29,7 +36,7 @@ import {
   sortOrderOf,
   type CatalogForm,
 } from '../lib/catalog-form';
-import { fieldRefusal, refusalFieldKeys, type RefusalField } from '../lib/refusals';
+import { fieldRefusal, isStaleRefusal, refusalFieldKeys, type RefusalField } from '../lib/refusals';
 import { AdministrationDialogFrame } from './AdministrationDialogFrame';
 
 /**
@@ -63,10 +70,14 @@ export const ItemCategoryDialog = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // The category as a stale save re-read it, kept only while the form edits that same category.
+  const [rebased, setRebased] = useState<AdministrationItemCategoryDto | null>(null);
+  const base = category !== null && rebased?.id === category.id ? rebased : category;
   const [form, setForm] = useState<CatalogForm>(catalogFormFrom(category));
   const [failure, setFailure] = useState<unknown>(null);
   useEffect(() => {
     if (!open) return;
+    setRebased(null);
     setForm(catalogFormFrom(category));
     setFailure(null);
   }, [open, category]);
@@ -75,12 +86,13 @@ export const ItemCategoryDialog = ({
 
   const categories = useWholeCategories(open);
   const parents = useMemo(
-    () => parentOptions(categories.data ?? [], category?.id ?? null, form.parentId, locale),
-    [categories.data, category, form.parentId, locale],
+    () => parentOptions(categories.data ?? [], base?.id ?? null, form.parentId, locale),
+    [categories.data, base, form.parentId, locale],
   );
 
   const create = useCreateCategory();
   const update = useUpdateCategory();
+  const rereadCategory = useRereadCategory();
   const filled = catalogRequired(form);
   const sortOrderWrong = Number.isNaN(sortOrderOf(form.sortOrder));
   const required = useRequiredFields(
@@ -97,19 +109,26 @@ export const ItemCategoryDialog = ({
     if (sortOrderWrong) return;
     setFailure(null);
     try {
-      if (category === null) {
+      if (base === null) {
         await create.mutateAsync(categoryCreateBody(form));
         toast.success(t('administration.catalogs.category.created'));
       } else {
         await update.mutateAsync({
-          id: category.id,
-          body: { ...categoryChanges(form, category), version: category.version },
+          id: base.id,
+          body: { ...categoryChanges(form, base), version: base.version },
         });
         toast.success(t('administration.catalogs.category.updated'));
       }
       onClose();
     } catch (error) {
       setFailure(error);
+      if (base !== null && isStaleRefusal(error)) {
+        const fresh = await rereadCategory(base.id).catch(() => null);
+        if (fresh !== null) {
+          setRebased(fresh);
+          setForm(catalogFormFrom(fresh));
+        }
+      }
     }
   };
 
@@ -118,7 +137,7 @@ export const ItemCategoryDialog = ({
       open={open}
       onClose={onClose}
       title={
-        category === null
+        base === null
           ? t('administration.catalogs.category.add')
           : t('administration.catalogs.category.edit')
       }
@@ -200,7 +219,7 @@ export const ItemCategoryDialog = ({
           onChange={(e) => set('description', e.target.value)}
         />
       </Field>
-      {category !== null && (
+      {base !== null && (
         <Checkbox
           label={t('administration.catalogs.fields.isActive')}
           checked={form.isActive}

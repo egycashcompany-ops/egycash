@@ -128,7 +128,10 @@ export const EmployeePicker = ({
                         <Badge size="sm">{t('administration.people.exited')}</Badge>
                       )}
                     </span>
-                    <span className="font-mono text-xs text-slate-500" dir="ltr">
+                    <span
+                      className="font-mono text-xs text-slate-500 dark:text-slate-400"
+                      dir="ltr"
+                    >
                       {person.code}
                     </span>
                   </button>

@@ -1,7 +1,8 @@
 // The warehouse form's state against the contracts (design §2.3.5, OD-10 A): a create names its
 // branch and its kind — none is assumed — and a code in the org units' pattern; an edit never names
 // a branch, sends only what moved, and clears an optional value with `null`; the departments offered
-// are the branch's own copies, and the one a store already names stays.
+// are the branch's own copies, and the one a store already names stays — named from the read with
+// the retired units, and marked, once it has been retired.
 import { describe, expect, it } from 'vitest';
 import {
   CreateAdministrationWarehouseSchema,
@@ -11,6 +12,7 @@ import {
 import { warehouse } from '../screen-fixtures';
 import {
   branchDepartments,
+  storedDepartmentRetired,
   warehouseChanges,
   warehouseCodeOk,
   warehouseCreateBody,
@@ -113,13 +115,33 @@ describe('the departments a store may name', () => {
     catalogId: null,
   });
   const ALL = [option('d-cai', 'b-cai'), option('d-alx', 'b-alx')];
+  const RETIRED = option('d-cai-old', 'b-cai');
+  const ids = (choices: ReturnType<typeof branchDepartments>): string[] =>
+    choices.map((choice) => choice.department.id);
 
   it('are the branch’s own copies, none before a branch is chosen', () => {
-    expect(branchDepartments(ALL, 'b-cai', '').map((d) => d.id)).toEqual(['d-cai']);
-    expect(branchDepartments(ALL, '', '')).toEqual([]);
+    expect(ids(branchDepartments(ALL, [], 'b-cai', ''))).toEqual(['d-cai']);
+    expect(branchDepartments(ALL, [], '', '')).toEqual([]);
   });
 
   it('keep the one a store already names, whatever has become of it', () => {
-    expect(branchDepartments(ALL, 'b-cai', 'd-alx').map((d) => d.id)).toEqual(['d-cai', 'd-alx']);
+    expect(ids(branchDepartments(ALL, [], 'b-cai', 'd-alx'))).toEqual(['d-cai', 'd-alx']);
+  });
+
+  it('keep a retired one the store names, named from the read with the retired units and marked', () => {
+    // The active options no longer hold it, so the read with the retired units is asked.
+    expect(storedDepartmentRetired(ALL, 'd-cai-old')).toBe(true);
+    expect(storedDepartmentRetired(ALL, 'd-cai')).toBe(false);
+    expect(storedDepartmentRetired(ALL, '')).toBe(false);
+    expect(storedDepartmentRetired(undefined, 'd-cai-old'), 'not before the options answer').toBe(
+      false,
+    );
+    const choices = branchDepartments(ALL, [...ALL, RETIRED], 'b-cai', 'd-cai-old');
+    expect(choices).toEqual([
+      { department: ALL[0], retired: false },
+      { department: RETIRED, retired: true },
+    ]);
+    // Never offered to a store that does not already name it.
+    expect(ids(branchDepartments(ALL, [...ALL, RETIRED], 'b-cai', 'd-cai'))).toEqual(['d-cai']);
   });
 });

@@ -34,6 +34,10 @@ export const itemKey = (id: string): readonly unknown[] =>
 export const warehouseListKey = (params: object): readonly unknown[] =>
   listKey(ADMINISTRATION_MODULE, 'warehouses', params);
 
+/** One warehouse, re-read after a stale save — under `warehouses`, so its writes reach it. */
+export const warehouseKey = (id: string): readonly unknown[] =>
+  detailKey(ADMINISTRATION_MODULE, 'warehouses', id);
+
 /**
  * What the reader may do per branch (`GET /administration/warehouses/branch-options`). Its own
  * subtree: no warehouse write changes a key's reach, so no warehouse signal refetches it.
@@ -44,6 +48,13 @@ export const warehouseBranchOptionsKey = (): readonly unknown[] =>
 /** The platform's department options, which name a warehouse's department (§19.8). */
 export const departmentOptionsKey = (): readonly unknown[] =>
   listKey(ADMINISTRATION_MODULE, 'departmentOptions');
+
+/**
+ * The same options with the retired departments too — for NAMING the one a warehouse already
+ * points at, never for choosing (`/platform/departments/options?includeInactive=true`).
+ */
+export const departmentNamesKey = (): readonly unknown[] =>
+  listKey(ADMINISTRATION_MODULE, 'departmentOptions', { includeInactive: true });
 
 /** The keeper picker's search: what was typed is the key. */
 export const peopleSearchKey = (search: string): readonly unknown[] =>

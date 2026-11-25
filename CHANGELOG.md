@@ -283,8 +283,9 @@ its entry here in the same PR.
     branches the reader may read, and drops a remembered one the server no longer offers; a row's
     edit is offered only where the server says the edit would be taken; the keeper is shown as HR
     answers today — marked when they have left, flagged when HR no longer knows them. The form opens
-    a store only in a branch it may be opened in, keeps the branch for good, names a department of
-    that branch and a keeper through the module's own picker of people who work here today.
+    a store only in a branch it may be opened in — «add» shows only while some branch takes one —
+    keeps the branch for good, names a department of that branch (one since retired stays, marked)
+    and a keeper through the module's own picker of people who work here today.
   - **Units and categories** (`/administration/catalogs`): one tab each, edited — never deleted — in
     a dialog, a category's parent picked from the active top-level categories.
   - **Every register wears the board frame** (OD-83 B), which the owner asked for module by module —
@@ -295,7 +296,8 @@ its entry here in the same PR.
     (`ADMINISTRATION_DUPLICATE`, `_CATEGORY_PARENT_INVALID`, `_STOCK_LEVELS_ORDER`,
     `_REFERENCE_INACTIVE`, `_SUBCATEGORY_REQUIRED`, `_EMPLOYEE_EXITED`, `_DEACTIVATION_BLOCKED`), and
     each dialog also says, beside the field a refusal names, what to change. Save stays pressable and
-    names what is missing.
+    names what is missing. A save refused because someone saved the record meanwhile shows the record
+    as it now is, so the next Save is taken.
 
 - **Administrative Affairs («الشئون الإدارية»), third slice: warehouses, and the keeper picker.** The
   stores of each branch, «المخازن», with the «Warehouse manager / responsible person» the owner's

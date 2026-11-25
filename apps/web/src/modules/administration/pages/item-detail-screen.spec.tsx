@@ -57,14 +57,25 @@ describe('the item’s record', () => {
 
   it('shows the item’s facts — the category under its parent, the unit, the levels in Arabic digits', () => {
     const html = render();
-    expect(fact(html, ar('administration.items.columns.code'))).toContain('dir="ltr"');
+    // A code reads left to right inside its row, the row itself in the page's direction: only the
+    // value is isolated, so in Arabic it sits under its right-aligned label, not across the cell.
+    const code = fact(html, ar('administration.items.columns.code'));
+    expect(code).toMatch(/^<dd class="[^"]*font-mono[^"]*">/u);
+    expect(code).toContain('<span dir="ltr">ITM-00001</span>');
     expect(text(fact(html, ar('administration.items.fields.category')))).toBe('الأحبار — حبر ليزر');
     expect(text(fact(html, ar('administration.items.fields.unit')))).toBe('قطعة');
     expect(text(fact(html, ar('administration.items.fields.minQty')))).toBe('٢');
     expect(text(fact(html, ar('administration.items.fields.reorderPointQty')))).toBe('٥');
     expect(text(fact(html, ar('administration.items.fields.maxQty')))).toBe('٢٠');
     expect(text(fact(html, ar('administration.items.fields.nameEn')))).toBe('HP 85A toner');
-    expect(fact(html, ar('administration.items.fields.nameEn'))).toContain('dir="ltr"');
+    expect(fact(html, ar('administration.items.fields.nameEn'))).toMatch(
+      /^<dd class="[^"]*"><span dir="ltr">HP 85A toner<\/span><\/dd>$/u,
+    );
+    // The Arabic name keeps its order in the English screen too («حبر HP 85A»).
+    expect(fact(html, ar('administration.items.fields.nameAr'))).toContain(
+      '<span dir="rtl">حبر HP 85A</span>',
+    );
+    expect(fact(html, ar('administration.items.fields.barcode'))).not.toMatch(/^<dd[^>]*dir=/u);
     expect(text(fact(html, ar('administration.items.fields.description')))).toBe('—');
     expect(html).toContain(ar('administration.status.active'));
   });
@@ -85,7 +96,7 @@ describe('the item’s record', () => {
     );
     expect(SOURCE).not.toMatch(/navigate\(['`]edit/u);
     // The form edits the item as it was when it opened, as the register's does: a re-read of the
-    // record underneath (a stale save re-reads it) never resets the typing or the refusal shown.
+    // record underneath never resets the typing; a stale save rebases the form itself.
     expect(SOURCE).toContain('onClick={() => setEditing(item)}');
     expect(SOURCE).toContain('<ItemFormDialog open={editing !== null}');
     expect(SOURCE).toContain('item={editing}');

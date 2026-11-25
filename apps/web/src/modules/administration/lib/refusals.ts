@@ -110,6 +110,13 @@ export const REFUSAL_FIELD_KEYS: readonly string[] = [
   'administration.refusals.branchOutOfReach',
 ];
 
+/**
+ * A save refused for a moved `version` (409 `STALE_DOCUMENT`): someone saved the record since the
+ * form opened. The form rebases on the record as it now is, so the next Save is judged against it.
+ */
+export const isStaleRefusal = (error: unknown): boolean =>
+  error instanceof ApiError && error.code === ErrorCodes.STALE_DOCUMENT;
+
 /** One field's refusal, in the reader's words, or nothing — what its `Field error` takes. */
 export const fieldRefusal = (
   keys: Partial<Record<RefusalField, string>>,

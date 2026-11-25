@@ -11,8 +11,13 @@
 // The category is filed where an item may be filed (OD-06 (i)): a subcategory, or a top-level
 // category with no active subcategory — `CatalogSelect`'s `field` list. The three levels are whole
 // numbers (OD-08) in the order min ≤ reorder point ≤ max where set (OD-09), marked on Save before a
-// round trip; the server decides, and its refusals are worded on the field each names. Writes are
-// held at organization scope on the server (OD-04 A).
+// round trip; the server decides, and its refusals are worded on the field each names. A barcode
+// with a space inside is marked the same way — the contract refuses one, and its refusal names no
+// box. Writes are held at organization scope on the server (OD-04 A).
+//
+// A save refused because someone saved the item meanwhile (`STALE_DOCUMENT`) rebases the form on
+// the item as it now is: the refusal stays in the alert box, the boxes show what was saved, and the
+// next Save is judged against that version rather than refused again.
 import { useEffect, useState } from 'react';
 import {
   ADMINISTRATION_STOCK_LEVEL_FIELDS,
@@ -27,11 +32,12 @@ import { localized } from '../../../shared/lib/format';
 import { Checkbox, Field, Input, Textarea } from '../../../shared/ui/form';
 import { useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { useCreateItem, useUpdateItem } from '../api/catalog-queries';
+import { useCreateItem, useRereadItem, useUpdateItem } from '../api/catalog-queries';
 import { DESCRIPTION_MAX, NAME_MAX } from '../lib/catalog-form';
 import {
   BARCODE_MAX,
   NOTES_MAX,
+  barcodeOk,
   itemChanges,
   itemCreateBody,
   itemFormFrom,
@@ -39,7 +45,7 @@ import {
   levelProblems,
   type ItemForm,
 } from '../lib/item-form';
-import { fieldRefusal, refusalFieldKeys, type RefusalField } from '../lib/refusals';
+import { fieldRefusal, isStaleRefusal, refusalFieldKeys, type RefusalField } from '../lib/refusals';
 import { AdministrationDialogFrame } from './AdministrationDialogFrame';
 import { CatalogSelect } from './CatalogSelect';
 
@@ -74,11 +80,16 @@ export const ItemFormDialog = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // The item as a stale save re-read it, kept only while the form edits that same item; else the
+  // one the form opened with.
+  const [rebased, setRebased] = useState<AdministrationItemDto | null>(null);
+  const base = item !== null && rebased?.id === item.id ? rebased : item;
   const [form, setForm] = useState<ItemForm>(itemFormFrom(item));
   const [failure, setFailure] = useState<unknown>(null);
   const [tried, setTried] = useState(false);
   useEffect(() => {
     if (!open) return;
+    setRebased(null);
     setForm(itemFormFrom(item));
     setFailure(null);
     setTried(false);
@@ -88,6 +99,7 @@ export const ItemFormDialog = ({
 
   const create = useCreateItem();
   const update = useUpdateItem();
+  const rereadItem = useRereadItem();
   const filled = itemRequired(form);
   const required = useRequiredFields(
     [
@@ -104,42 +116,52 @@ export const ItemFormDialog = ({
   );
   const refused = refusalFieldKeys(failure);
   const refusedWord = (field: RefusalField): string | undefined => fieldRefusal(refused, field, t);
-  // A level that is no whole number is said as it is typed; the order is marked once Save is
-  // pressed, so a form half filled in is not accused of an order it has not finished yet.
+  // A level that is no whole number is said as it is typed; the order and a barcode with a space
+  // are marked once Save is pressed — also while other values are missing, so one press names
+  // everything that stops the save — and a form half filled in is not accused before then.
+  const pressed = tried || required.attempt > 0;
   const levels = levelProblems(form);
   const levelWord = (field: AdministrationStockLevelField): string | undefined => {
     const problem = levels[field];
     if (problem === 'wholeNumber') return t('administration.items.errors.wholeNumber');
-    if (problem === 'outOfOrder' && tried) return t('administration.refusals.levelsOutOfOrder');
+    if (problem === 'outOfOrder' && pressed) return t('administration.refusals.levelsOutOfOrder');
     return fieldRefusal(refused, field, t);
   };
+  const barcodeWrong = pressed && !barcodeOk(form.barcode);
 
   const save = async (): Promise<void> => {
     setTried(true);
-    if (Object.keys(levelProblems(form)).length > 0) return;
+    if (Object.keys(levelProblems(form)).length > 0 || !barcodeOk(form.barcode)) return;
     setFailure(null);
     try {
-      if (item === null) {
+      if (base === null) {
         await create.mutateAsync(itemCreateBody(form));
         toast.success(t('administration.items.created'));
       } else {
         await update.mutateAsync({
-          id: item.id,
-          body: { ...itemChanges(form, item), version: item.version },
+          id: base.id,
+          body: { ...itemChanges(form, base), version: base.version },
         });
         toast.success(t('administration.items.updated'));
       }
       onClose();
     } catch (error) {
       setFailure(error);
+      if (base !== null && isStaleRefusal(error)) {
+        const fresh = await rereadItem(base.id).catch(() => null);
+        if (fresh !== null) {
+          setRebased(fresh);
+          setForm(itemFormFrom(fresh));
+        }
+      }
     }
   };
 
-  const categoryCurrent = item !== null && form.categoryId === item.categoryId;
-  const unitCurrent = item !== null && form.unitId === item.unitId;
-  const currentCategoryLabel = categoryCurrent ? itemCategoryLabel(item, locale) : undefined;
+  const categoryCurrent = base !== null && form.categoryId === base.categoryId;
+  const unitCurrent = base !== null && form.unitId === base.unitId;
+  const currentCategoryLabel = categoryCurrent ? itemCategoryLabel(base, locale) : undefined;
   const currentUnitLabel =
-    unitCurrent && item.unitName !== null ? localized(item.unitName, locale) : undefined;
+    unitCurrent && base.unitName !== null ? localized(base.unitName, locale) : undefined;
 
   return (
     <AdministrationDialogFrame
@@ -147,8 +169,8 @@ export const ItemFormDialog = ({
       onClose={onClose}
       size="lg"
       tall
-      title={item === null ? t('administration.items.create') : t('administration.items.edit')}
-      {...(item === null ? {} : { description: `${localized(item.name, locale)} — ${item.code}` })}
+      title={base === null ? t('administration.items.create') : t('administration.items.edit')}
+      {...(base === null ? {} : { description: `${localized(base.name, locale)} — ${base.code}` })}
       required={required}
       onSave={save}
       busy={create.isPending || update.isPending}
@@ -215,13 +237,16 @@ export const ItemFormDialog = ({
         <Field
           label={t('administration.items.fields.barcode')}
           hint={t('administration.items.fields.barcodeHint')}
-          error={refusedWord('barcode')}
+          error={
+            barcodeWrong ? t('administration.items.errors.barcodeSpaces') : refusedWord('barcode')
+          }
         >
           <Input
             dir="ltr"
             value={form.barcode}
             maxLength={BARCODE_MAX}
             onChange={(e) => set('barcode', e.target.value)}
+            error={barcodeWrong || refused.barcode !== undefined}
           />
         </Field>
       </div>
@@ -258,7 +283,7 @@ export const ItemFormDialog = ({
           onChange={(e) => set('notes', e.target.value)}
         />
       </Field>
-      {item !== null && (
+      {base !== null && (
         <Checkbox
           label={t('administration.items.fields.isActive')}
           checked={form.isActive}

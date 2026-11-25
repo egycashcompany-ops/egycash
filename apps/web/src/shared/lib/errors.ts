@@ -155,7 +155,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // §5.15). Each dialog also words the field a refusal names beside that field, from its
     // `details`; these are the refusals themselves, wherever they surface.
     ADMINISTRATION_DUPLICATE:
-      'A live record already has this name, code or barcode — a retired one is brought back, not added again.',
+      'Another record, active or retired, already has this name, code or barcode — a retired one is brought back, not added again.',
     ADMINISTRATION_CATEGORY_PARENT_INVALID:
       'This category cannot go under that parent: categories have two levels, and a category with subcategories stays at the top.',
     ADMINISTRATION_STOCK_LEVELS_ORDER:
@@ -269,7 +269,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     IT_CONSUMABLE_COUNTER_ABOVE_NEXT:
       'تاريخ هذه القراءة سابق لقراءة لاحقة مسجّلة للطابعة نفسها، فيجب أن تكون أقل منها.',
     ADMINISTRATION_DUPLICATE:
-      'يوجد سجل نشط بهذا الاسم أو الكود أو الباركود — أما الموقوف فيُعاد تفعيله ولا يُضاف مرة أخرى.',
+      'هذا الاسم أو الكود أو الباركود مسجَّل لسجل آخر، نشطًا كان أو موقوفًا — والموقوف يُعاد تفعيله ولا يُضاف مرة أخرى.',
     ADMINISTRATION_CATEGORY_PARENT_INVALID:
       'لا يمكن وضع هذا التصنيف تحت ذلك التصنيف: للتصنيفات مستويان، والتصنيف الذي له تصنيفات فرعية يبقى رئيسيًا.',
     ADMINISTRATION_STOCK_LEVELS_ORDER:

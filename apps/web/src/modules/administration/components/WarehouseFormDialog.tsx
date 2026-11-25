@@ -8,9 +8,14 @@
 // and the top bar's choice decides where a new store is filed (ADR-028).
 //
 // THE DEPARTMENT is optional and reference-only — it grants nothing — and is one of the branch's
-// own copies. THE KEEPER («أمين المخزن») is optional and is somebody who works here today, found
+// own copies; the one a store already names stays offered, marked when it has since been retired.
+// THE KEEPER («أمين المخزن») is optional and is somebody who works here today, found
 // through the module's own picker; a keeper who has since left is still shown, as one, until a new
 // keeper is named, and a keeper HR no longer knows is flagged the same way (OD-64 keeper (i)).
+//
+// A save refused because someone saved the store meanwhile (`STALE_DOCUMENT`) rebases the form on
+// the store as it now is: the refusal stays in the alert box, the boxes show what was saved, and
+// the next Save is judged against that version rather than refused again.
 import { useEffect, useMemo, useState } from 'react';
 import {
   ADMINISTRATION_WAREHOUSE_TYPES,
@@ -26,18 +31,21 @@ import { useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
   useCreateWarehouse,
+  useDepartmentNames,
   useDepartmentOptions,
+  useRereadWarehouse,
   useUpdateWarehouse,
   useWarehouseBranchOptions,
 } from '../api/warehouses-queries';
 import { NAME_MAX } from '../lib/catalog-form';
-import { fieldRefusal, refusalFieldKeys, type RefusalField } from '../lib/refusals';
+import { fieldRefusal, isStaleRefusal, refusalFieldKeys, type RefusalField } from '../lib/refusals';
 import {
   LOCATION_MAX,
   WAREHOUSE_CODE_MAX,
   WAREHOUSE_NOTES_MAX,
   branchDepartments,
   isWarehouseType,
+  storedDepartmentRetired,
   warehouseChanges,
   warehouseCodeOk,
   warehouseCreateBody,
@@ -73,12 +81,17 @@ export const WarehouseFormDialog = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // The store as a stale save re-read it, kept only while the form edits that same store; else the
+  // one the form opened with.
+  const [rebased, setRebased] = useState<AdministrationWarehouseDto | null>(null);
+  const base = warehouse !== null && rebased?.id === warehouse.id ? rebased : warehouse;
   const [form, setForm] = useState<WarehouseForm>(warehouseFormFrom(warehouse));
   const [keeperLabel, setKeeperLabel] = useState(storedKeeperLabel(warehouse, t));
   const [failure, setFailure] = useState<unknown>(null);
   const [tried, setTried] = useState(false);
   useEffect(() => {
     if (!open) return;
+    setRebased(null);
     setForm(warehouseFormFrom(warehouse));
     setKeeperLabel(storedKeeperLabel(warehouse, t));
     setFailure(null);
@@ -87,13 +100,30 @@ export const WarehouseFormDialog = ({
   const set = <K extends keyof WarehouseForm>(key: K, value: WarehouseForm[K]): void =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
-  const branches = useWarehouseBranchOptions(open && warehouse === null);
+  const branches = useWarehouseBranchOptions(open && base === null);
   const departments = useDepartmentOptions(open);
+  const storedDepartment = base?.departmentId ?? '';
+  // Asked only when the stored department is missing from the active list — retired since.
+  const departmentNames = useDepartmentNames(
+    open && storedDepartmentRetired(departments.data, storedDepartment),
+  );
   const creatable = (branches.data ?? []).filter((branch) => branch.canCreate);
   const departmentChoices = useMemo(
-    () => branchDepartments(departments.data ?? [], form.branchId, warehouse?.departmentId ?? ''),
-    [departments.data, form.branchId, warehouse],
+    () =>
+      branchDepartments(
+        departments.data ?? [],
+        departmentNames.data ?? [],
+        form.branchId,
+        storedDepartment,
+      ),
+    [departments.data, departmentNames.data, form.branchId, storedDepartment],
   );
+  // A stored department no read names (gone, or not answered yet) still holds its value, so the
+  // box never shows another option as the store's department.
+  const departmentUnnamed =
+    form.departmentId !== '' &&
+    !departmentChoices.some((choice) => choice.department.id === form.departmentId);
+  const rereadWarehouse = useRereadWarehouse();
 
   const create = useCreateWarehouse();
   const update = useUpdateWarehouse();
@@ -108,7 +138,10 @@ export const WarehouseFormDialog = ({
     ],
     open,
   );
-  const codeWrong = tried && filled.code && !warehouseCodeOk(form.code.trim());
+  // Said once Save has been pressed — also while other values are missing, so one press names
+  // everything that stops the save.
+  const codeWrong =
+    (tried || required.attempt > 0) && filled.code && !warehouseCodeOk(form.code.trim());
   const refused = refusalFieldKeys(failure);
   const refusedWord = (field: RefusalField): string | undefined => fieldRefusal(refused, field, t);
 
@@ -117,19 +150,27 @@ export const WarehouseFormDialog = ({
     if (!warehouseCodeOk(form.code.trim())) return;
     setFailure(null);
     try {
-      if (warehouse === null) {
+      if (base === null) {
         await create.mutateAsync(warehouseCreateBody(form));
         toast.success(t('administration.warehouses.created'));
       } else {
         await update.mutateAsync({
-          id: warehouse.id,
-          body: { ...warehouseChanges(form, warehouse), version: warehouse.version },
+          id: base.id,
+          body: { ...warehouseChanges(form, base), version: base.version },
         });
         toast.success(t('administration.warehouses.updated'));
       }
       onClose();
     } catch (error) {
       setFailure(error);
+      if (base !== null && isStaleRefusal(error)) {
+        const fresh = await rereadWarehouse(base.id).catch(() => null);
+        if (fresh !== null) {
+          setRebased(fresh);
+          setForm(warehouseFormFrom(fresh));
+          setKeeperLabel(storedKeeperLabel(fresh, t));
+        }
+      }
     }
   };
 
@@ -140,13 +181,9 @@ export const WarehouseFormDialog = ({
       size="lg"
       tall
       title={
-        warehouse === null
-          ? t('administration.warehouses.create')
-          : t('administration.warehouses.edit')
+        base === null ? t('administration.warehouses.create') : t('administration.warehouses.edit')
       }
-      {...(warehouse === null
-        ? {}
-        : { description: `${localized(warehouse.name, locale)} — ${warehouse.code}` })}
+      {...(base === null ? {} : { description: `${localized(base.name, locale)} — ${base.code}` })}
       required={required}
       onSave={save}
       busy={create.isPending || update.isPending}
@@ -215,13 +252,13 @@ export const WarehouseFormDialog = ({
           required
           missing={required.isMissing('branchId')}
           hint={
-            warehouse === null
+            base === null
               ? t('administration.warehouses.fields.branchHint')
               : t('administration.warehouses.fields.branchFixed')
           }
           error={refusedWord('branchId')}
         >
-          {warehouse === null ? (
+          {base === null ? (
             <Select
               value={form.branchId}
               onChange={(e) => {
@@ -246,9 +283,9 @@ export const WarehouseFormDialog = ({
               ))}
             </Select>
           ) : (
-            <Select value={warehouse.branchId} disabled>
-              <option value={warehouse.branchId}>
-                {warehouse.branchName === null ? '—' : localized(warehouse.branchName, locale)}
+            <Select value={base.branchId} disabled>
+              <option value={base.branchId}>
+                {base.branchName === null ? '—' : localized(base.branchName, locale)}
               </option>
             </Select>
           )}
@@ -263,9 +300,12 @@ export const WarehouseFormDialog = ({
             onChange={(e) => set('departmentId', e.target.value)}
           >
             <option value="">{t('administration.warehouses.noDepartment')}</option>
-            {departmentChoices.map((department) => (
+            {departmentUnnamed && <option value={form.departmentId}>—</option>}
+            {departmentChoices.map(({ department, retired }) => (
               <option key={department.id} value={department.id}>
-                {localized(department.name, locale)}
+                {retired
+                  ? `${localized(department.name, locale)} — ${t('administration.status.inactive')}`
+                  : localized(department.name, locale)}
               </option>
             ))}
           </Select>
@@ -301,7 +341,7 @@ export const WarehouseFormDialog = ({
           onChange={(e) => set('notes', e.target.value)}
         />
       </Field>
-      {warehouse !== null && (
+      {base !== null && (
         <Field error={refusedWord('isActive')}>
           <Checkbox
             label={t('administration.warehouses.fields.isActive')}

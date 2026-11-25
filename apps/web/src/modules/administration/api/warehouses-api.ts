@@ -23,6 +23,10 @@ export const listWarehouses = (
 ): Promise<Paginated<AdministrationWarehouseDto>> =>
   getPage<AdministrationWarehouseDto>(`/administration/warehouses${buildQuery(params)}`);
 
+/** One warehouse, retired or not — what a form re-reads after a stale save. */
+export const getWarehouse = (id: string): Promise<AdministrationWarehouseDto> =>
+  get<AdministrationWarehouseDto>(`/administration/warehouses/${id}`);
+
 export const createWarehouse = (
   body: CreateAdministrationWarehouse,
 ): Promise<AdministrationWarehouseDto> =>
@@ -38,6 +42,12 @@ export const updateWarehouse = (
 export const listWarehouseBranchOptions = (): Promise<AdministrationWarehouseBranchOptionDto[]> =>
   get<AdministrationWarehouseBranchOptionDto[]>('/administration/warehouses/branch-options');
 
-/** The departments — each branch's copies, `parentId` its branch — for the warehouse's owner. */
-export const listDepartmentOptions = (): Promise<OrgUnitOptionDto[]> =>
-  get<OrgUnitOptionDto[]>('/platform/departments/options');
+/**
+ * The departments — each branch's copies, `parentId` its branch — for the warehouse's owner. The
+ * active ones by default, as a picker offers them; `includeInactive` adds the retired ones, only to
+ * NAME the department a warehouse already points at (the platform's own rule for the read).
+ */
+export const listDepartmentOptions = (includeInactive = false): Promise<OrgUnitOptionDto[]> =>
+  get<OrgUnitOptionDto[]>(
+    `/platform/departments/options${includeInactive ? '?includeInactive=true' : ''}`,
+  );

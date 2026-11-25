@@ -5,7 +5,8 @@
 // as IT's guard has (`it/it-i18n.spec.ts`):
 //   • the vocabulary half fails the moment a value is added to a contracts enum, or a tab or a
 //     refusal word to the module, without its label — those are asked through TEMPLATE keys;
-//   • the source half scans the module for every literal `t('administration.…')` it calls.
+//   • the source half scans the module for every literal `'administration.…'` its sources hold —
+//     a `t('…')` call, a key kept in a table, or one picked by a ternary inside `t(…)`.
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,6 +31,13 @@ const VOCABULARIES: { name: string; keys: readonly string[] }[] = [
     keys: CATALOG_TABS.map((tab) => `administration.catalogs.${tab}.${word}`),
   })),
   { name: 'a refusal beside its field', keys: REFUSAL_FIELD_KEYS },
+  // The status words every register and the item's record show, picked by a ternary.
+  {
+    name: 'status',
+    keys: ['active', 'inactive', 'filterActive', 'filterInactive', 'filterAll'].map(
+      (word) => `administration.status.${word}`,
+    ),
+  },
   // The sidebar rows' labels are the page titles (the routes spec holds them word for word).
   {
     name: 'nav row',
@@ -44,18 +52,18 @@ const sources = (dir: string): string[] =>
     return /\.tsx?$/u.test(entry.name) && !entry.name.includes('.spec.') ? [full] : [];
   });
 
-/** Literal `t('administration.…')` calls. Template keys are covered by VOCABULARIES. */
+/**
+ * Every literal `'administration.…'` in the module's sources: a `t('…')` call, a key held in a
+ * table and handed to `t()` later (the home's tiles, the level labels), or one picked by a ternary
+ * inside `t(…)` (the status words). In this module such a literal is only ever a catalog key — a
+ * permission is `administrationX.…` and a path `/administration/…`. Template keys are covered by
+ * VOCABULARIES.
+ */
 const usedKeys = (): string[] => {
   const found = new Set<string>();
   for (const file of sources(resolve(HERE))) {
     const source = readFileSync(file, 'utf8');
-    for (const match of source.matchAll(/\bt\(\s*'(administration\.[a-zA-Z0-9_.]+)'/gu)) {
-      if (match[1] !== undefined) found.add(match[1]);
-    }
-    // Keys held in a table and handed to `t()` later — the home's tiles, the level labels.
-    for (const match of source.matchAll(
-      /(?:titleKey|descKey|[a-zA-Z]+): '(administration\.[a-zA-Z0-9_.]+)'/gu,
-    )) {
+    for (const match of source.matchAll(/'(administration\.[a-zA-Z0-9_.]+)'/gu)) {
       if (match[1] !== undefined) found.add(match[1]);
     }
   }
@@ -81,6 +89,10 @@ describe('every literal key the module’s screens use exists in both locales', 
 
   it('finds the keys to check (the scan itself must not silently match nothing)', () => {
     expect(keys.length).toBeGreaterThan(100);
+    // A key reached only through a ternary is found too.
+    expect(keys).toEqual(
+      expect.arrayContaining(['administration.status.active', 'administration.status.inactive']),
+    );
   });
 
   for (const locale of LOCALES) {

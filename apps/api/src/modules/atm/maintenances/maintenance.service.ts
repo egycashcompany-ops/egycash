@@ -10,6 +10,7 @@ import {
   type AtmOpenBoardQuery,
   type BulkUpdateAtmMaintenances,
   type CloseAtmMaintenances,
+  type AtmDoneRangeQuery,
   type ListAtmDoneOperationsQuery,
   type ListAtmOpenOperationsQuery,
   type OpenAtmMaintenances,
@@ -27,6 +28,7 @@ import { atmLeadersService } from '../leaders/leaders.service';
 import { actorName, resolveAtmBranchId } from '../shared/atm-context';
 import { openDayOf } from '../shared/open-operation';
 import { insertOpenLines, type OpenLine } from '../shared/open-batch';
+import { parseDoneRangeCursor, type DoneRangeCursor } from '../shared/operation-log.repository';
 import { cairoDateString } from '../shared/cairo-time';
 import { atmMachineRepository } from '../machines/machine.repository';
 import { type OpenBoard } from '../shared/operation-log.repository';
@@ -120,6 +122,26 @@ class AtmMaintenanceService {
       page: query.page,
       pageSize: query.pageSize,
       scope: scopeSelector(ctx, 'atmMaintenance.view'),
+    });
+  }
+
+  /**
+   * One chunk of a done range, read whole chunk after chunk (`listDoneChunk`) — the done page's read
+   * since the hang of 2026-11-25. The same day defaults as `listDone`; a cursor that is not one
+   * reads the range from its start.
+   */
+  async doneRange(
+    query: AtmDoneRangeQuery,
+    ctx: AuthContext,
+  ): Promise<{ items: AtmMaintenanceDoc[]; next: DoneRangeCursor | null }> {
+    const today = cairoDateString(new Date());
+    const from = query.from ?? query.to ?? today;
+    const to = query.to ?? query.from ?? today;
+    return atmMaintenanceRepository.listDoneChunk({
+      from,
+      to,
+      scope: scopeSelector(ctx, 'atmMaintenance.view'),
+      cursor: parseDoneRangeCursor(query.cursor),
     });
   }
 

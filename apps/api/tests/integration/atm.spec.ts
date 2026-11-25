@@ -27,7 +27,9 @@ import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
-import { type AuthContext } from '../../src/shared/types';
+import { type AuthContext, type ScopeSelector } from '../../src/shared/types';
+import { atmReplenishmentRepository } from '../../src/modules/atm/replenishments/replenishment.repository';
+import { type DoneRangeCursor } from '../../src/modules/atm/shared/operation-log.repository';
 
 const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
@@ -804,5 +806,115 @@ describe('atm daily report', () => {
       .get('/api/v1/atm/reports/daily')
       .set('Authorization', `Bearer ${outsiderToken}`);
     expect(res.status).toBe(403);
+  });
+});
+
+// The hang of 2026-11-25: the done page asked for every page of a month at once, and each page
+// sorted the whole range in memory. The range is now read whole, chunk after chunk, each chunk
+// continuing where the last stopped (`listDoneChunk`, GET /atm/{kind}/done/range).
+describe('atm done range — read whole, chunk after chunk', () => {
+  const today = (): string => cairoDateString(new Date());
+  let closedIds: string[] = [];
+
+  beforeAll(async () => {
+    // Five replenishments of one machine closed in ONE call: they share a close instant, the
+    // ties a chunk boundary must cut exactly.
+    const open = await request(app)
+      .post('/api/v1/atm/replenishments/open')
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({
+        rows: Array.from({ length: 5 }, () => ({ machineCode: '101', scheduleTime: null })),
+        forceDate: null,
+      });
+    expect(open.status).toBe(200);
+    const opened = data<{ opened: AtmReplenishmentDto[] }>(open).opened.map((r) => r.id);
+    expect(opened).toHaveLength(5);
+    const close = await request(app)
+      .post('/api/v1/atm/replenishments/close')
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ ids: opened });
+    expect(close.status).toBe(200);
+    closedIds = opened;
+  });
+
+  it('answers the whole range in one chunk when it fits, in close order, with no next', async () => {
+    const res = await request(app)
+      .get(`/api/v1/atm/replenishments/done/range?from=${today()}&to=${today()}`)
+      .set('Authorization', `Bearer ${alexToken}`);
+    expect(res.status).toBe(200);
+    const chunk = data<{ items: AtmReplenishmentDto[]; next: string | null }>(res);
+    expect(chunk.next).toBeNull();
+    const ids = chunk.items.map((r) => r.id);
+    for (const id of closedIds) expect(ids).toContain(id);
+    const times = chunk.items.map((r) => Date.parse(r.closedAt ?? ''));
+    expect([...times].sort((a, b) => a - b)).toEqual(times);
+  });
+
+  it('walks a range chunk by chunk — every row once, in order, ties cut exactly', async () => {
+    const scope = {
+      scope: 'organization',
+      userId: adminUserId,
+      branchId: null,
+      departmentId: null,
+      sectionId: null,
+    } as unknown as ScopeSelector;
+    const whole = await atmReplenishmentRepository.listDoneChunk(
+      { from: today(), to: today(), scope, cursor: null },
+      10_000,
+    );
+    const walked: string[] = [];
+    let cursor: DoneRangeCursor | null = null;
+    for (let step = 0; step < 50; step += 1) {
+      // Two rows a chunk: the five tied rows span three chunks.
+      const chunk = await atmReplenishmentRepository.listDoneChunk(
+        { from: today(), to: today(), scope, cursor },
+        2,
+      );
+      walked.push(...chunk.items.map((row) => String(row._id)));
+      if (chunk.next === null) break;
+      cursor = chunk.next;
+    }
+    expect(walked).toEqual(whole.items.map((row) => String(row._id)));
+    expect(new Set(walked).size).toBe(walked.length);
+  });
+
+  it('keeps to the caller’s scope, and to callers who may see the done page', async () => {
+    // Its own branch reader of Tanta, so this case stands without the branch-scope describe.
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'ATM Tanta done', ar: 'منتهيات طنطا' },
+        permissionKeys: ['atmReplenishment.view'],
+      },
+      adminUserId,
+    );
+    const readerId = await mkUser('atm-tanta-range@ecms.local', tantaBranchId);
+    await rbacService.ensureAssignment(readerId, String(role._id), 'branch');
+    const tanta = await login('atm-tanta-range@ecms.local');
+    const other = await request(app)
+      .get(`/api/v1/atm/replenishments/done/range?from=${today()}&to=${today()}`)
+      .set('Authorization', `Bearer ${tanta}`);
+    expect(other.status).toBe(200);
+    expect(data<{ items: unknown[] }>(other).items).toEqual([]);
+
+    const outsider = await request(app)
+      .get('/api/v1/atm/replenishments/done/range')
+      .set('Authorization', `Bearer ${outsiderToken}`);
+    expect(outsider.status).toBe(403);
+  });
+
+  it('refuses a page or a cursor that is not one, and serves the maintenance range the same way', async () => {
+    const paged = await request(app)
+      .get('/api/v1/atm/replenishments/done/range?page=2')
+      .set('Authorization', `Bearer ${alexToken}`);
+    expect(paged.status).toBe(400);
+    const badCursor = await request(app)
+      .get('/api/v1/atm/replenishments/done/range?cursor=yesterday')
+      .set('Authorization', `Bearer ${alexToken}`);
+    expect(badCursor.status).toBe(400);
+    const maintenance = await request(app)
+      .get(`/api/v1/atm/maintenances/done/range?from=${today()}&to=${today()}`)
+      .set('Authorization', `Bearer ${alexToken}`);
+    expect(maintenance.status).toBe(200);
+    expect(data<{ next: string | null }>(maintenance).next).toBeNull();
   });
 });

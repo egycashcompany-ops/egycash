@@ -12714,9 +12714,8 @@ const en: Record<string, string> = {
   'operations.standingCrew.removeVehicle': 'Remove {{code}} from the cash-transfer fleet',
   'operations.standingCrew.emptyHint':
     'This list is explicit, not derived: add the vehicles that carry cash, then give each its usual crew.',
-  // Round 27 — «الطاقم الثابت» in «لوحة التشغيلة»’s look: the board’s hands, without the day.
-  'operations.standingCrew.hint':
-    'Press «+ Choose» in a slot, or drag a name onto a vehicle’s row or a slot; a captain moves with his crew. Drag it back onto a list to free it.',
+  // Round 27 — «الطاقم الثابت» in «لوحة التشغيلة»’s look: the board’s hands, without the day. Round 34 G —
+  // its hint went with the board’s (the legend’s line); `viewOnly` is `ViewOnlyMark`’s why, on this screen.
   'operations.standingCrew.viewOnly':
     'You can view the standing crew; changing it needs the crew-planning permission.',
   'operations.standingCrew.toBoard': 'Crew board',
@@ -28969,9 +28968,8 @@ const ar: Record<string, string> = {
   'operations.standingCrew.removeVehicle': 'إخراج {{code}} من أسطول نقل الأموال',
   'operations.standingCrew.emptyHint':
     'هذه القائمة صريحة وليست مشتقّة: أضف المركبات التي تنقل الأموال، ثم عيّن لكل واحدة طاقمها المعتاد.',
-  // الجولة 27 — «الطاقم الثابت» بشكل «لوحة التشغيلة»: أدوات اللوحة نفسها، دون اليوم.
-  'operations.standingCrew.hint':
-    'اضغط «+ اختيار» في الخانة، أو اسحب الاسم إلى صف السيارة أو إلى الخانة؛ ينتقل القائد ومعه طاقمه. أعِده إلى القائمة لإخلائه.',
+  // الجولة 27 — «الطاقم الثابت» بشكل «لوحة التشغيلة»: أدوات اللوحة نفسها، دون اليوم. الجولة 34 G — حُذف
+  // التلميح مع سطر الدلالة، و`viewOnly` سبب «للعرض فقط» على هذه الشاشة.
   'operations.standingCrew.viewOnly':
     'يمكنك الاطلاع على الطاقم الثابت؛ أما تعديله فيحتاج صلاحية تخطيط الطاقم.',
   'operations.standingCrew.toBoard': 'لوحة التشغيلة',

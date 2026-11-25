@@ -33,6 +33,8 @@ const STANDING_WORDS: Readonly<Record<string, string>> = {
   'operations.crewPlan.pools.dropBack': 'operations.standingCrew.plan.pools.dropBack',
   'operations.crewPlan.pools.returnPicked': 'operations.standingCrew.plan.pools.returnPicked',
   'operations.crewPlan.picker.section.seated': 'operations.standingCrew.plan.picker.seated',
+  // Round 34 G — why the screen is read only, on `ViewOnlyMark` (the standing crew's hint line went).
+  'operations.crewPlan.viewOnly': 'operations.standingCrew.viewOnly',
 };
 
 /** The key a shared piece asks for on this screen. */

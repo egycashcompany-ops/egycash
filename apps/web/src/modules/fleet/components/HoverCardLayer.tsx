@@ -52,7 +52,21 @@ export interface HoverCardTriggerProps {
   onKeyDown?: (e: KeyboardEvent<HTMLElement>) => void;
   onMouseDown?: () => void;
   onDragStart?: () => void;
+  /** A toggle's only (`toggle: true`): a press or a tap opens it, or closes it. */
+  onClick?: () => void;
 }
+
+/** How an open card came: under the pointer, by the keyboard's focus, or by a press or a tap. */
+export type HoverCardVia = 'hover' | 'focus' | 'press';
+
+/**
+ * Round 34 H critic — what a press on a TOGGLE's trigger does (`useHoverCard(…, { toggle: true })`).
+ * Closed, it opens. Open under the pointer, it stays and is held there: the pointer can leave
+ * without closing it. Open by the keyboard's focus or by an earlier press or tap, it closes.
+ * Nothing is reached by hover alone: a tap and the keyboard each open it.
+ */
+export const togglePress = (open: boolean, via: HoverCardVia): 'show' | 'close' =>
+  open && via !== 'hover' ? 'close' : 'show';
 
 /** Was this focus the keyboard's? A click focuses too, and a click is not a question. */
 const keyboardFocus = (el: HTMLElement): boolean => {
@@ -76,9 +90,17 @@ export const useHoverCard = (
   active: boolean,
   {
     focusable = true,
+    toggle = false,
     when,
   }: {
     focusable?: boolean;
+    /**
+     * Round 34 H critic — a TOGGLE (a toggletip): what the trigger says lives only in the card, so
+     * a press or a tap opens it too, and closes it again (`togglePress`). A touch screen has no
+     * hover, and a sighted keyboard user sees no `title`. Its own trigger's press does not count as
+     * a press elsewhere. Left out: a press closes the card, as on a name that is also a pick.
+     */
+    toggle?: boolean;
     /**
      * Round 26 — a last word before the card opens, asked as the pointer (or the focus) comes AND
      * again when the delay ends: «توزيع المحصنات»'s van card says no while a drag is on, while a
@@ -99,8 +121,11 @@ export const useHoverCard = (
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLElement | null>(null);
   const timer = useRef<number | undefined>(undefined);
-  /** How it opened: a hover closes when the pointer leaves; a keyboard focus stays until blur. */
-  const via = useRef<'hover' | 'focus'>('hover');
+  /**
+   * How it opened: a hover closes when the pointer leaves; a keyboard focus stays until blur; a
+   * toggle's press stays until another press, a press elsewhere, blur or Escape.
+   */
+  const via = useRef<HoverCardVia>('hover');
   const id = useId();
   // The latest `when`, read when the delay ends — not the one of the render that armed it.
   const allowed = useRef(when);
@@ -140,10 +165,15 @@ export const useHoverCard = (
   // Gone with its trigger: no timer left to fire, no card left open.
   useEffect(() => control.close, [control]);
 
-  // While open: any press, or Escape anywhere, closes it.
+  // While open: any press, or Escape anywhere, closes it — a toggle's own trigger aside: its press
+  // is its own click's to answer.
   useEffect(() => {
     if (!open) return undefined;
-    const press = (): void => control.close();
+    const press = (event: PointerEvent): void => {
+      const target = event.target;
+      if (toggle && target instanceof Node && anchor.current?.contains(target) === true) return;
+      control.close();
+    };
     const escape = (e: globalThis.KeyboardEvent): void => {
       if (e.key === 'Escape') control.close();
     };
@@ -153,7 +183,7 @@ export const useHoverCard = (
       document.removeEventListener('pointerdown', press, true);
       document.removeEventListener('keydown', escape);
     };
-  }, [open, control]);
+  }, [open, control, toggle]);
 
   if (!active) {
     return {
@@ -190,8 +220,19 @@ export const useHoverCard = (
       }
     },
     // A press on the trigger — a pick, the start of a drag — is not a question about it: the card
-    // waiting to open does not.
-    onMouseDown: control.close,
+    // waiting to open does not. A toggle's press IS the question: its click answers it.
+    ...(toggle
+      ? {
+          onClick: () => {
+            if (togglePress(open, via.current) === 'close') {
+              control.close();
+              return;
+            }
+            via.current = 'press';
+            control.show();
+          },
+        }
+      : { onMouseDown: control.close }),
     onDragStart: control.close,
     ...(focusable ? { tabIndex: 0 } : {}),
     ...(open ? { 'aria-describedby': id } : {}),
@@ -316,7 +357,9 @@ export const HoverCardLayer = ({
    * (Round 22): `crew-plan` the person card on a name, `crew-flag` the small tip that names a
    * requirement icon (`crew-plan-icons`). On «توزيع المحصنات» (Round 25): `secured-shipment` the
    * card of a محصنة's small chip; (Round 26) `secured-van` the van's card — everyone on it and what
-   * it carries — on its head and its captain's line, on «تسليم المحصنات» too.
+   * it carries — on its head and its captain's line, on «تسليم المحصنات» too. On «لوحة التشغيلة»
+   * (Round 34 H critic): `crew-record` what a past day's record mark says, a toggle — a press or a
+   * tap opens it, so a phone and the keyboard reach it as the mouse does.
    */
   mark:
     | 'driver'
@@ -327,7 +370,8 @@ export const HoverCardLayer = ({
     | 'crew-plan'
     | 'crew-flag'
     | 'secured-shipment'
-    | 'secured-van';
+    | 'secured-van'
+    | 'crew-record';
   /**
    * The look. Every card keeps the cards' frame; a TIP — a word or two for an icon — takes
    * `HOVER_TIP_FRAME`, on the same mechanics.

@@ -811,23 +811,22 @@ describe('Round 34 A — the three ways are ARROWS between the two cards', () =>
       expect(huesOf(held.replace(/\S*outline-slate-900\S*/g, ''))).toEqual([hue]);
       // Off (cannot act): still its hue, whole — never greyed. Round 34 D critic — REWRITTEN: it was
       // softened to 60% («opacity-60», 2.6:1 and 2.5:1 at opening), the look the window shows most;
-      // now the rest glyph on no tint, and under the pointer a soft tint of its own — never the
-      // solid fill of an arrow that acts.
+      // now the rest glyph on no tint. Round 34 H critic — REWRITTEN (title kept): under the pointer
+      // it took a soft tint of its own (`hover:bg-…-100`, dark `…-400/15`) — the very fill of an
+      // arrow that acts, at rest; now it has no `hover:` at all (the next describe reads the look).
       const off = swapArrowClasses(one, { held: false, disabled: true });
       for (const look of [
         `text-${hue}-700`,
         'bg-white',
         `border-${hue}-300`,
-        `hover:bg-${hue}-100`,
         `dark:text-${hue}-300`,
-        `dark:hover:bg-${hue}-400/15`,
+        'dark:bg-transparent',
         'cursor-not-allowed',
       ]) {
         expect(off, `${one} off`).toContain(look);
       }
       expect(off).not.toMatch(/opacity-/);
-      expect(off).not.toContain(`hover:bg-${hue}-600`);
-      expect(off).not.toContain('hover:text-white');
+      expect(off.split(/\s+/u).filter((c) => c.includes('hover:'))).toEqual([]);
       expect(huesOf(off.replace(/\S*outline-slate-900\S*/g, ''))).toEqual([hue]);
     }
     expect(SWAP_ARROW_LOOK.oneWay).not.toEqual(SWAP_ARROW_LOOK.swap);
@@ -1155,6 +1154,7 @@ describe('Round 34 D — the arrows are ACTIONS; the window works on a copy unti
   });
 
   // Round 34 D critic — REWRITTEN (title kept): off was «opacity-60», faded; now its colour whole.
+  // Round 34 H critic — REWRITTEN again (title kept): no soft tint under the pointer either.
   it('each arrow off with its reason: nothing ticked on the card(s) it sends from', () => {
     const onA = render({ initial: { bKey: V213.key, picks: { a: [personItem('c1')], b: [] } } });
     expect(button(onA, 'aToB')).not.toContain('aria-disabled');
@@ -1169,12 +1169,60 @@ describe('Round 34 D — the arrows are ACTIONS; the window works on a copy unti
     expect(attr(button(none, 'aToB'), 'aria-label')).toBe(
       `نقل المحدد من 150 إلى 213 — ${t('operations.crewPlan.swap.why.nothingOn', { row: '150' })}`,
     );
-    // Off, still in its own colour — whole, on no tint, a soft tint of it under the pointer, never
-    // the solid fill.
+    // Off, still in its own colour — whole, on no tint, and so under the pointer too: nothing of an
+    // arrow that acts, neither its tint nor its solid fill.
     expect(attr(button(none, 'aToB'), 'class')).toContain('text-sky-700');
-    expect(attr(button(none, 'aToB'), 'class')).toContain('hover:bg-sky-100');
     expect(attr(button(none, 'aToB'), 'class')).not.toMatch(/opacity-/);
-    expect(attr(button(none, 'aToB'), 'class')).not.toContain('hover:bg-sky-600');
+    expect(attr(button(none, 'aToB'), 'class')).not.toMatch(/(^|\s)(dark:)?hover:/u);
+    expect(attr(button(none, 'swap'), 'class')).not.toMatch(/(^|\s)(dark:)?hover:/u);
+  });
+
+  // Round 34 H critic — the orchestrator kept it: «a swap arrow that cannot act stays faint on hover
+  // (it does nothing, so it must not look pressable)». Under the pointer it took a tint (light
+  // sky-100 / orange-100, stronger than an acting arrow's sky-50 at rest; dark the very 15% tint of
+  // one) — it lit up as if it could be pressed. Read as the browser resolves the classes: the
+  // pointer on or off, dark or light, the most specific variant wins.
+  it('an arrow that cannot act looks the same under the pointer as away from it — both hues, both themes — and never like one that acts', () => {
+    const resolve = (
+      classes: string,
+      prop: 'bg' | 'border' | 'text',
+      { hover, dark }: { hover: boolean; dark: boolean },
+    ): string | undefined => {
+      const list = classes.split(/\s+/u);
+      const variants = [
+        ...(dark && hover ? ['dark:hover:'] : []),
+        ...(dark ? ['dark:'] : []),
+        ...(hover ? ['hover:'] : []),
+        '',
+      ];
+      for (const variant of variants) {
+        const hit = list
+          .filter((c) => c.startsWith(`${variant}${prop}-`))
+          .filter((c) => !c.slice(variant.length).includes(':'))
+          .at(-1);
+        if (hit !== undefined) return hit.slice(variant.length);
+      }
+      return undefined;
+    };
+    for (const one of ['aToB', 'swap', 'bToA'] as const) {
+      const off = swapArrowClasses(one, { held: false, disabled: true });
+      const acting = swapArrowClasses(one, { held: false, disabled: false });
+      expect(off, one).toContain('cursor-not-allowed');
+      for (const dark of [false, true]) {
+        for (const prop of ['bg', 'border', 'text'] as const) {
+          const away = resolve(off, prop, { hover: false, dark });
+          expect(away, `${one} ${prop} ${dark ? 'dark' : 'light'}`).toBeDefined();
+          expect(resolve(off, prop, { hover: true, dark }), `${one} ${prop} hovered`).toBe(away);
+        }
+        // Its fill is never an acting arrow's — at rest or under the pointer.
+        const fill = resolve(off, 'bg', { hover: true, dark });
+        expect(fill, `${one} ${dark ? 'dark' : 'light'}`).not.toBe(
+          resolve(acting, 'bg', { hover: false, dark }),
+        );
+        expect(fill).not.toBe(resolve(acting, 'bg', { hover: true, dark }));
+        expect(fill).toBe(dark ? 'bg-transparent' : 'bg-white');
+      }
+    }
   });
 
   // Round 34 D critic — REWRITTEN (title kept): the footer counts what differs from the opening, not

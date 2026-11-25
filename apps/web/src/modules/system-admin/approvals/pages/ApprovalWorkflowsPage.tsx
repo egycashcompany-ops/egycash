@@ -41,6 +41,7 @@ import {
   useDeleteApprovalWorkflow,
   useSetApprovalWorkflow,
 } from '../api/approval-queries';
+import { basisAt, basisOf, type ChainBasis } from '../lib/chain-basis';
 
 interface Draft {
   requestType: string;
@@ -48,6 +49,8 @@ interface Draft {
   branchId: string | null;
   steps: ApprovalStep[];
   isActive: boolean;
+  /** The listed chain this draft replaces, which its save names; null when it replaces none. */
+  basedOn: ChainBasis;
 }
 
 const emptyDraft = (requestType: string): Draft => ({
@@ -56,6 +59,7 @@ const emptyDraft = (requestType: string): Draft => ({
   branchId: null,
   steps: [],
   isActive: true,
+  basedOn: null,
 });
 
 export const ApprovalWorkflowsPage = (): JSX.Element => {
@@ -94,6 +98,21 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
   const keysFor = (requestType: string): string[] =>
     types.data?.find((type) => type.key === requestType)?.permissionKeys ?? [];
 
+  /**
+   * The draft moved to another request type or place: either is the key of another row, so it
+   * now replaces the row listed there, or none. A save that kept the old basis would be refused
+   * as stale, and rightly, since it would name a row it does not write.
+   */
+  const moved = (next: Draft): Draft => ({
+    ...next,
+    basedOn: basisAt(
+      workflows.data ?? [],
+      next.requestType,
+      next.departmentCatalogId,
+      next.branchId,
+    ),
+  });
+
   const placeOf = (row: ApprovalWorkflowDto): string => {
     if (row.department === null && row.branch === null) return t('approvals.place.default');
     const parts = [row.department?.name.ar, row.branch?.name.ar].filter(
@@ -111,6 +130,7 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
         branchId: draft.branchId,
         steps: draft.steps,
         isActive: draft.isActive,
+        basedOn: draft.basedOn,
       },
       { onSuccess: () => setDraft(null) },
     );
@@ -186,6 +206,7 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
                                     branchId: row.branch?.id ?? null,
                                     steps: row.steps,
                                     isActive: row.isActive,
+                                    basedOn: basisOf(row),
                                   })
                                 }
                               >
@@ -252,7 +273,7 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
               <Select
                 value={draft.requestType}
                 onChange={(e) =>
-                  setDraft({ ...draft, requestType: e.target.value, steps: [] })
+                  setDraft(moved({ ...draft, requestType: e.target.value, steps: [] }))
                 }
               >
                 {(types.data ?? []).map((type) => (
@@ -270,10 +291,12 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
               <Select
                 value={draft.departmentCatalogId ?? ''}
                 onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    departmentCatalogId: e.target.value === '' ? null : e.target.value,
-                  })
+                  setDraft(
+                    moved({
+                      ...draft,
+                      departmentCatalogId: e.target.value === '' ? null : e.target.value,
+                    }),
+                  )
                 }
               >
                 <option value="">{t('approvals.editor.anyDepartment')}</option>
@@ -289,7 +312,9 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
               <Select
                 value={draft.branchId ?? ''}
                 onChange={(e) =>
-                  setDraft({ ...draft, branchId: e.target.value === '' ? null : e.target.value })
+                  setDraft(
+                    moved({ ...draft, branchId: e.target.value === '' ? null : e.target.value }),
+                  )
                 }
               >
                 <option value="">{t('approvals.editor.anyBranch')}</option>

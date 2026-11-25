@@ -2,7 +2,8 @@
 // docs/12-planning/administration-module-phase-px1.md §7; exit criteria 3 and 5): a chain written
 // through `PUT /api/v1/platform/approvals`, and an HR leave request — the engine's only host —
 // driven through it to approved and to rejected. PX-1.1's cases hold across the fixes; PX-1.2,
-// PX-1.3, PX-1.4 and PX-1.6 add theirs here, and PX-1.5 keeps the audit case green.
+// PX-1.3, PX-1.4 and PX-1.6 add theirs here, and PX-1.5 keeps the audit case green. From PX-1.6
+// every `PUT` names the chain row it replaces (`basedOn`), as the chain screen does.
 //
 // The leave suite's helpers are copied rather than shared, because exit criterion 5 keeps
 // `hr-leave.spec.ts` unchanged. Nobody here holds `super-admin`: the boot sync hands that role every
@@ -35,6 +36,7 @@ import {
   readApprovalPin,
   type ChainStatus,
 } from '../../src/platform/approvals';
+import { ApprovalWorkflowModel } from '../../src/platform/approvals/workflow.model';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
 import { NotificationModel } from '../../src/platform/notifications/notification.model';
 import { rbacService } from '../../src/platform/rbac';
@@ -426,6 +428,8 @@ describe('a leave chain written through the API, and leave run on it (R12)', () 
       },
     ],
     isActive: true,
+    // The first chain written in this database, so the screen would have seen none at its place.
+    basedOn: null,
   };
 
   it('PUT writes an hr.leave company default of two rungs, and GET lists it (exit criterion 3)', async () => {
@@ -542,15 +546,38 @@ const ORGANIZATION_RUNG = {
   label: { ar: 'الموارد البشرية', en: 'Human resources' },
 };
 
+/**
+ * The `hr.leave` chain the screen lists at a place, named as a save names the row it replaces, or
+ * null where it lists none (PX-1.6).
+ */
+const basisAt = async (
+  departmentCatalogId: string | null,
+  branchId: string | null,
+): Promise<{ id: string; version: number } | null> => {
+  const res = await request(app).get('/api/v1/platform/approvals').set(auth(adminToken));
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  const row = (res.body.data as ApprovalWorkflowDto[]).find(
+    (w) =>
+      w.requestType === 'hr.leave' &&
+      (w.department?.id ?? null) === departmentCatalogId &&
+      (w.branch?.id ?? null) === branchId,
+  );
+  return row === undefined ? null : { id: row.id, version: row.version };
+};
+
 /** The company default, replaced: every request below files under it. */
 const writeChain = async (steps: object[]): Promise<void> => {
-  const res = await request(app).put('/api/v1/platform/approvals').set(auth(adminToken)).send({
-    requestType: 'hr.leave',
-    departmentCatalogId: null,
-    branchId: null,
-    steps,
-    isActive: true,
-  });
+  const res = await request(app)
+    .put('/api/v1/platform/approvals')
+    .set(auth(adminToken))
+    .send({
+      requestType: 'hr.leave',
+      departmentCatalogId: null,
+      branchId: null,
+      steps,
+      isActive: true,
+      basedOn: await basisAt(null, null),
+    });
   expect(res.status, JSON.stringify(res.body)).toBe(200);
 };
 
@@ -831,13 +858,17 @@ describe('a request keeps the chain it was submitted on (PX-1.4: R1)', () => {
 
   /** The company default, written over whatever is there: every request below files under it. */
   const putChain = async (steps: object[]): Promise<ApprovalWorkflowDto> => {
-    const res = await request(app).put('/api/v1/platform/approvals').set(auth(adminToken)).send({
-      requestType: 'hr.leave',
-      departmentCatalogId: null,
-      branchId: null,
-      steps,
-      isActive: true,
-    });
+    const res = await request(app)
+      .put('/api/v1/platform/approvals')
+      .set(auth(adminToken))
+      .send({
+        requestType: 'hr.leave',
+        departmentCatalogId: null,
+        branchId: null,
+        steps,
+        isActive: true,
+        basedOn: await basisAt(null, null),
+      });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     return res.body.data as ApprovalWorkflowDto;
   };
@@ -937,5 +968,176 @@ describe('a request keeps the chain it was submitted on (PX-1.4: R1)', () => {
     const done = res.body.data as LeaveRequestDto;
     expect(done.status).toBe('approved');
     expect(rungsOf(done)).toEqual([['organization', 'Personnel', 'approved']]);
+  });
+});
+
+describe('a chain save names its type’s keys and the row it replaces (PX-1.6: R9)', () => {
+  /** A save of an `hr.leave` chain at a place, naming the row it replaces. */
+  const save = (
+    place: { departmentCatalogId: string | null; branchId: string | null },
+    steps: object[],
+    basedOn: { id: string; version: number } | null,
+  ) =>
+    request(app)
+      .put('/api/v1/platform/approvals')
+      .set(auth(adminToken))
+      .send({ requestType: 'hr.leave', ...place, steps, isActive: true, basedOn });
+
+  const staleWith = (res: request.Response): void => {
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect((res.body as { error: { code: string } }).error.code).toBe('STALE_DOCUMENT');
+  };
+
+  const removeChain = async (id: string): Promise<void> => {
+    const res = await request(app).delete(`/api/v1/platform/approvals/${id}`).set(auth(adminToken));
+    expect(res.status, JSON.stringify(res.body)).toBe(204);
+  };
+
+  const COMPANY = { departmentCatalogId: null, branchId: null };
+
+  it('R9: a PUT naming approval.configure, a registered key that is not hr.leave’s, is refused approvals.unknownPermissionKey, and a PUT without basedOn is 400', async () => {
+    // Before PX-1.6 a save checked its keys against the permission registry alone, which holds
+    // `approval.configure`, and took a body that named no row.
+    const before = await basisAt(null, null);
+    refusedWith(
+      await save(
+        COMPANY,
+        [{ permissionKey: 'approval.configure', level: 'organization', label: null }],
+        before,
+      ),
+      'approvals.unknownPermissionKey',
+    );
+
+    const missing = await request(app)
+      .put('/api/v1/platform/approvals')
+      .set(auth(adminToken))
+      .send({ requestType: 'hr.leave', ...COMPANY, steps: [ORGANIZATION_RUNG], isActive: true });
+    expect(missing.status, JSON.stringify(missing.body)).toBe(400);
+    const error = (missing.body as { error: { code: string; details: { field: string }[] } }).error;
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(error.details.map((detail) => detail.field)).toEqual(['body.basedOn']);
+
+    // Neither save wrote anything: the company default is the row it was, at the version it was.
+    expect(await basisAt(null, null)).toEqual(before);
+  });
+
+  it('R9: a stale version, a null over a chain, a basedOn where no chain exists and one naming a chain deleted and recreated at the same place are each 409 STALE_DOCUMENT; the right basedOn saves, one version higher', async () => {
+    // The other branch, where nobody files: a chain there decides none of the requests here.
+    const PLACE = { departmentCatalogId: null, branchId: OTHER_BRANCH_ID };
+    expect(await basisAt(null, OTHER_BRANCH_ID)).toBeNull();
+    let current = '';
+    try {
+      // No chain there yet: a basis naming one is refused, and null writes the first.
+      staleWith(
+        await save(PLACE, [ORGANIZATION_RUNG], { id: String(new Types.ObjectId()), version: 0 }),
+      );
+      const first = await save(PLACE, [ORGANIZATION_RUNG], null);
+      expect(first.status, JSON.stringify(first.body)).toBe(200);
+      const deleted = first.body.data as ApprovalWorkflowDto;
+      expect(deleted.version).toBe(0);
+
+      // Deleted and written again at the place: the new row starts at version 0 as the old one
+      // did, and only its id tells them apart, so a save based on the old row is refused.
+      await removeChain(deleted.id);
+      const second = await save(PLACE, [ORGANIZATION_RUNG], null);
+      expect(second.status, JSON.stringify(second.body)).toBe(200);
+      const recreated = second.body.data as ApprovalWorkflowDto;
+      current = recreated.id;
+      expect(recreated.id).not.toBe(deleted.id);
+      expect(recreated.version).toBe(0);
+      staleWith(await save(PLACE, [UNIT_RUNG], { id: deleted.id, version: 0 }));
+
+      // A null over the chain that is there, as a first save of a screen that saw none.
+      staleWith(await save(PLACE, [UNIT_RUNG], null));
+
+      // The right basis saves, and the answer carries the next version.
+      const right = await save(PLACE, [UNIT_RUNG, ORGANIZATION_RUNG], {
+        id: recreated.id,
+        version: 0,
+      });
+      expect(right.status, JSON.stringify(right.body)).toBe(200);
+      expect(right.body.data as ApprovalWorkflowDto).toMatchObject({
+        id: recreated.id,
+        version: 1,
+        steps: [UNIT_RUNG, ORGANIZATION_RUNG],
+      });
+
+      // A second save from the same screen, still on version 0, is stale now.
+      staleWith(await save(PLACE, [BRANCH_RUNG], { id: recreated.id, version: 0 }));
+
+      // None of the refused saves wrote anything.
+      const listed = await request(app).get('/api/v1/platform/approvals').set(auth(adminToken));
+      const there = (listed.body.data as ApprovalWorkflowDto[]).filter(
+        (w) => w.requestType === 'hr.leave' && w.branch?.id === OTHER_BRANCH_ID,
+      );
+      expect(there).toHaveLength(1);
+      expect(there[0]).toMatchObject({
+        id: recreated.id,
+        version: 1,
+        steps: [UNIT_RUNG, ORGANIZATION_RUNG],
+      });
+    } finally {
+      if (current !== '') await removeChain(current);
+    }
+  });
+
+  it('R9: a chain row stored with a rung on another key leaves that rung unstaffed for a new request: the key’s holder is offered nothing and refused, an override within reach decides it, and its next save is refused until the rung is removed', async () => {
+    // Written past the save's checks, as a row saved before PX-1.6 could be: the department's own
+    // chain in the requesters' branch, so it answers their requests ahead of the company default.
+    // Every override holder and the administrator hold `leave.view` company-wide, so before PX-1.6
+    // that rung was staffed, and its holders decided it as their own.
+    const OFF_TYPE_RUNG = { permissionKey: 'leave.view', level: 'organization', label: null };
+    const stored = await ApprovalWorkflowModel.create({
+      requestType: 'hr.leave',
+      departmentCatalogId: new Types.ObjectId(CATALOG_ID),
+      branchId: new Types.ObjectId(BRANCH_ID),
+      steps: [OFF_TYPE_RUNG],
+      isActive: true,
+    });
+    try {
+      const created = await file(112);
+      expect(created.status).toBe('pendingApproval');
+      expect(await chainStatus(created.id)).toBe('unstaffed');
+      expect((await readAs(created.id, adminToken)).approvalTrail).toMatchObject({
+        workflowId: String(stored._id),
+        currentStep: 0,
+      });
+
+      // `leave.view` company-wide, and an override that ended yesterday: on no rung, and no reach.
+      expect((await readAs(created.id, lapsedOverride.token)).approvalTrail).toMatchObject({
+        currentStep: 0,
+        viewerMayDecide: false,
+        viewerStep: null,
+        viewerMayOverride: false,
+      });
+      refusedWith(
+        await decide(created.id, 'approve', created.version, lapsedOverride.token),
+        'approvals.notYourStep',
+      );
+
+      // The company-wide override reaches the organization rung by its level, and decides it as
+      // an override, not as a rung of its own.
+      expect((await readAs(created.id, orgOverride.token)).approvalTrail).toMatchObject({
+        viewerMayDecide: false,
+        viewerMayOverride: true,
+      });
+      const res = await decide(created.id, 'approve', created.version, orgOverride.token);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const done = res.body.data as LeaveRequestDto;
+      expect(done.status).toBe('approved');
+      expect(outcomes(done)).toEqual([['approved', APPROVAL_OVERRIDE_KEY]]);
+
+      // The stored chain is refused at its next save while it keeps the rung, and taken once the
+      // rung is removed.
+      const place = { departmentCatalogId: CATALOG_ID, branchId: BRANCH_ID };
+      const basis = await basisAt(CATALOG_ID, BRANCH_ID);
+      expect(basis).toEqual({ id: String(stored._id), version: 0 });
+      refusedWith(await save(place, [OFF_TYPE_RUNG], basis), 'approvals.unknownPermissionKey');
+      const fixed = await save(place, [ORGANIZATION_RUNG], basis);
+      expect(fixed.status, JSON.stringify(fixed.body)).toBe(200);
+      expect((fixed.body.data as ApprovalWorkflowDto).version).toBe(1);
+    } finally {
+      await removeChain(String(stored._id));
+    }
   });
 });

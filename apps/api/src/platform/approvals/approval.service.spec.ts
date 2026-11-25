@@ -3,17 +3,23 @@
 //
 // PX-1.1 wrote it over the code as it stood. A case that pins a defect a later pull request fixes
 // names it, so that pull request can show the case flip: PX-1.2 rewrote the R2 and R4 cases to the
-// fixed behavior and added its own beside them, PX-1.4 added the pin's (R1), and the R9 cases
-// still pin today's save for PX-1.6. R5's case is the 'engine' default, which PX-1.5 keeps for
-// leave and sets its 'host' cases beside; the rest is behavior the fixes keep. The seams are
-// mocked — the chain rows, the approver lookup, names, places, the permission registry and audit —
-// while `approval-chain`, `approval-trail` and `override-reach` run for real, because the rules are
+// fixed behavior and added its own beside them, PX-1.4 added the pin's (R1), PX-1.5 set its 'host'
+// cases beside the 'engine' default it keeps for leave (R5), and PX-1.6 rewrote the R9 cases to
+// the fixed save, each naming the row it replaces (`basedOn`) as the body now must, and added the
+// stored rungs on another key; the rest is behavior the fixes keep. The seams are mocked — the
+// chain rows, the approver lookup, names, places, the permission registry and audit — while
+// `approval-chain`, `approval-trail` and `override-reach` run for real, because the rules are
 // theirs and this service only joins them to one request. A real leave request through the HTTP
 // edge is `tests/integration/approvals.spec.ts`.
 import { Schema, Types, model } from 'mongoose';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ApprovalLevel, type ApprovalStep, type SetApprovalWorkflow } from '@ecms/contracts';
-import { BusinessRuleError, ConflictError } from '../../shared/errors';
+import {
+  BusinessRuleError,
+  ConflictError,
+  NotFoundError,
+  StaleDocumentError,
+} from '../../shared/errors';
 import { type AuthContext } from '../../shared/types';
 import { type ChainStatus, type DecidedEntry } from './approval-trail';
 import { type Unit } from './approver-level';
@@ -1017,6 +1023,100 @@ describe('the chain a request was submitted on (the pin, R1)', () => {
   });
 });
 
+describe('a stored rung on a key its type does not offer (R9)', () => {
+  // ADR-041 decision 9. `approval.configure` is a registered key, and not one of `hr.leave`'s: a row
+  // saved before the save checked the type's keys may carry it, and so may a pin taken from such a
+  // row. The lookup answers that everybody holds every key, so what leaves the rung unstaffed is
+  // its key alone.
+  const OFF_TYPE = 'approval.configure';
+  const WHERE = [
+    ['on a chain row', false],
+    ['on a pin', true],
+  ] as const;
+
+  /** The request, read on these rungs from the chain row that applies or from its own pin. */
+  const on = (steps: WorkflowStep[], pinned: boolean) => {
+    mocks.hasApprovers.mockResolvedValue(true);
+    if (!pinned) {
+      mocks.findActiveForType.mockResolvedValue([row(steps)]);
+      return (decisions: readonly DecidedEntry[] = []) => subject(decisions);
+    }
+    const pin: ApprovalChainPin = { workflowId: String(new Types.ObjectId()), steps };
+    return (decisions: readonly DecidedEntry[] = []) => subject(decisions, pin);
+  };
+
+  /** A reader whose grants hold `key` at every level, and no other key. */
+  const holds = (key: string) =>
+    mocks.ownStepsOf.mockImplementation((_user: string, steps: readonly WorkflowStep[]) =>
+      Promise.resolve(steps.flatMap((step, index) => (step.permissionKey === key ? [index] : []))),
+    );
+
+  it.each(WHERE)(
+    'R9: %s, it is unstaffed whoever holds its key, so it is passed on the way to the staffed rung above it',
+    async (_where, pinned) => {
+      const request = on([rung('unit', OFF_TYPE), rung('organization')], pinned);
+      expect(await approvalService.statusFor(request())).toBe('pending');
+      // Staffing is not asked about the rung: no holder of its key could count.
+      expect(mocks.hasApprovers).toHaveBeenCalledTimes(1);
+      expect(mocks.hasApprovers).toHaveBeenCalledWith('leave.approve', 'organization', UNIT);
+
+      // HR waits on the organization rung itself, with nothing below it to cover, and its approval
+      // writes the rung below `skipped`: nobody stood on it, rather than somebody passed over.
+      holds('leave.approve');
+      expect(await approvalService.trailFor(request(), actor())).toMatchObject({
+        currentStep: 1,
+        viewerMayDecide: true,
+        viewerStep: 1,
+        viewerCovers: [],
+      });
+      const decided = await approvalService.decide(request(), actor(), APPROVE);
+      expect(decided.entries.map((e) => [e.stepIndex, e.outcome, e.deciderUserId])).toEqual([
+        [0, 'skipped', null],
+        [1, 'approved', 'u-actor'],
+      ]);
+      expect(decided.status).toBe('approved');
+    },
+  );
+
+  it.each(WHERE)(
+    'R9: %s, a holder of its key does not stand on it, and an override within reach decides it',
+    async (_where, pinned) => {
+      const request = on([rung('unit', OFF_TYPE)], pinned);
+      expect(await approvalService.statusFor(request())).toBe('unstaffed');
+
+      // The reader is measured against the type's own rungs only, so the key's holder is on none.
+      holds(OFF_TYPE);
+      expect(await approvalService.trailFor(request(), actor())).toMatchObject({
+        currentStep: 0,
+        viewerMayDecide: false,
+        viewerStep: null,
+        viewerMayOverride: false,
+      });
+      expect(mocks.ownStepsOf).toHaveBeenLastCalledWith('u-actor', [], UNIT);
+      expect(await refusalOf(approvalService.decide(request(), actor(), APPROVE))).toBe(
+        'approvals.notYourStep',
+      );
+
+      // Reach is read by the rung's level, not its key: an override over the request's branch
+      // reaches this `unit` rung, and one over another branch does not. Holding the key as well
+      // makes no difference to either.
+      expect(
+        await refusalOf(approvalService.decide(request(), OTHER_BRANCH_OVERRIDE, APPROVE)),
+      ).toBe('approvals.notYourStep');
+      expect(await approvalService.trailFor(request(), BRANCH_OVERRIDE)).toMatchObject({
+        viewerMayDecide: false,
+        viewerMayOverride: true,
+      });
+      const overridden = await approvalService.decide(request(), BRANCH_OVERRIDE, APPROVE);
+      expect(overridden.entries.map((e) => [e.stepIndex, e.outcome, e.overriddenWith])).toEqual([
+        [0, 'approved', 'approval.override'],
+      ]);
+      expect(overridden.status).toBe('approved');
+      expect(mocks.hasApprovers).not.toHaveBeenCalled();
+    },
+  );
+});
+
 describe('saving a chain (setWorkflow)', () => {
   const input = (over: Partial<SetApprovalWorkflow> = {}): SetApprovalWorkflow => ({
     requestType: 'hr.leave',
@@ -1024,8 +1124,20 @@ describe('saving a chain (setWorkflow)', () => {
     branchId: null,
     steps: [rung('unit'), rung('organization')],
     isActive: true,
+    basedOn: null,
     ...over,
   });
+
+  const PLACE = { departmentCatalogId: String(CATALOG), branchId: String(BRANCH) };
+
+  /** Refused 409 `STALE_DOCUMENT`, the one code every stale save meets. */
+  const staleOf = async (pending: Promise<unknown>): Promise<void> => {
+    const error = await pending.then(
+      () => null,
+      (thrown: unknown) => thrown,
+    );
+    expect(error).toBeInstanceOf(StaleDocumentError);
+  };
 
   it.each([
     ['approvals.unknownRequestType', { requestType: 'hr.unknown' }],
@@ -1037,32 +1149,58 @@ describe('saving a chain (setWorkflow)', () => {
     expect(mocks.record).not.toHaveBeenCalled();
   });
 
-  it('R9 (today): takes any key the permission registry holds, and any key while it is empty', async () => {
+  it('R9: refuses a key its request type does not offer, whether the permission registry holds it or is empty', async () => {
+    // `approval.configure` is registered and is not one of `hr.leave`'s keys. Before PX-1.6 the
+    // registry was the only check, so it was taken, and with the registry empty any key was.
     mocks.findForPlace.mockResolvedValue(null);
     mocks.create.mockImplementation((doc: { steps: WorkflowStep[] }) =>
       Promise.resolve(row(doc.steps)),
     );
-    // `approval.configure` is registered, and is not one of `hr.leave`'s keys.
-    const dto = await approvalService.setWorkflow(
-      input({ steps: [rung('organization', 'approval.configure')] }),
-      actor(),
-    );
-    mocks.registeredPermissionKeys.mockReturnValue([]);
-    await approvalService.setWorkflow(input({ steps: [rung('unit', 'nobody.declares')] }), actor());
+    for (const [registered, key] of [
+      [['leave.approve', 'approval.configure'], 'approval.configure'],
+      [[], 'approval.configure'],
+      [[], 'nobody.declares'],
+    ] as const) {
+      mocks.registeredPermissionKeys.mockReturnValue([...registered]);
+      const save = approvalService.setWorkflow(
+        input({ steps: [rung('unit'), rung('organization', key)] }),
+        actor(),
+      );
+      expect(await refusalOf(save), `${key}, ${String(registered.length)} registered`).toBe(
+        'approvals.unknownPermissionKey',
+      );
+    }
+    expect(mocks.findForPlace).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.record).not.toHaveBeenCalled();
 
-    expect(mocks.create.mock.calls.map(([doc]) => (doc as ApprovalWorkflowDoc).steps)).toEqual([
-      [rung('organization', 'approval.configure')],
-      [rung('unit', 'nobody.declares')],
-    ]);
+    // The type's own key is taken with the registry empty, as it was.
+    await approvalService.setWorkflow(input(), actor());
+    expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('R9: creates a place’s first chain for a draft that saw none there, and answers its version', async () => {
+    mocks.findForPlace.mockResolvedValue(null);
+    mocks.create.mockImplementation((doc: { steps: WorkflowStep[] }) =>
+      Promise.resolve(row(doc.steps)),
+    );
+    const dto = await approvalService.setWorkflow(input(), actor());
     expect(mocks.create).toHaveBeenCalledWith(
-      expect.objectContaining({
+      {
         requestType: 'hr.leave',
         departmentCatalogId: null,
         branchId: null,
-      }),
+        steps: [rung('unit'), rung('organization')],
+        isActive: true,
+      },
       { by: 'u-actor' },
     );
-    expect(dto).toMatchObject({ requestType: 'hr.leave', department: null, branch: null });
+    expect(dto).toMatchObject({
+      requestType: 'hr.leave',
+      department: null,
+      branch: null,
+      version: 0,
+    });
     expect(mocks.record).toHaveBeenCalledWith(
       expect.objectContaining({
         entityRef: { moduleId: 'platform', entityType: 'approvalWorkflow', entityId: dto.id },
@@ -1071,7 +1209,7 @@ describe('saving a chain (setWorkflow)', () => {
     );
   });
 
-  it('R9 (today): edits the place’s chain in place under the version the server itself just read', async () => {
+  it('R9: edits the place’s chain in place under the version its draft started from, and answers the next one', async () => {
     const existing = row(LADDER, { departmentCatalogId: CATALOG, branchId: BRANCH, __v: 3 });
     mocks.findForPlace.mockResolvedValue(existing);
     mocks.updateById.mockResolvedValue({ ...existing, steps: [rung('organization')], __v: 4 });
@@ -1081,17 +1219,19 @@ describe('saving a chain (setWorkflow)', () => {
     });
     mocks.branchFindById.mockResolvedValue({ _id: BRANCH, name: { ar: 'المركز', en: 'HQ' } });
 
-    const place = { departmentCatalogId: String(CATALOG), branchId: String(BRANCH) };
     const dto = await approvalService.setWorkflow(
-      input({ ...place, steps: [rung('organization')] }),
+      input({
+        ...PLACE,
+        steps: [rung('organization')],
+        basedOn: { id: String(existing._id), version: 3 },
+      }),
       actor(),
     );
     expect(mocks.findForPlace).toHaveBeenCalledWith(
       'hr.leave',
-      place.departmentCatalogId,
-      place.branchId,
+      PLACE.departmentCatalogId,
+      PLACE.branchId,
     );
-    // No version comes from the screen, so a save over a chain edited since it loaded wins.
     expect(mocks.updateById).toHaveBeenCalledWith(
       String(existing._id),
       { steps: [rung('organization')], isActive: true },
@@ -1101,7 +1241,69 @@ describe('saving a chain (setWorkflow)', () => {
       id: String(existing._id),
       department: { id: String(CATALOG), name: { ar: 'الحركة', en: 'Fleet' } },
       branch: { id: String(BRANCH), name: { ar: 'المركز', en: 'HQ' } },
+      version: 4,
     });
     expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({ action: 'update' }));
+  });
+
+  it('R9: refuses as stale a draft whose basis is not the place’s row as it stands, and writes nothing', async () => {
+    const existing = row(LADDER, { departmentCatalogId: CATALOG, branchId: BRANCH, __v: 2 });
+    const cases: [string, ApprovalWorkflowDoc | null, SetApprovalWorkflow['basedOn']][] = [
+      ['a basis where no chain is', null, { id: String(new Types.ObjectId()), version: 0 }],
+      ['no basis over a chain', existing, null],
+      ['an older version of the chain', existing, { id: String(existing._id), version: 1 }],
+      // Deleted and written again at the place: the new row starts at version 0 as the old did,
+      // and only its id tells the two apart.
+      [
+        'a chain deleted and written again at the place',
+        row(LADDER, { departmentCatalogId: CATALOG, branchId: BRANCH, __v: 0 }),
+        { id: String(new Types.ObjectId()), version: 0 },
+      ],
+    ];
+    // Either write would succeed: what refuses the save is the basis alone.
+    mocks.create.mockImplementation((doc: { steps: WorkflowStep[] }) =>
+      Promise.resolve(row(doc.steps)),
+    );
+    mocks.updateById.mockImplementation((id: string) =>
+      Promise.resolve(row(LADDER, { _id: new Types.ObjectId(id), __v: 3 })),
+    );
+    for (const [what, there, basedOn] of cases) {
+      mocks.findForPlace.mockResolvedValue(there);
+      await staleOf(approvalService.setWorkflow(input({ ...PLACE, basedOn }), actor()));
+      expect(mocks.findForPlace, what).toHaveBeenLastCalledWith(
+        'hr.leave',
+        PLACE.departmentCatalogId,
+        PLACE.branchId,
+      );
+    }
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.updateById).not.toHaveBeenCalled();
+    expect(mocks.record).not.toHaveBeenCalled();
+  });
+
+  it('R9: answers as stale a first save that meets the unique index and an update whose row was deleted or saved after the lookup', async () => {
+    // Another first save at the place got in between the lookup and the create.
+    mocks.findForPlace.mockResolvedValue(null);
+    mocks.create.mockRejectedValue(new ConflictError('E11000 duplicate key'));
+    await staleOf(approvalService.setWorkflow(input(), actor()));
+
+    // The row the draft started from was deleted, or saved again, between the lookup and the update.
+    const existing = row(LADDER, { __v: 2 });
+    mocks.findForPlace.mockResolvedValue(existing);
+    const basedOn = { id: String(existing._id), version: 2 };
+    for (const raced of [new NotFoundError(), new StaleDocumentError()]) {
+      mocks.updateById.mockRejectedValueOnce(raced);
+      await staleOf(approvalService.setWorkflow(input({ basedOn }), actor()));
+    }
+    expect(mocks.updateById).toHaveBeenLastCalledWith(String(existing._id), expect.any(Object), {
+      by: 'u-actor',
+      version: 2,
+    });
+
+    // Any other failure is not a stale draft, and is not answered as one.
+    const lost = new Error('connection lost');
+    mocks.updateById.mockRejectedValueOnce(lost);
+    await expect(approvalService.setWorkflow(input({ basedOn }), actor())).rejects.toBe(lost);
+    expect(mocks.record).not.toHaveBeenCalled();
   });
 });

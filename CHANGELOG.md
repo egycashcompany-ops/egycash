@@ -53,6 +53,15 @@ its entry here in the same PR.
     user is answered as the error it is — no longer as 401 «User no longer exists», which sent every
     open tab to refresh at once and got thirteen sessions revoked as token reuse.
 
+- **Accepting or restoring a mail ticket no longer reads the branch's whole maintenance log.** The
+  read of a ticket's maintenances inside the accept and restore transactions (`findFromTicket`)
+  must see deleted rows too, so it could not use `ux_maintenance_per_mail_ticket`, which leaves them
+  out. It walked `ix_branch_closed` over the ticket's branch instead: ~39,000 keys and 0.2–0.3 s per
+  ticket on 2026-11-25 (Atlas slow log). A new partial index, `ix_maintenance_from_ticket`
+  (`{ mailTicketId, branchId }` over every row opened from a ticket), built at boot, holds it; the
+  read states the index's predicate (`$type: 'objectId'`), which the planner does not infer from an
+  equality, and now reads the ticket's own rows only.
+
 - **The approvals engine: a chain save names its request type's keys and the chain it replaces.**
   This is PX-1.6, the last of PX-1's pull requests, which harden the platform approvals engine
   before Administrative Affairs' money approvals run on it

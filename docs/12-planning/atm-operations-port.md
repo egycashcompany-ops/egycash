@@ -330,7 +330,11 @@ service checks asked by the open time's own day range, so a row stored before th
   closed maintenance keeps its ticket accepted (the restore refuses it, §6d); a soft-deleted one
   does not, so a restored ticket is accepted again. Manual and imported rows carry no ticket and
   are outside it. Built at boot by `atm-indexes.ts`, reported (collection, index, counts) and
-  skipped over stored duplicates like every unique index there.
+  skipped over stored duplicates like every unique index there. The accept and the restore read a
+  ticket's maintenances — deleted ones too, which this index leaves out — on a second one,
+  `ix_maintenance_from_ticket` (`{ mailTicketId, branchId }` over every row opened from a ticket,
+  not unique); the read restates its `$type` predicate, which the planner does not infer from an
+  equality (2026-11-25: without it the read walked the branch's whole log, ~39,000 keys a ticket).
 - **Accept writes a ticket's two halves in one transaction.** The maintenance and the ticket's flip
   to accepted commit together (`unitOfWork`, as the restore does). A concurrent decision of the
   same ticket — the loser of a double click, or an accept racing a reject — rolls back whole: its

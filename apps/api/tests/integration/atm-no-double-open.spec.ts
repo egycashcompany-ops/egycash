@@ -66,7 +66,6 @@ let alexToken: string; // the operating bundle at BRANCH scope, placed in Alex
 let tantaToken: string; // the same bundle, placed in Tanta
 let alexBranchId: string;
 let tantaBranchId: string;
-let portSaidBranchId: string;
 let adminUserId: string;
 
 const uriFor = (dbName: string): string => {
@@ -220,7 +219,8 @@ beforeAll(async () => {
   };
   alexBranchId = await mkBranch('90', 'الإسكندرية', 'Alexandria');
   tantaBranchId = await mkBranch('91', 'طنطا', 'Tanta');
-  portSaidBranchId = await mkBranch('92', 'بورسعيد', 'Port Said');
+  // A third branch, as before; the importer's tests now make empty branches of their own.
+  await mkBranch('92', 'بورسعيد', 'Port Said');
 
   const operatorRole = await rbacService.createRole(
     {

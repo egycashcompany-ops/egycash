@@ -499,6 +499,46 @@ describe('opening, downloading and the seen report', () => {
     });
   });
 
+  it('does not count a file it could not show as seen', async () => {
+    const OLE = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0, 0, 0]);
+    const old = await api(manager).upload(`/folders/${folder.id}/documents`, {
+      buffer: OLE,
+      filename: 'older.doc',
+      contentType: 'application/msword',
+    });
+    expect(old.status, JSON.stringify(old.body)).toBe(201);
+    const doc = data<ComplianceDocumentDto>(old);
+    const preview = await api(readerB).get(`/documents/${doc.id}/preview`);
+    expect(data<CompliancePreviewDto>(preview)).toEqual({ kind: 'unavailable' });
+    const report = data<ComplianceSeenReportDto>(
+      await api(manager).get(`/documents/${doc.id}/views`),
+    );
+    expect(report.viewers.every((row) => !row.seen)).toBe(true);
+    // A password-protected .docx is a compound file too, and is kept.
+    const locked = await api(manager).upload(`/folders/${folder.id}/documents`, {
+      buffer: OLE,
+      filename: 'protected.docx',
+      contentType: DOCX_TYPE,
+    });
+    expect(locked.status).toBe(201);
+    for (const made of [doc, data<ComplianceDocumentDto>(locked)]) {
+      expect(
+        (await api(manager).delete(`/documents/${made.id}?version=${made.version}`)).status,
+      ).toBe(204);
+    }
+  });
+
+  it('answers a hidden file and a missing one alike', async () => {
+    const hidden = await api(stranger).get(`/documents/${pdfDoc.id}/content`);
+    const missing = await api(stranger).get(
+      `/documents/${new Types.ObjectId().toHexString()}/content`,
+    );
+    expect([hidden.status, missing.status]).toEqual([404, 404]);
+    expect((hidden.body as { error: { message: string } }).error.message).toBe(
+      (missing.body as { error: { message: string } }).error.message,
+    );
+  });
+
   it('does not count the responsible person’s own openings', async () => {
     expect((await api(manager).get(`/documents/${pdfDoc.id}/content`)).status).toBe(200);
   });
@@ -592,6 +632,9 @@ describe('deleting', () => {
   });
 
   it('a folder takes its files with it and closes the page to people on no other list', async () => {
+    expect(
+      (await api(manager).delete(`/folders/${folder.id}?version=${folder.version + 3}`)).status,
+    ).toBe(409);
     const res = await api(manager).delete(`/folders/${folder.id}?version=${folder.version}`);
     expect(res.status).toBe(204);
     expect((await api(manager).get(`/folders/${folder.id}`)).status).toBe(404);

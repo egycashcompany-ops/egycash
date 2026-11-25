@@ -8,6 +8,7 @@
 // `sm`, and always below it, where there is no pointer to hover with (the repo's `RowActions` rule,
 // as the reference's bin is). The tile is therefore a container holding the folder button and its
 // controls as siblings, because a button inside a button is invalid HTML.
+import { useEffect } from 'react';
 import { type ComplianceFolderDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -146,6 +147,15 @@ export const ComplianceFolders = ({
     ...(search.trim() === '' ? {} : { search: search.trim() }),
   });
   const folders = query.data?.items ?? [];
+  // A page emptied under the reader — its last folder deleted — goes back to the last page there is.
+  const lastPage = query.data?.meta.totalPages ?? 1;
+  // Only a page's own answer counts: the previous page's, kept on screen while this one loads, would
+  // walk the reader back a page at a time.
+  const emptied =
+    query.data !== undefined && !query.isPlaceholderData && folders.length === 0 && page > 1;
+  useEffect(() => {
+    if (emptied) onPage(Math.min(page - 1, Math.max(1, lastPage)));
+  }, [emptied, lastPage, page, onPage]);
 
   return (
     <div className="space-y-4">

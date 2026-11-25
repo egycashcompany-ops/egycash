@@ -32,7 +32,7 @@ import {
   useSetFolderCover,
   useUpdateFolder,
 } from '../api/compliance-queries';
-import { COMPLIANCE_NAME_MAX, folderChanges } from '../lib/folder-form';
+import { COMPLIANCE_NAME_MAX, carryFolderEdits, folderChanges } from '../lib/folder-form';
 import { ComplianceDialogFrame } from './ComplianceDialogFrame';
 import { FolderCover } from './file-bits';
 import { FolderShell } from './folder-shell';
@@ -120,6 +120,8 @@ export const FolderFormDialog = ({
 
   const save = async (): Promise<void> => {
     setFailure(null);
+    // The folder the person's edits are measured against: what the form showed before this save.
+    const opened = base;
     try {
       const ids = viewers.map((person) => person.userId);
       let saved: ComplianceFolderDto;
@@ -156,9 +158,17 @@ export const FolderFormDialog = ({
       onClose();
     } catch (error) {
       setFailure(error);
-      if (isStale(error) && base !== null) {
-        const fresh = await getFolder(base.id).catch(() => null);
-        if (fresh !== null) setBase(fresh);
+      if (isStale(error) && opened !== null) {
+        const fresh = await getFolder(opened.id).catch(() => null);
+        if (fresh !== null) {
+          // Someone saved the folder meanwhile. Keep only what THIS person changed, on top of the
+          // folder as it now is — so the next Save never quietly undoes their change, nor gives
+          // back access they took away.
+          const carried = carryFolderEdits(opened, { name, viewers }, fresh);
+          setName(carried.name);
+          setViewers(carried.viewers);
+          setBase(fresh);
+        }
       }
     }
   };

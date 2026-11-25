@@ -45,12 +45,15 @@ export const UploadDocumentDialog = ({
   const [failure, setFailure] = useState<unknown>(null);
   // The picker keeps its own list: a fresh one per opening, and after a refused file.
   const [opening, setOpening] = useState(0);
+  /** The name last filled in from a picked file — replaced by the next pick unless it was edited. */
+  const [suggested, setSuggested] = useState('');
   const add = useAddDocument();
 
   useEffect(() => {
     if (!open) return;
     setFile(null);
     setName('');
+    setSuggested('');
     setWrongType(false);
     setProgress(null);
     setFailure(null);
@@ -72,8 +75,11 @@ export const UploadDocumentDialog = ({
     }
     setWrongType(false);
     setFile(picked);
-    if (picked !== null && name.trim() === '') {
-      setName(baseNameOf(picked.name).slice(0, COMPLIANCE_NAME_MAX));
+    // The name follows the file while the person has not written their own.
+    if (name.trim() === '' || name === suggested) {
+      const next = picked === null ? '' : baseNameOf(picked.name).slice(0, COMPLIANCE_NAME_MAX);
+      setName(next);
+      setSuggested(next);
     }
   };
 

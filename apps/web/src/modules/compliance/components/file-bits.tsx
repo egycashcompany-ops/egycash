@@ -18,19 +18,17 @@ export const openDocument = async (id: string): Promise<boolean> => {
   // The tab is opened BEFORE the bytes arrive: a tab opened after an `await` is a pop-up the
   // browser blocks, because it no longer follows the click.
   const tab = window.open('', '_blank');
+  // No tab (a blocker refused it): nothing is fetched, so nothing is counted as seen.
+  if (tab === null) return false;
   // What `noopener` does for a tab opened at its address: the new tab cannot reach back.
-  if (tab !== null) tab.opener = null;
+  tab.opener = null;
   try {
     const href = URL.createObjectURL(await documentBlob(id, 'view'));
-    if (tab === null) {
-      window.open(href, '_blank', 'noopener');
-    } else {
-      tab.location.href = href;
-    }
+    tab.location.href = href;
     window.setTimeout(() => URL.revokeObjectURL(href), 60_000);
     return true;
   } catch {
-    tab?.close();
+    tab.close();
     return false;
   }
 };

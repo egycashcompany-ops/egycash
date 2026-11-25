@@ -79,7 +79,13 @@ class ComplianceDocumentService {
       sortableFields: ['uploadedAt'],
     });
     if (!isComplianceManager(ctx)) return { folder, page, seen: null };
-    const viewers = folder.viewerUserIds.map(String);
+    // The people the folder is shared with who still have an account: one whose account was
+    // deleted is neither counted as shared with nor named in the report.
+    const resolved = await compliancePeopleService.byIds(
+      folder.viewerUserIds.map(String),
+      ctx.userId,
+    );
+    const viewers = [...resolved.keys()];
     const counts = await complianceAccessRepository.seenCounts(
       page.items.map((doc) => String(doc._id)),
       viewers,
@@ -179,7 +185,8 @@ class ComplianceDocumentService {
     if (doc.kind === 'pdf') return { kind: 'unavailable' };
     const { buffer } = await fileService.readEntityOwnedBuffer(ctx, String(doc.fileId));
     const preview = await previewOf(doc.kind, doc.fileName, buffer);
-    await this.record(ctx, doc, folder, 'view');
+    // Counted only when something was shown: «cannot be shown here» is not a person having seen it.
+    if (preview.kind !== 'unavailable') await this.record(ctx, doc, folder, 'view');
     return preview;
   }
 
@@ -219,10 +226,17 @@ class ComplianceDocumentService {
     ctx: AuthContext,
     id: string,
   ): Promise<{ doc: ComplianceDocumentDoc; folder: ComplianceFolderDoc }> {
+    // One answer for a file that does not exist and a file in a folder the caller may not see, so
+    // the answer says nothing about which.
     const doc = await repository.findById(id);
     if (doc === null) throw new NotFoundError('file not found');
-    const folder = await complianceFolderService.getReadable(ctx, String(doc.folderId));
-    return { doc, folder };
+    try {
+      const folder = await complianceFolderService.getReadable(ctx, String(doc.folderId));
+      return { doc, folder };
+    } catch (error) {
+      if (error instanceof NotFoundError) throw new NotFoundError('file not found');
+      throw error;
+    }
   }
 
   private async record(

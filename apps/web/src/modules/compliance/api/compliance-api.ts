@@ -71,8 +71,26 @@ export const removeFolderCover = (id: string, version: number): Promise<Complian
 export const folderCoverBlob = (id: string, version: string): Promise<Blob> =>
   fetchBlob(`${BASE}/folders/${id}/cover?v=${encodeURIComponent(version)}`);
 
-export const listDocuments = (folderId: string): Promise<Paginated<ComplianceDocumentDto>> =>
-  getPage<ComplianceDocumentDto>(`${BASE}/folders/${folderId}/documents?pageSize=100`);
+/** The most files one read returns (`ListComplianceDocumentsQuerySchema`). */
+const DOCUMENTS_PAGE = 100;
+
+export const listDocuments = (
+  folderId: string,
+  page = 1,
+): Promise<Paginated<ComplianceDocumentDto>> =>
+  getPage<ComplianceDocumentDto>(
+    `${BASE}/folders/${folderId}/documents${buildQuery({ page, pageSize: DOCUMENTS_PAGE })}`,
+  );
+
+/** Every file of a folder, page after page — what «تنزيل الكل» saves. */
+export const listAllDocuments = async (folderId: string): Promise<ComplianceDocumentDto[]> => {
+  const all: ComplianceDocumentDto[] = [];
+  for (let page = 1; ; page += 1) {
+    const read = await listDocuments(folderId, page);
+    all.push(...read.items);
+    if (read.meta.page >= read.meta.totalPages) return all;
+  }
+};
 
 /** One file into a folder, with how far it has gone — a 20 MB file takes a moment. */
 export const addDocument = (

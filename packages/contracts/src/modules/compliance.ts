@@ -223,6 +223,8 @@ export const COMPLIANCE_PREVIEW_LIMITS = {
   rows: 500,
   columns: 40,
   blocks: 3000,
+  /** One budget for the whole file, so the bounds above cannot multiply into a huge response. */
+  characters: 2_000_000,
 } as const;
 
 export type CompliancePreviewBlockDto =

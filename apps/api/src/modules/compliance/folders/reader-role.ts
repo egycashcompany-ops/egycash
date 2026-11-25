@@ -8,8 +8,10 @@
 // Only the module's own grant is ever taken back: one of the same role an administrator made at
 // another scope is theirs and stays (`rbacService.removeAssignment` matches the scope).
 //
-// What a reader may open is never decided here: every read asks the folder's list. A grant that is
-// late or left behind costs a sidebar row, never a file.
+// What a reader may open is never decided here: every read asks the folder's list. A grant left
+// behind costs a sidebar row and opens nothing; a grant MISSING closes the page to a listed person
+// (its routes take the key) — which is why a removal is re-checked (`syncOne`) and the boot
+// reconciles every grant.
 import { logger } from '../../../infrastructure/logging/logger';
 import { rbacService } from '../../../platform/rbac';
 import { COMPLIANCE_READER_ROLE } from '../compliance-roles';
@@ -31,12 +33,20 @@ const roleId = async (): Promise<string> => {
   return readerRoleId;
 };
 
-/** Bring one person's grant in line with the lists as they are now. */
+/**
+ * Bring one person's grant in line with the lists as they are now. A removal is checked again
+ * after it lands: two writes naming the same person at the same moment can interleave — one reads
+ * «on no list», the other adds them and finds the grant still there, then the first takes it away —
+ * and the second look puts the grant back, so the two converge on the lists' last word.
+ */
 const syncOne = async (userId: string, id: string): Promise<void> => {
   if (await complianceFolderRepository.isViewerAnywhere(userId)) {
     await rbacService.ensureAssignment(userId, id, READER_SCOPE);
-  } else {
-    await rbacService.removeAssignment(userId, id, READER_SCOPE);
+    return;
+  }
+  const removed = await rbacService.removeAssignment(userId, id, READER_SCOPE);
+  if (removed && (await complianceFolderRepository.isViewerAnywhere(userId))) {
+    await rbacService.ensureAssignment(userId, id, READER_SCOPE);
   }
 };
 

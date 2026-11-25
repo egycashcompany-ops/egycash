@@ -2,12 +2,17 @@ import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
 import {
   columnIndexOf,
+  formatOfCode,
+  numberText,
+  previewBudget,
   previewOf,
-  readDateStyles,
+  readCellFormats,
   readDocxBlocks,
+  readHeadingStyleIds,
   readSharedStrings,
   readSheetRows,
-  serialToDate,
+  serialText,
+  tidyLines,
 } from './preview';
 
 describe('a Word document', () => {
@@ -26,6 +31,45 @@ describe('a Word document', () => {
         { type: 'table', rows: [['أ\nب']] },
       ],
     });
+  });
+
+  it('trims a line of a million spaces at once — no pattern backtracks over it', () => {
+    const start = Date.now();
+    expect(tidyLines(`a${' '.repeat(1_000_000)}b${' '.repeat(1_000_000)}`)).toBe(
+      `a${' '.repeat(1_000_000)}b`,
+    );
+    expect(Date.now() - start).toBeLessThan(1000);
+  });
+
+  it('reads a text box once, inside the paragraph that anchors it', () => {
+    const xml =
+      '<w:p><w:r><w:t>قبل</w:t></w:r><mc:AlternateContent><mc:Choice><w:txbxContent>' +
+      '<w:p><w:r><w:t>داخل الصندوق</w:t></w:r></w:p></w:txbxContent></mc:Choice>' +
+      '<mc:Fallback><w:txbxContent><w:p><w:r><w:t>داخل الصندوق</w:t></w:r></w:p></w:txbxContent></mc:Fallback>' +
+      '</mc:AlternateContent><w:r><w:t>بعد</w:t></w:r></w:p>';
+    expect(readDocxBlocks(xml).blocks).toEqual([
+      { type: 'paragraph', text: 'قبل\nداخل الصندوقبعد' },
+    ]);
+  });
+
+  it('knows a heading by its style name in a Word of any language', () => {
+    const ids = readHeadingStyleIds(
+      '<w:styles><w:style w:styleId="1"><w:name w:val="heading 1"/></w:style>' +
+        '<w:style w:styleId="a"><w:name w:val="Normal"/></w:style></w:styles>',
+    );
+    expect([...ids]).toEqual(['1']);
+    const xml = '<w:p><w:pPr><w:pStyle w:val="1"/></w:pPr><w:r><w:t>عنوان</w:t></w:r></w:p>';
+    expect(readDocxBlocks(xml, ids).blocks).toEqual([{ type: 'heading', text: 'عنوان' }]);
+  });
+
+  it('says a table wider than the preview was cut', () => {
+    const cells = Array.from(
+      { length: 45 },
+      (_, i) => `<w:tc><w:p><w:r><w:t>${i}</w:t></w:r></w:p></w:tc>`,
+    );
+    const read = readDocxBlocks(`<w:tbl><w:tr>${cells.join('')}</w:tr></w:tbl>`);
+    expect(read.truncated).toBe(true);
+    expect(read.blocks[0]).toMatchObject({ type: 'table' });
   });
 
   it('leaves out deleted text and field codes', () => {
@@ -51,16 +95,38 @@ describe('an Excel workbook', () => {
     ).toEqual(['أ', 'بج']);
   });
 
-  it('knows which styles print dates', () => {
+  it('knows which styles print dates, times or both', () => {
     const styles =
-      '<styleSheet><numFmts><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/><numFmt numFmtId="165" formatCode="0.00%"/></numFmts>' +
-      '<cellXfs><xf numFmtId="0"/><xf numFmtId="14"/><xf numFmtId="164"/><xf numFmtId="165"/></cellXfs></styleSheet>';
-    expect(readDateStyles(styles)).toEqual([false, true, true, false]);
+      '<styleSheet><numFmts><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/><numFmt numFmtId="165" formatCode="0.00%"/>' +
+      '<numFmt numFmtId="166" formatCode="hh:mm"/><numFmt numFmtId="167" formatCode="yyyy-mm-dd hh:mm"/></numFmts>' +
+      '<cellXfs><xf numFmtId="0"/><xf numFmtId="14"/><xf numFmtId="164"/><xf numFmtId="165"/>' +
+      '<xf numFmtId="20"/><xf numFmtId="166"/><xf numFmtId="22"/><xf numFmtId="167"/></cellXfs></styleSheet>';
+    expect(readCellFormats(styles)).toEqual([
+      null,
+      'date',
+      'date',
+      null,
+      'time',
+      'time',
+      'datetime',
+      'datetime',
+    ]);
+    expect(formatOfCode('[h]:mm')).toBe('time');
+    expect(formatOfCode('"Total" 0')).toBeNull();
+    expect(formatOfCode('m'.repeat(5000))).toBeNull();
   });
 
-  it('prints a date serial as a date', () => {
-    expect(serialToDate(46351, false)).toBe('2026-11-25');
-    expect(serialToDate(46351.5, false)).toBe('2026-11-25 12:00');
+  it('prints a serial as its format says', () => {
+    expect(serialText(46351, 'date', false)).toBe('2026-11-25');
+    expect(serialText(46351.5, 'date', false)).toBe('2026-11-25 12:00');
+    expect(serialText(0.5, 'time', false)).toBe('12:00');
+    expect(serialText(0.5 + 15 / 86400, 'time', false)).toBe('12:00:15');
+    expect(serialText(46351.25, 'datetime', false)).toBe('2026-11-25 06:00');
+  });
+
+  it('keeps 15 significant digits — a national number is not rounded', () => {
+    expect(numberText('29801011234567')).toBe('29801011234567');
+    expect(numberText('0.30000000000000004')).toBe('0.3');
   });
 
   it('reads rows as cell text, gaps kept, types honoured', () => {
@@ -68,10 +134,35 @@ describe('an Excel workbook', () => {
       '<sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1" t="b"><v>1</v></c></row>' +
       '<row r="3"><c r="B3" s="1"><v>46351</v></c><c r="A3"><v>0.30000000000000004</v></c>' +
       '<c r="D3" t="inlineStr"><is><t>نص</t></is></c></row></sheetData>';
-    expect(readSheetRows(sheet, ['الاسم'], [false, true], false)).toEqual({
+    expect(readSheetRows(sheet, ['الاسم'], [null, 'date'], false)).toEqual({
       truncated: false,
       rows: [['الاسم', '', 'TRUE'], [], ['0.3', '2026-11-25', '', 'نص']],
     });
+  });
+
+  it('stops at a row the gap before it would push past the limit, and says so', () => {
+    const read = readSheetRows(
+      '<sheetData><row r="1"><c r="A1"><v>1</v></c></row><row r="900"><c r="A900"><v>2</v></c></row></sheetData>',
+      [],
+      [],
+      false,
+    );
+    expect(read.rows).toEqual([['1']]);
+    expect(read.truncated).toBe(true);
+  });
+
+  it('spends one budget across the whole file', () => {
+    const budget = previewBudget();
+    budget.left = 5;
+    const read = readSheetRows(
+      '<sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>abc</t></is></c><c r="B1" t="inlineStr"><is><t>defg</t></is></c></row></sheetData>',
+      [],
+      [],
+      false,
+      budget,
+    );
+    expect(read.rows).toEqual([['abc']]);
+    expect(read.truncated).toBe(true);
   });
 
   it('stops at the row limit and says so', () => {

@@ -3,14 +3,15 @@
 // before returning a byte or a line of metadata:
 //
 //   * read  — the responsible person, or a person on the folder's list;
-//   * write and delete — the responsible person alone.
+//   * write and delete — the responsible person alone; and of a DELETED folder, only the delete
+//     its own deletion needs, to withdraw the files it held.
 //
 // The module's own endpoints are how a reader reaches a file, and they record every opening. The
 // platform's generic download path stays shut to a reader all the same: a document is a PRIVATE
 // file, which the generic path serves only to holders of `file.download`, so the access log is not
 // stepped around by a person the folder was merely shared with.
 //
-// A folder that does not exist (or was deleted) denies rather than throws: the caller learns nothing.
+// A folder that does not exist denies rather than throws: the caller learns nothing.
 import { type FileEntityAuthorizer } from '../../../platform/files';
 import { isComplianceManager } from '../shared/authority';
 import { mayReadFolder } from './folder-rules';
@@ -23,7 +24,13 @@ export const complianceFolderFileAuthorizer: FileEntityAuthorizer = {
     const manager = isComplianceManager(ctx);
     if (intent !== 'read' && !manager) return false;
     const folder = await complianceFolderRepository.findById(entityId);
-    if (folder === null) return false;
+    if (folder === null) {
+      // A deleted folder's files may still be WITHDRAWN by the responsible person — the deletion
+      // removes the folder first, then its files — and nothing else is done with them.
+      if (intent !== 'delete' || !manager) return false;
+      const [deleted] = await complianceFolderRepository.findByIdsSystem([entityId]);
+      return deleted !== undefined && deleted.isDeleted;
+    }
     return mayReadFolder(manager, ctx.userId, folder.viewerUserIds.map(String));
   },
 };

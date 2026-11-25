@@ -3,9 +3,16 @@
 // moved `version` (409 `STALE_DOCUMENT`) re-reads it too, so the screen behind a dialog shows the
 // folder as it now is.
 //
-// A reader's shelf has no realtime signal (they join no topic room), so it reads itself again when
-// the window regains focus — TanStack's default, kept on here on purpose.
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+// A reader's shelf has no realtime signal (they join no topic room), so the shelf, the open folder
+// and its files read themselves again when the window regains focus — switched on here, against the
+// app's default, on purpose.
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query';
 import {
   ErrorCodes,
   type CreateComplianceFolder,
@@ -47,6 +54,7 @@ export const useComplianceFolders = (params: api.FolderListParams) =>
     queryKey: folderListKey(params),
     queryFn: () => api.listFolders(params),
     placeholderData: (prev) => prev,
+    refetchOnWindowFocus: true,
   });
 
 /** One folder, kept fresh while its dialog is open — its name, its picture, who sees it. */
@@ -56,14 +64,23 @@ export const useComplianceFolder = (id: string) =>
     queryFn: () => api.getFolder(id),
     enabled: id !== '',
     retry: false,
+    refetchOnWindowFocus: true,
   });
 
+/**
+ * A folder's files, a hundred at a time (the most one read returns), newest first. The dialog
+ * offers the next hundred; «تنزيل الكل» reads every page itself (`api.listAllDocuments`).
+ */
 export const useFolderDocuments = (folderId: string) =>
-  useQuery({
+  useInfiniteQuery({
     queryKey: folderDocumentsKey(folderId),
-    queryFn: () => api.listDocuments(folderId),
+    queryFn: ({ pageParam }) => api.listDocuments(folderId, pageParam),
+    initialPageParam: 1,
+    getNextPageParam: (last) =>
+      last.meta.page < last.meta.totalPages ? last.meta.page + 1 : undefined,
     enabled: folderId !== '',
     retry: false,
+    refetchOnWindowFocus: true,
   });
 
 export const useSeenReport = (documentId: string) =>
@@ -103,10 +120,22 @@ export const useUpdateFolder = () =>
     api.updateFolder(id, body),
   );
 
-export const useDeleteFolder = () =>
-  useComplianceWrite(({ id, version }: { id: string; version: number }) =>
-    api.deleteFolder(id, version),
-  );
+/**
+ * A folder's deletion: its own reads are dropped BEFORE the shelf is read again, so a dialog still
+ * open on it does not ask for a folder that is gone and say «not found».
+ */
+export const useDeleteFolder = () => {
+  const qc = useQueryClient();
+  const { onError } = complianceWriteCallbacks(qc);
+  return useMutation({
+    mutationFn: ({ id, version }: { id: string; version: number }) => api.deleteFolder(id, version),
+    onSuccess: (_result, { id }) => {
+      qc.removeQueries({ queryKey: folderKey(id) });
+      void qc.invalidateQueries({ queryKey: complianceKeys.folders });
+    },
+    onError,
+  });
+};
 
 export const useSetFolderCover = () =>
   useComplianceWrite(({ id, file, version }: { id: string; file: File; version: number }) =>

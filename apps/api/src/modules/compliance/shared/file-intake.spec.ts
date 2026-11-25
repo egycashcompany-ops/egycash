@@ -39,7 +39,9 @@ describe('the content check', () => {
     expect(contentMatches('.doc', OLE)).toBe(true);
     expect(contentMatches('.xls', OLE)).toBe(true);
     expect(contentMatches('.pdf', PNG)).toBe(false);
-    expect(contentMatches('.docx', OLE)).toBe(false);
+    // A password-protected .docx is a compound file around its encrypted package.
+    expect(contentMatches('.docx', OLE)).toBe(true);
+    expect(contentMatches('.docx', PNG)).toBe(false);
     expect(contentMatches('.txt', PDF)).toBe(false);
   });
 });

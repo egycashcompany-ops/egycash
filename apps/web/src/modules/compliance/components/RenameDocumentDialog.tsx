@@ -56,7 +56,11 @@ export const RenameDocumentDialog = ({
       if (error instanceof ApiError && error.code === ErrorCodes.STALE_DOCUMENT) {
         const page = await listDocuments(base.folderId).catch(() => null);
         const fresh = page?.items.find((item) => item.id === base.id);
-        if (fresh !== undefined) setBase(fresh);
+        if (fresh !== undefined) {
+          // A name this person did not change takes the one saved meanwhile.
+          if (name.trim() === base.name) setName(fresh.name);
+          setBase(fresh);
+        }
       }
     }
   };

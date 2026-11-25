@@ -52,9 +52,10 @@ Three collections, each with the standard base fields, indexes built by the seed
 | `cover` | `{ fileId, setAt }` or null — the picture on the folder's front |
 | `viewerUserIds` | the user accounts the folder is shown to (`ix_viewer`) |
 
-Optimistic concurrency on every write (`version`, 409 `STALE_DOCUMENT`). Deleting a folder takes its
-files and picture with it (their bytes are withdrawn from Files first, while the folder still exists
-for the authorizer) and keeps the access log.
+Optimistic concurrency on every write (`version`, 409 `STALE_DOCUMENT`). Deleting a folder is one
+write held to that version — a list or a name saved meanwhile is a 409 — after which nobody reads it
+or files into it; its files and picture are then withdrawn from Files (the authorizer lets the
+responsible person withdraw a deleted folder's files, and nothing else). The access log is kept.
 
 ### 3.2 Documents — `compliance_documents`
 
@@ -84,12 +85,15 @@ with must hold `complianceFile.view` for «الملفات» to appear for them. 
 it gives the reader role (scope `own`) when a person is first named on a live folder, and takes back
 exactly that grant when they are on no list any more — `rbacService.ensureAssignment` and the new
 `rbacService.removeAssignment(userId, roleId, scope)`, which revokes only assignments at that scope,
-so a grant an administrator made at another scope stays. A grant that could not be changed is a
-line in the log and is reconciled at the next boot (`reconcileReaderGrants`: everyone on a list,
-and everyone holding the module's grant, brought in line).
+so a grant an administrator made at another scope stays. A removal is checked again after it lands,
+so two writes naming the same person at once converge on the lists' last word. A grant that could
+not be changed is a line in the log and is reconciled at the next boot (`reconcileReaderGrants`:
+everyone on a list, and everyone holding the module's grant, brought in line). A grant left behind
+opens nothing; a grant missing closes the page to a listed person until then.
 
 What a person may open is never decided by the key: every read asks the folder's list, and a person
-not on it is answered **404**, as if the folder did not exist.
+not on it is answered **404**, as if the folder did not exist — a file in a hidden folder and a file
+that does not exist get the same answer.
 
 ### 4.3 Who can be chosen
 
@@ -110,8 +114,9 @@ marked, until taken off; only the people a write **adds** are judged (422
 
 The multipart cap sits 5 MB above a category's limit and never above `MAX_UPLOAD_MB`. A document's
 type is decided by its **extension** (browsers send Word and Excel under several types, or none),
-then its first bytes must agree — `%PDF-`, a zip for `.docx`/`.xlsx`, a compound file for
-`.doc`/`.xls` — or it is refused (422 `COMPLIANCE_FILE_CONTENT_MISMATCH`). A cover is judged by its
+then its first bytes must agree — `%PDF-`, a zip for `.docx`/`.xlsx` (or a compound file: a
+password-protected one, kept and offered as a download), a compound file for `.doc`/`.xls` — or it
+is refused (422 `COMPLIANCE_FILE_CONTENT_MISMATCH`). A cover is judged by its
 bytes alone. Arabic file names arrive intact (multer's latin1 reading is undone).
 
 ## 6. Opening a file
@@ -133,15 +138,20 @@ workbook's visible sheets as rows (dates printed as dates), and the page draws i
 read runs under the rules every workbook the API opens follows (SEC-2, SEC-13): the zip's entry count
 checked from its directory first, each part inflated through a byte counter (a prefix is kept, so a
 large file is cut, not refused), every XML part walked once by hand, one 10-second deadline. Limits:
-10 sheets × 500 rows × 40 columns, 3,000 blocks; what was cut is reported. Older `.doc`/`.xls`, or a
-file that does not read, answer `unavailable` and the page offers the download. A preview is counted
-as one view.
+10 sheets × 500 rows × 40 columns, 3,000 blocks, and one budget of 2,000,000 characters for the
+whole file; what was cut — rows, columns, a part read only in part — is reported. Whitespace is
+trimmed without patterns that backtrack; a text box is read once, inside its paragraph; a heading is
+known by its style name in any language; times and dates print as their formats say; numbers keep
+15 significant digits. Older `.doc`/`.xls`, or a file that does not read, answer `unavailable` and
+the page offers the download. A preview that shows content is counted as one view; one that answers
+`unavailable` is not counted.
 
 ## 7. The seen report
 
 `compliance_document_access` — one row per opening or download: `documentId`, `folderId`, `userId`,
 `action` (`view` | `download`), `at`; written once, never changed. Only the people the folder is
-shared with are counted — the responsible person's own openings are not.
+shared with are counted — the responsible person's own openings are not — and only those whose
+account still exists.
 
 `GET /compliance/documents/:id/views` (manage key) answers, per person on the folder's list: seen or
 not, the number of views and of downloads, the first and last time, and the latest 100 events with
@@ -201,8 +211,10 @@ Built after HR's `/applicant-documents` shelf, with the module's **own copy** of
   name under it and a line under the name: how many people it is shared with for the responsible
   person, when a file was last added for a reader; a search remembered in the URL; edit/delete
   controls on the caption row for the responsible person; «مجلد جديد» in the header;
-- the folder — its files, each with «عرض» and «تنزيل», and «تنزيل الكل»; for the responsible person,
-  who it is shared with, «رفع ملف», and per file «اطّلع n من m», «تغيير الاسم» and «حذف»;
+- the folder — its files, a hundred at a time with «عرض مزيد من الملفات», each with «عرض» and
+  «تنزيل», and «تنزيل الكل» over every file; for the responsible person, who it is shared with,
+  «رفع ملف», and per file «اطّلع n من m», «تغيير الاسم» and «حذف»; the screens read again when the
+  window regains focus;
 - dialogs for the folder (name, people, picture — through the shared `PhotoPickButton`), the upload
   (the shared `FileUpload`, the kind and 20 MB checked before it is sent, with progress), the
   rename, the Word/Excel preview, the seen report, and the confirmations. A save refused because
@@ -212,7 +224,12 @@ Built after HR's `/applicant-documents` shelf, with the module's **own copy** of
 The page was checked by a separate agent against the checklist drawn from the reference and the
 newest module (after a calibration that found a planted difference); its findings were settled by
 the decision order and fixed — the shared pickers, the stale-save rebase, one word for «عرض», the
-reference's neutral file glyph and the line under each folder's name among them.
+reference's neutral file glyph and the line under each folder's name among them. An adversarial
+review of the whole change (four lenses, each finding challenged by a skeptic) confirmed 25 defects,
+all fixed: among them a whitespace pattern a crafted .docx could hold the event loop with, a view
+counted for a file that could not be shown, a folder's files past the first hundred out of reach,
+and a stale folder save that could give back access another save had taken away (the form now keeps
+only the person's own edits on top of the folder as it now is).
 
 ## 12. Tests
 

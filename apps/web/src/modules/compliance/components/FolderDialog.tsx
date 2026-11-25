@@ -36,6 +36,7 @@ import {
   useDeleteDocument,
   useFolderDocuments,
 } from '../api/compliance-queries';
+import { listAllDocuments } from '../api/compliance-api';
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
 import { RowButton, downloadDocument, openDocument, sizeOf } from './file-bits';
 import { personName } from './PeoplePicker';
@@ -162,7 +163,7 @@ export const FolderDialog = ({
   const [reporting, setReporting] = useState<ComplianceDocumentDto | null>(null);
   const [previewing, setPreviewing] = useState<ComplianceDocumentDto | null>(null);
   const [saving, setSaving] = useState(false);
-  const files = documents.data?.items ?? [];
+  const files = documents.data?.pages.flatMap((page) => page.items) ?? [];
 
   const viewFailed = (): void => {
     toast.error(t('compliance.file.viewFailed'));
@@ -180,11 +181,21 @@ export const FolderDialog = ({
   const download = (doc: ComplianceDocumentDto): void => {
     void downloadDocument(doc.id, doc.fileName).then((done) => !done && downloadFailed());
   };
-  /** Every file in turn (a browser asks once before saving several). */
+  /**
+   * Every file in turn (a browser asks once before saving several) — every page of them, not only
+   * the ones the dialog has drawn so far.
+   */
   const downloadAll = async (): Promise<void> => {
+    if (current === null) return;
     setSaving(true);
     let failures = 0;
-    for (const doc of files) {
+    const every = await listAllDocuments(current.id).catch(() => null);
+    if (every === null) {
+      setSaving(false);
+      downloadFailed();
+      return;
+    }
+    for (const doc of every) {
       if (!(await downloadDocument(doc.id, doc.fileName))) failures += 1;
       await new Promise((resolve) => window.setTimeout(resolve, 350));
     }
@@ -289,6 +300,18 @@ export const FolderDialog = ({
                   />
                 ))}
               </ul>
+            )}
+            {documents.hasNextPage === true && (
+              <div className="flex justify-center">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={documents.isFetchingNextPage}
+                  onClick={() => void documents.fetchNextPage()}
+                >
+                  {t('compliance.folder.showMore')}
+                </Button>
+              </div>
             )}
           </div>
         )}

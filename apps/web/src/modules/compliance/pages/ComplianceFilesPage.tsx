@@ -56,8 +56,9 @@ export const ComplianceFilesPage = (): JSX.Element => {
     if (removing === null) return;
     try {
       await remove.mutateAsync({ id: removing.id, version: removing.version });
-      toast.success(t('compliance.folder.deleted'));
+      // Closed as the folder goes, before anything reads it again.
       if (open?.id === removing.id) setOpen(null);
+      toast.success(t('compliance.folder.deleted'));
     } catch (error) {
       toast.error(errorMessage(error, locale));
     }

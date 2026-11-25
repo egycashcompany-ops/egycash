@@ -69,7 +69,7 @@ const startsWith = (buffer: Buffer, bytes: readonly number[]): boolean =>
 
 const PDF = [0x25, 0x50, 0x44, 0x46, 0x2d]; // %PDF-
 const ZIP = [0x50, 0x4b, 0x03, 0x04]; // PK.. — .docx, .xlsx
-const OLE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]; // compound file — .doc, .xls
+const OLE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]; // compound file — .doc, .xls, and a protected .docx/.xlsx
 
 /**
  * Does the content match the kind its name claims? A PDF may carry a few bytes before its header
@@ -81,7 +81,9 @@ export const contentMatches = (extension: string, buffer: Buffer): boolean => {
       return startsWith(buffer, PDF) || buffer.subarray(0, 1024).includes(Buffer.from(PDF));
     case '.docx':
     case '.xlsx':
-      return startsWith(buffer, ZIP);
+      // A password-protected .docx or .xlsx is stored as a compound file around its encrypted
+      // package, not as a zip; it is kept (and offered as a download — it cannot be previewed).
+      return startsWith(buffer, ZIP) || startsWith(buffer, OLE);
     case '.doc':
     case '.xls':
       return startsWith(buffer, OLE);

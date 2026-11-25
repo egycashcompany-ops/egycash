@@ -130,26 +130,33 @@ class ComplianceFolderService {
   }
 
   /**
-   * Delete a folder, and with it every file inside and its picture. The files are withdrawn from
-   * Files first — while the folder still exists for the authorizer to answer — then their links,
-   * then the folder. The access log is kept: it records what happened.
+   * Delete a folder, and with it every file inside and its picture. The folder goes FIRST, in one
+   * write held to the version the person saw — so a list or a name saved meanwhile is a 409, not a
+   * change deleted unseen — and from that moment nobody reads it or files into it. Its files are
+   * then withdrawn from Files and their links removed (the authorizer lets the responsible person
+   * withdraw a deleted folder's files, and only that). The access log is kept: it records what
+   * happened. The grants follow the list as it stood when the folder went.
    */
   async remove(ctx: AuthContext, id: string, version: number): Promise<void> {
     assertComplianceManager(ctx);
     const folder = await repository.getById(id);
     if (folder.__v !== version) throw new StaleDocumentError();
+    const gone = await repository.updateById(
+      id,
+      { isDeleted: true, deletedAt: new Date(), deletedBy: new Types.ObjectId(ctx.userId) },
+      { by: ctx.userId, version },
+    );
 
     const documents = await complianceDocumentRepository.liveOfFolder(id);
     for (const document of documents) {
       await fileService.softDelete(ctx, String(document.fileId)).catch(() => undefined);
       await complianceDocumentRepository.softDeleteById(String(document._id), { by: ctx.userId });
     }
-    if (folder.cover !== null) {
-      await fileService.softDelete(ctx, String(folder.cover.fileId)).catch(() => undefined);
+    if (gone.cover !== null) {
+      await fileService.softDelete(ctx, String(gone.cover.fileId)).catch(() => undefined);
     }
-    await repository.softDeleteById(id, { by: ctx.userId });
-    await auditFolderDeleted(id, snapshot(folder));
-    await syncReaderGrants(folder.viewerUserIds.map(String));
+    await auditFolderDeleted(id, snapshot(gone));
+    await syncReaderGrants(gone.viewerUserIds.map(String));
   }
 
   /**

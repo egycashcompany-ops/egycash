@@ -7,6 +7,7 @@ import {
   AtmIcon,
   BadgeIcon,
   BellIcon,
+  BoxIcon,
   CloseIcon,
   BriefcaseIcon,
   BuildingIcon,
@@ -36,6 +37,7 @@ import {
   TagIcon,
   TruckIcon,
   UsersIcon,
+  WarehouseIcon,
   WrenchIcon,
 } from '../../shared/ui/icons';
 
@@ -101,6 +103,10 @@ const REGISTRY: Record<string, NavIcon> = {
   cash: CashIcon,
   atm: AtmIcon,
   gold: GoldIcon,
+  // Administrative Affairs (P1a.W), registered with the rows that name them: the box is the
+  // module tile (OD-62.1 A) and its Items row, what the stores keep; the shed is its Warehouses row.
+  box: BoxIcon,
+  warehouse: WarehouseIcon,
 };
 
 export const resolveNavIcon = (name: string | null | undefined, fallback: NavIcon): NavIcon => {

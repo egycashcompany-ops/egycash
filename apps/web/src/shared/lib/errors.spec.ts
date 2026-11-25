@@ -176,6 +176,39 @@ describe('errorMessage', () => {
     expect(words[0]).toContain('البيانات المرجعية');
     expect(words[2]).toContain('المناطق');
   });
+
+  // Administrative Affairs (P1a.W) — the master data's refusals reach the module's dialogs, which say
+  // them in their alert box with `errorMessage`, and any other surface through the global notifier.
+  // EVERY code the module declares is worded, read off the contracts rather than listed by hand, so
+  // a refusal a later slice adds fails here until it has its words — in both languages, each its
+  // own, the Arabic in Arabic, never the server's English.
+  it('words every Administrative Affairs refusal in both languages, each its own', () => {
+    const codes = Object.values(ErrorCodes).filter((code) => code.startsWith('ADMINISTRATION_'));
+    expect(codes, 'the module declares its refusals').toEqual(
+      expect.arrayContaining([
+        ErrorCodes.ADMINISTRATION_CATEGORY_PARENT_INVALID,
+        ErrorCodes.ADMINISTRATION_DUPLICATE,
+        ErrorCodes.ADMINISTRATION_STOCK_LEVELS_ORDER,
+        ErrorCodes.ADMINISTRATION_REFERENCE_INACTIVE,
+        ErrorCodes.ADMINISTRATION_SUBCATEGORY_REQUIRED,
+        ErrorCodes.ADMINISTRATION_EMPLOYEE_EXITED,
+        ErrorCodes.ADMINISTRATION_DEACTIVATION_BLOCKED,
+      ]),
+    );
+    for (const locale of ['ar', 'en'] as const) {
+      const words = codes.map((code) => {
+        const text = errorMessage(new ApiError(code, 'server english', 422), locale);
+        expect(text, `${locale}: ${code}`).not.toBe('server english');
+        if (locale === 'ar') expect(text, code).toMatch(/[\u0621-\u064A]/u);
+        return text;
+      });
+      expect(new Set(words).size, locale).toBe(words.length);
+    }
+    // The duplicate's own sentence names what a retired record asks for: bringing it back.
+    expect(
+      errorMessage(new ApiError(ErrorCodes.ADMINISTRATION_DUPLICATE, 'taken', 409), 'ar'),
+    ).toContain('تفعيله');
+  });
 });
 
 describe('errorDiagnostic — a failure has to be findable in the API log', () => {

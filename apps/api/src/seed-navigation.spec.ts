@@ -78,7 +78,9 @@ describe('the seeded navigation catalog', () => {
     //   RETIRED on live installations — and «إدارات العمليات» joined it beneath the roster (−1 +1).
     // 138 → 139: «شجرة الهيكل التنظيمي» joined Organization, after «الوظائف» (org-chart-design.md).
     // 139 → 140: «الشحنات المسلَّمة» joined Operations, right beneath the day board (Round 33 B).
-    expect(rows).toHaveLength(140);
+    // 140 → 144: Administrative Affairs' first four rows — its home, the warehouses, the items, and
+    //   the units and categories (administration-module-decisions-and-phases.md §19.5, P1a.W).
+    expect(rows).toHaveLength(144);
   });
 
   /**

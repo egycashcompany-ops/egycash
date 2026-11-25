@@ -260,6 +260,45 @@ its entry here in the same PR.
 
 ### Added
 
+- **Administrative Affairs («الشئون الإدارية») on screen: the home, the items, the warehouses, and the
+  units and categories.** The Phase 1 screens over the three API slices before them, where master data
+  is typed in by hand, as the owner asked («لأ خلينا من غير شيتات او بيانات دلوقتى»). This is P1a.W of
+  the design (`docs/12-planning/administration-module-decisions-and-phases.md` §19.1, §19.5).
+  - **A sidebar category of its own,** «الشئون الإدارية» / Administrative Affairs, after ATM and before
+    System Administration (sort order 29), with four rows and no sections (OD-62 A): «الرئيسية»,
+    «المخازن», «الأصناف» and «وحدات القياس والتصنيفات», each on the key its screen's route asks
+    (`administrationWarehouse.view`, `administrationItem.view`, `administrationCatalog.manage`; the
+    home row on the items key). The launcher tile wears a new box glyph (OD-62.1 A), which the Items
+    row wears too; the Warehouses row wears a new warehouse glyph. 140 → 144 seeded rows.
+  - **The home** (`/administration`, no route guard: the page decides) draws a tile per screen the
+    reader's grants open and the live warehouses' and items' counts, each read under its own key; a
+    count that fails says so, never 0, and a reader with none of the screens is told so.
+  - **The item register** and **an item's record** (`/administration/items`, `/items/:id`): searched
+    by code, name or barcode, filtered by one category (a top-level one reads its subcategories'
+    items too), one unit and the status; a row opens the record. The form adds or corrects an item —
+    no code box (the server gives «ITM-00001»), no stock box, an Arabic name that may carry a Latin
+    brand («حبر HP 85A»), a category filed where an item may be filed (a subcategory where its
+    category has one), whole-number levels kept in order, and Active to retire it on an edit.
+  - **The warehouse register** (`/administration/warehouses`): its branch filter offers only the
+    branches the reader may read, and drops a remembered one the server no longer offers; a row's
+    edit is offered only where the server says the edit would be taken; the keeper is shown as HR
+    answers today — marked when they have left, flagged when HR no longer knows them. The form opens
+    a store only in a branch it may be opened in — «add» shows only while some branch takes one —
+    keeps the branch for good, names a department of that branch (one since retired stays, marked)
+    and a keeper through the module's own picker of people who work here today.
+  - **Units and categories** (`/administration/catalogs`): one tab each, edited — never deleted — in
+    a dialog, a category's parent picked from the active top-level categories.
+  - **Every register wears the board frame** (OD-83 B), which the owner asked for module by module —
+    Fleet, then ATM («عايزك فى كل الصفحات تثبت الفورم والفلتر وتخلي الجدول بس هو اللى يعمل
+    Scroll»), then IT and System Administration: the title, the filters and the pager keep their
+    place and only the rows scroll. Filters are remembered across visits and carried in the URL.
+  - **Every refusal of the module is worded in both languages** in the shared table
+    (`ADMINISTRATION_DUPLICATE`, `_CATEGORY_PARENT_INVALID`, `_STOCK_LEVELS_ORDER`,
+    `_REFERENCE_INACTIVE`, `_SUBCATEGORY_REQUIRED`, `_EMPLOYEE_EXITED`, `_DEACTIVATION_BLOCKED`), and
+    each dialog also says, beside the field a refusal names, what to change. Save stays pressable and
+    names what is missing. A save refused because someone saved the record meanwhile shows the record
+    as it now is, so the next Save is taken.
+
 - **Administrative Affairs («الشئون الإدارية»), third slice: warehouses, and the keeper picker.** The
   stores of each branch, «المخازن», with the «Warehouse manager / responsible person» the owner's
   request lists in a warehouse's master data, typed on the screens as the owner asked («لأ خلينا من

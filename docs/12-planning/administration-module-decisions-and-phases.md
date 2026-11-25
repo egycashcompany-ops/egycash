@@ -3251,6 +3251,70 @@ Repository-wide findings outside this module are listed for the owner in
     master-data administrator writes suppliers.
   - *For P1b.W:* the supplier rows show category names, so the category topics' web rows gain `suppliers` with the
     screen that shows them; the new refusal code needs its en and ar `FRIENDLY` text then.
+- **P1a.W built** (2026-11-25). Phase 1's fourth pull request ships as §19.1 says, under the owner's answers
+  (§16.12): the `/administration/*` mount, the home, the item register and record, the warehouse register, units and
+  categories, the category «الشئون الإدارية» with its four rows (140 → 144) and the `box` and `warehouse` glyphs, every
+  `ADMINISTRATION_*` refusal in the shared `FRIENDLY` table, and §19.7's sidebar case. Built from the UI checklist
+  re-run on 2026-11-24 (§13.6 asks for it), which settles what §13.6 left to the pattern pass: single-valued filters
+  (the list contracts take one value each), `SearchableSelect` for the category and unit, `BOARD_TABLE_FILL` (the
+  family's majority, not IT's `_LOW`), a row click that opens the item, and the detail's edit as a dialog. Where the
+  code had to choose what the design leaves open:
+  - *Files beyond §19.8.* `lib/catalog-form.ts` (the units' and categories' form state) and `lib/refusals.ts` (each
+    refusal detail worded beside its field), with specs; a screen spec for every page, not only items and warehouses;
+    `screen-fixtures.tsx`, the specs' shared reader and records.
+  - *The selects read whole.* One cached read of every unit and every category, both statuses and every page (the
+    server caps a page at 100), filtered in the browser, serves the item form, the register's filters and the parent
+    select — in place of separate `isActive=true` and `topLevel=true` reads — so a retired current value keeps its
+    name (IT's `ItCatalogSelect` rule) and a catalog write re-reads one list. A subcategory is offered on its own
+    `isActive`, under a retired parent too, as the server judges it.
+  - *Names from the reads that carry them.* The branch filter and the create dialog name branches from
+    `GET /warehouses/branch-options`, which carries them, so no `/platform/branches/options` hook is written. The
+    department is picked from `/platform/departments/options`, narrowed to the store's branch by `parentId`; the one
+    a store already names stays — when it has been retired since, the active list no longer holds it, so it is named
+    from the same read with `?includeInactive=true` (the platform's rule: for naming, never for choosing) and marked
+    «موقوف», and one no read names still holds the box as «—» rather than «بلا إدارة». The register shows no
+    department, since the DTO names none (§19.4).
+  - *The keeper picker searches the reach, not the dialog's branch:* no `branchId` is sent, so the box offers whom
+    the server would accept; whether a keeper must work in the store's branch is the question P1a.3 left open.
+  - *Defaults.* The registers open on the live rows with the server's own order, the catalogs on every status sorted
+    by sort order (each its reference's). A store's kind is chosen, never assumed; its code box upper-cases what is
+    typed, the only case the contract takes. Status words are «نشط» / «موقوف»: §0.4 lists none, so they are the
+    reference register's (IT's consumables, «الأصناف النشطة» / «الأصناف الموقوفة»), «نشط» also the product's
+    commonest.
+  - *Before the round trip.* The item's levels are checked as the server checks them — whole numbers to 1,000,000
+    as typed, the order on Save — and so is a barcode with a space inside, whose contract refusal is a plain 400
+    naming no box; the order, the barcode and a warehouse code in the wrong pattern are marked on the same press of
+    Save that names a missing value. The server still decides. A stale edit (409 `STALE_DOCUMENT`) re-reads the
+    register and the record, and the open dialog rebases on the record as it now is (the item and the warehouse by
+    id, a unit or category from its catalog read whole): the refusal stays in the alert box, the boxes show what was
+    saved meanwhile, and the next Save carries the new version. Keeping the reader's typing on the old version
+    would only meet the same refusal again — or, sent with the new version, silently undo the other person's save.
+    A re-read underneath with no refusal (a realtime signal) still leaves the typing alone.
+  - *A stray branch is never asked for.* While the branch options are on their way, a remembered branch is not
+    sent: one the reader no longer reaches would answer 400 before the page could drop it. If the options cannot
+    be read at all, the branch is sent as the URL says, so the page shows the server's answer — rows, or the error
+    panel with its retry — rather than loading for ever.
+  - *The home* counts the live warehouses and items, each under its read's key; the catalogs' key reads no
+    register, so it gets a tile and no count. Each count opens its register on the view it counts
+    (`?active=true`, as IT's help-desk counts carry theirs): a bare link would restore the reader's remembered
+    filters, and the list could disagree with the figure.
+  - *«Add warehouse»* shows only while some branch takes a new store (`canCreate` of the branch options): `can()` is
+    blind to scope, and with the top bar on a branch the create key does not reach — or the options unread — the
+    form's branch box would offer nothing.
+  - *Empty registers* pass the module's sentence as a plain string, as the reference does (the checklist's
+    default, item 6): a centred `EmptyState` panel in the table's cell spans the table's scroll width and leaves
+    the sentence off screen on a phone (the live check measured it). The catalogs' sentence claims no filter,
+    since they open on every status.
+  - *A stale save* (409 `STALE_DOCUMENT`) re-reads the record and lays the reader's own changes over it: a box
+    they did not touch takes the other person's value, one they changed keeps their typing, so the next Save
+    sends only their changes against the new version and never undoes the other save. Codes and names in the other script are isolated
+    in a `<span dir>` inside their cell or `<dd>`, never on the `<dd>` itself, so in Arabic they sit under their
+    label; the item's Arabic name keeps its order in the English screen.
+  - *Words.* The English says «warehouse» throughout (the glossary's term; «store» was a second name for it). A
+    keeper who has left is «منتهي الخدمة», HR's and IT's word. The duplicate refusal no longer says the holder is
+    active: a retired record holds its name, code and barcode too, and the registers open on active rows.
+  - *§19.7's case* runs the boot's `syncNavigationCatalog` in the warehouses suite: an `administrationWarehouse.view`
+    holder's whole sidebar is the Warehouses row, and the super-admin sees the four rows (five from P1b.W).
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

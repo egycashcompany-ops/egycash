@@ -151,6 +151,25 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'The counter reading must be higher than the last reading recorded for this printer — if its counter was reset, tick «The printer’s counter was reset».',
     IT_CONSUMABLE_COUNTER_ABOVE_NEXT:
       'This reading is dated before a later reading of the same printer, so it must be lower than that one.',
+    // Administrative Affairs — the master data's refusals (administration-module-design-flows.md
+    // §5.15). Each dialog also words the field a refusal names beside that field, from its
+    // `details`; these are the refusals themselves, wherever they surface.
+    ADMINISTRATION_DUPLICATE:
+      'Another record, active or retired, already has this name, code or barcode — a retired one is brought back, not added again.',
+    ADMINISTRATION_CATEGORY_PARENT_INVALID:
+      'This category cannot go under that parent: categories have two levels, and a category with subcategories stays at the top.',
+    ADMINISTRATION_STOCK_LEVELS_ORDER:
+      'The stock levels are out of order: where set, minimum ≤ reorder point ≤ maximum.',
+    ADMINISTRATION_REFERENCE_INACTIVE:
+      'The unit or category chosen is retired — choose an active one.',
+    ADMINISTRATION_SUBCATEGORY_REQUIRED:
+      'The category chosen has subcategories — file the item under one of them.',
+    ADMINISTRATION_EMPLOYEE_EXITED:
+      'The keeper chosen has left — choose somebody who works here today.',
+    ADMINISTRATION_DEACTIVATION_BLOCKED:
+      'This warehouse cannot be retired while it holds stock or a document not yet ended names it.',
+    ADMINISTRATION_ATTACHMENT_LIMIT:
+      'This list already holds 20 documents, as many as it takes — remove one before adding another.',
     RATE_LIMITED: 'Too many requests — please slow down.',
     FILE_TOO_LARGE: 'That file is too large.',
     PAYLOAD_TOO_LARGE: 'What was sent is too large to save at once.',
@@ -171,7 +190,8 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     ORG_UNIT_NOT_EDITABLE:
       'لا يمكن تعديل هذه الإدارة أو هذا القسم من هنا: غير مربوط بقائمة الشركة أو موقوف فيها.',
     ORG_SECTION_NAME_TAKEN: 'يوجد قسم بهذا الاسم في هذه الإدارة.',
-    BRANCH_WITHOUT_DEPARTMENT: 'الإدارة غير موجودة أو غير مربوطة بقائمة الشركة في أحد الفروع المحددة.',
+    BRANCH_WITHOUT_DEPARTMENT:
+      'الإدارة غير موجودة أو غير مربوطة بقائمة الشركة في أحد الفروع المحددة.',
     JOB_PLACE_NOT_ALLOWED:
       'لا يمكن وضع الوظيفة في هذا المكان: الوظيفة أو القسم موقوف، أو القسم لا يتبع هذه الإدارة.',
     ORG_CATALOG_ENTRY_IN_USE: 'توجد وظائف موضوعة في هذا البند، فلا يمكن حذفه.',
@@ -250,6 +270,21 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'قراءة العداد يجب أن تكون أكبر من آخر قراءة مسجّلة لهذه الطابعة — وإذا صُفِّر عدادها فحدِّد «تم تصفير عداد الطابعة».',
     IT_CONSUMABLE_COUNTER_ABOVE_NEXT:
       'تاريخ هذه القراءة سابق لقراءة لاحقة مسجّلة للطابعة نفسها، فيجب أن تكون أقل منها.',
+    ADMINISTRATION_DUPLICATE:
+      'هذا الاسم أو الكود أو الباركود مسجَّل لسجل آخر، نشطًا كان أو موقوفًا — والموقوف يُعاد تفعيله ولا يُضاف مرة أخرى.',
+    ADMINISTRATION_CATEGORY_PARENT_INVALID:
+      'لا يمكن وضع هذا التصنيف تحت ذلك التصنيف: للتصنيفات مستويان، والتصنيف الذي له تصنيفات فرعية يبقى رئيسيًا.',
+    ADMINISTRATION_STOCK_LEVELS_ORDER:
+      'حدود المخزون غير مرتبة: عند تحديدها يكون الحد الأدنى ≤ حد إعادة الطلب ≤ الحد الأقصى.',
+    ADMINISTRATION_REFERENCE_INACTIVE:
+      'الوحدة أو التصنيف المختار موقوف — اختر وحدة أو تصنيفًا نشطًا.',
+    ADMINISTRATION_SUBCATEGORY_REQUIRED: 'للتصنيف المختار تصنيفات فرعية — أدرج الصنف تحت أحدها.',
+    ADMINISTRATION_EMPLOYEE_EXITED:
+      'ترك أمين المخزن المختار العمل — اختر أحدًا ممن يعملون لدينا اليوم.',
+    ADMINISTRATION_DEACTIVATION_BLOCKED:
+      'لا يمكن إيقاف هذا المخزن ما دام فيه رصيد أو يشير إليه مستند لم يُغلق بعد.',
+    ADMINISTRATION_ATTACHMENT_LIMIT:
+      'تضم هذه القائمة عشرين مستندًا، وهو أقصى ما تتسع له — أزِل أحدها قبل إضافة غيره.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',
     PAYLOAD_TOO_LARGE: 'حجم البيانات المُرسَلة أكبر من أن تُحفظ دفعة واحدة.',

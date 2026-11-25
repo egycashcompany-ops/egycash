@@ -328,6 +328,17 @@ its entry here in the same PR.
 
 ### Changed
 
+- **Administrative Affairs: the module's reference picker, with the warehouse keeper box moved onto
+  it.** This is P2.W0, the first web pull request of the module's Phase 2, purchase requests
+  (`docs/12-planning/administration-module-phase-2.md` §3, §9.4). `ReferencePicker`, in the module
+  after IT's `VendorPicker` (design D-21), searches the server for one record once something is
+  typed, shows the pick on a chip with a clear button, the results as pressed-or-not buttons, a
+  spinner, a no-results sentence, and a no-access sentence in place of the box; the caller gives who
+  may open it, its search, its rows and its words. The warehouse form's keeper box
+  («أمين المخزن») is drawn by it with no change a user can see: the same search, chip, rows, words
+  and no-access sentence, in Arabic and English. P2's item box will be its second user. No key,
+  route, page, word or API changes. Rollback: revert the pull request; nothing is stored.
+
 - **ATM maintenance close: the crew leader on the row is the one the close keeps.** The owner
   (2026-11-25): «لما بيتم تقفيل صيانة لماكينة ATM كان بيطلب منه اسم الشخص اللى قفلها / عايز اسم
   الموظف دا يجي تلقائي من قائد الطاقم فى الجدول لو مُعين .. لو لأ خليه يدخله هو». The close dialog

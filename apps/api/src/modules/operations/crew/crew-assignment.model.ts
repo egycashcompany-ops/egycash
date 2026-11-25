@@ -30,8 +30,9 @@
 import { Schema, model, type Types } from 'mongoose';
 import {
   OPERATIONS_CREW_ROW_COLOURS,
+  OPERATIONS_CREW_ROW_NO_COLOUR,
   OPERATIONS_LEGACY_CREW_ROW_COLOURS,
-  type OperationsCrewRowColour,
+  type OperationsCrewRowColourSetting,
   type OperationsLegacyCrewRowColour,
 } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
@@ -57,9 +58,10 @@ export interface OperationsCrewAssignmentDoc extends BaseDocFields {
    * name of the types' palette, null meaning «لون النوع» — the board then draws the row in its
    * type's colour. A row written before Round 24b may still hold one of Round 20's six names until
    * the boot migrates it (`migrateCrewRowColoursToPalette`), which is why the type says so: every
-   * reader goes through `canonicalCrewRowColour`, and nothing writes a legacy name.
+   * reader goes through `canonicalCrewRowColour`, and nothing writes a legacy name. Round 34 C:
+   * or `'none'` — «بدون لون», picked by hand over the type's colour (`OPERATIONS_CREW_ROW_NO_COLOUR`).
    */
-  rowColour?: OperationsCrewRowColour | OperationsLegacyCrewRowColour | null;
+  rowColour?: OperationsCrewRowColourSetting | OperationsLegacyCrewRowColour | null;
   /**
    * The three slots, each now holding up to `CREW_SLOT_CAPACITY` people (six per vehicle). The
    * cap is a contract rule (`PlanOperationsCrewRowSchema`), enforced where the payload arrives
@@ -94,13 +96,15 @@ const crewAssignmentSchema = new Schema<OperationsCrewAssignmentDoc>(
     vehicleId: { type: Schema.Types.ObjectId, default: null },
     fleetDutyAssignmentId: { type: Schema.Types.ObjectId, default: null },
     shiftTypeId: { type: Schema.Types.ObjectId, default: null },
-    // The palette's names, and Round 20's (`OPERATIONS_LEGACY_CREW_ROW_COLOURS`) for a row not yet
-    // migrated — the enum describes what the collection may hold, not what is written now.
+    // The palette's names, «بدون لون» (`'none'`, Round 34 C), and Round 20's
+    // (`OPERATIONS_LEGACY_CREW_ROW_COLOURS`) for a row not yet migrated — the enum describes what
+    // the collection may hold, not what is written now.
     rowColour: {
       type: String,
       enum: [
         ...new Set<string | null>([
           ...OPERATIONS_CREW_ROW_COLOURS,
+          OPERATIONS_CREW_ROW_NO_COLOUR,
           ...Object.keys(OPERATIONS_LEGACY_CREW_ROW_COLOURS),
           null,
         ]),

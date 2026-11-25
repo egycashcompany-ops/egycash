@@ -9,7 +9,7 @@ and navigation, and must never be renamed casually.
 
 ```mermaid
 flowchart TB
-    L2["Layer 2 — Business Modules<br/><i>hr · fleet · cash-transport · atm · vault · gold · contracts · administration · accounting · security · it</i>"]
+    L2["Layer 2 — Business Modules<br/><i>hr · fleet · cash-transport · atm · vault · gold · contracts · administration · compliance · accounting · security · it</i>"]
     L1["Layer 1 — Platform Core<br/><i>auth · users · rbac · organization · settings · notifications · files · audit · search · workflow · approvals · dashboards · reports · sequences · localization · integrations · ai</i>"]
     L3["Layer 3 — Shared Components<br/><i>errors · utils · base classes · UI kit · types · zod schemas</i>"]
     L4["Layer 4 — Infrastructure<br/><i>mongodb · redis · bullmq · socket.io · storage · mail · http</i>"]
@@ -73,6 +73,7 @@ everything uses `audit`).
 | `gold` | Gold Vault | `companies`, `representatives`, `floors`, `vaults`, `bars`, `receiving`, `delivery`, `transfers`, `keys`, `dashboard`, `reports`, `portal`, `portal-accounts` |
 | `contracts` | Contracts | *(designed later)* |
 | `administration` | Administrative Affairs (الشئون الإدارية) | `catalog`, `warehouses`, `procurement` — [design](../12-planning/administration-module-design.md); Phase 1 delivered: units, item categories, items, warehouses and suppliers, with their screens (P1a.1–P1b.W), awaiting the owner's acceptance on staging |
+| `compliance` | Compliance and Risks (الالتزام والمخاطر) | `files` — [design](../12-planning/compliance-files-design.md); one page, «الملفات»: folders shown only to the people named on them, PDF/Word/Excel files of up to 20 MB, and who has seen each file |
 | `accounting` | Accounting | *(designed later)* |
 | `security` | Security | *(designed later)* |
 | `it` | Information Technology | *(designed later)* |

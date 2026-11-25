@@ -8,19 +8,37 @@
 //     lists everything its row holds — «قائد الطاقم», «أخصائي 1», «أخصائي 2» person by person, then
 //     «الاتجاه», «التوقيت», «النوع», «لون الصف», «ملاحظات» — each with its own box to tick, and
 //     «الكل» · «الطاقم فقط» · «لا شيء» to tick a card at once;
-//   · BETWEEN THEM, how the ticked items go: «تبديل المحدد ⇄» (both cards' ticks cross at once), or
-//     «نقل المحدد» one way (only the sending card's);
-//   · UNDER THEM, the two cards AFTER the change, side by side, before anything is touched: what
-//     arrives («من 213»), the value a moved field replaces (struck), what goes, and what a board rule
-//     keeps where it is — with the rule's reason (away that day, a slot his role does not fit, no room
-//     left, an archived type). `lib/crew-swap.ts` decides all of it; this file only draws it;
-//   · «تطبيق» hands the ticks to the page, which applies them to the DRAFT as ONE step of «تراجع»;
-//     nothing is written until «حفظ».
+//   · BETWEEN THEM, three ARROWS (Round 34 A) that ACT (Round 34 D — «أنا يعتبر محدد اللي في النص …
+//     لو أنا اخترت شمال أو يمين مثلا يفضل موجود لحد ما الداتا تتنقل ثانية أو ثانيتين ويقوم جاي
+//     متشال»): a press MOVES the ticked items at once — one way from the sending card (only its
+//     ticks), or both ways for the swap — and the arrow stays filled in its colour while they land,
+//     then rests. No way stays «selected». The two cards are a WORKING COPY: what arrived carries
+//     «من 213» until «تطبيق»; a value a move replaced is named beside the one that took its place;
+//     what a board rule keeps back (away that day, a slot his role does not fit, no room left, an
+//     archived type — `lib/crew-swap.ts` decides all of it) flashes rose on its card, and the
+//     notice under the arrows names it and why. Several presses follow one another; «تراجع عن آخر
+//     نقل» takes them back one at a time, down to the opening state (`lib/crew-swap-window.ts`);
+//   · «تطبيق» hands the window's presses to the page, which replays them on the DRAFT as ONE step of
+//     the board's «تراجع» (judged again there by the board as it is then); nothing is written until
+//     «حفظ». The footer says so while the moves change something («تنتقل التغييرات إلى اللوحة عند
+//     «تطبيق»»), and «إلغاء», ✕ and Escape then ASK first — «تطبيق», «تجاهل التغييرات» or «متابعة
+//     التعديل» (Round 34 D critic: they dropped every move without a word); with nothing changed they
+//     close.
 //
 // THE KEYBOARD: every box is a real checkbox named by what it moves and where («نقل أحمد علي — قائد
-// الطاقم — إلى 213»); the three ways are a radio group (the arrows move in it); Tab stays inside the
-// window and Escape closes it, the focus going back to the row's «⇄».
-import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
+// الطاقم — إلى 213»); the three arrows are a toolbar (one in the Tab order, the arrow keys moving
+// among them, Enter and Space pressing; each named by what it does — «نقل المحدد من 150 إلى 213» —
+// and, when it cannot act, why); Tab stays inside the window and Escape closes it, the focus going
+// back to the row's «⇄».
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import {
   type Locale,
   type OperationsCrewMemberDto,
@@ -43,28 +61,40 @@ import {
 import {
   QUICK_PICKS,
   SWAP_FIELDS,
-  SWAP_MODES,
   fieldItem,
   livePicks,
-  modeStepOf,
   otherSide,
   personItem,
-  planSwap,
-  quickPick,
-  sendsFrom,
+  replaySwap,
   shipmentsLeftBehind,
-  swapItems,
+  swapArrivals,
+  swapChanged,
+  swapOperation,
+  swapReplacedValues,
+  swapSlotChanges,
   type SwapField,
   type SwapMode,
-  type SwapPicks,
   type SwapRefusal,
-  type SwapResult,
   type SwapRules,
   type SwapSide,
+  type SwapStep,
 } from '../lib/crew-swap';
+import {
+  SWAP_WINDOW_START,
+  createSwapWindow,
+  swapArrowWhy,
+  swapCloseStep,
+  swapReceiving,
+  swapWindowCounts,
+  type SwapWindow,
+  type SwapWindowState,
+} from '../lib/crew-swap-window';
+import { NO_ROW_COLOUR } from '../lib/type-colours';
 import { AWAY_BADGE, ROLE_DOT } from './CrewPlanChip';
 import { PLAN_ICON } from './crew-plan-icons';
-import { SHIFT_TYPE_TONE, ShiftTypeDot, shiftTypeName } from './shift-type-look';
+import { SwapArrows } from './crew-swap-arrows';
+import { NO_COLOUR_TONE, SHIFT_TYPE_TONE, ShiftTypeDot, shiftTypeName } from './shift-type-look';
+import { SHIPMENT_PATH } from './shipment-icons';
 import { useFocusTrap } from './use-focus-trap';
 
 /** The card's frame — the board's own surfaces, dark and light. */
@@ -90,11 +120,21 @@ export interface CrewSwapDialogProps {
   shiftTypes: readonly OperationsShiftTypeDto[];
   colourName: (colour: CrewRowColour) => string;
   locale: Locale;
-  onApply: (bKey: string, picks: SwapPicks, mode: SwapMode) => void;
+  /**
+   * «تطبيق» (Round 34 D): the second row and the window's presses, in order — the page replays them
+   * on its draft as ONE operation (`applySwapStepsToDraft`), judged by the board as it is then.
+   */
+  onApply: (bKey: string, steps: readonly SwapStep[]) => void;
+  /**
+   * The window closes with nothing handed over: «إلغاء», ✕ or Escape with nothing changed, or
+   * «تجاهل التغييرات» on the question they ask when the moves change something.
+   */
   onClose: () => void;
-  /** Opened on two rows already (both chosen on the board), ticks and way included. */
-  initial?: { bKey: string; picks?: SwapPicks; mode?: SwapMode };
+  /** Opened on two rows already (both chosen on the board) — with the window's state, if any. */
+  initial?: { bKey: string } & Partial<SwapWindowState>;
 }
+
+const NOTHING: ReadonlySet<string> = new Set();
 
 export const CrewSwapDialog = ({
   aKey,
@@ -114,8 +154,23 @@ export const CrewSwapDialog = ({
   const [bKey, setBKey] = useState<string | null>(initial?.bKey ?? null);
   const [choosing, setChoosing] = useState(initial === undefined);
   const [search, setSearch] = useState('');
-  const [picks, setPicks] = useState<SwapPicks>(initial?.picks ?? { a: [], b: [] });
-  const [mode, setMode] = useState<SwapMode>(initial?.mode ?? 'swap');
+  // The ticks, the presses so far, what the last one did, the arrow held, the close question — and
+  // the press and its hold's clock with them (`createSwapWindow`): the pressed arrow goes back to
+  // rest by itself, `SWAP_HOLD_MS` after the press; the window closing (its last watcher gone)
+  // stops the clock.
+  const store = useRef<SwapWindow | null>(null);
+  if (store.current === null)
+    store.current = createSwapWindow({
+      picks: initial?.picks ?? SWAP_WINDOW_START.picks,
+      steps: initial?.steps ?? SWAP_WINDOW_START.steps,
+      last: initial?.last ?? null,
+      held: initial?.held ?? null,
+      closing: initial?.closing ?? false,
+    });
+  const swap = store.current;
+  const win = useSyncExternalStore(swap.subscribe, swap.getState, swap.getState);
+  // The arrow in the Tab order — the toolbar's roving stop; the middle one to begin with.
+  const [focusWay, setFocusWay] = useState<SwapMode>('swap');
   const inside = useRef<HTMLDivElement>(null);
   const searchBox = useRef<HTMLInputElement>(null);
   const modeButtons = useRef<Partial<Record<SwapMode, HTMLButtonElement | null>>>({});
@@ -130,11 +185,15 @@ export const CrewSwapDialog = ({
 
   const a = rows.find((row) => row.key === aKey);
   const b = bKey === null ? undefined : rows.find((row) => row.key === bKey);
-  // The second row went meanwhile (another desk's save, «تراجع» outside): pick again.
-  if (bKey !== null && b === undefined) {
+  // The second row went meanwhile (another desk's save, «تراجع» outside): pick again — the moves
+  // made with it go with it. (Until then the window has no second card: nothing to press or apply.)
+  const secondGone = bKey !== null && b === undefined;
+  useEffect(() => {
+    if (!secondGone) return;
     setBKey(null);
     setChoosing(true);
-  }
+    swap.send({ type: 'second' });
+  }, [secondGone, swap]);
 
   const others = useMemo(() => rows.filter((row) => row.key !== aKey), [rows, aKey]);
   const listed = others.filter((row) =>
@@ -149,16 +208,27 @@ export const CrewSwapDialog = ({
   );
 
   if (a === undefined) return null;
-  const live = b === undefined ? { a: picks.a, b: [] } : livePicks(a, b, picks);
-  const result: SwapResult | null = b === undefined ? null : planSwap(a, b, live, mode, rules);
-  const name = { a: rowName(a), b: b === undefined ? '—' : rowName(b) };
-  const crossing = result?.moved.length ?? 0;
-  const keptBack = result?.refused.length ?? 0;
+  // THE WORKING COPY: the presses replayed over the two rows as the board has them now.
+  const opening = b === undefined ? null : { a, b };
+  const replay = opening === null ? null : replaySwap(opening.a, opening.b, win.steps, rules);
+  const work = replay === null ? null : { a: replay.a, b: replay.b };
+  const live = work === null ? { a: win.picks.a, b: [] } : livePicks(work.a, work.b, win.picks);
+  const arrivals = opening !== null && work !== null ? swapArrivals(opening, work) : null;
+  const seats = opening !== null && work !== null ? swapSlotChanges(opening, work) : null;
+  const replaced = opening !== null && work !== null ? swapReplacedValues(opening, work) : [];
+  const changed = opening !== null && work !== null && swapChanged(opening, work);
+  const counts = swapWindowCounts(opening, work, win);
+  const name = {
+    a: rowName(a),
+    b: b === undefined ? t('operations.crewPlan.swap.secondVan') : rowName(b),
+  };
+  // The press now playing: what it moved and what a rule kept back, for the cards' marks.
+  const playing = win.held !== null ? win.last : null;
 
   const choose = (key: string): void => {
     setBKey(key);
     setChoosing(false);
-    setPicks((current) => ({ a: current.a, b: [] }));
+    swap.send({ type: 'second' });
     setSearch('');
     requestAnimationFrame(() =>
       inside.current
@@ -166,36 +236,6 @@ export const CrewSwapDialog = ({
         ?.focus({ preventScroll: true }),
     );
   };
-  // Round 32 critic — in «تبديل المحدد ⇄» a FIELD is one exchange the two cards share
-  // (`planSwap`): its box reads the same on both cards, and ticking it on either ticks the pair.
-  const sharedField = (id: string): boolean => mode === 'swap' && id.startsWith('field:');
-  const isTicked = (side: SwapSide, id: string): boolean =>
-    sharedField(id) ? live.a.includes(id) || live.b.includes(id) : live[side].includes(id);
-  const toggle = (side: SwapSide, id: string): void =>
-    setPicks((current) => {
-      if (mode === 'swap' && id.startsWith('field:')) {
-        const on = current.a.includes(id) || current.b.includes(id);
-        const pair = (list: readonly string[]): string[] =>
-          on ? list.filter((one) => one !== id) : [...list.filter((one) => one !== id), id];
-        return { a: pair(current.a), b: pair(current.b) };
-      }
-      const list = current[side];
-      const next = list.includes(id) ? list.filter((one) => one !== id) : [...list, id];
-      return { ...current, [side]: next };
-    });
-  const pickAll = (side: SwapSide, row: PlanRow, pick: (typeof QUICK_PICKS)[number]): void =>
-    setPicks((current) => {
-      const own = quickPick(row, pick);
-      if (mode !== 'swap') return { ...current, [side]: own };
-      // A field this card shows is the pair's: «الطاقم فقط» and «لا شيء» take it off the other
-      // card too (a field this row has none of is the other card's alone).
-      const other = otherSide(side);
-      const shown = new Set(swapItems(row).map((item) => item.id));
-      const kept = current[other].filter(
-        (id) => !(id.startsWith('field:') && shown.has(id) && !own.includes(id)),
-      );
-      return side === 'a' ? { a: own, b: kept } : { a: kept, b: own };
-    });
 
   const typeOf = (id: string): OperationsShiftTypeDto | undefined =>
     shiftTypes.find((type) => type.id === id);
@@ -207,6 +247,11 @@ export const CrewSwapDialog = ({
             field === 'plannedTime' ? 'time' : field === 'shiftTypeId' ? 'type' : field
           }`,
         );
+  /** A row colour by name — a palette colour's, or «بدون لون» (Round 34 C). */
+  const rowColourText = (value: string): string =>
+    value === NO_ROW_COLOUR
+      ? t('operations.crewPlan.colour.none')
+      : colourName(value as CrewRowColour);
   /** A field's value as the card shows it. */
   const fieldValue = (field: SwapField, value: string): ReactNode => {
     if (field === 'plannedTime') return <span className={cn(NUM, 'font-black')}>{value}</span>;
@@ -224,14 +269,19 @@ export const CrewSwapDialog = ({
       );
     }
     if (field === 'rowColour') {
-      const colour = value as CrewRowColour;
+      // Round 34 C — «بدون لون» is a value of its own: it moves as any colour does, and is drawn as
+      // the neutral swatch (`NO_COLOUR_TONE`), never as the type's.
+      const none = value === NO_ROW_COLOUR;
       return (
-        <span className="inline-flex min-w-0 items-center gap-1.5">
+        <span className="inline-flex min-w-0 items-center gap-1.5" data-swap-colour={value}>
           <span
             aria-hidden
-            className={cn('h-3 w-3 shrink-0 rounded', SHIFT_TYPE_TONE[colour].dot)}
+            className={cn(
+              'h-3 w-3 shrink-0 rounded',
+              none ? NO_COLOUR_TONE.dot : SHIFT_TYPE_TONE[value as CrewRowColour].dot,
+            )}
           />
-          <span className="truncate font-bold">{colourName(colour)}</span>
+          <span className="truncate font-bold">{rowColourText(value)}</span>
         </span>
       );
     }
@@ -249,10 +299,17 @@ export const CrewSwapDialog = ({
           return type === undefined ? '—' : shiftTypeName(type, locale);
         })()
       : field === 'rowColour'
-        ? colourName(value as CrewRowColour)
+        ? rowColourText(value)
         : value;
   const reasonText = (reason: SwapRefusal, toRow: string): string =>
     t(`operations.crewPlan.swap.reason.${reason}`, { row: toRow });
+  /** An item as the notice names it: the person, or the field and its value. */
+  const itemName = (side: SwapSide, item: string): string => {
+    if (item.startsWith('person:')) return member(item.slice('person:'.length)).fullNameAr;
+    const field = item.slice('field:'.length) as SwapField;
+    const value = (work === null ? a : work[side])[field];
+    return value === null ? fieldLabel(field) : `${fieldLabel(field)}: ${fieldText(field, value)}`;
+  };
 
   /** One person: the role's dot, the name, the code — and why he is marked, when he is. */
   const personLine = (employeeId: string, slot: CrewSlot): ReactNode => {
@@ -286,55 +343,119 @@ export const CrewSwapDialog = ({
     );
   };
 
-  // ── A card BEFORE: everything its row holds, each with its box ─────────────────────────────
-  // Dense, so both cards and the preview under them fit a 1440×900 screen: a label column, one
-  // line a person, the fields two to a line (the notes a line of their own).
+  // ── A card: what its row holds NOW in the window, each item with its box ──────────────────
+  // Dense, so both cards fit a 1440×900 screen: a label column, one line a person, the fields two
+  // to a line (the notes a line of their own). What arrived carries «من 213»; while a press plays,
+  // what it brings settles in and what a rule kept back flashes rose.
   const pickCard = (side: SwapSide, row: PlanRow): JSX.Element => {
-    const sending = sendsFrom(mode, side);
-    const to = name[otherSide(side)];
-    const box = (id: string, label: string, content: ReactNode): JSX.Element => {
-      const on = isTicked(side, id);
+    const other = otherSide(side);
+    const from = name[other];
+    const arrived = arrivals?.[side] ?? NOTHING;
+    const landing = new Set(
+      playing?.moved.filter((move) => move.from === other).map((move) => move.item) ?? [],
+    );
+    const flashing = new Set(
+      playing?.refused.filter((one) => one.from === side).map((one) => one.item) ?? [],
+    );
+    const was = new Map(
+      replaced.filter((one) => one.on === side).map((one) => [one.field, one.was]),
+    );
+    // Back on his own row but in the other slot (his own was full): «من أخصائي 1».
+    const reseated = new Map(
+      [...(seats?.[side] ?? new Map<string, CrewSlot>())].map(([employeeId, slot]) => [
+        personItem(employeeId),
+        slot,
+      ]),
+    );
+    const receiving = swapReceiving(win.held, side);
+    const behind = opening === null ? 0 : shipmentsLeftBehind(opening[side], row);
+    const box = (id: string, label: string, content: ReactNode, tail?: ReactNode): JSX.Element => {
+      const on = live[side].includes(id);
+      const seat = reseated.get(id);
+      const came = arrived.has(id) || seat !== undefined;
       return (
         <label
           key={id}
           data-swap-item={id}
           data-swap-ticked={on ? 'true' : undefined}
           className={cn(
-            'flex min-h-[1.75rem] min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-0.5 text-[12.5px] transition',
-            sending ? 'cursor-pointer' : 'cursor-not-allowed opacity-60',
-            on && sending
+            'flex min-h-[1.75rem] min-w-0 cursor-pointer flex-wrap items-center gap-1.5 rounded-lg px-1.5 py-0.5 text-[12.5px] transition',
+            on
               ? 'bg-brand-500/10 ring-1 ring-inset ring-brand-400/70 dark:bg-brand-500/20 dark:ring-brand-400/50'
-              : 'hover:bg-slate-100 dark:hover:bg-white/5',
+              : came
+                ? 'bg-emerald-500/10 ring-1 ring-inset ring-emerald-400/60 dark:bg-emerald-500/15'
+                : 'hover:bg-slate-100 dark:hover:bg-white/5',
+            landing.has(id) && 'motion-safe:animate-swap-arrive',
+            flashing.has(id) &&
+              'bg-rose-500/15 ring-1 ring-inset ring-rose-400/80 motion-safe:animate-swap-flash dark:bg-rose-500/20',
           )}
         >
           <input
             type="checkbox"
             checked={on}
-            disabled={!sending}
-            aria-label={t(
-              sharedField(id)
-                ? 'operations.crewPlan.swap.itemExchange'
-                : 'operations.crewPlan.swap.item',
-              { item: label, to },
-            )}
-            onChange={() => toggle(side, id)}
-            className="h-4 w-4 shrink-0 cursor-pointer accent-brand-600 disabled:cursor-not-allowed"
+            aria-label={t('operations.crewPlan.swap.item', { item: label, to: from })}
+            onChange={() => swap.send({ type: 'tick', side, id })}
+            className="h-4 w-4 shrink-0 cursor-pointer accent-brand-600"
           />
           {content}
+          {arrived.has(id) && (
+            <span className={cn(TAG, TAG_FROM)} data-swap-arrived={id}>
+              {t('operations.crewPlan.swap.from', { row: from })}
+            </span>
+          )}
+          {seat !== undefined && (
+            <span className={cn(TAG, TAG_FROM)} data-swap-reseated={id}>
+              {t('operations.crewPlan.swap.fromSlot', {
+                slot: t(`operations.crewPlan.columns.${seat}`),
+              })}
+            </span>
+          )}
+          {tail}
+          {flashing.has(id) && (
+            <span className={cn(TAG, TAG_KEPT)} data-swap-kept={id}>
+              {t('operations.crewPlan.swap.kept')}
+            </span>
+          )}
         </label>
       );
     };
     const fieldBox = (field: SwapField): JSX.Element => {
       const value = row[field];
+      const lost = was.get(field);
+      // A value a move put out of both rows, said where it was: «بدلًا من 09:00».
+      const lostTag =
+        lost === undefined ? undefined : (
+          <span
+            className="text-[11px] font-semibold text-slate-500 dark:text-slate-400"
+            data-swap-replaced={field}
+          >
+            {t('operations.crewPlan.swap.was')}{' '}
+            <s className="decoration-rose-500 decoration-2" dir="auto">
+              {fieldText(field, lost)}
+            </s>
+          </span>
+        );
       return value === null ? (
-        <Empty />
+        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <Empty />
+          {lostTag}
+        </span>
       ) : (
         box(
           fieldItem(field),
           `${fieldLabel(field)}: ${fieldText(field, value)}`,
-          <span className="flex min-w-0 flex-1 items-center text-slate-900 dark:text-white">
+          <span
+            className={cn(
+              'flex items-center text-slate-900 dark:text-white',
+              // Round 34 verifier — a time never shortens (no ellipsis): it keeps its width, so
+              // «من 213» and «بدلًا من …» wrap to the next line instead of being drawn under it.
+              // A value that shortens with an ellipsis gives way to them.
+              field === 'plannedTime' ? 'flex-none' : 'min-w-0 flex-1',
+            )}
+          >
             {fieldValue(field, value)}
           </span>,
+          lostTag,
         )
       );
     };
@@ -343,7 +464,15 @@ export const CrewSwapDialog = ({
         aria-labelledby={`${titleId}-${side}`}
         data-swap-card={side}
         data-swap-row={row.key}
-        className={cn(CARD, 'flex flex-col gap-2')}
+        data-swap-receiving={receiving ? 'true' : undefined}
+        className={cn(
+          CARD,
+          'flex flex-col gap-2 transition-shadow',
+          receiving &&
+            (win.held === 'swap'
+              ? 'ring-2 ring-orange-500/55 dark:ring-orange-400/50'
+              : 'ring-2 ring-sky-500/55 dark:ring-sky-400/50'),
+        )}
       >
         <CardHead
           id={`${titleId}-${side}`}
@@ -362,10 +491,16 @@ export const CrewSwapDialog = ({
           }
           tools={
             <>
-              {!sending && (
+              {receiving && (
                 <span
-                  className={cn(TAG, TAG_QUIET, 'px-1.5')}
-                  title={t('operations.crewPlan.swap.receivingHint')}
+                  className={cn(
+                    TAG,
+                    'px-1.5',
+                    win.held === 'swap'
+                      ? 'bg-orange-100 text-orange-800 dark:bg-orange-400/15 dark:text-orange-200'
+                      : 'bg-sky-100 text-sky-800 dark:bg-sky-400/15 dark:text-sky-200',
+                  )}
+                  data-swap-receiving-tag={side}
                 >
                   {t('operations.crewPlan.swap.receiving')}
                 </span>
@@ -380,8 +515,7 @@ export const CrewSwapDialog = ({
                     key={pick}
                     type="button"
                     data-swap-quick={`${side}:${pick}`}
-                    disabled={!sending}
-                    onClick={() => pickAll(side, row, pick)}
+                    onClick={() => swap.send({ type: 'quick', side, row, pick })}
                     className={QUIET_BUTTON}
                   >
                     {t(`operations.crewPlan.swap.quick.${pick}`)}
@@ -389,14 +523,26 @@ export const CrewSwapDialog = ({
                 ))}
               </span>
               {side === 'b' && (
+                // Round 34 D — another second van would leave the moves made with this one
+                // nowhere: «تطبيق» them or take them back first. Off, it still says why to the
+                // keyboard and the screen reader (`aria-disabled`, Round 34 D critic).
                 <button
                   type="button"
                   data-swap-change="true"
+                  aria-disabled={win.steps.length > 0 ? true : undefined}
+                  title={
+                    win.steps.length > 0 ? t('operations.crewPlan.swap.changeLocked') : undefined
+                  }
                   onClick={() => {
+                    if (win.steps.length > 0) return;
                     setChoosing(true);
                     requestAnimationFrame(() => searchBox.current?.focus({ preventScroll: true }));
                   }}
-                  aria-label={t('operations.crewPlan.swap.changeLabel')}
+                  aria-label={
+                    win.steps.length > 0
+                      ? `${t('operations.crewPlan.swap.changeLabel')} — ${t('operations.crewPlan.swap.changeLocked')}`
+                      : t('operations.crewPlan.swap.changeLabel')
+                  }
                   className={cn(
                     QUIET_BUTTON,
                     'border-brand-300 text-brand-700 dark:text-brand-200',
@@ -432,137 +578,8 @@ export const CrewSwapDialog = ({
             </Labelled>
           ))}
         </div>
-      </section>
-    );
-  };
-
-  // ── A card AFTER: what the row will hold, what arrives, what it loses, what stays ──────────
-  const previewCard = (
-    side: SwapSide,
-    before: PlanRow,
-    row: PlanRow,
-    outcome: SwapResult,
-  ): JSX.Element => {
-    const other = otherSide(side);
-    const from = name[other];
-    const arrived = new Set(
-      outcome.moved.filter((move) => move.from === other).map((move) => move.item),
-    );
-    const kept = new Map(
-      outcome.refused.filter((one) => one.from === side).map((one) => [one.item, one.reason]),
-    );
-    const replaced = new Map(
-      outcome.replaced.filter((one) => one.on === side).map((one) => [one.field, one.was]),
-    );
-    const behind = shipmentsLeftBehind(before, row);
-    const leaving = outcome.moved
-      .filter((move) => move.from === side)
-      .map((move) =>
-        move.item.startsWith('person:')
-          ? member(move.item.slice('person:'.length)).fullNameAr
-          : fieldLabel(move.item.slice('field:'.length) as SwapField),
-      );
-    const keptTag = (id: string): ReactNode => {
-      const reason = kept.get(id);
-      if (reason === undefined) return null;
-      return (
-        <span
-          className={cn(TAG, TAG_KEPT, 'max-w-full whitespace-normal py-0.5')}
-          data-swap-kept={id}
-        >
-          {t('operations.crewPlan.swap.kept')} — {reasonText(reason, from)}
-        </span>
-      );
-    };
-    const fromTag = (id: string): ReactNode =>
-      arrived.has(id) ? (
-        <span className={cn(TAG, TAG_FROM)} data-swap-arrived={id}>
-          {t('operations.crewPlan.swap.from', { row: from })}
-        </span>
-      ) : null;
-    const mark = (id: string): string =>
-      cn(
-        'flex min-h-[1.5rem] min-w-0 flex-wrap items-center gap-1 rounded-md px-1.5 py-px text-[12.5px] text-slate-900 dark:text-white',
-        arrived.has(id) &&
-          'bg-emerald-500/10 ring-1 ring-inset ring-emerald-400/60 dark:bg-emerald-500/15',
-        kept.has(id) && 'ring-1 ring-inset ring-rose-400/70',
-      );
-    return (
-      <section
-        aria-labelledby={`${titleId}-after-${side}`}
-        data-swap-preview={side}
-        className={cn(CARD, 'flex flex-col gap-2')}
-      >
-        <CardHead
-          id={`${titleId}-after-${side}`}
-          order={`${t(`operations.crewPlan.swap.${side === 'a' ? 'first' : 'second'}`)} · ${t('operations.crewPlan.swap.after')}`}
-          name={name[side]}
-          row={row}
-          drivers={null}
-          shipments={null}
-          tools={null}
-        />
-        <div className={SLOT_GRID}>
-          {CREW_SLOTS.map((slot) => (
-            <Labelled key={slot} label={t(`operations.crewPlan.columns.${slot}`)}>
-              {row.slots[slot].length === 0 ? (
-                <Empty />
-              ) : (
-                row.slots[slot].map((employeeId) => {
-                  const id = personItem(employeeId);
-                  return (
-                    <div key={id} className={mark(id)}>
-                      {personLine(employeeId, slot)}
-                      {fromTag(id)}
-                      {keptTag(id)}
-                    </div>
-                  );
-                })
-              )}
-            </Labelled>
-          ))}
-        </div>
-        <div className={FIELD_GRID}>
-          {/* What the row holds after — and a field it no longer holds, «—»; one empty before and
-              after says nothing and is left out. */}
-          {SWAP_FIELDS.filter((field) => row[field] !== null || before[field] !== null).map(
-            (field) => {
-              const id = fieldItem(field);
-              const value = row[field];
-              const was = replaced.get(field);
-              return (
-                <Labelled key={field} label={fieldLabel(field)} wide={field === 'notes'}>
-                  <div className={mark(id)}>
-                    {value === null ? <Empty bare /> : fieldValue(field, value)}
-                    {fromTag(id)}
-                    {was !== undefined && (
-                      <span
-                        className="text-[11px] font-semibold text-slate-500 dark:text-slate-400"
-                        data-swap-replaced={field}
-                      >
-                        {t('operations.crewPlan.swap.was')}{' '}
-                        <s className="decoration-rose-500 decoration-2" dir="auto">
-                          {fieldText(field, was)}
-                        </s>
-                      </span>
-                    )}
-                    {keptTag(id)}
-                  </div>
-                </Labelled>
-              );
-            },
-          )}
-        </div>
-        {leaving.length > 0 && (
-          <p
-            className="rounded-lg bg-slate-200/60 px-2 py-1 text-[11.5px] font-bold text-slate-600 dark:bg-white/5 dark:text-slate-300"
-            data-swap-leaving={side}
-          >
-            {t('operations.crewPlan.swap.left', { row: from, items: leaving.join('، ') })}
-          </p>
-        )}
-        {/* Round 32 critic — the محصنات ride the row: said before its captains or its direction
-            change under them (they were placed for the crew and the direction it had). */}
+        {/* Round 32 critic — the محصنات ride the row: said once its captains or its direction have
+            changed under them (they were placed for the crew and the direction it had). */}
         {behind > 0 && (
           <p
             role="note"
@@ -669,69 +686,117 @@ export const CrewSwapDialog = ({
     </section>
   );
 
-  // ── The three ways, between the cards ───────────────────────────────────────────────────────
-  const stepMode = (by: number): void => {
-    const at = SWAP_MODES.indexOf(mode);
-    const next = SWAP_MODES[(at + by + SWAP_MODES.length) % SWAP_MODES.length] as SwapMode;
-    setMode(next);
-    modeButtons.current[next]?.focus();
+  // ── The three arrows, between the cards ─────────────────────────────────────────────────────
+  // Each named by what it does, with both vans — before the second is chosen, «السيارة الثانية»
+  // stands for it (Round 34 critic: they read «نقل المحدد من 150 إلى —»); and, when it cannot act,
+  // why: no second van yet, a move still playing, nothing ticked where it sends from.
+  const rowsNow = work !== null && !choosing ? work : null;
+  const wayName = (one: SwapMode): string =>
+    t(`operations.crewPlan.swap.mode.${one}`, { a: name.a, b: name.b });
+  const whyOf = (one: SwapMode): string | null => {
+    const why = swapArrowWhy(win, one, rowsNow);
+    if (why === null) return null;
+    if (why === 'pickSecond') return t('operations.crewPlan.swap.pickSecondFirst');
+    if (why === 'playing') return t('operations.crewPlan.swap.why.playing');
+    return one === 'swap'
+      ? t('operations.crewPlan.swap.why.nothingEither')
+      : t('operations.crewPlan.swap.why.nothingOn', { row: name[one === 'aToB' ? 'a' : 'b'] });
   };
-  const modes = (
-    <div
-      role="radiogroup"
-      aria-label={t('operations.crewPlan.swap.mode.group')}
-      data-swap-modes="true"
-      onKeyDown={(event) => {
-        // The next way lies in the reading direction — left in Arabic, right in English.
-        const by = modeStepOf(event.key, locale === 'ar');
-        if (by === 0) return;
-        event.preventDefault();
-        stepMode(by);
+  const press = (one: SwapMode): void => {
+    if (rowsNow === null || opening === null) return;
+    // The move at once, and the arrow held while it lands (`createSwapWindow`).
+    swap.press({ mode: one, rows: rowsNow, home: opening, rules });
+  };
+  const arrows = (
+    // The arrows (`crew-swap-arrows.tsx`): the keys move the focus in the reading direction.
+    <SwapArrows
+      rtl={locale === 'ar'}
+      label={t('operations.crewPlan.swap.mode.group')}
+      nameOf={wayName}
+      whyOf={whyOf}
+      held={win.held}
+      focusWay={focusWay}
+      onFocusWay={(one, by) => {
+        setFocusWay(one);
+        if (by === 'key') modeButtons.current[one]?.focus();
       }}
-      className="flex flex-row flex-wrap items-stretch justify-center gap-2 lg:w-36 lg:flex-col lg:justify-center"
-    >
-      {SWAP_MODES.map((one) => {
-        const on = mode === one;
-        return (
-          <button
-            key={one}
-            ref={(node) => {
-              modeButtons.current[one] = node;
-            }}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            tabIndex={on ? 0 : -1}
-            data-swap-mode={one}
-            disabled={b === undefined}
-            title={t(`operations.crewPlan.swap.mode.${one}Hint`, { a: name.a, b: name.b })}
-            onClick={() => setMode(one)}
-            className={cn(
-              'flex min-w-[7.5rem] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl border px-2 py-2 text-[12.5px] font-black transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 disabled:cursor-not-allowed disabled:opacity-50 lg:flex-none',
-              on
-                ? 'border-brand-500 bg-brand-500 text-white shadow-[0_6px_18px_-6px_rgba(91,76,255,0.7)]'
-                : 'border-slate-200 bg-white text-slate-700 hover:border-brand-400 hover:text-brand-700 dark:border-[#2b3b6b] dark:bg-[#121c3f] dark:text-slate-200 dark:hover:text-brand-200',
-            )}
-          >
-            <span className="whitespace-nowrap">{t(`operations.crewPlan.swap.mode.${one}`)}</span>
-            <span
-              className={cn(
-                'text-[10.5px] font-bold',
-                on ? 'text-white/85' : 'text-slate-500 dark:text-slate-400',
-              )}
-            >
-              {t(`operations.crewPlan.swap.mode.${one}Short`, { a: name.a, b: name.b })}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+      onPress={press}
+      buttonRef={(one, node) => {
+        modeButtons.current[one] = node;
+      }}
+    />
   );
+
+  // ── Under the arrows: what the last press could not move, and why ───────────────────────────
+  const notice =
+    win.last !== null && win.last.refused.length > 0 ? (
+      <div
+        role="status"
+        data-swap-notice="true"
+        className="flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2 text-[12.5px] font-bold text-rose-900 ring-1 ring-inset ring-rose-300 dark:bg-rose-500/10 dark:text-rose-100 dark:ring-rose-500/40"
+      >
+        <BoardIcon d={PATH.warn} className="mt-0.5 h-4 w-4 shrink-0" />
+        <ul className="flex min-w-0 flex-col gap-0.5">
+          {win.last.refused.map((one) => (
+            <li key={`${one.from}:${one.item}`} data-swap-notice-item={one.item} dir="auto">
+              {t('operations.crewPlan.swap.keptLine', {
+                item: itemName(one.from, one.item),
+                reason: reasonText(one.reason, name[otherSide(one.from)]),
+              })}
+            </li>
+          ))}
+        </ul>
+      </div>
+    ) : null;
+
+  // ── The footer: «تطبيق», «إلغاء», «تراجع عن آخر نقل», what the presses came to ───────────────
+  const lastStep = win.steps[win.steps.length - 1];
+  const lastWhat =
+    lastStep === undefined ? null : swapOperation(lastStep.mode, { a: name.a, b: name.b });
+  const countVars = {
+    moved: formatNumber(counts.moved, locale),
+    replaced: formatNumber(counts.replaced, locale),
+    kept: formatNumber(counts.kept, locale),
+  };
+  const summary =
+    opening === null
+      ? t('operations.crewPlan.swap.pickSecondFirst')
+      : win.steps.length === 0 && win.last === null
+        ? t('operations.crewPlan.swap.nothing')
+        : t(
+            counts.replaced > 0
+              ? 'operations.crewPlan.swap.summaryReplaced'
+              : 'operations.crewPlan.swap.summary',
+            countVars,
+          );
+  const apply = (): void => {
+    if (bKey === null || !changed) return;
+    onApply(bKey, win.steps);
+  };
+  // ✕, Escape and «إلغاء»: close with nothing changed; ask first when the moves change something;
+  // on the question, back to the window (`swapCloseStep`).
+  const panel = (): HTMLElement | null =>
+    inside.current?.closest<HTMLElement>('[role="dialog"]') ?? null;
+  const requestClose = (): void => {
+    const step = swapCloseStep(win, changed);
+    if (step === 'close') {
+      onClose();
+      return;
+    }
+    swap.send({ type: step });
+    requestAnimationFrame(() =>
+      panel()
+        ?.querySelector<HTMLElement>(
+          step === 'ask' ? '[data-swap-close="apply"]' : '[data-swap-apply]',
+        )
+        ?.focus({ preventScroll: true }),
+    );
+  };
 
   return (
     <DesignDialog
       open
-      onClose={onClose}
+      onClose={requestClose}
       title={t('operations.crewPlan.swap.title')}
       subtitle={t('operations.crewPlan.swap.subtitle')}
       icon={PLAN_ICON.swap}
@@ -739,71 +804,196 @@ export const CrewSwapDialog = ({
       dense
       panelProps={{ 'data-crew-swap': aKey }}
       footer={
-        <>
-          <DesignSave
-            data-swap-apply={String(crossing)}
-            disabled={result === null || crossing === 0}
-            onClick={() => {
-              if (bKey === null || result === null || crossing === 0) return;
-              onApply(bKey, live, mode);
-            }}
-            label={t('operations.crewPlan.swap.apply')}
+        win.closing ? (
+          <SwapCloseAsk
+            question={t('operations.crewPlan.swap.closeAsk')}
+            applyLabel={t('operations.crewPlan.swap.apply')}
+            discardLabel={t('operations.crewPlan.swap.closeDiscard')}
+            stayLabel={t('operations.crewPlan.swap.closeStay')}
+            onApply={apply}
+            onDiscard={onClose}
+            onStay={requestClose}
           />
-          <DesignCancel onClick={onClose} />
-          <span
-            className="min-w-0 flex-1 text-end text-[12.5px] font-bold text-slate-600 dark:text-slate-300"
-            role="status"
-            data-swap-summary="true"
-          >
-            {result === null
-              ? t('operations.crewPlan.swap.pickSecondFirst')
-              : crossing === 0 && keptBack === 0
-                ? t('operations.crewPlan.swap.nothing')
-                : t('operations.crewPlan.swap.summary', {
-                    moved: formatNumber(crossing, locale),
-                    kept: formatNumber(keptBack, locale),
-                  })}
-          </span>
-        </>
+        ) : (
+          <SwapFooter
+            applyLabel={t('operations.crewPlan.swap.apply')}
+            applyWhy={
+              opening === null
+                ? t('operations.crewPlan.swap.pickSecondFirst')
+                : changed
+                  ? null
+                  : t('operations.crewPlan.swap.nothingChanged')
+            }
+            moved={counts.moved}
+            onApply={apply}
+            onCancel={requestClose}
+            undoLabel={t('operations.crewPlan.swap.undoLast')}
+            undoName={
+              lastWhat === null
+                ? t('operations.crewPlan.swap.undoNone')
+                : t('operations.crewPlan.swap.undoLastTitle', {
+                    what: t(`operations.crewPlan.undo.kind.${lastWhat.kind}`, { ...lastWhat.vars }),
+                  })
+            }
+            steps={win.steps.length}
+            onUndo={swap.undo}
+            summary={summary}
+            hint={changed ? t('operations.crewPlan.swap.applyHint') : null}
+          />
+        )
       }
     >
       <div ref={inside} className="flex flex-col gap-3" data-swap-body="true">
-        {/* BEFORE — the two cards side by side, the first on the start side (the right in Arabic),
-            how the ticks go between them. */}
+        {/* The two cards side by side, the first on the start side (the right in Arabic), the
+            arrows between them; the cards are the working copy — every press shows on them. */}
         <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-          {pickCard('a', a)}
-          <div className="lg:self-center">{modes}</div>
-          {choosing || b === undefined ? chooser : pickCard('b', b)}
+          {pickCard('a', work?.a ?? a)}
+          <div className="lg:self-center">{arrows}</div>
+          {choosing || work === null ? chooser : pickCard('b', work.b)}
         </div>
-
-        {/* AFTER — the same two cards as «تطبيق» would leave them. */}
-        {result !== null && b !== undefined && (
-          <section aria-labelledby={`${titleId}-preview`} data-swap-after="true">
-            <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2">
-              <h3
-                id={`${titleId}-preview`}
-                className="flex items-center gap-1.5 text-[14px] font-black text-slate-900 dark:text-white"
-              >
-                <BoardIcon
-                  d={PLAN_ICON.swap}
-                  className="h-4 w-4 text-brand-600 dark:text-brand-300"
-                />
-                {t('operations.crewPlan.swap.preview')}
-              </h3>
-              <span className="text-[11.5px] font-semibold text-slate-500 dark:text-slate-400">
-                {t('operations.crewPlan.swap.previewHint')}
-              </span>
-            </div>
-            <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
-              {previewCard('a', a, result.a, result)}
-              {previewCard('b', b, result.b, result)}
-            </div>
-          </section>
-        )}
+        {notice}
       </div>
     </DesignDialog>
   );
 };
+
+/**
+ * The window's footer — no hooks of its own, so what each button does is its own handler, which a
+ * suite can call: «تطبيق» hands the presses on (off while nothing has changed, and saying so);
+ * «إلغاء» asks the window to close (it asks first when the moves change something); «تراجع عن آخر
+ * نقل» takes the last press back (off with none); the summary «نُقل … — بقي …», and while the moves
+ * change something the line that says where they go: «تنتقل التغييرات إلى اللوحة عند «تطبيق»».
+ * A button that is off stays reachable and says why (`aria-disabled`, its reason in its name —
+ * Round 34 D critic: a native `disabled` hid it from the keyboard and the screen reader), and the
+ * undo's spoken name begins with the words it shows (WCAG 2.5.3).
+ */
+export const SwapFooter = ({
+  applyLabel,
+  applyWhy,
+  moved,
+  onApply,
+  onCancel,
+  undoLabel,
+  undoName,
+  steps,
+  onUndo,
+  summary,
+  hint,
+}: {
+  applyLabel: string;
+  /** Why «تطبيق» is off — or null when it applies. */
+  applyWhy: string | null;
+  /** What differs from the opening: every item on a card it did not open on, or in another slot. */
+  moved: number;
+  onApply: () => void;
+  onCancel: () => void;
+  undoLabel: string;
+  /** What the undo takes back, or that there is nothing to — its tooltip, after its label in its name. */
+  undoName: string;
+  /** The presses so far — the undo is off with none. */
+  steps: number;
+  onUndo: () => void;
+  summary: string;
+  /** While the moves change something: where they go, and when. */
+  hint: string | null;
+}): JSX.Element => (
+  // One line from `sm`; on a phone the count and the line about the board take a line of their own
+  // under the buttons (Round 34 D critic — squeezed beside them they broke a word to a line).
+  <div className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+    <DesignSave
+      data-swap-apply={String(moved)}
+      {...(applyWhy === null ? {} : { why: applyWhy })}
+      onClick={onApply}
+      label={applyLabel}
+    />
+    <DesignCancel onClick={onCancel} />
+    <button
+      type="button"
+      data-swap-undo={String(steps)}
+      aria-disabled={steps === 0 ? true : undefined}
+      title={undoName}
+      aria-label={`${undoLabel} — ${undoName}`}
+      onClick={() => {
+        if (steps > 0) onUndo();
+      }}
+      className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:bg-white dark:border-[#2b3b6b] dark:bg-[#1a2550] dark:text-slate-200 dark:hover:bg-slate-700/80 dark:aria-disabled:hover:bg-[#1a2550]"
+    >
+      <BoardIcon d={SHIPMENT_PATH.undo} className="h-4 w-4 shrink-0" />
+      <span className="hidden sm:inline">{undoLabel}</span>
+    </button>
+    <span className="flex min-w-0 basis-full flex-col items-start gap-0.5 text-start sm:flex-1 sm:basis-0 sm:items-end sm:text-end">
+      <span
+        className="text-[11.5px] font-bold leading-tight text-slate-600 sm:text-[12.5px] dark:text-slate-300"
+        role="status"
+        data-swap-summary="true"
+      >
+        {summary}
+      </span>
+      {hint !== null && (
+        <span
+          className="text-[11px] font-semibold leading-tight text-slate-500 sm:text-[11.5px] dark:text-slate-400"
+          data-swap-apply-hint="true"
+        >
+          {hint}
+        </span>
+      )}
+    </span>
+  </div>
+);
+
+/**
+ * The question ✕, Escape and «إلغاء» ask while the moves change something (Round 34 D critic —
+ * they dropped every move without a word): «تطبيق» hands them on, «تجاهل التغييرات» closes with
+ * nothing handed over, «متابعة التعديل» (and ✕ / Escape again) goes back to the window. In the
+ * footer's place, in the window itself; no hooks of its own, so a suite calls its handlers.
+ */
+export const SwapCloseAsk = ({
+  question,
+  applyLabel,
+  discardLabel,
+  stayLabel,
+  onApply,
+  onDiscard,
+  onStay,
+}: {
+  question: string;
+  applyLabel: string;
+  discardLabel: string;
+  stayLabel: string;
+  onApply: () => void;
+  onDiscard: () => void;
+  onStay: () => void;
+}): JSX.Element => (
+  <div
+    className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2"
+    data-swap-close-ask="true"
+  >
+    <p
+      role="alert"
+      className="flex min-w-0 basis-full items-start gap-2 text-[13px] font-bold text-amber-900 lg:basis-auto lg:flex-1 dark:text-amber-200"
+    >
+      <BoardIcon d={PATH.warn} className="mt-0.5 h-4 w-4 shrink-0" />
+      <span>{question}</span>
+    </p>
+    <DesignSave data-swap-close="apply" onClick={onApply} label={applyLabel} />
+    <button
+      type="button"
+      data-swap-close="discard"
+      onClick={onDiscard}
+      className="h-10 shrink-0 rounded-xl border border-rose-300 bg-white px-4 text-[14px] font-bold text-rose-700 transition hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/50 dark:border-rose-400/40 dark:bg-[#1a2550] dark:text-rose-200 dark:hover:bg-rose-500/10"
+    >
+      {discardLabel}
+    </button>
+    <button
+      type="button"
+      data-swap-close="stay"
+      onClick={onStay}
+      className="h-10 shrink-0 rounded-xl border border-slate-200 bg-white px-4 text-[14px] font-bold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 dark:border-[#2b3b6b] dark:bg-[#1a2550] dark:text-slate-200 dark:hover:bg-slate-700/80"
+    >
+      {stayLabel}
+    </button>
+  </div>
+);
 
 /** A card's head, on one line: the van (a truck, or «بدون سيارة»), which card, its tools. */
 const CardHead = ({
@@ -819,7 +1009,7 @@ const CardHead = ({
   order: string;
   name: string;
   row: PlanRow;
-  /** The drivers — Fleet's, they stay with the van — under the line; null on the preview. */
+  /** The drivers — Fleet's, they stay with the van — under the line; null for none. */
   drivers: string | null;
   /** Round 32 critic — «محصنات: ٦», the shipments riding the row (they stay); null for none. */
   shipments: string | null;
@@ -874,7 +1064,7 @@ const FIELD_GRID = cn(
   'sm:grid-cols-[4.75rem_minmax(0,1fr)_3.75rem_minmax(0,1fr)]',
 );
 const QUIET_BUTTON =
-  'rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] font-black text-slate-700 transition hover:border-brand-400 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#2b3b6b] dark:bg-[#121c3f] dark:text-slate-200 dark:hover:text-brand-200';
+  'rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] font-black text-slate-700 transition hover:border-brand-400 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 dark:border-[#2b3b6b] dark:bg-[#121c3f] dark:text-slate-200 dark:hover:text-brand-200';
 
 /** A label and what it names, as two cells of the card's grid (`wide` — the rest of the line). */
 const Labelled = ({
@@ -887,9 +1077,8 @@ const Labelled = ({
   children: ReactNode;
 }): JSX.Element => (
   <>
-    {/* A wide one starts its own line (Round 32 critic): after an odd count of fields — the
-        preview leaves out the ones empty before and after — its label fell in the third column
-        and its value wrapped under the first label. */}
+    {/* A wide one starts its own line (Round 32 critic): after an odd count of fields its label
+        fell in the third column and its value wrapped under the first label. */}
     <span className={cn(GROUP_LABEL, 'pt-1.5', wide && 'sm:col-start-1')}>{label}</span>
     <div className={cn('flex min-w-0 flex-col gap-1', wide && 'sm:col-span-3')}>{children}</div>
   </>

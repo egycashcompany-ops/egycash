@@ -6,10 +6,12 @@
 // archived type) keeping an item where it is, named; and the whole operation as ONE step of «تراجع»,
 // counted as the two rows «حفظ» will send.
 import { describe, expect, it } from 'vitest';
+import { OperationsCrewRowColourSchema } from '@ecms/contracts';
 import {
   changeCount,
   clearStandingFromPlan,
   planChanges,
+  toPlan,
   vehiclelessRow,
   type PlanRow,
 } from './crew-plan';
@@ -19,6 +21,7 @@ import {
   QUICK_PICKS,
   SLOT_PATH,
   applySwap,
+  applySwapStepsToDraft,
   applySwapToDraft,
   fieldItem,
   livePicks,
@@ -26,12 +29,19 @@ import {
   personItem,
   planSwap,
   quickPick,
+  replaySwap,
   sendsFrom,
   shipmentsLeftBehind,
+  swapArrivals,
+  swapChanged,
   swapItems,
   swapOperation,
+  swapReplacedValues,
+  swapSlotChanges,
+  swapStepsOperation,
   type SwapPicks,
   type SwapRules,
+  type SwapStep,
 } from './crew-swap';
 import {
   record,
@@ -611,5 +621,377 @@ describe('Round 32 critic — the board around the operation', () => {
     expect(shipmentsLeftBehind(holding, notes.a)).toBe(0);
     // A row holding none says nothing.
     expect(shipmentsLeftBehind(V150, crossed.a)).toBe(0);
+  });
+});
+
+// Round 34 D — «أنا يعتبر محدد اللي في النص … لو أنا اخترت شمال أو يمين مثلا يفضل موجود لحد ما الداتا
+// تتنقل ثانية أو ثانيتين ويقوم جاي متشال»: no way stays chosen — each press of an arrow is a STEP on
+// the window's working copy, and «تطبيق» replays the steps on the board's draft as one operation.
+describe('Round 34 D — the window’s presses: steps replayed on the two rows', () => {
+  const OTHER = van('9', { slots: { captain: ['c8'], specialist1: [], specialist2: [] } });
+  const step = (
+    mode: SwapStep['mode'],
+    a: readonly string[],
+    b: readonly string[] = [],
+  ): SwapStep => ({
+    mode,
+    picks: picks(a, b),
+  });
+  const NAMES = { a: '150', b: '213' };
+
+  it('no steps: the two rows themselves; each step works on what the one before left', () => {
+    const none = replaySwap(V150, V213, [], RULES);
+    expect(none.a).toBe(V150);
+    expect(none.b).toBe(V213);
+    expect(none.results).toEqual([]);
+    // 150's captain to 213, then 213's own captain (c2) — still on 213 — back to 150: two captains
+    // could never share 213's slot, the second step's room is the room the first one left.
+    const steps = [step('aToB', [personItem('s1')]), step('bToA', [], [personItem('c2')])];
+    const after = replaySwap(V150, V213, steps, RULES);
+    expect(after.results).toHaveLength(2);
+    expect(after.results[0]?.moved).toEqual([
+      { from: 'a', item: 'person:s1', slot: 'specialist1' },
+    ]);
+    expect(after.results[1]?.moved).toEqual([{ from: 'b', item: 'person:c2', slot: 'captain' }]);
+    expect(after.a.slots).toEqual({ captain: ['c1', 'c2'], specialist1: [], specialist2: ['s2'] });
+    expect(after.b.slots).toEqual({ captain: [], specialist1: ['s3', 's1'], specialist2: [] });
+    // The same as the two operations one after the other — nothing composed by hand.
+    const first = planSwap(V150, V213, steps[0]!.picks, 'aToB', RULES);
+    const second = planSwap(first.a, first.b, steps[1]!.picks, 'bToA', RULES);
+    expect(after.a).toEqual(second.a);
+    expect(after.b).toEqual(second.b);
+  });
+
+  it('moved there and back is no change; the tags say what came from the other row since the opening', () => {
+    const there = replaySwap(
+      V150,
+      V213,
+      [step('aToB', [personItem('s1'), fieldItem('direction')])],
+      RULES,
+    );
+    expect(swapChanged({ a: V150, b: V213 }, there)).toBe(true);
+    const tags = swapArrivals({ a: V150, b: V213 }, there);
+    expect([...tags.b].sort()).toEqual(['field:direction', 'person:s1']);
+    expect([...tags.a]).toEqual([]);
+    const back = replaySwap(
+      V150,
+      V213,
+      [step('aToB', [personItem('s1')]), step('bToA', [], [personItem('s1')])],
+      RULES,
+    );
+    expect(swapChanged({ a: V150, b: V213 }, back)).toBe(false);
+    // Home again: no «من …» on either card.
+    const home = swapArrivals({ a: V150, b: V213 }, back);
+    expect([...home.a, ...home.b]).toEqual([]);
+    // A FIELD moved there and back comes home — but the value it replaced on 213 is gone from
+    // both rows: a change, and named where it was.
+    const field = replaySwap(
+      V150,
+      V213,
+      [step('aToB', [fieldItem('direction')]), step('bToA', [], [fieldItem('direction')])],
+      RULES,
+    );
+    expect(field.a.direction).toBe('المعادي');
+    expect(field.b.direction).toBeNull();
+    expect(swapChanged({ a: V150, b: V213 }, field)).toBe(true);
+    expect(swapReplacedValues({ a: V150, b: V213 }, field)).toEqual([
+      { on: 'b', field: 'direction', was: 'حلوان' },
+    ]);
+  });
+
+  it('a value a move replaced, on neither row now, is named on the row it was lost from', () => {
+    const moved = replaySwap(V150, V213, [step('aToB', [fieldItem('plannedTime')])], RULES);
+    expect(swapReplacedValues({ a: V150, b: V213 }, moved)).toEqual([
+      { on: 'b', field: 'plannedTime', was: '09:00' },
+    ]);
+    // An exchange loses nothing: each value is on the other row.
+    const exchanged = replaySwap(V150, V213, [step('swap', [fieldItem('plannedTime')])], RULES);
+    expect(swapReplacedValues({ a: V150, b: V213 }, exchanged)).toEqual([]);
+    expect(swapArrivals({ a: V150, b: V213 }, exchanged).a.has('field:plannedTime')).toBe(true);
+  });
+
+  it('«تطبيق»: the steps on the draft as ONE operation of «تراجع» — one press puts it all back', () => {
+    const ROWS: readonly PlanRow[] = [V150, OTHER, V213];
+    const steps = [
+      step('aToB', [personItem('c1')]),
+      step('bToA', [], [personItem('s3'), fieldItem('direction')]),
+      step('swap', [fieldItem('plannedTime')]),
+    ];
+    const history: UndoHistory<CrewDraft> = startHistory({ rows: ROWS, standingKeys: null });
+    const next = applySwapStepsToDraft(history.now, V150.key, V213.key, steps, RULES);
+    expect(next.rows[1]).toBe(OTHER);
+    expect(next.rows[0]?.slots.captain).toEqual([]);
+    expect(next.rows[2]?.slots.captain).toEqual(['c2', 'c1']);
+    expect(next.rows[0]?.slots.specialist1).toEqual(['s1', 's3']);
+    expect(next.rows[0]?.direction).toBe('حلوان');
+    expect(next.rows[0]?.plannedTime).toBe('09:00');
+    expect(next.rows[2]?.plannedTime).toBe('07:30');
+    const what = swapStepsOperation(steps, NAMES);
+    const after = record(history, next, what, { same: sameCrewDraft });
+    expect(after.past).toHaveLength(1);
+    expect(after.past[0]?.what).toEqual({ kind: 'swap', vars: { a: '150', b: '213' } });
+    expect(changeCount(planChanges(after.now.rows, ROWS))).toBe(2);
+    const back = undo(after);
+    expect(back.now.rows).toBe(ROWS);
+    expect(back.past).toEqual([]);
+  });
+
+  it('nothing changed in the end, a row gone, the same row twice, or no steps: the same draft', () => {
+    const draft: CrewDraft = { rows: [V150, V213], standingKeys: null };
+    const thereAndBack = [step('aToB', [personItem('s1')]), step('bToA', [], [personItem('s1')])];
+    expect(applySwapStepsToDraft(draft, V150.key, V213.key, thereAndBack, RULES)).toBe(draft);
+    expect(applySwapStepsToDraft(draft, V150.key, V213.key, [], RULES)).toBe(draft);
+    expect(
+      applySwapStepsToDraft(
+        draft,
+        V150.key,
+        'van:v-404',
+        [step('aToB', [personItem('c1')])],
+        RULES,
+      ),
+    ).toBe(draft);
+    expect(
+      applySwapStepsToDraft(draft, V150.key, V150.key, [step('aToB', [personItem('c1')])], RULES),
+    ).toBe(draft);
+  });
+
+  it('re-checked at «تطبيق» against the board as it is then — a rule that changed meanwhile keeps him back', () => {
+    // In the window c1 crossed; before «تطبيق» HR marked him absent (the board's rules changed).
+    const steps = [step('aToB', [personItem('c1'), personItem('s1')])];
+    const draft: CrewDraft = { rows: [V150, V213], standingKeys: null };
+    const now = applySwapStepsToDraft(
+      draft,
+      V150.key,
+      V213.key,
+      steps,
+      rulesWith({ away: { c1: 'absent' } }),
+    );
+    expect(now.rows[0]?.slots.captain).toEqual(['c1']);
+    expect(now.rows[1]?.slots.specialist1).toEqual(['s3', 's1']);
+    // And another desk's save that took s1 off 150 meanwhile: the step finds nobody to move.
+    const rebased: CrewDraft = {
+      rows: [{ ...V150, slots: { ...V150.slots, specialist1: [] } }, V213],
+      standingKeys: null,
+    };
+    const onlyS1 = [step('aToB', [personItem('s1')])];
+    expect(applySwapStepsToDraft(rebased, V150.key, V213.key, onlyS1, RULES)).toBe(rebased);
+  });
+
+  it('the standing crew lets go of the two rows, as for one operation', () => {
+    const draft: CrewDraft = {
+      rows: [V150, OTHER, V213],
+      standingKeys: [V150.key, OTHER.key],
+      standingDirections: { [V150.key]: 'المعادي' },
+    };
+    const after = applySwapStepsToDraft(
+      draft,
+      V150.key,
+      V213.key,
+      [step('swap', quickPick(V150, 'crew'), quickPick(V213, 'crew'))],
+      RULES,
+    );
+    expect(after.standingKeys).toEqual([OTHER.key]);
+    expect(after.standingDirections).toEqual({});
+  });
+
+  it('the operation’s name: one way throughout is a move from the sending row; anything else the swap', () => {
+    expect(swapStepsOperation([step('aToB', ['x']), step('aToB', ['y'])], NAMES)).toEqual({
+      kind: 'move',
+      vars: { from: '150', to: '213' },
+    });
+    expect(swapStepsOperation([step('bToA', ['x'])], NAMES)).toEqual({
+      kind: 'move',
+      vars: { from: '213', to: '150' },
+    });
+    expect(swapStepsOperation([step('aToB', ['x']), step('bToA', ['y'])], NAMES)).toEqual({
+      kind: 'swap',
+      vars: { a: '150', b: '213' },
+    });
+    expect(swapStepsOperation([step('swap', ['x'])], NAMES).kind).toBe('swap');
+  });
+});
+
+// Round 34 D critic — «moved there and back is no change» held only for a slot of one: the person came
+// home at the END of his slot (213's «أخصائي 1» [0300012, 0300014] came back [0300014, 0300012]), or
+// in the other «أخصائي» when somebody else had come into his meanwhile — unmarked, «تطبيق» live, and
+// «حفظ» counting the row. Going home he takes his own seat back.
+describe('Round 34 D critic — moved there and back: home to his own seat', () => {
+  const step = (
+    mode: SwapStep['mode'],
+    a: readonly string[],
+    b: readonly string[] = [],
+  ): SwapStep => ({ mode, picks: picks(a, b) });
+  // 213 holds two specialists in «أخصائي 1»; 255 has room in its «أخصائي 1».
+  const V213B = van('213', {
+    slots: { captain: ['c7'], specialist1: ['s12', 's14'], specialist2: [] },
+  });
+  const V255 = van('255', {
+    slots: { captain: ['c20'], specialist1: ['s26'], specialist2: [] },
+  });
+
+  it('a two-person slot: there and back keeps his place in it — no change, nothing to apply', () => {
+    const steps = [step('aToB', [personItem('s12')]), step('bToA', [], [personItem('s12')])];
+    const back = replaySwap(V213B, V255, steps, RULES);
+    expect(back.a.slots.specialist1).toEqual(['s12', 's14']);
+    expect(back.b.slots.specialist1).toEqual(['s26']);
+    expect(swapChanged({ a: V213B, b: V255 }, back)).toBe(false);
+    const draft: CrewDraft = { rows: [V213B, V255], standingKeys: null };
+    expect(applySwapStepsToDraft(draft, V213B.key, V255.key, steps, RULES)).toBe(draft);
+    // The second of the two, there and back: behind the first, as he was.
+    const second = replaySwap(
+      V213B,
+      V255,
+      [step('aToB', [personItem('s14')]), step('bToA', [], [personItem('s14')])],
+      RULES,
+    );
+    expect(second.a.slots.specialist1).toEqual(['s12', 's14']);
+    // Both away and back in the other order: the slot as it opened.
+    const both = replaySwap(
+      V213B,
+      { ...V255, slots: { ...V255.slots, specialist1: [] } },
+      [
+        step('aToB', [personItem('s12'), personItem('s14')]),
+        step('bToA', [], [personItem('s14')]),
+        step('bToA', [], [personItem('s12')]),
+      ],
+      RULES,
+    );
+    expect(both.a.slots.specialist1).toEqual(['s12', 's14']);
+  });
+
+  it('his own slot first, going home — even when the slot he comes from points at the other one', () => {
+    // 255's «أخصائي 1» is full: s12 lands in its «أخصائي 2»; going back his path from there is
+    // «أخصائي 2» then «أخصائي 1» — but his own seat on 213 is «أخصائي 1», and it has room.
+    const full = van('255', {
+      slots: { captain: ['c20'], specialist1: ['s26', 's27'], specialist2: [] },
+    });
+    const there = replaySwap(V213B, full, [step('aToB', [personItem('s12')])], RULES);
+    expect(there.b.slots.specialist2).toEqual(['s12']);
+    const back = replaySwap(
+      V213B,
+      full,
+      [step('aToB', [personItem('s12')]), step('bToA', [], [personItem('s12')])],
+      RULES,
+    );
+    expect(back.a.slots).toEqual(V213B.slots);
+    expect(swapChanged({ a: V213B, b: full }, back)).toBe(false);
+    // A captain's seat stays a captain's: his own slot is only ever of his slot's kind.
+    const captain = replaySwap(
+      V213B,
+      { ...V255, slots: { ...V255.slots, captain: [] } },
+      [step('aToB', [personItem('c7')]), step('bToA', [], [personItem('c7')])],
+      RULES,
+    );
+    expect(captain.a.slots.captain).toEqual(['c7']);
+  });
+
+  it('his own slot taken meanwhile: home in the other «أخصائي» — a change, and said so «من أخصائي 1»', () => {
+    // The critic's sequence: 0300012 to 255, 0200026 to 213 (into the room he left), 0300012 back.
+    const steps = [
+      step('aToB', [personItem('s12')]),
+      step('bToA', [], [personItem('s26')]),
+      step('bToA', [], [personItem('s12')]),
+    ];
+    const after = replaySwap(V213B, V255, steps, RULES);
+    expect(after.a.slots.specialist1).toEqual(['s14', 's26']);
+    expect(after.a.slots.specialist2).toEqual(['s12']);
+    expect(swapChanged({ a: V213B, b: V255 }, after)).toBe(true);
+    const seats = swapSlotChanges({ a: V213B, b: V255 }, after);
+    expect([...seats.a]).toEqual([['s12', 'specialist1']]);
+    expect([...seats.b]).toEqual([]);
+    // He is home: no «من 255»; 0200026 is the one that came from 255.
+    expect([...swapArrivals({ a: V213B, b: V255 }, after).a]).toEqual([personItem('s26')]);
+    // 0200026 back to 255 too: 0300012 stays where he is now — still marked; moved there and back
+    // once more, he takes his own seat again and nothing is left changed.
+    const home = replaySwap(
+      V213B,
+      V255,
+      [
+        ...steps,
+        step('aToB', [personItem('s26')]),
+        step('aToB', [personItem('s12')]),
+        step('bToA', [], [personItem('s12')]),
+      ],
+      RULES,
+    );
+    expect(home.a.slots).toEqual(V213B.slots);
+    expect(home.b.slots).toEqual(V255.slots);
+    expect(swapChanged({ a: V213B, b: V255 }, home)).toBe(false);
+    expect([...swapSlotChanges({ a: V213B, b: V255 }, home).a]).toEqual([]);
+  });
+
+  it('one operation on its own (no opening to go home to): arrivals at the end of the slot, as before', () => {
+    const one = planSwap(V255, V213B, picks([personItem('s26')]), 'aToB', RULES);
+    expect(one.b.slots.specialist1).toEqual(['s12', 's14']);
+    expect(one.b.slots.specialist2).toEqual(['s26']);
+    const room = planSwap(
+      { ...V255, slots: { ...V255.slots, specialist1: ['s26', 's27'] } },
+      { ...V213B, slots: { ...V213B.slots, specialist1: ['s12'] } },
+      picks([personItem('s27')]),
+      'aToB',
+      RULES,
+    );
+    expect(room.b.slots.specialist1).toEqual(['s12', 's27']);
+  });
+});
+
+// Round 34 C — «ولو انا مثبت لون للنوع ممكن لو تندى صف اشيل لونه عادى»: «بدون لون» (`rowColour: 'none'`)
+// is a value of the row's «اللون» like any colour — the window moves it as one.
+describe('Round 34 C — «بدون لون» crosses as a value of «اللون»', () => {
+  const BARE = van('255', {
+    slots: { captain: ['c5'], specialist1: [], specialist2: [] },
+    shiftTypeId: 't-secured',
+    rowColour: 'none',
+  });
+  const NAVY = van('150', { shiftTypeId: 't-secured', rowColour: 'navy' });
+  const AUTO = van('213', { shiftTypeId: 't-secured', rowColour: null });
+
+  it('is an item of its card — «لون النوع» (null) is not, there is nothing to send', () => {
+    expect(swapItems(BARE).map((item) => item.id)).toContain(fieldItem('rowColour'));
+    expect(swapItems(BARE).find((item) => item.id === fieldItem('rowColour'))).toMatchObject({
+      kind: 'field',
+      field: 'rowColour',
+      value: 'none',
+    });
+    expect(swapItems(AUTO).map((item) => item.id)).not.toContain(fieldItem('rowColour'));
+  });
+
+  it('one way: the receiving row takes «بدون لون» over its own colour, named; the sender goes back to «لون النوع»', () => {
+    const result = planSwap(BARE, NAVY, picks([fieldItem('rowColour')]), 'aToB', RULES);
+    expect(result.refused).toEqual([]);
+    expect([result.a.rowColour, result.b.rowColour]).toEqual([null, 'none']);
+    expect(result.replaced).toEqual([{ on: 'b', field: 'rowColour', was: 'navy' }]);
+    // A colour sent onto a row «بدون لون» replaces it the same way.
+    const back = planSwap(NAVY, BARE, picks([fieldItem('rowColour')]), 'aToB', RULES);
+    expect([back.a.rowColour, back.b.rowColour]).toEqual([null, 'navy']);
+    expect(back.replaced).toEqual([{ on: 'b', field: 'rowColour', was: 'none' }]);
+  });
+
+  it('the swap exchanges it: «بدون لون» one way, the colour the other — nothing thrown away', () => {
+    const result = planSwap(BARE, NAVY, picks([fieldItem('rowColour')]), 'swap', RULES);
+    expect([result.a.rowColour, result.b.rowColour]).toEqual(['navy', 'none']);
+    expect(result.replaced).toEqual([]);
+    // Onto a row that keeps «لون النوع»: the value moves, and the sender keeps «لون النوع» (null).
+    const onto = planSwap(BARE, AUTO, picks([fieldItem('rowColour')]), 'swap', RULES);
+    expect([onto.a.rowColour, onto.b.rowColour]).toEqual([null, 'none']);
+  });
+
+  it('«تطبيق» carries it onto the draft, and the save sends it as `none`', () => {
+    const draft: CrewDraft = { rows: [BARE, NAVY], standingKeys: null };
+    const next = applySwapStepsToDraft(
+      draft,
+      BARE.key,
+      NAVY.key,
+      [{ mode: 'swap', picks: picks([fieldItem('rowColour')]) }],
+      RULES,
+    );
+    expect(next.rows.map((row) => row.rowColour)).toEqual(['navy', 'none']);
+    expect(changeCount(planChanges(next.rows, draft.rows))).toBe(2);
+    const sent = toPlan('2026-11-25', planChanges(next.rows, draft.rows)).rows.find(
+      (row) => row.vehicleId === 'v-150',
+    );
+    expect(sent?.rowColour).toBe('none');
+    // And the contract's row colour takes it as `none`, never «لون النوع».
+    expect(OperationsCrewRowColourSchema.parse(sent?.rowColour)).toBe('none');
   });
 });

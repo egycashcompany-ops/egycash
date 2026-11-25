@@ -37,7 +37,8 @@ let app: Express;
 // 140 → 144: Administrative Affairs' first four rows (P1a.W): its home, warehouses, items, and the
 // units and categories.
 // 144 → 145: its supplier register, «الموردون» (P1b.W).
-const SEEDED_APPLICATIONS = 145;
+// 145 → 146: Compliance and Risks' one page, «الملفات».
+const SEEDED_APPLICATIONS = 146;
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
@@ -143,6 +144,7 @@ describe('seed → password login (regression)', () => {
     // Gold Vault module says the same at 27 — between IT (25) and Administration (30), the
     // ported ATM module at 28 — between Gold Vault and Administration, and Administrative Affairs
     // at 29 — between ATM and System Administration, whose English name it must never take.
+    // Compliance and Risks comes last, at 31: no whole number is free between 29 and 30.
     expect(groups.map((g) => g.name.en)).toEqual([
       'HR',
       'Fleet',
@@ -153,6 +155,7 @@ describe('seed → password login (regression)', () => {
       'ATM',
       'Administrative Affairs',
       'Administration',
+      'Compliance and Risks',
     ]);
     // Applications map to the app's real client routes, granted directly to the admin.
     // Every page of every module — grouped or not. The default sections moved most of HR into
@@ -297,8 +300,11 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/administration');
     expect(routes).toContain('/administration/warehouses');
     expect(routes).toContain('/administration/suppliers');
+    // Compliance and Risks' one page.
+    expect(routes).toContain('/compliance/files');
     // 31 (HR) + 24 (Fleet) + 19 (Operations) + 7 (Organization) + 18 (IT) + 12 (Gold Vault)
-    //   + 18 (ATM) + 5 (Administrative Affairs) + 11 (Administration) = 145 — Administrative
+    //   + 18 (ATM) + 5 (Administrative Affairs) + 11 (Administration) + 1 (Compliance and Risks)
+    //   = 146 — Administrative
     //   Affairs' five Phase 1 rows (four in P1a.W, the suppliers in P1b.W); Operations 19 since
     //   «الشحنات المسلَّمة» (Round 33 B). Re-counted from `seed-navigation.ts`, because an
     //   earlier breakdown said 103 while the constant beside it said 116 — it had
@@ -321,8 +327,9 @@ describe('seed → password login (regression)', () => {
       }
     ).data;
     // B7 added Operations beside HR, Fleet, Organization, IT and Admin; the gold port adds a
-    // seventh, the ATM port an eighth and Administrative Affairs a ninth.
-    expect(groups).toHaveLength(9);
+    // seventh, the ATM port an eighth, Administrative Affairs a ninth and Compliance and Risks a
+    // tenth.
+    expect(groups).toHaveLength(10);
     // Counted across sections too: re-seeding must not duplicate a row, wherever it is grouped.
     expect(
       groups.reduce(

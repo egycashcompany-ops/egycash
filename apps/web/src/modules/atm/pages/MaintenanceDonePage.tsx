@@ -30,8 +30,10 @@ import { useColumnFiltered, useReaderOrder } from '../lib/useBoardView';
 import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import { StatementExportButtons } from '../components/StatementExportButtons';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
-import { DoneRangeBar, DoneRangeCutShort, doneRangeWhole } from '../components/DoneRangeBar';
+import { DoneRangeBar, doneRangeWhole } from '../components/DoneRangeBar';
 import { FRESH_ON_OPEN } from '../lib/fresh-filters';
+import { Pagination } from '../../../shared/ui/Pagination';
+import { ROW_PAGE_SIZES, useRowPages } from '../../../shared/lib/use-row-pages';
 
 export const MaintenanceDonePage = (): JSX.Element => {
   const t = useT();
@@ -71,6 +73,11 @@ export const MaintenanceDonePage = (): JSX.Element => {
   const items = useMemo(() => list.data?.items ?? [], [list.data]);
   const { kept, choices } = useColumnFiltered(items, sheetColumns, columnFilters.values);
   const order = useReaderOrder([sp, setSp], kept, sheetColumns);
+  // The table shows a page; the filters, the sort and the files are about the whole range.
+  const pages = useRowPages(
+    order.rows,
+    JSON.stringify([from, to, columnFilters.values, order.sorts]),
+  );
   const columns: Column<AtmMaintenanceDto>[] = [
     ...sheetColumns.map((column) => ({
       key: column.key,
@@ -139,12 +146,11 @@ export const MaintenanceDonePage = (): JSX.Element => {
             />
           }
         />
-        <DoneRangeCutShort meta={list.data?.meta} />
         <div className={BOARD_TABLE_FILL}>
           <DataTable
             steadyColumns
             columns={columns}
-            rows={order.rows}
+            rows={pages.rows}
             rowKey={(row) => row.id}
             loading={list.isLoading}
             error={list.error}
@@ -167,6 +173,14 @@ export const MaintenanceDonePage = (): JSX.Element => {
             stickyHead
           />
         </div>
+        {pages.meta.totalItems > 0 && (
+          <Pagination
+            meta={pages.meta}
+            onPageChange={pages.setPage}
+            onPageSizeChange={pages.setPageSize}
+            pageSizeOptions={ROW_PAGE_SIZES}
+          />
+        )}
       </div>
       <ConfirmActionDialog
         open={reopening !== null}

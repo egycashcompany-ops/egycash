@@ -27,7 +27,7 @@ const entityRef = (id: string) => ({
 const snapshot = (doc: OperationsShiftTypeDoc) => ({
   name: doc.name,
   nameEn: doc.nameEn,
-  colour: doc.colour,
+  colour: doc.colour ?? null,
   sortOrder: doc.sortOrder ?? null,
   isActive: doc.isActive,
 });

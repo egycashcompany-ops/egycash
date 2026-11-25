@@ -1,4 +1,9 @@
-export { approvalService, APPROVAL_OVERRIDE_KEY, type ApprovalSubject } from './approval.service';
+export {
+  approvalService,
+  APPROVAL_OVERRIDE_KEY,
+  type ApprovalSubject,
+  type LiveChain,
+} from './approval.service';
 export { type DecidedEntry, type ChainStatus } from './approval-trail';
 export { type Unit } from './approver-lookup';
 export {

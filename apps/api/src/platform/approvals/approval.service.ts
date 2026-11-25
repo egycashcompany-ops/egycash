@@ -30,6 +30,7 @@ import {
   buildTrail,
   entriesForDecision,
   progressOf,
+  rungToDecide,
   statusOf,
   viewerDecision,
   type ChainStatus,
@@ -39,8 +40,9 @@ import { approversFor, hasApprovers, ownStepsOf, type Unit } from './approver-lo
 import { approvalWorkflowRepository } from './workflow.repository';
 import { type ApprovalWorkflowDoc } from './workflow.model';
 import { getApprovalRequestType, listApprovalRequestTypes } from './request-type.registry';
+import { APPROVAL_OVERRIDE_KEY, overrideReaches } from './override-reach';
 
-export const APPROVAL_OVERRIDE_KEY = 'approval.override';
+export { APPROVAL_OVERRIDE_KEY } from './override-reach';
 
 /** Everything the engine needs to know about one request. */
 export interface ApprovalSubject {
@@ -53,6 +55,12 @@ export interface ApprovalSubject {
 export interface LiveChain {
   workflowId: string | null;
   steps: ResolvedStep[];
+  /**
+   * The chain's answer before anybody decides: `pending`, or `unstaffed` when nobody holds any of
+   * its rungs, or `noChain` when no chain applies. A host reads it at submission and applies its
+   * own policy to the last two (ADR-041 decision 2).
+   */
+  status: ChainStatus;
 }
 
 const toStep = (step: { permissionKey: string; level: ApprovalLevel; label: { ar: string; en: string } | null }): ChainStep => ({
@@ -80,7 +88,7 @@ class ApprovalService {
       })),
       unit,
     );
-    if (chosen === null) return { workflowId: null, steps: [] };
+    if (chosen === null) return { workflowId: null, steps: [], status: 'noChain' };
 
     const staffing = new Map<string, boolean>();
     for (const step of chosen.value.steps) {
@@ -89,22 +97,21 @@ class ApprovalService {
         staffing.set(at, await hasApprovers(step.permissionKey, step.level, unit));
       }
     }
-    return {
-      workflowId: String(chosen.value._id),
-      steps: resolveChain(chosen.value.steps.map(toStep), (step) =>
-        staffing.get(`${step.permissionKey}::${step.level}`) === true,
-      ),
-    };
+    const steps = resolveChain(
+      chosen.value.steps.map(toStep),
+      (step) => staffing.get(`${step.permissionKey}::${step.level}`) === true,
+    );
+    return { workflowId: String(chosen.value._id), steps, status: statusOf(steps, []) };
   }
 
   /**
    * Where a request stands, for a host module that only needs the one word.
    *
-   * A chain with NO steps — no workflow written for this request's place — leaves the request
-   * approved. That is a policy, and it is deliberately this one: a company that has not configured
-   * approvals for a request type is not a company that wants every such request frozen. The
-   * configuration screen says so in as many words, because the opposite reading is defensible and
-   * an administrator must not have to guess which one the code took.
+   * No chain and no staffed rung are reported as what they are — `noChain` and `unstaffed` — and
+   * never as approved. Whether a request nobody configured approvals for should pass, wait or be
+   * refused is a policy, and a different one for each host (ADR-041 decision 2): the engine says
+   * which case this is, and the host applies its own answer. Reading either as approved here would
+   * approve the request for every host that read the word, without any of them having chosen to.
    */
   async statusFor(subject: ApprovalSubject): Promise<ChainStatus> {
     const chain = await this.chainFor(subject.requestType, subject.unit);
@@ -116,6 +123,7 @@ class ApprovalService {
     const chain = await this.chainFor(subject.requestType, subject.unit);
     const own = await ownStepsOf(viewer.userId, chain.steps, subject.unit);
     const decision = viewerDecision(chain.steps, subject.decisions, own);
+    const target = rungToDecide(chain.steps, subject.decisions);
 
     const deciderIds = [
       ...new Set(
@@ -130,20 +138,19 @@ class ApprovalService {
       requestType: subject.requestType,
       workflowId: chain.workflowId,
       steps: buildTrail(chain.steps, subject.decisions, (id) => names.get(id) ?? { id, name: id }),
-      currentStep:
-        statusOf(chain.steps, subject.decisions) === 'pending'
-          ? (this.liveIndex(chain.steps, subject.decisions) ?? null)
-          : null,
+      // The rung to decide, also on an `unstaffed` chain: the panel marks where the request
+      // stopped, which is the rung an override would decide, rather than drawing a stuck request
+      // as a finished one.
+      currentStep: target,
       viewerMayDecide: decision !== null,
       viewerStep: decision?.step ?? null,
       viewerCovers: decision?.covers ?? [],
       // Being ON the chain and being able to step INTO it are different claims, and only the
       // second needs an extra permission. Somebody in the chain deciding ahead of his turn is
-      // using his own authority.
+      // using his own authority. Stepping in reaches only as far as the override does, read by the
+      // level of the rung it would decide.
       viewerMayOverride:
-        decision === null &&
-        statusOf(chain.steps, subject.decisions) === 'pending' &&
-        viewer.permissions[APPROVAL_OVERRIDE_KEY] !== undefined,
+        decision === null && this.overrideDecides(viewer, chain.steps, target, subject.unit),
     };
   }
 
@@ -161,28 +168,31 @@ class ApprovalService {
     input: { decision: ApprovalDecision; comment: string | null },
   ): Promise<{ entries: DecidedEntry[]; status: ChainStatus; stepIndex: number }> {
     const chain = await this.chainFor(subject.requestType, subject.unit);
-    if (statusOf(chain.steps, subject.decisions) !== 'pending') {
+    // The chain's status first, then the actor: one answer per case (ADR-041 decision 3). A
+    // request with no staffed rung left is still waiting, so it falls through to «not your step»
+    // for anybody without an override that reaches it, rather than reading as decided.
+    const before = statusOf(chain.steps, subject.decisions);
+    if (before === 'noChain') throw new BusinessRuleError('approvals.nothingToDecide');
+    if (before === 'approved' || before === 'rejected') {
       throw new BusinessRuleError('approvals.alreadyDecided');
     }
-    const live = this.liveIndex(chain.steps, subject.decisions);
-    if (live === null) throw new BusinessRuleError('approvals.nothingToDecide');
+    const target = rungToDecide(chain.steps, subject.decisions);
 
     const own = await ownStepsOf(actor.userId, chain.steps, subject.unit);
     const mine = viewerDecision(chain.steps, subject.decisions, own);
 
     // Two ways to be allowed, and they are recorded differently on purpose. The owner asked for
     // exactly four facts to survive a decision — «مين كان المفروض يوافق، مين وافق فعليًا،
-    // الصلاحية/السبب، وقت القرار» — and `overriddenWith` is the third.
-    const stepIndex = mine?.step ?? live;
-    const overriddenWith =
-      mine === null
-        ? actor.permissions[APPROVAL_OVERRIDE_KEY] !== undefined
-          ? APPROVAL_OVERRIDE_KEY
-          : null
-        : null;
-    if (mine === null && overriddenWith === null) {
-      throw new BusinessRuleError('approvals.notYourStep');
-    }
+    // الصلاحية/السبب، وقت القرار» — and `overriddenWith` is the third. An override decides the rung
+    // to decide and nothing above it, and only where it reaches as far as that rung's level asks.
+    const allowed =
+      mine !== null
+        ? { stepIndex: mine.step, overriddenWith: null }
+        : target !== null && this.overrideDecides(actor, chain.steps, target, subject.unit)
+          ? { stepIndex: target, overriddenWith: APPROVAL_OVERRIDE_KEY }
+          : null;
+    if (allowed === null) throw new BusinessRuleError('approvals.notYourStep');
+    const { stepIndex, overriddenWith } = allowed;
 
     const now = new Date();
     const entries = entriesForDecision(
@@ -317,6 +327,17 @@ class ApprovalService {
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────
+
+  /** Whether the reader's override reaches the rung to decide, by that rung's level. */
+  private overrideDecides(
+    reader: AuthContext,
+    steps: readonly ResolvedStep[],
+    target: number | null,
+    unit: Unit,
+  ): boolean {
+    const rung = target === null ? undefined : steps[target];
+    return rung !== undefined && overrideReaches(reader, rung.level, unit);
+  }
 
   private liveIndex(
     steps: readonly ResolvedStep[],

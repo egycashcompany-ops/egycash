@@ -79,6 +79,45 @@ describe('how far the chain has got', () => {
   });
 });
 
+describe('the five answers (statusOf, R2)', () => {
+  // `unstaffed` and `noChain` are answers of their own, never approved (ADR-041 decision 2). Each
+  // case below read approved before PX-1.2, which is how a request nobody could decide was taken
+  // for a finished one.
+  const settled = (stepIndex: number, outcome: 'approved' | 'rejected'): DecidedEntry => ({
+    stepIndex,
+    outcome,
+    deciderUserId: 'u',
+    decidedAt: NOW,
+    comment: null,
+    overriddenWith: null,
+  });
+
+  it('is unstaffed, never approved, for a chain nobody holds any rung of', () => {
+    expect(statusOf(chain([false, false, false]), [])).toBe('unstaffed');
+  });
+
+  it('is unstaffed when the next staffed rung loses its holder after a decision', () => {
+    // Rung 1 was staffed when rung 0 approved, so the request waited on it; its holder has gone
+    // since, and nobody is left on any rung above.
+    const one = decide(chain([true, true, false]), [], 0, 'approved');
+    expect(statusOf(chain([true, true, false]), one)).toBe('pending');
+    expect(statusOf(chain([true, false, false]), one)).toBe('unstaffed');
+  });
+
+  it('is noChain with no rungs, and a rejection still reads rejected there', () => {
+    expect(statusOf([], [])).toBe('noChain');
+    expect(statusOf([], [settled(0, 'rejected')])).toBe('rejected');
+  });
+
+  it('counts a rung below the progress with no entry, a gap, as settled', () => {
+    // An older write left rung 0 without an entry, and somebody decided rung 1. Rung 0 is staffed,
+    // but it lies below `progressOf`: it is settled, so the chain neither waits on it nor needs an
+    // entry for it to finish.
+    expect(statusOf(chain([true, true, false]), [settled(1, 'approved')])).toBe('unstaffed');
+    expect(statusOf(FULL, [settled(2, 'approved')])).toBe('approved');
+  });
+});
+
 describe('what a decision writes down', () => {
   it('writes only its own rung when it is simply that rung’s turn', () => {
     const written = entriesForDecision(
@@ -124,9 +163,9 @@ describe('what a decision writes down', () => {
     ]);
   });
 
-  it('closes the empty rungs above an approval that finishes the chain', () => {
-    // Nobody holds the two rungs above; the request is finished, and a blank row a year from now
-    // would read as an oversight rather than as «مفيش حد على الدرجة دي».
+  it('settles none of the empty rungs above an approval, and the chain reads unstaffed (R2)', () => {
+    // Nobody holds the two rungs above. Closing them would finish the chain over rungs nobody
+    // reached; they stay unsettled, and the request waits for an override (ADR-041 decision 2).
     const onlyTheFirst = chain([true, false, false]);
     const written = entriesForDecision(
       onlyTheFirst,
@@ -134,12 +173,8 @@ describe('what a decision writes down', () => {
       { stepIndex: 0, decision: 'approved', deciderUserId: 'u1', comment: null, overriddenWith: null },
       NOW,
     );
-    expect(written.map((e) => [e.stepIndex, e.outcome])).toEqual([
-      [0, 'approved'],
-      [1, 'skipped'],
-      [2, 'skipped'],
-    ]);
-    expect(statusOf(onlyTheFirst, written)).toBe('approved');
+    expect(written.map((e) => [e.stepIndex, e.outcome])).toEqual([[0, 'approved']]);
+    expect(statusOf(onlyTheFirst, written)).toBe('unstaffed');
   });
 
   it('closes nothing above a REJECTION — those rungs were never asked', () => {

@@ -102,9 +102,12 @@ export interface ResolvedStepDto {
   /**
    * False when nobody in the company holds that key at that level over this unit.
    *
-   * The step is then SKIPPED rather than blocking: «لو مفيش Branch Manager، يتخطى المستوى ده ويروح
-   * للـGeneral Department Manager». A skipped rung stays in the trail, marked, because the reader
-   * asking «why did this go straight to HR?» is asking about the rung that was not there.
+   * The step is then SKIPPED when the holder of a later step decides: «لو مفيش Branch Manager،
+   * يتخطى المستوى ده ويروح للـGeneral Department Manager». A skipped rung stays in the trail,
+   * marked, because the reader asking «why did this go straight to HR?» is asking about the rung
+   * that was not there. It is passed only on the way to a staffed rung: a request with nobody on
+   * any rung left WAITS on the first of them, for a holder of `approval.override` who reaches it,
+   * and never reads as approved.
    */
   staffed: boolean;
 }
@@ -152,7 +155,11 @@ export interface ApprovalTrailDto {
   requestType: string;
   workflowId: string | null;
   steps: ApprovalTrailEntryDto[];
-  /** The index of the rung waiting on somebody, or null when the chain is finished. */
+  /**
+   * The index of the rung to decide: the one waiting on somebody, or, when nobody stands on any
+   * rung that is left, the first of those, which only an override can decide. Null when the chain
+   * is finished or has no rungs.
+   */
   currentStep: number | null;
   /**
    * Whether the reader may decide right now.

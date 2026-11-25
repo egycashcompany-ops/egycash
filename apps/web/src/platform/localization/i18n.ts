@@ -11299,8 +11299,7 @@ const en: Record<string, string> = {
     'The role is removed and stops appearing anywhere. Its history stays in the audit trail. A role somebody holds cannot be deleted at all.',
   'systemAdmin.roles.deleted': 'Role deleted.',
   'systemAdmin.roles.quick.title': 'Quick selection by type',
-  'systemAdmin.roles.quick.hint':
-    'Ticks every permission of a type within the scope — only those you may grant. Press again to clear them.',
+  'systemAdmin.roles.quick.hint': 'One press ticks a type within the scope; a second clears it.',
   'systemAdmin.roles.quick.scope': 'Scope',
   'systemAdmin.roles.quick.allModules': 'All modules',
   'systemAdmin.roles.quick.counter': '{{selected}} / {{total}}',
@@ -11315,14 +11314,14 @@ const en: Record<string, string> = {
   'systemAdmin.roles.quick.group.manage': 'Manage lists and settings',
   'systemAdmin.roles.quick.group.other': 'Workflow actions',
   'systemAdmin.roles.quick.group.sensitive': 'Sensitive data',
-  'systemAdmin.roles.quick.group.breakGlass': 'Emergency (break-glass)',
+  'systemAdmin.roles.quick.group.exceptional': 'Exceptional permissions',
   'systemAdmin.roles.quick.groupHint.manage':
     'Full management of a list or a setting, as each module names it.',
   'systemAdmin.roles.quick.groupHint.other': 'Close, send, receive, plan, cancel and similar steps.',
   'systemAdmin.roles.quick.groupHint.sensitive':
-    'Pay, national IDs, machine keys and passwords — never part of View.',
-  'systemAdmin.roles.quick.groupHint.breakGlass':
-    'Permanent deletion and similar — never part of any other type.',
+    'Pay, medical, security checks, national IDs, audit log, machine secrets — never in View or Export.',
+  'systemAdmin.roles.quick.groupHint.exceptional':
+    'Permanent deletion and overrides — in no other type.',
   'systemAdmin.roles.matrix.selectAll': 'Select all permissions',
   'systemAdmin.roles.matrix.counter': 'Selected: {{selected}} / {{total}}',
   'systemAdmin.roles.matrix.searchPlaceholder': 'Search permissions…',
@@ -27593,8 +27592,7 @@ const ar: Record<string, string> = {
     'سيُحذف الدور ويختفي من كل الشاشات. يبقى تاريخه في سجل التدقيق. والدور الذي يحمله أحد لا يمكن حذفه أصلًا.',
   'systemAdmin.roles.deleted': 'تم حذف الدور.',
   'systemAdmin.roles.quick.title': 'تحديد سريع حسب النوع',
-  'systemAdmin.roles.quick.hint':
-    'يُحدِّد كل صلاحيات النوع داخل النطاق، مما يمكنك منحه فقط. اضغط مرة أخرى لإلغاء تحديدها.',
+  'systemAdmin.roles.quick.hint': 'ضغطة تُحدِّد النوع داخل النطاق، وضغطة ثانية تلغيه.',
   'systemAdmin.roles.quick.scope': 'النطاق',
   'systemAdmin.roles.quick.allModules': 'كل الموديولات',
   'systemAdmin.roles.quick.counter': '{{selected}} من {{total}}',
@@ -27609,14 +27607,14 @@ const ar: Record<string, string> = {
   'systemAdmin.roles.quick.group.manage': 'إدارة القوائم والإعدادات',
   'systemAdmin.roles.quick.group.other': 'إجراءات سير العمل',
   'systemAdmin.roles.quick.group.sensitive': 'البيانات الحساسة',
-  'systemAdmin.roles.quick.group.breakGlass': 'صلاحيات الطوارئ',
+  'systemAdmin.roles.quick.group.exceptional': 'الصلاحيات الاستثنائية',
   'systemAdmin.roles.quick.groupHint.manage':
     'الإدارة الكاملة لقائمة أو إعداد كما يسمّيها كل موديول.',
   'systemAdmin.roles.quick.groupHint.other': 'الإغلاق والإرسال والاستلام والتخطيط والإلغاء وما يماثلها.',
   'systemAdmin.roles.quick.groupHint.sensitive':
-    'الأجور والأرقام القومية ومفاتيح الماكينات وكلمات السر — لا تدخل ضمن العرض.',
-  'systemAdmin.roles.quick.groupHint.breakGlass':
-    'الحذف النهائي وما يماثله — لا تدخل ضمن أي نوع آخر.',
+    'الأجور والطبي والتحريات والأرقام القومية وسجل التدقيق وأسرار الماكينات — خارج العرض والتصدير.',
+  'systemAdmin.roles.quick.groupHint.exceptional':
+    'الحذف النهائي والتجاوزات — خارج كل الأنواع الأخرى.',
   'systemAdmin.roles.matrix.selectAll': 'تحديد كل الصلاحيات',
   'systemAdmin.roles.matrix.counter': 'المحدَّد: {{selected}} من {{total}}',
   'systemAdmin.roles.matrix.searchPlaceholder': 'ابحث في الصلاحيات…',

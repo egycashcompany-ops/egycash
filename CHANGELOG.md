@@ -16,20 +16,25 @@ its entry here in the same PR.
   - Beside the permission tree, «تحديد سريع حسب النوع» ticks every permission of one type over every
     module or one chosen module: View (read only), Add, Edit, Delete, Export/print/download, Import,
     Approvals and decisions, Manage lists and settings, Workflow actions, Sensitive data,
-    Emergency (break-glass). Each shows the same tri-state and «x من y» counter as the tree; a
+    Exceptional permissions. Each shows the same tri-state and «x من y» counter as the tree; a
     second press clears the type.
-  - The type is the registry's own `action` (`lib/action-groups.ts`). Sensitive reads (pay,
-    national IDs, machine keys and the safe-door combination, a fuel card's password) are never
-    part of View, and a break-glass key sits only in its own type; an action the table does not
-    name falls to Workflow actions. 449 permissions on 2026-11-25: 109 View, 67 Add, 66 Edit,
-    37 Delete, 17 export, 5 import, 24 approve, 64 manage, 46 workflow, 8 sensitive, 6 break-glass.
+  - The type is the registry's own `action` (`lib/action-groups.ts`), corrected by name where the
+    action understates the key. «البيانات الحساسة» holds pay and payroll (runs, adjustments,
+    loans, payroll reports, the contract paper), medical files and the pre-hire medical and
+    security checks, national IDs, the audit log (its rows carry pay amounts), machine keys and
+    the safe-door combination, a fuel card's password — none of it is part of View or Export.
+    «الصلاحيات الاستثنائية» holds every break-glass key and the two overrides (another's approval
+    step, rehire against ineligibility). The status alias that suspends an employee sits with
+    Manage, and the two portal-only grants belong to no type. An action the table does not name
+    falls to Workflow actions. 449 permissions on 2026-11-25: 97 View, 67 Add, 65 Edit, 37 Delete,
+    13 export, 5 import, 23 approve, 65 manage, 45 workflow, 22 sensitive, 8 exceptional.
   - It goes through the tree's own `applyBulk`, so it reaches only what the administrator may
     grant and never clears a carried key he could not have given; the payload and the server's
     guards are unchanged.
   - The role form is the width of the screen with one scrollbar (the list no longer scrolls inside
-    the form), the quick selection stays in view beside the tree, the permission rows run four
-    columns on a wide screen, and a click outside no longer closes a half-built role (× and
-    Escape do).
+    the form), the quick selection stays in view beside the tree (whole, at 1280×720 and up), the
+    permission rows run four columns on a wide screen, and a click outside no longer closes a
+    half-built role (× and Escape do).
 
 - **Compliance and Risks — a new module, «الالتزام والمخاطر», with one page: «الملفات»**
   (`docs/12-planning/compliance-files-design.md`). Folders on a shelf shaped like HR's

@@ -23,8 +23,10 @@ import {
 } from '../lib/permission-selection';
 import { ACTION_GROUPS, rowsOfGroup, type ActionGroupId } from '../lib/action-groups';
 
-/** The types whose name alone does not say what they hold — each carries a line saying it. */
-const HINTED: ReadonlySet<ActionGroupId> = new Set(['manage', 'other', 'sensitive', 'breakGlass']);
+/** The two guarded types say, on screen, what they hold and that no other type includes it. */
+const GUARDED: ReadonlySet<ActionGroupId> = new Set(['sensitive', 'exceptional']);
+/** Two everyday types whose name alone is broad — explained on hover, to keep the panel short. */
+const TITLED: ReadonlySet<ActionGroupId> = new Set(['manage', 'other']);
 
 export const PermissionQuickGroups = ({
   catalog,
@@ -54,8 +56,12 @@ export const PermissionQuickGroups = ({
     [rows],
   );
   const chosen = useMemo(() => new Set(selected), [selected]);
-  // A scope the catalogue no longer offers (it reloaded) reads as every module, never as nothing.
-  const moduleId = scope !== '' && modules.includes(scope) ? scope : null;
+  // A chosen module that drops out of reach (its last carried key removed in the tree, or the
+  // catalogue reloaded) stays the scope, and the panel says it holds nothing. It never quietly
+  // widens to every module: the next press would then tick types across the whole system.
+  const moduleId = scope === '' ? null : scope;
+  const scopeOptions =
+    moduleId !== null && !modules.includes(moduleId) ? [...modules, moduleId] : modules;
 
   const groups = ACTION_GROUPS.map((group) => ({
     group,
@@ -68,7 +74,7 @@ export const PermissionQuickGroups = ({
   return (
     <section
       aria-labelledby="permission-quick-groups"
-      className="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800"
+      className="space-y-2 rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-800"
     >
       <div>
         <h3
@@ -82,11 +88,13 @@ export const PermissionQuickGroups = ({
         </p>
       </div>
 
-      <label className="block text-xs font-medium text-slate-600 dark:text-slate-300">
-        {t('systemAdmin.roles.quick.scope')}
-        <Select className="mt-1" value={moduleId ?? ''} onChange={(e) => setScope(e.target.value)}>
+      {/* The scope's name rides on the control itself, to keep the whole list in view on a laptop
+          screen beside the tree — the guarded types at its foot included. */}
+      <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+        <span className="shrink-0">{t('systemAdmin.roles.quick.scope')}</span>
+        <Select value={moduleId ?? ''} onChange={(e) => setScope(e.target.value)}>
           <option value="">{t('systemAdmin.roles.quick.allModules')}</option>
-          {modules.map((id) => (
+          {scopeOptions.map((id) => (
             <option key={id} value={id}>
               {t(`systemAdmin.roles.module.${id}`)}
             </option>
@@ -99,13 +107,16 @@ export const PermissionQuickGroups = ({
           {t('systemAdmin.roles.quick.empty')}
         </p>
       ) : (
-        <ul className="space-y-1">
+        <ul className="space-y-0.5">
           {groups.map(({ group, rows: groupRows }) => {
             const state = groupState(groupRows, chosen);
             return (
               <li
                 key={group}
-                className="rounded-md px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                title={
+                  TITLED.has(group) ? t(`systemAdmin.roles.quick.groupHint.${group}`) : undefined
+                }
+                className="rounded-md px-2 py-0.5 hover:bg-slate-50 dark:hover:bg-slate-800/60"
               >
                 <div className="flex items-center justify-between gap-2">
                   <Checkbox
@@ -124,8 +135,8 @@ export const PermissionQuickGroups = ({
                     </Badge>
                   </span>
                 </div>
-                {HINTED.has(group) && (
-                  <p className="ms-6 mt-0.5 text-[11px] leading-4 text-slate-400 dark:text-slate-500">
+                {GUARDED.has(group) && (
+                  <p className="ms-6 mt-0.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
                     {t(`systemAdmin.roles.quick.groupHint.${group}`)}
                   </p>
                 )}

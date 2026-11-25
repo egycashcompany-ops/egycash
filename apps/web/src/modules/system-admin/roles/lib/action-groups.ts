@@ -11,16 +11,22 @@
 //
 // **What a type includes is the screen's promise, so the two that grant more than their name says
 // are kept out of every other type:**
-//   • SENSITIVE reads — pay, national IDs, machine keys and combinations, a fuel card's password.
-//     «العرض» (read only) must not hand out the safe-door combination because its action is
-//     spelled `viewSecrets`.
-//   • BREAK-GLASS keys (`breakGlass: true` in the registry) — permanent deletion, forced sign-out,
-//     a setup link. Whatever their action, they sit only in their own type and are ticked only on
-//     purpose.
+//   • SENSITIVE data — pay and payroll, medical files, security investigations, national IDs, the
+//     audit log (its change rows carry pay amounts), machine keys and combinations, a fuel card's
+//     password. «العرض» (read only) must not hand out the safe-door combination because its action
+//     is spelled `viewSecrets`, nor blood types because `medicalRecord.view` is spelled `view` —
+//     so the ACTION is not enough, and `GROUP_OF_KEY` names the keys whose action understates them.
+//   • EXCEPTIONAL keys — every `breakGlass: true` key in the registry (permanent deletion, forced
+//     sign-out, a setup link) and the two overrides («يقرّر خطوة موافقة ليست من اختصاصه», rehire
+//     against ineligibility), which the owner wanted granted as deliberate, named decisions.
 //
 // An action this table does not name falls to OTHER — the workflow steps (close, send, receive,
 // plan, …), never a silent upgrade into a broader type. A new module's actions therefore land
-// somewhere safe on day one, and moving one into a named type is a deliberate edit here.
+// somewhere visible on day one, and moving one into a named type is a deliberate edit here.
+//
+// Two portal grants belong to NO type: `goldPortal.view` is the only key a customer-portal account
+// holds and `applicantPortal.view` the candidate portal's, so neither is a staff read; the tree
+// still shows them, one box each.
 import { type PermissionDto } from '@ecms/contracts';
 import { type MatrixRow } from './permission-selection';
 
@@ -36,13 +42,48 @@ export const ACTION_GROUPS = [
   'manage',
   'other',
   'sensitive',
-  'breakGlass',
+  'exceptional',
 ] as const;
 
 export type ActionGroupId = (typeof ACTION_GROUPS)[number];
 
+/**
+ * Keys whose ACTION understates what they open — checked before the action table. Each one was
+ * traced to what it serves (2026-11-25 review), not guessed from its name.
+ */
+const GROUP_OF_KEY: Readonly<Record<string, ActionGroupId>> = {
+  // Clinical data and the pre-hire checks (RW7: a doctor, an examiner and a security officer each
+  // see only their own phase; `evaluation.view` is the superset that sees every phase).
+  'medicalRecord.view': 'sensitive',
+  'medicalInsurance.view': 'sensitive',
+  'medicalCheck.view': 'sensitive',
+  'medicalCheck.export': 'sensitive',
+  'securityCheck.view': 'sensitive',
+  'securityCheck.export': 'sensitive',
+  'evaluation.view': 'sensitive',
+  // Pay: payroll runs, adjustments, loans and the reports built on them, and the contract paper,
+  // which prints the salary without asking for `employee.viewCompensation`.
+  'payrollRun.view': 'sensitive',
+  'payrollAdjustment.view': 'sensitive',
+  'payrollReport.view': 'sensitive',
+  'employeeLoan.view': 'sensitive',
+  'contract.print': 'sensitive',
+  // The audit log masks only national IDs; its change rows carry pay-item amounts.
+  'auditLog.view': 'sensitive',
+  'auditLog.export': 'sensitive',
+  // Overrides — granted on purpose, never as part of «الاعتماد والقرارات» or a workflow sweep.
+  'approval.override': 'exceptional',
+  'employee.rehireOverride': 'exceptional',
+  // The deprecated status alias suspends an employee and disables the login — a personnel action,
+  // which the registry otherwise puts under `employee.manageActions` (Manage), not an edit.
+  'employee.changeStatus': 'manage',
+};
+
+/** Staff-irrelevant portal grants: in no type at all (see the header). */
+const NO_GROUP: ReadonlySet<string> = new Set(['goldPortal.view', 'applicantPortal.view']);
+
 /** `action` → type, for every action that is not OTHER. Break-glass is decided by the flag, below. */
-const GROUP_OF_ACTION: Readonly<Record<string, Exclude<ActionGroupId, 'other' | 'breakGlass'>>> = {
+const GROUP_OF_ACTION: Readonly<Record<string, Exclude<ActionGroupId, 'other' | 'exceptional'>>> = {
   // Reading — and nothing that reads more than the screen shows everybody.
   view: 'view',
   viewLog: 'view',
@@ -115,11 +156,17 @@ const GROUP_OF_ACTION: Readonly<Record<string, Exclude<ActionGroupId, 'other' | 
   assign: 'manage',
 };
 
-/** The type one permission belongs to. Break-glass wins over every action. */
+/**
+ * The type one permission belongs to, or `null` for a portal grant that belongs to none.
+ * Break-glass wins over everything; then the named keys; then the action.
+ */
 export const actionGroupOf = (
-  permission: Pick<PermissionDto, 'action' | 'breakGlass'>,
-): ActionGroupId =>
-  permission.breakGlass ? 'breakGlass' : (GROUP_OF_ACTION[permission.action] ?? 'other');
+  permission: Pick<PermissionDto, 'key' | 'action' | 'breakGlass'>,
+): ActionGroupId | null => {
+  if (permission.breakGlass) return 'exceptional';
+  if (NO_GROUP.has(permission.key)) return null;
+  return GROUP_OF_KEY[permission.key] ?? GROUP_OF_ACTION[permission.action] ?? 'other';
+};
 
 /**
  * The rows of one type inside a scope (`null` = every module). A key the registry no longer knows

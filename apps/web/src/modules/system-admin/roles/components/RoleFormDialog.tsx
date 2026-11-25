@@ -82,8 +82,10 @@ export const RoleFormDialog = ({
   const { data: departments = [] } = useDepartmentCatalog(open);
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const busy = create.isPending || update.isPending;
-  // A managed role is read-only throughout (the matrix says why), so it gets no bulk control here.
-  const quickSelection = (role?.managed ?? 'none') === 'none';
+  // A managed role is read-only throughout (the matrix says why), so it gets no bulk control here;
+  // nor does a form whose catalogue could not be read, which would draw an empty panel.
+  const quickSelection =
+    (role?.managed ?? 'none') === 'none' && !catalogUnavailable && catalog.length > 0;
 
   const toggle = (key: string, next: boolean): void => {
     setKeys((previous) =>
@@ -218,7 +220,7 @@ export const RoleFormDialog = ({
         <div
           className={cn(
             'grid grid-cols-1 gap-4',
-            quickSelection && 'lg:grid-cols-[17rem_minmax(0,1fr)]',
+            quickSelection && 'lg:grid-cols-[19rem_minmax(0,1fr)]',
           )}
         >
           {quickSelection && (

@@ -93,17 +93,17 @@ describe('the panel asks for labels that exist in both locales', () => {
     const markup = render([], 'ar');
     expect(markup).toContain('العرض (قراءة فقط)');
     expect(markup).toContain('البيانات الحساسة');
-    expect(markup).toContain('صلاحيات الطوارئ');
+    expect(markup).toContain('الصلاحيات الاستثنائية');
   });
 });
 
 describe('a type is drawn only where it has rows, and counts only what the editor is shown', () => {
-  it('draws View, Edit, Sensitive and Break-glass, and no type with nothing in it', () => {
+  it('draws View, Edit, Sensitive and Exceptional, and no type with nothing in it', () => {
     const markup = render([]);
     expect(markup).toContain('View (read only)');
     expect(markup).toContain('>Edit<');
     expect(markup).toContain('Sensitive data');
-    expect(markup).toContain('Emergency (break-glass)');
+    expect(markup).toContain('Exceptional permissions');
     expect(markup).not.toContain('>Delete<');
     expect(markup).not.toContain('Import from files');
   });

@@ -44,7 +44,8 @@ its entry here in the same PR.
     a request whose chain was deleted or deactivated, with no wider chain to fall back to, `decide`
     now refuses `approvals.nothingToDecide` for everyone, where it refused
     `approvals.alreadyDecided`. A holder of an override that does not reach the rung no longer sees
-    Approve and Reject on it, and a cancelled request offers nobody a decision. Leave's
+    Approve and Reject on it, and a cancelled request offers nobody a decision and marks no rung as
+    waiting on its chain panel. Leave's
     submission rule, its manager and HR path, its notices and its audit are unchanged. What leave
     should do with a request nobody can approve is the owner's question PXQ-1 (re-detail §2); until
     it is answered, such a request waits for an override. The chain screen's hint says so, in

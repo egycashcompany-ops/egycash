@@ -688,10 +688,10 @@ describe('no staffed rung is an answer, and an override decides within its reach
       viewerStep: 1,
     });
     await cancel(waiting);
-    // Only the reader's flags are leave's to clear off `pendingApproval` (re-detail §6.1). Which
-    // rung, if any, the panel marks on a cancelled request is a question for the plan, so
-    // `currentStep` is not pinned here.
+    // Off `pendingApproval` leave clears the reader's flags (re-detail §6.1) and marks no rung as
+    // waiting: nothing waits on a cancelled request.
     expect((await readAs(staffed.id, hrApprover.token)).approvalTrail).toMatchObject({
+      currentStep: null,
       viewerMayDecide: false,
       viewerStep: null,
       viewerCovers: [],
@@ -709,6 +709,7 @@ describe('no staffed rung is an answer, and an override decides within its reach
     expect((await readAs(stuck.id, orgOverride.token)).approvalTrail?.viewerMayOverride).toBe(true);
     await cancel(unstaffed);
     expect((await readAs(stuck.id, orgOverride.token)).approvalTrail).toMatchObject({
+      currentStep: null,
       viewerMayDecide: false,
       viewerMayOverride: false,
     });

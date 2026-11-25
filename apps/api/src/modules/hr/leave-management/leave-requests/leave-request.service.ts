@@ -680,8 +680,11 @@ class LeaveRequestService {
       ctx,
     );
     if (request.status === 'pendingApproval') return trail;
+    // Off `pendingApproval` nothing waits on any rung, so the panel marks none ("waiting here now")
+    // — a cancelled request's chain still reads pending or unstaffed to the engine.
     return {
       ...trail,
+      currentStep: null,
       viewerMayDecide: false,
       viewerStep: null,
       viewerCovers: [],

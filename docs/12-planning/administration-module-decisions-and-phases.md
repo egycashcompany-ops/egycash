@@ -3509,31 +3509,48 @@ Repository-wide findings outside this module are listed for the owner in
   its header comment kept. No key, route, page, word or API changes, so the warehouse form is reviewed alone. Where the
   code had to choose what the re-detail leaves open:
   - *Who owns "only on a non-empty search".* The picker calls the caller's hook as `useSearch(search, allowed &&
-    search.trim() !== '')` and shows the results box only while something is typed, so the rule is written once for
-    every user. `usePeopleSearch` keeps its own guard, unchanged; the request that leaves the browser is the same.
+    typed)`, `typed` being `search.trim() !== ''`, and shows the results box only while `typed`, so the rule is
+    written once for every user. `usePeopleSearch` keeps its own guard, unchanged; the request that leaves the browser
+    is the same.
   - *The hook's answer* is read as `useQuery` answers a page, `{ isPending, data?: { items } }`, a type local to the
     file (no caller needs to name it, as HR's `ApplicantPicker` keeps its own). The page's size stays the hook's: the
-    keeper search asks for 8 (`PEOPLE_PICKER_ROWS`), and P2.W1's item search is to ask for the same.
+    keeper search asks for 8 (`PEOPLE_PICKER_ROWS`), and P2.W1's item search is to ask for the same. The re-detail's
+    §9.4, which listed "8 rows" among the picker's own properties, now says so.
   - *The four texts are i18n keys* the picker says through `t`, in the reader's language; it names no key of its own,
     so `i18n.ts` and the module's i18n spec do not change, and the module's key scan finds the keeper's four keys in
-    `EmployeePicker.tsx`.
+    `EmployeePicker.tsx`. The re-detail's §13 had `i18n.ts` change in P2.W0 for "`ReferencePicker`'s texts"; it now
+    lists the file for P2.0, P2.W1 and P2.W2, the picker's texts being `ItemPicker`'s keys.
   - *A result row's contents* are the caller's (`renderRow`), inside the picker's button, which keeps the pressed state,
     the classes and `text-start`. The keeper's row is the name, the «منتهي الخدمة» badge for one who has left, and the
     code left to right, as before.
   - *`data-keeper-chip` is dropped.* The chip's attribute named the keeper in a picker that is no longer only the
     keeper's, and no spec or style read it (the checklist's search over `apps/web/src`). It is the one difference in
     the markup.
-  - *No change of behaviour, shown two ways.* The keeper box's markup was rendered in 13 states (no access with neither
-    key and with `.edit` alone; empty; a pick; a refused pick; spaces typed; searching; nothing found; rows with and
-    without a pick; the create, edit and left-keeper warehouse dialogs) in Arabic and English, on `1210ebcc` and on the
-    head: all 26 are byte-identical but for that attribute. And `pages/warehouses-screen.spec.tsx` passes unchanged.
+  - *No change of behaviour, shown three ways.* The keeper box's markup was rendered in 13 states (no access with
+    neither key and with `.edit` alone; empty; a pick; a refused pick; spaces typed; searching; nothing found; rows with
+    and without a pick; the create, edit and left-keeper warehouse dialogs) in Arabic and English, on `1210ebcc` and on
+    the head: all 26 are byte-identical but for that attribute. `pages/warehouses-screen.spec.tsx` passes unchanged. And
+    the review's live check drove the warehouse create and edit dialogs' keeper box in a browser, against a seeded API,
+    on `1210ebcc` and on `60d10a9c`, in Arabic and English at 1280 and 390 px: a name and a code typed (the spinner, the
+    rows), nothing found, spaces alone, a leaver not offered, a pick (the search emptied, the row pressed), the clear
+    button, a pick by keyboard, a stored keeper, a keeper who has left, a long keeper name, and a save refused because
+    the picked keeper left meanwhile (the chip red), then cleared and saved. The picker's HTML in all 84 states per
+    build matched but for that attribute and, in the 4 refused saves, the leaver each run used; side by side, the
+    screenshots differ only by what each run typed or seeded (its own warehouse code and leaver, and so the register's
+    rows) and by the spinner's frame. The merge of main and the review's fixes change nothing the warehouse form draws.
+  - *Found and left alone.* At 390 px a long name in a result row splits the code at its hyphen («EXT-» / «011»): the
+    code's span has no `shrink-0 whitespace-nowrap`. It is so on `1210ebcc` too, and mending it is a change a user sees,
+    which P2.W0 is not to make; it is for a fix of its own, or for P2.W1, whose `ItemPicker` row can carry those classes
+    from the start, as IT's `AssetPicker.tsx:528-529` writes a code beside a long label.
   - *Specs.* `administration-employee-picker.spec.ts`'s no-access case reads `ReferencePicker.tsx` for `if (!allowed)`
     and holds `EmployeePicker.tsx` to passing `allowed`, `usePeopleSearch` and `administration.people.noAccess`
     (§12.3); its other cases stay. Beyond §13's list, `components/reference-picker.spec.tsx` renders the picker in each
     state (no access and no search; nothing typed; a spinner; nothing found; the rows, the picked one pressed; the chip,
-    red when refused; both languages) and the keeper box on it, and holds the module to one results box. The node suite
-    has no DOM, so what was typed is seeded by replacing React's `useState` in that spec, as
-    `useDocumentTitle.spec.ts` replaces `useEffect`; a pick and a clear are read as source.
+    red when refused; both languages) and the keeper box on it (its rows, its words, its chip red while the form refuses
+    the keeper, a pick handed to the form's `onChange` with `pickerLabel`'s label), and holds the module to one results
+    box; the re-detail's §13 now lists it. The node suite has no DOM, so what was typed is seeded by replacing React's
+    `useState` in that spec, as `useDocumentTitle.spec.ts` replaces `useEffect`; a pick and a clear are read as
+    source.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

@@ -25,7 +25,7 @@ import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { translate } from '../../../platform/localization/i18n';
 import { peopleSearchKey } from '../api/administration-keys';
-import { ar, meWith } from '../screen-fixtures';
+import { ar, meWith, pageOf } from '../screen-fixtures';
 import { EmployeePicker } from './EmployeePicker';
 import { ReferencePicker } from './ReferencePicker';
 
@@ -246,10 +246,6 @@ const person = (over: Partial<AdministrationPersonDto>): AdministrationPersonDto
   jobTitleId: null,
   ...over,
 });
-const pageOf = (items: AdministrationPersonDto[]): Paginated<AdministrationPersonDto> => ({
-  items,
-  meta: { page: 1, pageSize: 8, totalItems: items.length, totalPages: 1 },
-});
 const keeper = (value = '', error = false): ReactElement => (
   <EmployeePicker
     value={value}
@@ -292,6 +288,23 @@ describe('the keeper box on it — drawn as before', () => {
     expect(left).toContain('<span>هالة فوزي رشدي</span><span class="inline-flex');
     expect(left).toContain(`${ar('administration.people.exited')}</span></span>`);
     expect(html.split(ar('administration.people.exited'))).toHaveLength(2);
+  });
+
+  it('turns the keeper chip red while the form refuses the keeper', () => {
+    const refused = markup(keeper('e-1', true));
+    expect(refused).toContain('border-red-300 bg-red-50');
+    expect(refused).toContain(
+      '<span class="text-red-800 dark:text-red-200">سامح عادل منير (0100052)</span>',
+    );
+    expect(markup(keeper('e-1'))).not.toContain('border-red-300');
+  });
+
+  it('hands a pick to the caller labelled as the chip names it', () => {
+    // A click is read as source (see the header): the picker calls `onChange(id, rowLabel(row))`,
+    // so the keeper box must hand it the form's own `onChange` and `pickerLabel`, or a fresh pick
+    // would do nothing, or reach the chip without its code.
+    expect(KEEPER).toContain('onChange={onChange}');
+    expect(KEEPER).toContain('rowLabel={pickerLabel}');
   });
 
   it('says the keeper box’s own words', () => {

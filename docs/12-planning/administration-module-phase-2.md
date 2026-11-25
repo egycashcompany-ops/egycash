@@ -1273,14 +1273,15 @@ In `administration-roles.ts`, each key joining in the slice that declares it (de
 ### 9.4 The pickers and the page parts
 
 - **`ReferencePicker`** (P2.W0) is rebuilt in the module after IT's `VendorPicker` (D-21; design §13.6 D): a server
-  search, enabled only on a non-empty search, 8 rows, a picked chip, `aria-pressed` results, a spinner, a no-results
-  sentence and a no-access sentence. Its props are `{ value, valueLabel, onChange(id, label), error?, allowed,
-  useSearch(search, enabled), rowId(row), rowLabel(row), renderRow(row), texts: { placeholder, noResults, noAccess,
-  clearPick } }`, the last four i18n keys. P2.W0 also moves Phase 1's `EmployeePicker`, the warehouse keeper box
-  written by hand after IT's pattern (`apps/web/src/modules/administration/components/EmployeePicker.tsx:35-62`), onto
-  it with no change of behavior: `EmployeePicker` keeps its props, `ADMINISTRATION_PEOPLE_GRANTS` and `pickerLabel`,
-  and passes `allowed`, `usePeopleSearch` and the `administration.people.*` texts. The module then has one
-  implementation with two users: "one control and one behaviour to fix"
+  search, enabled only on a non-empty search, 8 rows, the caller's search hook's page (`PEOPLE_PICKER_ROWS`;
+  `useItemSearch` asks the same; design §22 "P2.W0 built"), a picked chip, `aria-pressed` results, a spinner, a
+  no-results sentence and a no-access sentence. Its props are `{ value, valueLabel, onChange(id, label), error?,
+  allowed, useSearch(search, enabled), rowId(row), rowLabel(row), renderRow(row), texts: { placeholder, noResults,
+  noAccess, clearPick } }`, the last four i18n keys. P2.W0 also moves Phase 1's `EmployeePicker`, the warehouse keeper
+  box written by hand after IT's pattern (`apps/web/src/modules/administration/components/EmployeePicker.tsx:35-62`),
+  onto it with no change of behavior: `EmployeePicker` keeps its props, `ADMINISTRATION_PEOPLE_GRANTS` and
+  `pickerLabel`, and passes `allowed`, `usePeopleSearch` and the `administration.people.*` texts. The module then has
+  one implementation with two users: "one control and one behaviour to fix"
   (`docs/03-decisions/ADR-019-reference-pickers-search-not-load-all.md:118-119`).
 - **`ItemPicker`** (P2.W1) is its second user: active items only for a new line, the picked id resolved even when the
   item is retired, `allowed` through `useCan` over exactly the item reads' two keys (§4.1). A non-stock item carries a
@@ -1644,7 +1645,7 @@ listed, then modified.
 | `apps/web/src/platform/approvals/ApprovalChainPanel.tsx` + spec | M | P2.0 | locale captions |
 | `apps/web/src/modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx` + `ApprovalWorkflowsPage.spec.tsx` (C) | M | P2.0 | locale names |
 | `apps/web/src/modules/system-admin/system-admin-i18n.spec.ts` | M | P2.0 | the verb's pin (§12.3) |
-| `apps/web/src/platform/localization/i18n.ts` | M | P2.0; P2.W0–P2.W2 | the verb's labels; `administration.purchaseRequests.*`, `administration.nav.purchaseRequests`, `ReferencePicker`'s texts |
+| `apps/web/src/platform/localization/i18n.ts` | M | P2.0; P2.W1, P2.W2 | the verb's labels; `administration.purchaseRequests.*`, `administration.nav.purchaseRequests`, `ItemPicker`'s texts (a caller's keys; `ReferencePicker` names none, P2.W0, design §22 "P2.W0 built") |
 | `routes.tsx` | M | P2.W1, P2.W2 | §9.2, and its header table |
 | `api/administration-keys.ts` | M | P2.W1 | `purchaseRequests` and its keys |
 | `api/catalog-queries.ts` | M | P2.W1 | `useItemSearch` (§9.4) |
@@ -1652,7 +1653,7 @@ listed, then modified.
 | `pages/{PurchaseRequestsPage,PurchaseRequestDetailPage,PurchaseRequestEditorPage}.tsx`; `pages/{purchase-requests,purchase-request-detail,purchase-request-editor}-screen.spec.tsx` | C | P2.W1 | §9.2, §9.5 |
 | `pages/AwaitingDecisionPage.tsx`; `pages/awaiting-decision-screen.spec.tsx` | C | P2.W2 | §9.2, §9.5 |
 | `pages/AdministrationHomePage.tsx`; `pages/home-screen.spec.tsx` | M | P2.W2 | the tile and the two counts |
-| `components/ReferencePicker.tsx` | C | P2.W0 | §9.4 |
+| `components/ReferencePicker.tsx`; `components/reference-picker.spec.tsx` | C | P2.W0 | §9.4; the picker rendered in each state and the keeper box on it (design §22 "P2.W0 built") |
 | `components/EmployeePicker.tsx`; `administration-employee-picker.spec.ts` | M | P2.W0 | moved onto `ReferencePicker`, behavior unchanged; its guard spec (§12.3) |
 | `components/ItemPicker.tsx` | C | P2.W1 | §9.4 |
 | `components/PurchaseRequestActionDialogs.tsx` | C | P2.W1 | submit, decide (with cuts), return, cancel (§9.5) |

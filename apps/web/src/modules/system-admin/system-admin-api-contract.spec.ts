@@ -461,7 +461,9 @@ describe('the approval-chain screen calls the approvals router', () => {
 
   it('uses the verbs the router declares', () => {
     // The save is a PUT to the collection, not a POST or a PATCH by id, because it writes «the
-    // chain for THIS place» — which may or may not already exist, and the client does not know.
+    // chain for THIS place», which may or may not already exist: the client names the row it
+    // replaces in `basedOn`, or null where it saw none, and the server refuses any other basis as
+    // stale (ADR-041 decision 9).
     expect(APPROVAL_ROUTES).toMatch(/router\.put\(\s*'\/'/);
     expect(APPROVAL_CLIENT).toContain("put<ApprovalWorkflowDto>('/platform/approvals', body)");
     expect(APPROVAL_ROUTES).toMatch(/router\.delete\(\s*'\/:id'/);
@@ -475,22 +477,53 @@ describe('the approval-chain screen calls the approvals router', () => {
   });
 
   it('sends the body the schema accepts, field for field', () => {
-    const schema = /export const SetApprovalWorkflowSchema = z[\s\S]*?\.strict\(\)/.exec(
+    const found = /export const SetApprovalWorkflowSchema = z[\s\S]*?\.strict\(\)/.exec(
       APPROVALS_CONTRACT,
-    )?.[0];
+    );
+    const schema = found?.[0];
     expect(schema, 'SetApprovalWorkflowSchema not found').toBeDefined();
-    for (const field of ['requestType', 'departmentCatalogId', 'branchId', 'steps', 'isActive']) {
+    // `basedOn` names the chain the save replaces, which the server refuses as stale unless it is
+    // the place's row as it stands (ADR-041 decision 9); a screen that left it out would be refused
+    // every save.
+    for (const field of [
+      'requestType',
+      'departmentCatalogId',
+      'branchId',
+      'steps',
+      'isActive',
+      'basedOn',
+    ]) {
       expect(schema).toContain(field);
       expect(APPROVAL_PAGE).toContain(`${field}:`);
     }
     // `.strict()` is what makes «the screen sends one extra key» a rejection rather than a silent
-    // drop — and a silently dropped `branchId` writes the company default over an exception.
+    // drop — and a silently dropped `branchId` writes the company default over an exception. The
+    // match stops at the first `.strict()`, so it must be the schema's own, closing it, and not one
+    // inside it: `basedOn`'s object is the named `ApprovalWorkflowBasisSchema`, declared above.
     expect(schema).toContain('.strict()');
+    const rest = APPROVALS_CONTRACT.slice((found?.index ?? 0) + (schema?.length ?? 0));
+    expect(rest).toMatch(/^;\s*export type SetApprovalWorkflow = /);
+  });
+
+  it('names the chain a draft replaces by one rule, however the draft reached its place', () => {
+    // Add, Edit and the type and place selects all build the draft through `placed`, which names
+    // the row the screen listed at its place when the draft opened, or null where it listed none
+    // (`approvals/lib/chain-basis.ts`). A draft that named null over a listed chain would be
+    // refused as stale at every save, which no refresh clears; one that read its basis from the
+    // list as it refetches behind the dialog would name another administrator's newer save and
+    // overwrite it.
+    expect(APPROVAL_PAGE).toMatch(/const emptyDraft = [^=]*=>\s*placed\(/);
+    expect(APPROVAL_PAGE).toContain('setDraft(emptyDraft(firstType, workflows.data ?? []))');
+    expect(APPROVAL_PAGE.match(/setDraft\(\s*placed\(/g)).toHaveLength(4);
+    expect(APPROVAL_PAGE).not.toMatch(/basedOn: (null|basis)/);
+    expect(APPROVAL_PAGE).not.toContain('basisAt(');
   });
 
   it('offers only the levels the engine can resolve', () => {
-    // A free-text level would typecheck as a string and resolve to «nobody holds this», which is
-    // SKIPPED — a chain that looks configured and approves everything.
+    // A free-text level would typecheck as a string and resolve to «nobody holds this»: nobody
+    // decides its rung as their own, so it is passed when a staffed rung above it is decided, and
+    // with no staffed rung above it a request that reaches it waits `unstaffed` until an override
+    // within reach decides it — a chain that looks configured and does not run as written.
     expect(APPROVAL_PAGE).toContain('APPROVAL_LEVELS.map');
     expect(APPROVALS_CONTRACT).toContain(
       "export const APPROVAL_LEVELS = ['unit', 'department', 'branch', 'organization'] as const",
@@ -498,8 +531,10 @@ describe('the approval-chain screen calls the approvals router', () => {
   });
 
   it('offers only the permission keys the request type declares', () => {
-    // Same failure, one axis over: a key no module declares is nobody's, so the rung is skipped.
-    // The server refuses it too; the screen simply never offers it.
+    // Same failure, one axis over: a key the request type does not offer is nobody's on its rung,
+    // whether no module declares it or another type's module does, so its rung is passed or waits
+    // as above. The server refuses it too, by the type's own keys; the screen simply never offers
+    // it.
     expect(APPROVAL_PAGE).toContain('keysFor(draft.requestType).map');
     expect(read('platform/approvals/approval.service.ts')).toContain(
       "throw new BusinessRuleError('approvals.unknownPermissionKey')",

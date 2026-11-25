@@ -3418,6 +3418,42 @@ Repository-wide findings outside this module are listed for the owner in
   PRQ-4, which P2 does not wait for. Its design review, Full preset, ran on 2026-11-25 and is recorded in its §18: 148
   findings over two rounds, 146 fixed, one escalated (PRQ-3) and one dropped, and a few parts dropped under (a) and
   (d), one of which went to the owner as PRQ-4. It is the gate before P2.0.
+- **PX-1 closed** (2026-11-25, when PX-1.6 merges). The platform slice's seven pull requests
+  ([administration-module-phase-px1.md](administration-module-phase-px1.md) §3): PX-1.0, the re-detail, ADR-041 and
+  their docs (#788), PX-1.1 (#789), PX-1.2 (#790), PX-1.3 (#791), PX-1.4 (#793) and PX-1.5 (#795) are merged, and this
+  entry is PX-1.6's. The seven engine defects of §15.2.1 that PX-1 takes
+  (R1–R5, R8, R9) are fixed, with R12's tests as their baseline. The re-detail's §11 criteria, checked against merged
+  main with PX-1.6 on it:
+  1. *One test per defect, failing before its fix.* Each fix pull request's description shows its new cases failing on
+     its base commit's source and passing on its head, guards excepted: PX-1.2 for R2 and R4 (on `099b23f1`, PX-1.1's
+     merged head; its engine, leave and contract sources are identical to `c95674c4`, the pre-rebase base PX-1.2's
+     description names), PX-1.3 for R3 and R8 (on `46e1b345`, no guard), PX-1.4 for R1 (on `46e1b345`; the unset-pin
+     case is its guard), PX-1.5 for R5 (on `b07e2f00`; the leave audit case is its guard) and PX-1.6 for R9 (on
+     `4816dd97`, no guard).
+  2. *The two unit specs exist.* `approval.service.spec.ts` (PX-1.1) and `approver-lookup.spec.ts` (PX-1.3) are under
+     `apps/api/src`, which `npm run test -w apps/api` runs.
+  3. *Integration coverage.* `apps/api/tests/integration/approvals.spec.ts` (PX-1.1) writes a chain through
+     `PUT /api/v1/platform/approvals` and drives a leave request through `pendingApproval` to approved and to rejected.
+  4. *Requests in flight read live.* PX-1.4's unset-pin case passes. PX-1's diff, from `4c6457d4` to PX-1.6's head,
+     adds no `*.cli.ts` file and does not change `apps/api/src/platform/kernel/bootstrap.ts`.
+  5. *Leave keeps its audit.* That diff does not change `apps/api/tests/integration/hr-leave.spec.ts`, which is green on
+     PX-1.6's head. Leave registers without the audit option (PX-1.5), and PX-1.1's case of the engine's row beside
+     leave's own is green.
+  6. *The ADR was accepted first.* PX-1.0 made ADR-041 Accepted (`c49f0cfe`), with its README row and ADR-011's row
+     naming the superseded bullet, and merged (#788) ahead of PX-1.1 (#789). Its last commit is the Phase 1 close above
+     (`050fa94f`), a docs commit after the acceptance that does not touch the ADR.
+  7. *Gates.* PX-1.0 to PX-1.5 merged green in CI; PX-1.6 passes §18.5's gates locally, and CI runs them on its pull
+     request. No permission key changed, so the permission matrix has nothing to regenerate.
+  8. *Docs.* Each code pull request carries its CHANGELOG entry. Platform core §11 matches ADR-041 from PX-1.0 on; its
+     "from PX-1" marks stay true once PX-1 has shipped, and the re-detail asks for no change to them. This entry records
+     the close; the owner is told when PX-1.6 merges.
+  - *Still open after PX-1:* PXQ-1 (re-detail §2) was answered on 2026-11-25, option 1 (§16.12): a leave request nobody
+    can approve goes to HR. It is an HR slice of its own, planned in `leave-management-design.md` §16, after PX-1.6;
+    until it ships such a request waits for an override within reach. The read-only counts of re-detail §10 (C1 and C2
+    before PX-1.2 deployed, C3 before PX-1.6 merges) were not run: they need production access, which this work does
+    not have (the organization's MongoDB Atlas access for AI clients is off). PX-1.2 and PX-1.6 shipped on the safe side
+    the plan states (a request nobody can decide waits; an off-type rung is unstaffed), and the counts stay the owner's
+    or an operator's to run.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

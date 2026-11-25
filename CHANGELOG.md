@@ -53,6 +53,57 @@ its entry here in the same PR.
     user is answered as the error it is — no longer as 401 «User no longer exists», which sent every
     open tab to refresh at once and got thirteen sessions revoked as token reuse.
 
+- **The approvals engine: a chain save names its request type's keys and the chain it replaces.**
+  This is PX-1.6, the last of PX-1's pull requests, which harden the platform approvals engine
+  before Administrative Affairs' money approvals run on it
+  (`docs/12-planning/administration-module-phase-px1.md` §3, §4, §6.7 and §10; ADR-041 decision
+  9). It fixes R9 of the engine defects the design lists
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §15.2.1): a save took any key
+  the permission registry held, and any key at all while that registry was empty, and it carried
+  no version, so a save from a screen loaded before another administrator's save overwrote theirs
+  without a word.
+  - **Keys.** Each rung must name one of its request type's `permissionKeys`, the keys the chain
+    screen offers, also while the permission registry is empty; any other key is refused 422
+    `approvals.unknownPermissionKey`. The permission-registry and repeated-rung checks stay.
+  - **The chain it replaces.** `PUT /api/v1/platform/approvals` takes a required `basedOn`: the id
+    and version of the chain row the screen's draft started from, or null when the screen showed
+    none at that place. `ApprovalWorkflowDto` gains `version`. A save is refused 409
+    `STALE_DOCUMENT` when the place's row is another row or at another version, when a row is
+    there and `basedOn` is null, and when none is and `basedOn` names one. A row deleted and
+    written again at the place has a new id, so a save based on the old one is refused although
+    both start at version 0. Two first saves at once, and a save whose row is deleted after the
+    server read it, get the same 409. A body without `basedOn` is refused 400. Deleting a chain is
+    unchanged and carries no version (ADR-041 decision 9).
+  - **Stored rungs on another key.** A rung on a chain row, or in a request's pin, whose key is not
+    one of its type's current keys is unstaffed: nobody's grants put them on it, so it is passed
+    only on the way to a staffed rung above it, and with none above it the request waits
+    `unstaffed` until an override that reaches the rung's level decides it. Such a chain is refused
+    at its next save until the rung is removed.
+  - **The chain screen** sends `basedOn` for the chain it shows: the row the screen listed at the
+    draft's request type and place when the dialog was opened, or null where it listed none, by
+    one rule for a new chain, an edit and a draft moved by its selects. So a new chain opened where
+    a chain is listed replaces that chain when saved, as before. A stale save is refused with the
+    stale-record message, in English and Arabic, in the dialog as in the toast, and the list behind
+    the dialog is re-read: the chain is then opened again with Edit, which names the row as it now
+    is, and saved.
+  - **For HR leave,** the engine's only host: a stored `hr.leave` rung on any key but
+    `leave.approve` is unstaffed from this release, so its key's holders no longer decide it, and a
+    request waits past it on the next staffed rung or, with none, `unstaffed` for an override within
+    reach. The chain screen has only ever offered `leave.approve`, so such a rung was written some
+    other way; count C3 (re-detail §10) says how many chains hold one, and is reported before this
+    merges. Leave's own code, routes and requests are unchanged.
+  - **Deploy.** The `PUT` body changes, so the API and the web deploy together. A chain-screen tab
+    opened before the deploy sends no `basedOn`, and its save gets a 400 until the tab is reloaded.
+  - `approval.service.spec.ts` rewrites its R9 cases to the fixed save and adds stored rungs on
+    another key, on a chain row and on a pin; `apps/api/tests/integration/approvals.spec.ts` gains
+    four cases, and its earlier saves now name their row; `chain-basis.spec.ts` covers the
+    screen's basis; the web contract spec checks `basedOn` in the schema and in the page, and no
+    longer says that a rung nobody holds approves everything. With this pull request PX-1 closes
+    (design §22).
+  - Rollback (RK-30): reverting restores the unchecked save and leaves nothing stored behind; the
+    web rolls back with the API, because the older schema refuses the newer screen's `basedOn` as
+    an unknown key.
+
 - **The approvals engine: the after-commit audit is opt-in per request type.** This is PX-1.5 of
   PX-1, which hardens the platform approvals engine before Administrative Affairs' money approvals
   run on it (`docs/12-planning/administration-module-phase-px1.md` §3 and §6.6; ADR-041 decision

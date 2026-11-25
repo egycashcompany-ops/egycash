@@ -24,11 +24,18 @@ export const useApprovalRequestTypes = () =>
     retry: false,
   });
 
+/**
+ * A chain save. Its answer re-reads the chains whether it was taken or refused: a save refused as
+ * stale (409 `STALE_DOCUMENT`) names a row or version the list no longer has, so the list behind
+ * the dialog is re-read to show the chain as it now is, and the next Edit names that row and
+ * version. Settled rather than on error, because a mutation's own `onError` opts it out of the
+ * global toast that words the refusal (`shared/lib/query-client.ts`).
+ */
 export const useSetApprovalWorkflow = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: SetApprovalWorkflow) => api.setWorkflow(body),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: workflowsKey }),
+    onSettled: () => void qc.invalidateQueries({ queryKey: workflowsKey }),
   });
 };
 

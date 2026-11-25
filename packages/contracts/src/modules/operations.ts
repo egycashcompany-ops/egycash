@@ -524,7 +524,12 @@ export interface OperationsShiftTypeDto {
   name: string;
   /** The English name, or null — the areas' rule: optional, the board reads Arabic. */
   nameEn: string | null;
-  colour: OperationsShiftTypeColour;
+  /**
+   * The type's colour, or null — Round 34 C: «مش لازم نوع يكون واخد اجبارى لون». A type with no colour
+   * is drawn neutral everywhere (its dot an outline, its tag untinted), and a row of it that keeps
+   * «لون النوع» is drawn as an uncoloured row. The types saved before Round 34 keep their colours.
+   */
+  colour: OperationsShiftTypeColour | null;
   /**
    * The type's place in the catalog's ARRANGED order — 0 first — or null while nobody has arranged
    * the list (`PUT /operations/shift-types/order`, the currencies' drag exactly). THE ORDER THE LIST
@@ -545,7 +550,11 @@ export interface OperationsShiftTypeDto {
 const shiftTypeCore = {
   name: z.string().trim().min(1).max(60),
   nameEn: z.string().trim().min(1).max(60).nullable().default(null),
-  colour: OperationsShiftTypeColourSchema,
+  /**
+   * A colour of the palette, or null for none (Round 34 C) — left out on create, none. On the edit
+   * (`.partial()`) left out means unchanged, and null takes the type's colour off.
+   */
+  colour: OperationsShiftTypeColourSchema.nullable().default(null),
   /** Optional, as the currencies': left out on create, a new type joins the END of an arranged list. */
   sortOrder: z.number().int().min(0).nullable().optional(),
 };
@@ -2092,6 +2101,23 @@ export const OPERATIONS_CREW_ROW_COLOURS = OPERATIONS_SHIFT_TYPE_COLOURS;
 export type OperationsCrewRowColour = OperationsShiftTypeColour;
 
 /**
+ * Round 34 C — «بدون لون»: «ولو انا مثبت لون للنوع ممكن لو تندى صف اشيل لونه عادى». A row's colour has
+ * THREE states, and `rowColour` holds each:
+ *   · null — «لون النوع», the default: the row wears its type's colour, or none when its type has
+ *     none (or it has no type). Every row saved before Round 34, and every save of an older client
+ *     that knows no other way to take a colour off, means this — as before;
+ *   · a palette name — the colour picked by hand, over the type's;
+ *   · `'none'` — NO colour, picked by hand: it wins over the type's colour, so a «محصنة» row can stand
+ *     uncoloured beside the «محصنة» rows that wear the type's. Stored as written.
+ * `'none'` is no palette name and no Round-20 name (the contracts' spec holds it), so nothing maps
+ * onto it or away from it.
+ */
+export const OPERATIONS_CREW_ROW_NO_COLOUR = 'none' as const;
+export type OperationsCrewRowNoColour = typeof OPERATIONS_CREW_ROW_NO_COLOUR;
+/** What a row's `rowColour` may hold besides null («لون النوع»): a palette colour, or «بدون لون». */
+export type OperationsCrewRowColourSetting = OperationsCrewRowColour | OperationsCrewRowNoColour;
+
+/**
  * Round 20's six row colours → the palette's names, each the palette's colour Round 20 drew it in:
  * its swatch was the palette's dot exactly — `yellow` bg-yellow-400 (the palette's `gold`, NOT
  * `amber`, an orange-brown amber-600 that would have read as one with `orange`), `green`
@@ -2113,13 +2139,14 @@ const LEGACY_ONLY_ROW_COLOURS = ['yellow', 'green', 'blue', 'red', 'purple'] as 
   readonly Exclude<OperationsLegacyCrewRowColour, OperationsShiftTypeColour>[];
 
 /**
- * A stored or sent row colour → the palette's name, or null: a palette name as it is, a Round-20
- * name mapped, anything else (null, absent, a name no build of this contract knows) none. The one
- * reading every reader of a STORED colour goes through — a row the boot's migration has not reached
- * yet reads as it will after.
+ * A stored or sent row colour → the palette's name, `'none'`, or null: a palette name as it is, a
+ * Round-20 name mapped, «بدون لون» (`'none'`, Round 34 C) as it is, anything else (null, absent, a
+ * name no build of this contract knows) null — «لون النوع». The one reading every reader of a STORED
+ * colour goes through — a row the boot's migration has not reached yet reads as it will after.
  */
-export const canonicalCrewRowColour = (value: unknown): OperationsCrewRowColour | null => {
+export const canonicalCrewRowColour = (value: unknown): OperationsCrewRowColourSetting | null => {
   if (typeof value !== 'string') return null;
+  if (value === OPERATIONS_CREW_ROW_NO_COLOUR) return OPERATIONS_CREW_ROW_NO_COLOUR;
   if ((OPERATIONS_SHIFT_TYPE_COLOURS as readonly string[]).includes(value)) {
     return value as OperationsCrewRowColour;
   }
@@ -2129,11 +2156,13 @@ export const canonicalCrewRowColour = (value: unknown): OperationsCrewRowColour 
 };
 
 /**
- * What the save takes for `rowColour`: a palette name, or a Round-20 name MAPPED to one (the parsed
- * value is always a palette name — the service never sees a legacy one). Anything else → 400.
+ * What the save takes for `rowColour`: a palette name, a Round-20 name MAPPED to one (the parsed
+ * value is never a legacy name — the service never sees one), or `'none'` — «بدون لون» (Round 34 C).
+ * Null («لون النوع») is the field's `.nullable()`. Anything else → 400.
  */
 export const OperationsCrewRowColourSchema = z.union([
   OperationsShiftTypeColourSchema,
+  z.literal(OPERATIONS_CREW_ROW_NO_COLOUR),
   z
     .enum(LEGACY_ONLY_ROW_COLOURS)
     .transform((legacy): OperationsCrewRowColour => OPERATIONS_LEGACY_CREW_ROW_COLOURS[legacy]),
@@ -2150,7 +2179,8 @@ export interface OperationsCrewAssignmentDto {
   fleetDutyAssignmentId: string | null;
   /** «النوع» — a type of the `أنواع التشغيل` catalog, or null («اختر»). */
   shiftTypeId: string | null;
-  rowColour: OperationsCrewRowColour | null;
+  /** Null «لون النوع», a palette colour, or `'none'` «بدون لون» — see `OPERATIONS_CREW_ROW_NO_COLOUR`. */
+  rowColour: OperationsCrewRowColourSetting | null;
   /**
    * The slot's occupants, in the order Operations entered them — at most `CREW_SLOT_CAPACITY`.
    *
@@ -2205,7 +2235,8 @@ export interface OperationsCrewBoardCrewDto {
   notes: string | null;
   /** «النوع» — a type of the `أنواع التشغيل` catalog (`GET /operations/shift-types`), or null. */
   shiftTypeId: string | null;
-  rowColour: OperationsCrewRowColour | null;
+  /** Null «لون النوع», a palette colour, or `'none'` «بدون لون» — see `OPERATIONS_CREW_ROW_NO_COLOUR`. */
+  rowColour: OperationsCrewRowColourSetting | null;
   /**
    * Round 32 critic — how many محصنات «توزيع المحصنات» placed on this crew row (its LIVE legs). They
    * ride the row, so they stay with its van whatever crosses in «تبديل بين سيارتين»; the board's

@@ -173,6 +173,60 @@ export const rowTint = (colour: OperationsShiftTypeColour): string =>
   cn(SHIFT_TYPE_TONE[colour].row, ROW_BAR);
 
 /**
+ * Round 34 C — «مش لازم نوع يكون واخد اجبارى لون»: the look of a type with NO colour, and of «بدون
+ * لون» wherever it is offered. Neutral, and never mistaken for a colour of the palette (the palette's
+ * `slate` is a SOLID dot and a tinted tag):
+ *   · `dot` — a hollow ring in the panel's own ink (slate-500 / dark slate-400: 4.8:1 on white and
+ *     6.4:1 on the dark panel, past a graphic's 3:1), no fill. Distinct from «اختر»'s DASHED ring (no
+ *     type at all);
+ *   · `tag` — the table's own text on no tint, a hairline ring — the board's uncoloured row.
+ * A row of such a type, its «لون النوع» kept, is drawn as an uncoloured row: no tint, no bar.
+ */
+export const NO_COLOUR_TONE = {
+  tag: 'bg-transparent text-slate-700 ring-slate-300 dark:text-slate-200 dark:ring-slate-600',
+  dot: 'border-[1.5px] border-slate-500 bg-transparent dark:border-slate-400',
+} as const;
+
+/** A type's colour's dot classes — its palette colour's, or the neutral ring for none. */
+export const typeDotTone = (colour: OperationsShiftTypeColour | null): string =>
+  colour === null ? NO_COLOUR_TONE.dot : SHIFT_TYPE_TONE[colour].dot;
+
+/** A type's tag classes — its palette colour's tint, or none. */
+export const typeTagTone = (colour: OperationsShiftTypeColour | null): string =>
+  colour === null ? NO_COLOUR_TONE.tag : SHIFT_TYPE_TONE[colour].tag;
+
+const NO_COLOUR_SWATCH_SIZE = {
+  sm: 'h-3 w-3',
+  md: 'h-4 w-4',
+  lg: 'h-7 w-7',
+  xl: 'h-9 w-9',
+} as const;
+
+/**
+ * Round 34 C — «بدون لون» as a CHOICE (a row's «اللون» list, the type's form, «ألوان الأنواع») and as a
+ * row's colour picked by hand: the neutral ring struck through once, the painter's «no colour». Never
+ * a tint, so it reads as none in dark and light alike. The size is a prop, for `ShiftTypeDot`'s
+ * reason.
+ */
+export const NoColourSwatch = ({
+  size = 'md',
+}: {
+  size?: keyof typeof NO_COLOUR_SWATCH_SIZE;
+}): JSX.Element => (
+  <span
+    aria-hidden
+    data-no-colour-swatch="true"
+    className={cn(
+      'relative inline-block shrink-0 overflow-hidden rounded-full bg-white dark:bg-transparent',
+      NO_COLOUR_SWATCH_SIZE[size],
+      NO_COLOUR_TONE.dot,
+    )}
+  >
+    <span className="absolute inset-x-0 top-1/2 h-[1.5px] -translate-y-1/2 -rotate-45 bg-slate-500 dark:bg-slate-400" />
+  </span>
+);
+
+/**
  * A type's name in the reader's language. The catalog's Arabic name is the type's name; the
  * English one is optional (the areas' rule), so an English reader reads the Arabic name where
  * none was given rather than a blank.
@@ -183,29 +237,31 @@ export const shiftTypeName = (type: OperationsShiftTypeDto, locale: Locale): str
 /**
  * The type's dot — the colour alone, beside a name written in the box's own text colour. Its size
  * is a prop, not a class a caller adds: `cn` is a plain joiner, so a second `h-*` would land beside
- * this one and Tailwind's emission order would pick.
+ * this one and Tailwind's emission order would pick. Round 34 C: a type with no colour (null) wears
+ * the neutral ring (`NO_COLOUR_TONE`), `data-type-dot="none"`.
  */
 export const ShiftTypeDot = ({
   colour,
   size = 'md',
 }: {
-  colour: OperationsShiftTypeColour;
+  colour: OperationsShiftTypeColour | null;
   size?: 'sm' | 'md';
 }): JSX.Element => (
   <span
     aria-hidden
-    data-type-dot={colour}
+    data-type-dot={colour ?? 'none'}
     className={cn(
       'shrink-0 rounded-full',
       size === 'sm' ? 'h-2 w-2' : 'h-2.5 w-2.5',
-      SHIFT_TYPE_TONE[colour].dot,
+      typeDotTone(colour),
     )}
   />
 );
 
 /**
  * A type as a tag — in a list (`sm`), and on the reference screen (`md`, a size up). The size is a
- * prop for the dot's reason: one font size ever reaches the element.
+ * prop for the dot's reason: one font size ever reaches the element. A type with no colour (Round 34
+ * C) is an untinted tag with the neutral ring for its dot (`data-type-tag="none"`).
  */
 export const ShiftTypeTag = ({
   type,
@@ -220,17 +276,15 @@ export const ShiftTypeTag = ({
   className?: string;
 }): JSX.Element => (
   <span
+    data-type-tag={type.colour ?? 'none'}
     className={cn(
       'inline-flex min-w-0 items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-0.5 font-black ring-1 ring-inset',
       size === 'md' ? 'text-[13px]' : 'text-[11.5px]',
-      SHIFT_TYPE_TONE[type.colour].tag,
+      typeTagTone(type.colour),
       className,
     )}
   >
-    <span
-      aria-hidden
-      className={cn('h-2 w-2 shrink-0 rounded-full', SHIFT_TYPE_TONE[type.colour].dot)}
-    />
+    <span aria-hidden className={cn('h-2 w-2 shrink-0 rounded-full', typeDotTone(type.colour))} />
     <span className="min-w-0 truncate">{shiftTypeName(type, locale)}</span>
   </span>
 );

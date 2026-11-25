@@ -1,6 +1,7 @@
 // The catalogs' search box matches the TEXT typed, never a pattern built from it — folded the way
 // the API's own Arabic search folds, so a spelling variant finds the row instead of duplicating it.
 import { describe, expect, it } from 'vitest';
+import { asciiDigits } from '@ecms/contracts';
 import { normalizeArabic } from '../hr/shared/arabic';
 import { containsText, escapeRegExp } from './catalog-search';
 
@@ -140,6 +141,24 @@ describe('catalog search — Arabic folded as normalizeArabic folds it', () => {
     expect(matches('💰 1', 'خزنة 💰 1')).toBe(true);
   });
 
+  // Round 34 critic — the web folds what is typed to Latin digits before it asks («١٠٤» → «104»),
+  // while a code or a name is stored as it was typed. A row saved with Arabic-Indic digits was then
+  // found by NO typed form: «104» missed it, and «١٠٤» was sent as «104».
+  it('finds a code stored in Arabic-Indic or Persian digits by its Latin digits, and every way round', () => {
+    const forms = ['104', '١٠٤', '۱۰۴'];
+    for (const typed of forms) {
+      for (const stored of forms) {
+        expect(matchesWhole(typed, stored), `${typed} → ${stored}`).toBe(true);
+        expect(matches(typed, `فرع ${stored} - المعادي`), `${typed} in ${stored}`).toBe(true);
+      }
+    }
+    // Mixed on either side, and still the digit itself: «104» is not «105», nor «1.4».
+    expect(matchesWhole('1٠۴', '١04')).toBe(true);
+    expect(matches('104', '١٠٥')).toBe(false);
+    expect(matches('104', '1.4')).toBe(false);
+    expect(containsText('4').$regex).toBe('[4٤۴]');
+  });
+
   // ReDoS: one class-with-star between single-character atoms, nothing nested, no alternation.
   it('builds atoms joined by one marks run, and nothing else', () => {
     const joiner = containsText('ab').$regex.slice(1, -1);
@@ -152,19 +171,25 @@ describe('catalog search — Arabic folded as normalizeArabic folds it', () => {
   });
 
   // The parity pin. If normalizeArabic gains or loses a fold, this fails until the catalogs follow.
+  // Round 34 critic — REWRITTEN: the reference fold is normalizeArabic WITH the digits read as
+  // Latin (`asciiDigits`), the one fold the catalogs add (it read normalizeArabic alone, which
+  // keeps «٤» and «۴» apart).
   describe('parity with normalizeArabic over the whole Arabic block (U+0600–U+06FF)', () => {
     const block = Array.from({ length: 0x100 }, (_, i) => String.fromCharCode(0x0600 + i));
     const hex = (c: string): string => `U+${c.charCodeAt(0).toString(16).toUpperCase()}`;
+    const fold = (c: string): string => asciiDigits(normalizeArabic(c));
     const marks = block.filter((c) => normalizeArabic(c) === '');
     // What normalizeArabic maps to ONE letter. U+0675–U+0678 expand to two under NFKC (a letter
     // and a high hamza), which no single class can mirror; no Egyptian keyboard types them.
     const letters = block.filter((c) => [...normalizeArabic(c)].length === 1);
 
-    it('treats two letters as one exactly when normalizeArabic does', () => {
+    it('treats two characters as one exactly when normalizeArabic, the digits read as Latin, does', () => {
+      // The Latin digits beside the block, so «٤» / «۴» / «4» are held to the reference too.
+      const all = [...letters, ...'0123456789'];
       const wrong: string[] = [];
-      for (const typed of letters) {
-        for (const stored of letters) {
-          const same = normalizeArabic(typed) === normalizeArabic(stored);
+      for (const typed of all) {
+        for (const stored of all) {
+          const same = fold(typed) === fold(stored);
           if (matchesWhole(typed, stored) !== same) wrong.push(`${hex(typed)}/${hex(stored)}`);
         }
       }

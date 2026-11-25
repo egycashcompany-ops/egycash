@@ -10,6 +10,7 @@ import {
   OPERATIONS_CREW_AVAILABILITIES,
   OPERATIONS_CREW_FREE_VEHICLE_GROUPS,
   OPERATIONS_CREW_ROW_COLOURS,
+  OPERATIONS_CREW_ROW_NO_COLOUR,
   OPERATIONS_CREW_SLOTS,
   OPERATIONS_DIRECTION_MAX_LENGTH,
   OPERATIONS_LEGACY_CREW_ROW_COLOURS,
@@ -532,5 +533,79 @@ describe('Round 24b — the one palette and the legacy row colours', () => {
     expect(
       UpdateOperationsShiftTypeSchema.safeParse({ colour: 'yellow', version: 3 }).success,
     ).toBe(false);
+  });
+});
+
+// Round 34 C — «ما انا عاوز مش لازم نوع يكون واخد اجبارى لون فاهم ولو انا مثبت لون للنوع ممكن لو تندى
+// صف اشيل لونه عادى»: a type may have no colour, and any row may be «بدون لون» over its type's.
+describe('Round 34 C — colours are optional: a type without one, a row «بدون لون»', () => {
+  it('a row’s colour has three states: null «لون النوع», a palette name, or `none` «بدون لون»', () => {
+    expect(OPERATIONS_CREW_ROW_NO_COLOUR).toBe('none');
+    const none = plan({ rows: [{ vehicleId: oid(1), shiftTypeId: oid(50), rowColour: 'none' }] });
+    expect(none.success).toBe(true);
+    // Stored as written — never mapped to null, which would hand the row its type's colour back.
+    expect(none.data?.rows[0]?.rowColour).toBe('none');
+    expect(plan({ rows: [{ vehicleId: oid(1), rowColour: null }] }).data?.rows[0]?.rowColour).toBe(
+      null,
+    );
+    expect(
+      plan({ rows: [{ vehicleId: oid(1), rowColour: 'navy' }] }).data?.rows[0]?.rowColour,
+    ).toBe('navy');
+    for (const wrong of ['None', 'NONE', '', 'transparent', 'no']) {
+      expect(plan({ rows: [{ vehicleId: oid(1), rowColour: wrong }] }).success, wrong).toBe(false);
+    }
+    // A row WITHOUT a van takes it too.
+    expect(
+      plan({ rows: [{ vehicleId: null, captainEmployeeIds: [oid(10)], rowColour: 'none' }] })
+        .success,
+    ).toBe(true);
+  });
+
+  it('`none` is no palette name and no Round-20 name — and the legacy names are still mapped', () => {
+    expect((OPERATIONS_SHIFT_TYPE_COLOURS as readonly string[]).includes('none')).toBe(false);
+    expect(Object.keys(OPERATIONS_LEGACY_CREW_ROW_COLOURS)).not.toContain('none');
+    expect(Object.values(OPERATIONS_LEGACY_CREW_ROW_COLOURS)).not.toContain('none');
+    for (const [legacy, palette] of Object.entries(OPERATIONS_LEGACY_CREW_ROW_COLOURS)) {
+      expect(
+        plan({ rows: [{ vehicleId: oid(1), rowColour: legacy }] }).data?.rows[0]?.rowColour,
+      ).toBe(palette);
+    }
+  });
+
+  it('reads a stored `none` as `none` — never as «لون النوع» (null)', () => {
+    expect(canonicalCrewRowColour('none')).toBe('none');
+    expect(canonicalCrewRowColour('yellow')).toBe('gold');
+    expect(canonicalCrewRowColour(null)).toBeNull();
+    expect(canonicalCrewRowColour('None')).toBeNull();
+  });
+
+  it('a type may have no colour: left out or null on create is none; null on the edit takes it off', () => {
+    expect(CreateOperationsShiftTypeSchema.parse({ name: 'محصنة' })).toEqual({
+      name: 'محصنة',
+      nameEn: null,
+      colour: null,
+    });
+    expect(
+      CreateOperationsShiftTypeSchema.parse({ name: 'محصنة', colour: null }).colour,
+    ).toBeNull();
+    expect(CreateOperationsShiftTypeSchema.parse({ name: 'محصنة', colour: 'slate' }).colour).toBe(
+      'slate',
+    );
+    const off = UpdateOperationsShiftTypeSchema.parse({ colour: null, version: 2 });
+    expect(off).toEqual({ colour: null, version: 2 });
+    // Left out on the edit is UNCHANGED — the key stays absent, never a null that clears it.
+    const rename = UpdateOperationsShiftTypeSchema.parse({ name: 'محصنة', version: 2 });
+    expect('colour' in rename).toBe(false);
+    // A type's «no colour» is null — `none` is the ROW's word, never a type's; and never CSS.
+    for (const wrong of ['none', 'yellow', '#ff0000', '']) {
+      expect(
+        CreateOperationsShiftTypeSchema.safeParse({ name: 'محصنة', colour: wrong }).success,
+        wrong,
+      ).toBe(false);
+      expect(
+        UpdateOperationsShiftTypeSchema.safeParse({ colour: wrong, version: 0 }).success,
+        wrong,
+      ).toBe(false);
+    }
   });
 });

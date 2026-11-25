@@ -20,9 +20,12 @@ its entry here in the same PR.
     assignments in force now (`findInForceForUsers`), the validity window RBAC's effective
     permissions apply and staffing already read. A grant whose `validTo` has passed, or whose
     `validFrom` has not come, no longer offers its holder a decision, on its own rung or early over
-    the rungs below it, and `decide` refuses it `approvals.notYourStep`. `findActiveForUser` stays
-    unfiltered for its other readers, among them the effective-permissions screen (ADR-026 SA-4).
-    Delegated grants carry no validity window and are read as before (ADR-032).
+    the rungs below it. `decide` refuses its holder `approvals.notYourStep`, unless another grant in
+    force puts them on a rung at or above the waiting one, or they also hold an `approval.override`
+    that reaches the rung to decide, which then decides it as an override, recorded
+    `overriddenWith` (PX-1.2). `findActiveForUser` stays unfiltered for its other readers, among
+    them the effective-permissions screen (ADR-026 SA-4). Delegated grants carry no validity window
+    and are read as before (ADR-032).
   - **Only active accounts staff a rung (R8).** `approversFor` keeps only the holders
     `userRepository.activeIdsAmong` returns, the account predicate sign-in and the last-Super-Admin
     guard share (ADR-026 SA-6), whether a role assignment or a delegation put them on the rung: an
@@ -32,13 +35,16 @@ its entry here in the same PR.
     and a chain with no staffed rung left reads `unstaffed` (PX-1.2).
   - **For HR leave,** the engine's only host: an expired or not-yet-started `leave.approve` grant no
     longer offers Approve and Reject on a request or decides it, and its holder is refused
-    `approvals.notYourStep`. A suspended or archived approver, or one never activated, is no longer
-    counted as staffing a rung or notified of a request: the request waits on the next rung an
-    active account holds, whose holders are notified instead, and the passed rung reads `skipped`
-    once that holder decides; a request whose remaining rungs only such accounts hold waits
-    `unstaffed` for an override within reach. Leave's own code is unchanged: its submission rule,
-    its manager and HR path, its inbox and reminder, which read `leave.approve` themselves, and its
-    audit.
+    `approvals.notYourStep`. Two things still let that holder decide: another `leave.approve` grant
+    in force that puts them on a rung at or above the one the request waits on, which decides as
+    their own rung; and an `approval.override` they also hold that reaches the rung, which still
+    shows Approve and Reject and decides it as an override, recorded `overriddenWith`. A suspended
+    or archived approver, or one never activated, is no longer counted as staffing a rung or
+    notified of a request: the request waits on the next rung an active account holds, whose
+    holders are notified instead, and the passed rung reads `skipped` once that holder decides; a
+    request whose remaining rungs only such accounts hold waits `unstaffed` for an override within
+    reach. Leave's own code is unchanged: its submission rule, its manager and HR path, its inbox
+    and reminder, which read `leave.approve` themselves, and its audit.
   - `apps/api/src/platform/approvals/approver-lookup.spec.ts` is the lookup's first spec;
     `apps/api/tests/integration/approvals.spec.ts` gains a case for each fix.
   - Rollback (RK-30): reverting restores the unfiltered reads and leaves nothing stored behind.

@@ -45,7 +45,13 @@ import {
   levelProblems,
   type ItemForm,
 } from '../lib/item-form';
-import { fieldRefusal, isStaleRefusal, refusalFieldKeys, type RefusalField } from '../lib/refusals';
+import {
+  carryEdits,
+  fieldRefusal,
+  isStaleRefusal,
+  refusalFieldKeys,
+  type RefusalField,
+} from '../lib/refusals';
 import { AdministrationDialogFrame } from './AdministrationDialogFrame';
 import { CatalogSelect } from './CatalogSelect';
 
@@ -151,7 +157,7 @@ export const ItemFormDialog = ({
         const fresh = await rereadItem(base.id).catch(() => null);
         if (fresh !== null) {
           setRebased(fresh);
-          setForm(itemFormFrom(fresh));
+          setForm(carryEdits(itemFormFrom(base), form, itemFormFrom(fresh)));
         }
       }
     }

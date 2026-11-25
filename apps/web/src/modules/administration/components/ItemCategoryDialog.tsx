@@ -36,7 +36,13 @@ import {
   sortOrderOf,
   type CatalogForm,
 } from '../lib/catalog-form';
-import { fieldRefusal, isStaleRefusal, refusalFieldKeys, type RefusalField } from '../lib/refusals';
+import {
+  carryEdits,
+  fieldRefusal,
+  isStaleRefusal,
+  refusalFieldKeys,
+  type RefusalField,
+} from '../lib/refusals';
 import { AdministrationDialogFrame } from './AdministrationDialogFrame';
 
 /**
@@ -126,7 +132,7 @@ export const ItemCategoryDialog = ({
         const fresh = await rereadCategory(base.id).catch(() => null);
         if (fresh !== null) {
           setRebased(fresh);
-          setForm(catalogFormFrom(fresh));
+          setForm(carryEdits(catalogFormFrom(base), form, catalogFormFrom(fresh)));
         }
       }
     }

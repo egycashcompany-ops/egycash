@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { ErrorCodes } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 import { translate } from '../../../platform/localization/i18n';
-import { REFUSAL_FIELD_KEYS, fieldRefusal, refusalFieldKeys } from './refusals';
+import { REFUSAL_FIELD_KEYS, carryEdits, fieldRefusal, refusalFieldKeys } from './refusals';
 
 const refused = (code: string, details: { field?: string; code: string }[], status = 422) =>
   new ApiError(
@@ -141,5 +141,32 @@ describe('every word a refusal can take exists in both languages', () => {
     for (const locale of ['ar', 'en'] as const) {
       expect(translate(locale, key), `${locale}: ${key}`).not.toBe(key);
     }
+  });
+});
+
+describe('a stale save keeps what the reader changed', () => {
+  const opened = { nameAr: 'قطعة', nameEn: 'Piece', notes: '', isActive: true };
+
+  it('lays the reader’s changes over the record as it now is', () => {
+    const typed = { ...opened, notes: 'ملاحظتي' };
+    const fresh = { ...opened, nameEn: 'Unit piece', version: 2 } as typeof opened;
+    expect(carryEdits(opened, typed, fresh)).toEqual({
+      nameAr: 'قطعة',
+      nameEn: 'Unit piece',
+      notes: 'ملاحظتي',
+      isActive: true,
+      version: 2,
+    });
+  });
+
+  it('takes the other person’s value for every box the reader left alone', () => {
+    const fresh = { nameAr: 'قطع', nameEn: 'Pieces', notes: 'من غيري', isActive: false };
+    expect(carryEdits(opened, { ...opened }, fresh)).toEqual(fresh);
+  });
+
+  it('keeps the reader’s typing where both changed the same box', () => {
+    const typed = { ...opened, nameEn: 'Mine' };
+    const fresh = { ...opened, nameEn: 'Theirs' };
+    expect(carryEdits(opened, typed, fresh).nameEn).toBe('Mine');
   });
 });

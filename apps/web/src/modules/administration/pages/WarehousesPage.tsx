@@ -39,7 +39,6 @@ import { Button } from '../../../shared/ui/Button';
 import { RowActions } from '../../../shared/ui/RowActions';
 import { Select } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
-import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { localized } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useAdministrationWarehouses, useWarehouseBranchOptions } from '../api/warehouses-queries';
@@ -326,7 +325,7 @@ export const WarehousesPage = (): JSX.Element => {
             onRetry={() => void refetch()}
             {...(sort === null ? {} : { sort })}
             onSortChange={changeSort}
-            empty={<EmptyState title={t('administration.warehouses.empty')} />}
+            empty={t('administration.warehouses.empty')}
             stickyHead
           />
         </div>

@@ -117,6 +117,19 @@ export const REFUSAL_FIELD_KEYS: readonly string[] = [
 export const isStaleRefusal = (error: unknown): boolean =>
   error instanceof ApiError && error.code === ErrorCodes.STALE_DOCUMENT;
 
+/**
+ * The form a stale save rebases on: the record as it now is, with what the reader changed since the
+ * form opened laid over it. A box the reader did not touch takes the other person's value, so the
+ * next Save sends only the reader's own changes and never undoes the other save; a box both changed
+ * keeps the reader's typing, which they can see before pressing Save again.
+ */
+export const carryEdits = <F extends object>(opened: F, typed: F, fresh: F): F => {
+  const mine = Object.fromEntries(
+    Object.entries(typed).filter(([key, value]) => value !== opened[key as keyof F]),
+  );
+  return { ...fresh, ...mine };
+};
+
 /** One field's refusal, in the reader's words, or nothing — what its `Field error` takes. */
 export const fieldRefusal = (
   keys: Partial<Record<RefusalField, string>>,

@@ -303,6 +303,8 @@ describe('the item form', () => {
   it('rebases on the item as it now is after a stale save, so the next Save is taken', () => {
     expect(FORM).toContain('isStaleRefusal(error)');
     expect(FORM).toContain('setRebased(fresh)');
+    // …keeping the reader's own changes over the record as it now is.
+    expect(FORM).toContain('setForm(carryEdits(itemFormFrom(base), form, itemFormFrom(fresh)))');
     expect(FORM).toContain('version: base.version');
   });
 

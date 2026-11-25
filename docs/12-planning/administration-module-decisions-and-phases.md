@@ -3301,9 +3301,13 @@ Repository-wide findings outside this module are listed for the owner in
   - *«Add warehouse»* shows only while some branch takes a new store (`canCreate` of the branch options): `can()` is
     blind to scope, and with the top bar on a branch the create key does not reach — or the options unread — the
     form's branch box would offer nothing.
-  - *Empty registers* draw the shared `EmptyState` panel with the module's sentence, not the bare string the
-    reference passes (the checklist's default, item 6): `DataTable` puts a string in an unpadded cell. The catalogs'
-    sentence claims no filter, since they open on every status. Codes and names in the other script are isolated
+  - *Empty registers* pass the module's sentence as a plain string, as the reference does (the checklist's
+    default, item 6): a centred `EmptyState` panel in the table's cell spans the table's scroll width and leaves
+    the sentence off screen on a phone (the live check measured it). The catalogs' sentence claims no filter,
+    since they open on every status.
+  - *A stale save* (409 `STALE_DOCUMENT`) re-reads the record and lays the reader's own changes over it: a box
+    they did not touch takes the other person's value, one they changed keeps their typing, so the next Save
+    sends only their changes against the new version and never undoes the other save. Codes and names in the other script are isolated
     in a `<span dir>` inside their cell or `<dd>`, never on the `<dd>` itself, so in Arabic they sit under their
     label; the item's Arabic name keeps its order in the English screen.
   - *Words.* The English says «warehouse» throughout (the glossary's term; «store» was a second name for it). A

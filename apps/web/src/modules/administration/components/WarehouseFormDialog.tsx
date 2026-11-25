@@ -38,7 +38,13 @@ import {
   useWarehouseBranchOptions,
 } from '../api/warehouses-queries';
 import { NAME_MAX } from '../lib/catalog-form';
-import { fieldRefusal, isStaleRefusal, refusalFieldKeys, type RefusalField } from '../lib/refusals';
+import {
+  carryEdits,
+  fieldRefusal,
+  isStaleRefusal,
+  refusalFieldKeys,
+  type RefusalField,
+} from '../lib/refusals';
 import {
   LOCATION_MAX,
   WAREHOUSE_CODE_MAX,
@@ -166,9 +172,12 @@ export const WarehouseFormDialog = ({
       if (base !== null && isStaleRefusal(error)) {
         const fresh = await rereadWarehouse(base.id).catch(() => null);
         if (fresh !== null) {
+          const opened = warehouseFormFrom(base);
           setRebased(fresh);
-          setForm(warehouseFormFrom(fresh));
-          setKeeperLabel(storedKeeperLabel(fresh, t));
+          setForm(carryEdits(opened, form, warehouseFormFrom(fresh)));
+          // The keeper box names the keeper it holds: the reader's pick if they changed it, else
+          // the one the record now names.
+          if (form.keeperId === opened.keeperId) setKeeperLabel(storedKeeperLabel(fresh, t));
         }
       }
     }

@@ -341,6 +341,8 @@ describe('the warehouse form', () => {
   it('rebases on the store as it now is after a stale save, so the next Save is taken', () => {
     expect(FORM).toContain('isStaleRefusal(error)');
     expect(FORM).toContain('setRebased(fresh)');
+    expect(FORM).toContain('setForm(carryEdits(opened, form, warehouseFormFrom(fresh)))');
+    expect(FORM).toContain('if (form.keeperId === opened.keeperId) setKeeperLabel(');
     expect(FORM).toContain('version: base.version');
   });
 

@@ -128,8 +128,9 @@ describe('the catalogs screen', () => {
   it('says so when nothing matches, and offers a retry when the list failed', () => {
     const empty = render(undefined, [[catalogListKey({ kind: 'unit', ...SORTED }), pageOf([])]]);
     expect(empty).toContain(ar('administration.catalogs.unit.empty'));
-    // The shared panel, padded — and, with no filter set by default, no claim that one hides rows.
-    expect(empty).toContain('py-16');
+    // The reference's plain sentence (it stays in view on a phone), and, with no filter set by
+    // default, no claim that one hides rows.
+    expect(empty).not.toContain('py-16');
     expect(ar('administration.catalogs.unit.empty')).not.toMatch(/تصفية|فلتر/u);
     expect(ar('administration.catalogs.category.empty')).not.toMatch(/تصفية|فلتر/u);
     const failed = render(undefined, [], MANAGER, [catalogListKey({ kind: 'unit', ...SORTED })]);
@@ -170,6 +171,9 @@ describe('the unit and category dialogs', () => {
       const source = readFileSync(join(HERE, '../components', file), 'utf8');
       expect(source, file).toContain('isStaleRefusal(error)');
       expect(source, file).toContain('setRebased(fresh)');
+      expect(source, file).toContain(
+        'setForm(carryEdits(catalogFormFrom(base), form, catalogFormFrom(fresh)))',
+      );
       expect(source, file).toContain('version: base.version');
     }
   });

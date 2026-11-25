@@ -27,7 +27,6 @@ import { Button } from '../../../shared/ui/Button';
 import { RowActions } from '../../../shared/ui/RowActions';
 import { Select } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
-import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { localized } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useAdministrationItems } from '../api/catalog-queries';
@@ -245,7 +244,7 @@ export const ItemsPage = (): JSX.Element => {
             {...(sort === null ? {} : { sort })}
             onSortChange={changeSort}
             onRowClick={(item) => navigate(`/administration/items/${item.id}`)}
-            empty={<EmptyState title={t('administration.items.empty')} />}
+            empty={t('administration.items.empty')}
             stickyHead
           />
         </div>

@@ -1123,6 +1123,32 @@ describe('the boot and rows already stored', () => {
 
 describe('the legacy importer writes every row — open duplicates included', () => {
   const noOpenDuplicate = { openDuplicate: 0, openDuplicateIds: [], openIndexMissing: false };
+  /**
+   * A branch with no register yet: the importer refuses one that has machines (2026-11-25) — it
+   * writes the legacy machines by their legacy ids, beside the register's own.
+   */
+  let importerBranches = 0;
+  const emptyBranch = async (code: string): Promise<string> => {
+    const res = await post(adminToken, '/platform/branches', {
+      code,
+      name: { ar: `فرع ${code}`, en: `Branch ${code}` },
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return data<{ id: string }>(res).id;
+  };
+
+  it('refuses a branch that already has machines — its legacy machines would sit beside them', async () => {
+    const legacyDb = `ecms-atm-legacy-guard-${String(Date.now())}`;
+    await expect(
+      importLegacyAtmDeployment({
+        legacyUri: uriFor(legacyDb),
+        branchId: alexBranchId,
+        replenishmentTime: 'utc',
+        maintenanceTime: 'utc',
+        dryRun: true,
+      }),
+    ).rejects.toThrow(/already has machines/);
+  });
 
   it('writes every historical replenishment and maintenance — two open on one day included — and imports everything else', async () => {
     const legacyDb = `ecms-atm-legacy-${String(Date.now())}`;
@@ -1163,7 +1189,7 @@ describe('the legacy importer writes every row — open duplicates included', ()
 
     const options = {
       legacyUri: uriFor(legacyDb),
-      branchId: portSaidBranchId,
+      branchId: await emptyBranch(String(93 + importerBranches++)),
       replenishmentTime: 'utc' as const,
       maintenanceTime: 'utc' as const,
     };
@@ -1223,7 +1249,7 @@ describe('the legacy importer writes every row — open duplicates included', ()
     await legacy.collection('atm_maint_log').insertMany([openA, openB]);
     const options = {
       legacyUri: uriFor(legacyDb),
-      branchId: portSaidBranchId,
+      branchId: await emptyBranch(String(93 + importerBranches++)),
       replenishmentTime: 'utc' as const,
       maintenanceTime: 'utc' as const,
     };

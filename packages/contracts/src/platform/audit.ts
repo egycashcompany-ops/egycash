@@ -201,6 +201,10 @@ export const AUDIT_ACTIONS = [
   // collection and the merges: the `atmRegisterImport` shape, one administrator's decision over
   // thousands of rows. Not broadcast — the run signals each affected topic once, on the target.
   'atmBranchMove',
+  // One row per legacy history import run (/atm/settings, 2026-11-25) — finished, failed or undone —
+  // carrying the source, the branch, the cutover day, the time modes and the counts: the
+  // `atmBranchMove` shape, one decision over tens of thousands of copied rows. Not broadcast.
+  'atmLegacyImport',
   // The applicant documents folder, emptied (/hr/applicant-documents, 2026-11-02). One row per
   // applicant whose folder HR removed, carrying the code and how many files went — the question an
   // HR review asks is «who emptied this person's file, and how much of it», and reading the Files

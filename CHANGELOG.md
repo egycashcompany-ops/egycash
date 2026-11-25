@@ -565,6 +565,33 @@ its entry here in the same PR.
 
 ### Added
 
+- **Administrative Affairs («الشئون الإدارية»), purchase requests' groundwork: yearly document
+  numbers and the item's kind.** This is P2.1, the first module slice of Phase 2, purchase
+  requests (`docs/12-planning/administration-module-phase-2.md` §3): the contracts and the API
+  only. No key, route, page or screen changes, and nothing takes a number yet: the first purchase
+  request is numbered by P2.3's submission.
+  - **The item's kind** (OD-14 C). For the master-data desk, the holders of the item write keys at
+    organization scope: an item is a stock item or a non-stock one, a service or a good no store
+    keeps, which purchase requests will name as they name any item. The item create,
+    `POST /api/v1/administration/items`, takes `stockTracked` (default true), the edit,
+    `PATCH /items/:id`, changes it with the version (never to null), and the item's record and
+    register rows carry it; the trail records it on the `create` and on the `update` that changes
+    it. The register has no filter by kind. Items saved before this release have no such field and
+    read as stock items, as every item was, and no row is rewritten. It changes no rule until P5,
+    where a non-stock line posts no movement. The items screen shows no kind yet (P2.W2).
+  - **Yearly document numbers** (OD-57 A, OD-58 A). `formatAdministrationNumber` and
+    `parseAdministrationNumber` in the contracts write and read «PR-2026-000001»: a four-digit
+    year, then six digits that grow wider past 999,999, one spelling per number. On the server a
+    series is a document kind and a year, counted on `purchaseRequest:<year>`; the year and the
+    business date a document stores come from one instant, so the year turns at Cairo's midnight,
+    not UTC's (RK-13), and a series' floor reads that year's numbers in the formatter's spelling
+    only, grouped by length, as the item and supplier codes' does. The module reads the Cairo
+    calendar the contracts hold through `shared/cairo-day.ts`, a re-export; nothing is copied.
+  - For the web, the item create's client type is `CreateAdministrationItemInput`, in which
+    `stockTracked` may be left out; no screen changes.
+  - Rollback (RK-30): reverting removes the field from the contracts, the API and the DTO; items
+    saved with it keep it, unread, and nothing else is stored.
+
 - **Approvals: an audit verb for an approval decision, and the approval panel and the chain screen
   in the reader's language.** This is P2.0, the platform prerequisites of Administrative Affairs'
   Phase 2, purchase requests (`docs/12-planning/administration-module-phase-2.md` §3; design

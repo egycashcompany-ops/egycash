@@ -1,7 +1,8 @@
 // Items (design §2.3.4, §5.3, §19.3): the organization's one item master, read by any holder of
 // `administrationItem.view` and written only at organization scope (OD-04 A), audited, no events.
 // Nothing is deleted: `isActive: false` retires an item (OD-70 A), which keeps its code, its name
-// and its barcode.
+// and its barcode. Each is a stock or a non-stock item (`stockTracked`, OD-14 C), set by the same
+// writers on a create and on any edit.
 //
 // THE CODE. «ITM-00001» is taken from the module's counter as the first write of the create's
 // transaction (OD-05 A, §2.8), so two creates at once get consecutive numbers — the second meets a
@@ -171,6 +172,7 @@ class AdministrationItemService {
             maxQty: input.maxQty ?? null,
             description: input.description ?? null,
             notes: input.notes ?? null,
+            stockTracked: input.stockTracked,
             isActive: true,
           },
           { by: ctx.userId, session },
@@ -234,6 +236,9 @@ class AdministrationItemService {
     if (input.maxQty !== undefined) set.maxQty = input.maxQty;
     if (input.description !== undefined) set.description = input.description;
     if (input.notes !== undefined) set.notes = input.notes;
+    // No rule reads the kind before P5 (OD-14 C); whether it may change once stock exists is P5's
+    // question (design §22, P2.1 built).
+    if (input.stockTracked !== undefined) set.stockTracked = input.stockTracked;
     // A deactivation is this field (§5.3); an item has no rule against it (OD-70 A).
     if (input.isActive !== undefined) set.isActive = input.isActive;
 

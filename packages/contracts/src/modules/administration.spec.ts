@@ -1,10 +1,14 @@
 // The master codes (design §2.8, §19.7; OD-05 A): «ITM-00001» and «SUP-00001» format and parse,
 // one spelling per number, each prefix naming its own master, and no number a counter never hands
 // out — 0, a negative, a fraction, an overflow — makes or reads a code (the
-// `consumable-number.spec.ts` shape). And the people the module names (§7.8): a search with no
-// status, since only the employed are offered, and an id parameter.
+// `consumable-number.spec.ts` shape). The yearly document numbers (§2.8; OD-57 A, OD-58 A),
+// «PR-2026-000001», on the same rules, with a four-digit year. And the people the module names
+// (§7.8): a search with no status, since only the employed are offered, and an id parameter.
 import { describe, expect, it } from 'vitest';
 import {
+  ADMINISTRATION_DOCUMENT_DIGITS,
+  ADMINISTRATION_DOCUMENT_KINDS,
+  ADMINISTRATION_DOCUMENT_PREFIXES,
   ADMINISTRATION_MASTER_CODE_DIGITS,
   ADMINISTRATION_MASTER_CODE_PREFIXES,
   ADMINISTRATION_MASTER_KINDS,
@@ -13,7 +17,9 @@ import {
   AdministrationPersonIdParamSchema,
   ListAdministrationPeopleQuerySchema,
   formatAdministrationMasterCode,
+  formatAdministrationNumber,
   parseAdministrationMasterCode,
+  parseAdministrationNumber,
 } from './administration.js';
 
 describe('the master codes', () => {
@@ -81,6 +87,92 @@ describe('the master codes', () => {
     ['an empty string', ''],
   ])('reads %s as no code', (_label, code) => {
     expect(parseAdministrationMasterCode(code)).toBeNull();
+  });
+});
+
+describe('the yearly document numbers', () => {
+  it('numbers a purchase request «PR-2026-000001»: its year, then six digits (OD-58 A)', () => {
+    expect(ADMINISTRATION_DOCUMENT_KINDS).toEqual(['purchaseRequest']);
+    expect(ADMINISTRATION_DOCUMENT_PREFIXES).toEqual({ purchaseRequest: 'PR' });
+    expect(ADMINISTRATION_DOCUMENT_DIGITS).toBe(6);
+    expect(formatAdministrationNumber('purchaseRequest', 2026, 1)).toBe('PR-2026-000001');
+    expect(formatAdministrationNumber('purchaseRequest', 2027, 4321)).toBe('PR-2027-004321');
+    expect(parseAdministrationNumber('PR-2026-000001')).toEqual({
+      kind: 'purchaseRequest',
+      year: 2026,
+      seq: 1,
+    });
+  });
+
+  it('grows wider past six digits rather than cutting the number', () => {
+    expect(formatAdministrationNumber('purchaseRequest', 2026, 999_999)).toBe('PR-2026-999999');
+    expect(formatAdministrationNumber('purchaseRequest', 2026, 1_234_567)).toBe('PR-2026-1234567');
+    expect(parseAdministrationNumber('PR-2026-1234567')).toEqual({
+      kind: 'purchaseRequest',
+      year: 2026,
+      seq: 1_234_567,
+    });
+  });
+
+  it.each([
+    ['zero', 0],
+    ['a negative', -1],
+    ['a fraction', 1.5],
+    ['an overflow', Number.MAX_SAFE_INTEGER + 1],
+    ['not a number', Number.NaN],
+    ['infinity', Number.POSITIVE_INFINITY],
+  ])('refuses to format %s as the sequence', (_label, seq) => {
+    expect(() => formatAdministrationNumber('purchaseRequest', 2026, seq)).toThrow(RangeError);
+  });
+
+  it.each([
+    ['three digits', 999],
+    ['five digits', 10_000],
+    ['zero', 0],
+    ['a negative', -2026],
+    ['a fraction', 2026.5],
+    ['not a number', Number.NaN],
+  ])('refuses to format a year of %s — `{YYYY}` is four digits', (_label, year) => {
+    expect(() => formatAdministrationNumber('purchaseRequest', year, 1)).toThrow(RangeError);
+  });
+
+  it('parses what it formats, back to the same document, year and number', () => {
+    for (const kind of ADMINISTRATION_DOCUMENT_KINDS) {
+      for (const year of [1000, 2026, 2027, 9999]) {
+        for (const seq of [1, 42, 999_999, 1_000_000, Number.MAX_SAFE_INTEGER]) {
+          const number = formatAdministrationNumber(kind, year, seq);
+          expect(parseAdministrationNumber(number), number).toEqual({ kind, year, seq });
+        }
+      }
+    }
+  });
+
+  it.each([
+    ['zero', 'PR-2026-000000'],
+    ['a negative', 'PR-2026--00001'],
+    ['a fraction', 'PR-2026-000001.5'],
+    ['an overflow', 'PR-2026-99999999999999999999'],
+    ['too few digits', 'PR-2026-1'],
+    ['a padding the formatter never writes', 'PR-2026-0000001'],
+    ['a two-digit year', 'PR-26-000001'],
+    ['a five-digit year', 'PR-20260-000001'],
+    ['a year padded from three digits', 'PR-0999-000001'],
+    ['no year', 'PR-000001'],
+    ['an unknown prefix', 'PO-2026-000001'],
+    ['a master code’s prefix', 'ITM-2026-000001'],
+    ['lower case', 'pr-2026-000001'],
+    ['a space', 'PR-2026- 000001'],
+    ['nothing after the year', 'PR-2026-'],
+    ['Arabic-Indic digits', 'PR-٢٠٢٦-٠٠٠٠٠١'],
+    ['an empty string', ''],
+  ])('reads %s as no number', (_label, value) => {
+    expect(parseAdministrationNumber(value)).toBeNull();
+  });
+
+  it('never reads a master code as a number, nor a number as a master code', () => {
+    expect(parseAdministrationNumber('ITM-00001')).toBeNull();
+    expect(parseAdministrationNumber('SUP-00001')).toBeNull();
+    expect(parseAdministrationMasterCode('PR-2026-000001')).toBeNull();
   });
 });
 

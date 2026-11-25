@@ -176,6 +176,7 @@ export const item = (over: Partial<AdministrationItemDto> = {}): AdministrationI
   maxQty: 20,
   description: null,
   notes: null,
+  stockTracked: true,
   isActive: true,
   version: 3,
   createdAt: STAMP,

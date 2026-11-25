@@ -65,7 +65,8 @@ export const toAdministrationItemCategoryDto = (
 
 /**
  * `labels` holds the names the caller resolved (§19.4): the category's and its parent's, the
- * unit's. A reference it could not name reads null rather than failing the row.
+ * unit's. A reference it could not name reads null rather than failing the row. A row written
+ * before the item's kind existed is a stock item (OD-14 C, absence-safe).
  */
 export const toAdministrationItemDto = (
   doc: AdministrationItemDoc,
@@ -90,6 +91,7 @@ export const toAdministrationItemDto = (
     maxQty: doc.maxQty,
     description: doc.description,
     notes: doc.notes,
+    stockTracked: doc.stockTracked ?? true,
     isActive: doc.isActive,
     version: doc.__v,
     createdAt: iso(doc.createdAt),

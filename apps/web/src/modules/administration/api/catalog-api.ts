@@ -7,8 +7,8 @@ import {
   type AdministrationItemCategoryDto,
   type AdministrationItemDto,
   type CreateAdministrationCatalogItem,
-  type CreateAdministrationItem,
   type CreateAdministrationItemCategory,
+  type CreateAdministrationItemInput,
   type Paginated,
   type UpdateAdministrationCatalogItem,
   type UpdateAdministrationItem,
@@ -74,7 +74,7 @@ export const listItems = (
 export const getItem = (id: string): Promise<AdministrationItemDto> =>
   get<AdministrationItemDto>(`/administration/items/${id}`);
 
-export const createItem = (body: CreateAdministrationItem): Promise<AdministrationItemDto> =>
+export const createItem = (body: CreateAdministrationItemInput): Promise<AdministrationItemDto> =>
   post<AdministrationItemDto>('/administration/items', body);
 
 export const updateItem = (

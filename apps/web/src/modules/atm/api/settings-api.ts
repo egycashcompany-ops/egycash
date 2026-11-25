@@ -14,6 +14,13 @@
 import {
   type AtmDisplaySetting,
   type AtmBranchLinksDto,
+  type AtmLegacyCutoverDto,
+  type AtmLegacyImportBody,
+  type AtmLegacyImportPreviewDto,
+  type AtmLegacyImportRunDto,
+  type AtmLegacySource,
+  type AtmLegacySourceDto,
+  type AtmLegacyUndoResultDto,
   type AtmBranchMovePreviewDto,
   type AtmBranchMoveResultDto,
   type AtmLeaderDepartmentsDto,
@@ -30,6 +37,7 @@ const MAILBOX = '/atm/mailbox';
 const BRANCH_LINKS = '/atm/branch-links';
 const LEADER_DEPARTMENTS = '/atm/leaders/departments';
 const DISPLAY = '/atm/display';
+const LEGACY = '/atm/legacy-import';
 
 // ── The maintenance mailbox ─────────────────────────────────────────────────
 /** `null` while no document exists — the reader is still on the deployment's environment. */
@@ -92,3 +100,26 @@ export const getDisplay = (): Promise<AtmDisplaySetting> => get<AtmDisplaySettin
 /** The /atm/settings card's save — the whole value, for the whole company. */
 export const saveDisplay = (body: AtmDisplaySetting): Promise<AtmDisplaySetting> =>
   put<AtmDisplaySetting>(DISPLAY, body);
+
+// ── The legacy history (design: docs/12-planning/atm-legacy-history-import.md) ─────
+// The branch is the source's own on the server — nothing sent here names one.
+export const getLegacySources = (): Promise<AtmLegacySourceDto[]> =>
+  get<AtmLegacySourceDto[]>(LEGACY);
+
+export const getLegacyCutover = (source: AtmLegacySource): Promise<AtmLegacyCutoverDto> =>
+  get<AtmLegacyCutoverDto>(`${LEGACY}/sources/${source}/cutover`);
+
+export const previewLegacyImport = (
+  body: AtmLegacyImportBody,
+): Promise<AtmLegacyImportPreviewDto> => post<AtmLegacyImportPreviewDto>(`${LEGACY}/preview`, body);
+
+export const startLegacyImport = (body: AtmLegacyImportBody): Promise<AtmLegacyImportRunDto> =>
+  post<AtmLegacyImportRunDto>(`${LEGACY}/runs`, body);
+
+/** One step of a run — the card calls it until the run is no longer `running`. */
+export const stepLegacyImport = (runId: string): Promise<AtmLegacyImportRunDto> =>
+  post<AtmLegacyImportRunDto>(`${LEGACY}/runs/${runId}/step`, {});
+
+/** One batch of a source's copies removed — the card calls it until `remaining` is 0. */
+export const undoLegacySource = (source: AtmLegacySource): Promise<AtmLegacyUndoResultDto> =>
+  post<AtmLegacyUndoResultDto>(`${LEGACY}/sources/${source}/undo`, {});

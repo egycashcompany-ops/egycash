@@ -11,6 +11,28 @@ its entry here in the same PR.
 
 ### Added
 
+- **ATM — «استيراد السجل القديم»: the old system's replenishment and maintenance history, copied
+  into each branch** (`docs/12-planning/atm-legacy-history-import.md`). The owner (2026-11-25):
+  «تقدر تشوفهم أنت من Mongo مباشرة جوا maintenance و replenishment — وللأفرع كلها مش بس المهندسين
+  وأكتوبر .. ماعدا أسيوط». A card on `/atm/settings` (`atmSettings.manage`, company-wide) for the
+  five legacy deployments — `alex`, `portsaid`, `tanta`, `wsal`, `egycash` — each into the branch
+  its code names.
+  - **A preview first**, counted by the run's own rules: the rows to copy, and each row left out
+    under the first reason (deleted, no open time, still open, closed after the branch began working
+    in ECMS, a machine the register lacks — its code listed).
+  - **Times read from the data**: a legacy row's id records when it was written, so each kind's open
+    times are read as true instants or as Cairo clock time (the replenishment bug), and a kind the
+    evidence does not decide ten to one is refused.
+  - **A cut at a moment**, suggested as the branch's first own ECMS row, not a day: Shorouk switched
+    mid-morning, and the morning's finished legacy work is kept.
+  - **Insert-only** by legacy id, never changing a row already in ECMS; a run steps 2,000 rows at a
+    time under a lease, one run at a time, and resumes with «متابعة»; **«تراجع»** removes a source's
+    copies in batches. Copies carry `legacyImportRunId` (both operation logs, partial index).
+  - «نقل البيانات» refuses while an import runs (`legacyImportRunning`); the ATM-7 command refuses a
+    branch with a register of its own. Error codes `ATM_LEGACY_IMPORT_RUNNING`,
+    `ATM_LEGACY_IMPORT_STATE`, `ATM_LEGACY_IMPORT_STEP_BUSY`, `ATM_LEGACY_IMPORT_UNREADABLE`; audit
+    action `atmLegacyImport` (one row as a run starts, one as it ends).
+
 - **Compliance and Risks — a new module, «الالتزام والمخاطر», with one page: «الملفات»**
   (`docs/12-planning/compliance-files-design.md`). Folders on a shelf shaped like HR's
   «مستندات المتقدمين», drawn with the module's own copy of that folder.

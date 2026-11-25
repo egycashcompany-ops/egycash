@@ -30,6 +30,8 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import {
   type AtmDisplaySetting,
   type AtmBranchMovePreviewDto,
+  type AtmLegacyImportBody,
+  type AtmLegacySource,
   type SaveAtmBranchLinks,
   type SaveAtmLeaderDepartments,
   type SaveAtmMailboxConfigInput,
@@ -56,6 +58,10 @@ export const atmLeaderDepartmentsKey = (): readonly unknown[] =>
 export const atmDisplayKey = (): readonly unknown[] => listKey(MODULE, 'display');
 export const atmBranchMovePreviewKey = (sourceBranchId: string): readonly unknown[] =>
   detailKey(MODULE, 'branchMove', sourceBranchId);
+/** The legacy history card's sources, and one source's suggested cutover. */
+export const atmLegacySourcesKey = (): readonly unknown[] => listKey(MODULE, 'legacyImport');
+export const atmLegacyCutoverKey = (source: AtmLegacySource): readonly unknown[] =>
+  detailKey(MODULE, 'legacyImport', `${source}:cutover`);
 
 // ── The maintenance mailbox ─────────────────────────────────────────────────
 /**
@@ -200,4 +206,35 @@ export const useSaveAtmDisplay = () => {
       client.setQueryData(atmDisplayKey(), saved);
     },
   });
+};
+
+// ── The legacy history ──────────────────────────────────────────────────────
+// A run and an undo are LOOPS the card drives (one step, one batch per request), so they are plain
+// calls (`settings-api.ts`), not mutations: the card re-reads its sources when a loop ends or
+// stops. The preview is a read, kept per body: the dialog asks again when the cut or the
+// open-row switch changes.
+export const useAtmLegacySources = (enabled = true) =>
+  useQuery({ queryKey: atmLegacySourcesKey(), queryFn: () => api.getLegacySources(), enabled });
+
+/** The moment the source's branch began working in ECMS — asked when its dialog opens. */
+export const useAtmLegacyCutover = (source: AtmLegacySource | null) =>
+  useQuery({
+    queryKey: atmLegacyCutoverKey(source ?? 'alex'),
+    queryFn: () => api.getLegacyCutover(source as AtmLegacySource),
+    enabled: source !== null,
+    staleTime: 0,
+  });
+
+export const useAtmLegacyPreview = (body: AtmLegacyImportBody | null) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'legacyImport', JSON.stringify(body)),
+    queryFn: () => api.previewLegacyImport(body as AtmLegacyImportBody),
+    enabled: body !== null,
+    staleTime: 0,
+  });
+
+/** Re-reads the card — after a loop ends, stops or fails. */
+export const useRestaleAtmLegacySources = () => {
+  const client = useQueryClient();
+  return (): void => void client.invalidateQueries({ queryKey: atmLegacySourcesKey() });
 };

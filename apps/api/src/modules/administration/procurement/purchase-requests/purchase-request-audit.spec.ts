@@ -2,7 +2,8 @@
 // registry scans for; a `create` row of the request's facts, the requester as ids and the lines
 // summarized; an `update` row of what an edit changed, and nothing for a save that changed none;
 // and after every audited act one `update` signal carrying the request's branch, which a
-// department requester's room hears and the audit row alone (no branch) never reaches. The
+// department requester's room hears and the audit row alone (no branch) never reaches. P2.3: the
+// submission's `statusChange`, with the number only when it took one. The
 // `consumable-history.spec.ts` posture: the platform's audit and realtime mocked.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -19,6 +20,7 @@ vi.mock('../../../../platform/realtime', () => ({ publishAuditedChange: mocks.pu
 const {
   auditPurchaseRequestCreated,
   auditPurchaseRequestEdited,
+  auditPurchaseRequestSubmitted,
   purchaseRequestEntityRef,
   signalPurchaseRequest,
 } = await import('./purchase-request-audit');
@@ -202,5 +204,36 @@ describe('a draft’s edit (design §10.2)', () => {
     );
     expect(mocks.record).not.toHaveBeenCalled();
     expect(mocks.publish).not.toHaveBeenCalled();
+  });
+});
+
+describe('a submission (design §10.2)', () => {
+  it('records one `statusChange` row — the status’s move and the number it took — then signals the branch', async () => {
+    const before = request();
+    await auditPurchaseRequestSubmitted(
+      before,
+      request({ status: 'pendingApproval', number: 'PR-2026-000001', __v: 1 }),
+    );
+    expect(recorded().map((row) => row.action)).toEqual(['statusChange']);
+    expect(recorded()[0]?.entityRef).toEqual(purchaseRequestEntityRef('64a0000000000000000000f1'));
+    expect(recorded()[0]?.changes).toEqual([
+      { field: 'status', old: 'draft', new: 'pendingApproval' },
+      { field: 'number', old: null, new: 'PR-2026-000001' },
+    ]);
+    // `statusChange` is not a word the organization room's screens refresh on: the signal is.
+    expect(signals()).toEqual([
+      expect.objectContaining({ action: 'update', branchId: String(BRANCH) }),
+    ]);
+  });
+
+  it('a returned request’s resubmission keeps its number, so its row names the status alone', async () => {
+    await auditPurchaseRequestSubmitted(
+      request({ number: 'PR-2026-000007', __v: 4 }),
+      request({ status: 'pendingApproval', number: 'PR-2026-000007', __v: 5 }),
+    );
+    expect(recorded()[0]?.changes).toEqual([
+      { field: 'status', old: 'draft', new: 'pendingApproval' },
+    ]);
+    expect(signals()).toHaveLength(1);
   });
 });

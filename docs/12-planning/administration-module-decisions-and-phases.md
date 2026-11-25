@@ -3617,6 +3617,49 @@ Repository-wide findings outside this module are listed for the owner in
     and 443 keys on `cad4c409` and reaches 123 and 447; the item edit's unit lock check is `item.service.ts:237`, its
     unit write `:251-252` and its `labels` `:142-149`; `ALL_REALTIME_KEY_PREFIXES` is `invalidation-registry.ts:747`;
     the warehouses' census row `targets.ts:248-255`. The re-detail's §1.2 D and §12.3 carry the same re-pins.
+- **P2.3 built** (2026-11-25). The submission ships as the P2 re-detail's §3 row says
+  ([administration-module-phase-2.md](administration-module-phase-2.md)): the adapter `shared/approvals.ts` — the
+  type registered with `{ audit: 'host' }`, the Unit, OD-19 A, the eligible-approver check and the remap —
+  `POST /:id/submit` with the yearly number (`documentNumberAt`, read once) and the pin (both fields from one
+  `pinOf`, in the conditional write), the approvers' notice, its template and the seed-coverage spec, the event
+  `.submitted`, and criterion 8's script. Nothing decides, returns or cancels a request yet. Where the code had to
+  choose what the re-detail leaves open:
+  - *The remap ships its two codes.* The §3 row puts the remap in this slice and §5 ships each code with the slice
+    that first raises it, so `ADMINISTRATION_APPROVAL_NOT_PENDING` and `…_NOT_YOUR_STEP` ship with
+    `…_CHAIN_MISSING`; nothing calls the remap before P2.4's decide. The web `FRIENDLY` table words all three now, as
+    P2.2 did its three, because `errors.spec.ts` requires every `ADMINISTRATION_` code worded as it ships; each
+    detail's remedy stays P2.W1's `lib/refusals.ts`.
+  - *A copy no longer on file reads as moved.* The Unit's guard refuses `departmentId` · `copyMoved` when the copy
+    lies in another branch, and also when the organization no longer holds it: either way no Unit of the request's
+    branch can be read. A copy written before the catalog existed, with no `catalogId` field, reads as unlinked.
+  - *The approvers told are the ones the check found.* The notice goes to the eligible approvers the submission read
+    before its transaction, the same read that passed OD-19 A, rather than a second engine read after the commit.
+  - *A lost race is answered from the request as it stands.* The conditional write's miss is thrown inside the
+    transaction, so it aborts and its number goes back, and is answered after it from a re-read under `.create`'s
+    scope: 422 `ADMINISTRATION_INVALID_TRANSITION` when the status moved, else 409. The suite's ten-at-once case,
+    which submits one draft twice among them, takes that path.
+  - *Pair A1's set is the request's rule.* `pairA1Of` joins `purchase-request-rules.ts` (P2.2's `inPairA1` now
+    reads it), and the adapter, which imports no feature, takes the set as given, with the caller as submitter.
+  - *The registration is the manifest's import.* The adapter registers as it loads, and the manifest imports it
+    beside its permissions (design §6.4), so the type exists whatever feature loads first.
+  - *Vocabularies in the contracts*, P2.2's house style: `ADMINISTRATION_PURCHASE_REQUEST_SUBMIT_PROBLEMS` (the
+    submission's four line rules and `copyMoved`, which P2.4's decision and return also meet) and
+    `ADMINISTRATION_APPROVAL_CHAIN_PROBLEMS` (`noChain`, `unstaffed`, `noEligibleApprover`). The event catalogue
+    gains the module's name and the entity word «طلب شراء» with its first event, and its spec now checks the
+    module's samples.
+  - *P2.2's hand-planted numbers moved a year.* The integration file's P2.2 cases planted 2026 numbers for the
+    register's search, an edit's order of checks and the unit lock; this year's series would then floor above them
+    and the first submission could not take «PR-<year>-000001». They plant 2025's now, a year no case submits in;
+    what they test is unchanged.
+  - *The contention script* reads the staging URL and ten focal points' tokens from the environment, names the
+    first focal point's active items cycled to 100 lines, makes the ten drafts one after another and submits them
+    at once, printing each status, number and time; it exits 1 on a miss. It cancels nothing, since a cancel is
+    P2.5's act.
+  - *Pins.* Every engine, leave, catalog and notification line the slice relies on holds as the re-detail cites it;
+    one moved: design §18.3.2's threshold is `administration-module-decisions-and-phases.md:2286-2288`, not
+    `:2285-2286` (re-detail §16, criterion 8, corrected there). No page, key, navigation row, topic or census row
+    changes: the page registry stays at 123 pages and 447 keys, and the event catalogue reaches 224 events, every
+    administration one reachable.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

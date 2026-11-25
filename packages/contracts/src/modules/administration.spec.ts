@@ -4,9 +4,11 @@
 // `consumable-number.spec.ts` shape). The yearly document numbers (§2.8; OD-57 A, OD-58 A),
 // «PR-2026-000001», on the same rules, with a four-digit year. And the people the module names
 // (§7.8): a search with no status, since only the employed are offered, and an id parameter. And
-// what every document shares (P2.2): its lines' cap and the locks its lines put on an item.
+// what every document shares (P2.2): its lines' cap and the locks its lines put on an item. And
+// from P2.3 why a document may not go to its chain, its events and its notices.
 import { describe, expect, it } from 'vitest';
 import {
+  ADMINISTRATION_APPROVAL_CHAIN_PROBLEMS,
   ADMINISTRATION_DOCUMENT_DIGITS,
   ADMINISTRATION_DOCUMENT_KINDS,
   ADMINISTRATION_DOCUMENT_PREFIXES,
@@ -17,7 +19,10 @@ import {
   ADMINISTRATION_MAX_DOCUMENT_LINES,
   ADMINISTRATION_MAX_LIST_ATTACHMENTS,
   ADMINISTRATION_PERSON_STATUSES,
+  AdministrationEvents,
   AdministrationPersonIdParamSchema,
+  AdministrationPurchaseRequestSubmittedPayloadV1,
+  AdministrationTemplates,
   ListAdministrationPeopleQuerySchema,
   formatAdministrationMasterCode,
   formatAdministrationNumber,
@@ -245,5 +250,58 @@ describe('what every document shares (P2.2)', () => {
     // The detail codes of ADMINISTRATION_ITEM_UNIT_LOCKED, read in this order by the item edit;
     // the receipt, issue and count lines join with their phases.
     expect([...ADMINISTRATION_ITEM_UNIT_LOCKS]).toEqual(['purchaseRequestLine']);
+  });
+});
+
+describe('the approval chain, its events and its notices (P2.3)', () => {
+  const oid = (n: number): string => n.toString(16).padStart(24, '0');
+
+  it('names the three reasons a submission finds nobody to decide it (OD-19 A)', () => {
+    // ADMINISTRATION_APPROVAL_CHAIN_MISSING's detail codes, which the web words one by one.
+    expect([...ADMINISTRATION_APPROVAL_CHAIN_PROBLEMS]).toEqual([
+      'noChain',
+      'unstaffed',
+      'noEligibleApprover',
+    ]);
+  });
+
+  it('declares the submission’s event alone — each later name lands with its act (design §8.1)', () => {
+    expect(AdministrationEvents).toEqual({
+      PurchaseRequestSubmitted: 'administration.purchaseRequest.submitted',
+    });
+  });
+
+  it('carries ids, the number, the scope, a count and the requester’s ids — no name, no amount', () => {
+    const payload = {
+      purchaseRequestId: oid(1),
+      number: 'PR-2026-000001',
+      branchId: oid(2),
+      lineCount: 3,
+      departmentId: oid(3),
+      requesterUserId: oid(4),
+      requesterEmployeeId: oid(5),
+    };
+    expect(AdministrationPurchaseRequestSubmittedPayloadV1.parse(payload)).toEqual(payload);
+    expect(Object.keys(AdministrationPurchaseRequestSubmittedPayloadV1.shape).sort()).toEqual(
+      Object.keys(payload).sort(),
+    );
+    // A plain object: a consumer reads it tolerantly, so a later field is additive (design §8.1).
+    expect(
+      AdministrationPurchaseRequestSubmittedPayloadV1.safeParse({ ...payload, status: 'x' })
+        .success,
+    ).toBe(true);
+    for (const missing of ['number', 'branchId', 'requesterEmployeeId'] as const) {
+      const rest: Record<string, unknown> = { ...payload };
+      delete rest[missing];
+      expect(AdministrationPurchaseRequestSubmittedPayloadV1.safeParse(rest).success, missing).toBe(
+        false,
+      );
+    }
+  });
+
+  it('keys the approvers’ notice under the module, one key per notice (phase-2 §11.1)', () => {
+    expect(AdministrationTemplates).toEqual({
+      PurchaseRequestAwaitingDecision: 'administration.purchaseRequest.awaitingDecision',
+    });
   });
 });

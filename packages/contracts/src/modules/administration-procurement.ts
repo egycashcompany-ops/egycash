@@ -394,6 +394,22 @@ export const ADMINISTRATION_PURCHASE_REQUEST_DRAFT_PROBLEMS = [
 export type AdministrationPurchaseRequestDraftProblem =
   (typeof ADMINISTRATION_PURCHASE_REQUEST_DRAFT_PROBLEMS)[number];
 
+/**
+ * Why a draft may not be submitted (`ADMINISTRATION_TRANSITION_BLOCKED`'s detail `code` on a
+ * submission, design §5.4 row 2): it has no line; a line's quantity is not above 0; a line's item
+ * no longer exists, or is retired; or its department copy no longer lies in its branch, so it has
+ * no approval Unit to be decided at (design §7.6) — which a decision and a return also meet (P2.4).
+ */
+export const ADMINISTRATION_PURCHASE_REQUEST_SUBMIT_PROBLEMS = [
+  'noLines',
+  'notPositive',
+  'itemMissing',
+  'itemInactive',
+  'copyMoved',
+] as const;
+export type AdministrationPurchaseRequestSubmitProblem =
+  (typeof ADMINISTRATION_PURCHASE_REQUEST_SUBMIT_PROBLEMS)[number];
+
 /** A line's quantity, in the item's base unit (design §2.1, Quantities). */
 const requestQty = z.number().int().min(1).max(1_000_000);
 /** The catalog's `notes` bound (`administration-catalog.ts`), for the request's two texts. */
@@ -472,6 +488,17 @@ export const UpdateAdministrationPurchaseRequestSchema = z
   .strict();
 export type UpdateAdministrationPurchaseRequest = z.infer<
   typeof UpdateAdministrationPurchaseRequestSchema
+>;
+
+/**
+ * A draft sent to its approval chain (design §5.4 row 2): the version it was read at, and nothing
+ * else — the number, the business date, the chain and its pin are the server's.
+ */
+export const SubmitAdministrationPurchaseRequestSchema = z
+  .object({ version: z.number().int().min(0) })
+  .strict();
+export type SubmitAdministrationPurchaseRequest = z.infer<
+  typeof SubmitAdministrationPurchaseRequestSchema
 >;
 
 /** The columns the register sorts on (phase-2 §4.1). */

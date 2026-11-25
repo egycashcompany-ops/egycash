@@ -1,8 +1,9 @@
 // Administrative Affairs — what the whole module shares (docs/12-planning/administration-module-design.md
 // §2.8, §11.4, §19.4): the master codes (P1a.2, the supplier's in P1b.1), the yearly document
 // numbers (P2.1), the people it names (P1a.3), the bound every typed attachment list keeps
-// (P1b.1), and what every document shares from P2.2 — its lines' cap, the acts its record offers
-// and the locks its lines put on an item. An item is «ITM-00001» and a supplier «SUP-00001»
+// (P1b.1), what every document shares from P2.2 — its lines' cap, the acts its record offers and
+// the locks its lines put on an item — and from P2.3 why a document may not go to its approval
+// chain, the module's events and its notices. An item is «ITM-00001» and a supplier «SUP-00001»
 // (OD-05 A), generated, global, permanent and never reused, the way IT's asset and consumable
 // codes are; a purchase request is «PR-2026-000001». The formatters and the parsers live here, not
 // in the API, because a screen reads a code or a number too (a scanned label, a search) — IT's
@@ -225,3 +226,65 @@ export interface AdministrationAvailableActionDto {
  */
 export const ADMINISTRATION_ITEM_UNIT_LOCKS = ['purchaseRequestLine'] as const;
 export type AdministrationItemUnitLock = (typeof ADMINISTRATION_ITEM_UNIT_LOCKS)[number];
+
+// ── Approvals — what every approval document shares (design §5.2; P2.3) ────
+
+/**
+ * Why a document may not go to its approval chain (`ADMINISTRATION_APPROVAL_CHAIN_MISSING`'s
+ * detail `code`, OD-19 A): no chain applies to its Unit; nobody holds any rung of the chain that
+ * does; or the rung it would wait on is held only by its requester, creator or submitter, whom pair
+ * A1 keeps off every rung (design §6.4 item 5, §6.6), so nobody could decide it there.
+ */
+export const ADMINISTRATION_APPROVAL_CHAIN_PROBLEMS = [
+  'noChain',
+  'unstaffed',
+  'noEligibleApprover',
+] as const;
+export type AdministrationApprovalChainProblem =
+  (typeof ADMINISTRATION_APPROVAL_CHAIN_PROBLEMS)[number];
+
+// ── Events (design §8; phase-2 §10.3) ───────────────────────────────────────
+//
+// One flat constant, the form `scripts/check-event-reachability.mjs` reads, and each name declared
+// in the slice that emits it, `stable` on arrival (design §8.1): nothing waits here `planned` for a
+// publisher, because an automation built on a name nobody emits never fires. A request's approval,
+// rejection and cancel join with their acts (P2.4, P2.5).
+
+export const AdministrationEvents = {
+  PurchaseRequestSubmitted: 'administration.purchaseRequest.submitted',
+} as const;
+export type AdministrationEventName =
+  (typeof AdministrationEvents)[keyof typeof AdministrationEvents];
+
+/**
+ * A purchase request left draft for its chain (design §8.2): its id and number, the scope ids a
+ * filter needs, its line count, and the requester's login and employee ids — the path an HR rule's
+ * audience reads a person by (design §8.2, last note). No names, no free text and no amounts
+ * (design §8.1); a plain object, which consumers read tolerantly.
+ */
+export const AdministrationPurchaseRequestSubmittedPayloadV1 = z.object({
+  purchaseRequestId: objectId(),
+  number: z.string(),
+  branchId: objectId(),
+  lineCount: z.number().int().min(0),
+  departmentId: objectId(),
+  requesterUserId: objectId(),
+  requesterEmployeeId: objectId(),
+});
+export type AdministrationPurchaseRequestSubmittedPayload = z.infer<
+  typeof AdministrationPurchaseRequestSubmittedPayloadV1
+>;
+
+// ── Notices (phase-2 §11.1) ─────────────────────────────────────────────────
+
+/**
+ * The module's notification templates, HR leave's shape: one key per notice, each ensured by the
+ * module's seed, which a spec holds to every key a send names — a send whose template was never
+ * seeded says nothing to anybody (RK-22). The approvers' notice ships with the submission (P2.3);
+ * the rest join with their acts.
+ */
+export const AdministrationTemplates = {
+  PurchaseRequestAwaitingDecision: 'administration.purchaseRequest.awaitingDecision',
+} as const;
+export type AdministrationTemplateKey =
+  (typeof AdministrationTemplates)[keyof typeof AdministrationTemplates];

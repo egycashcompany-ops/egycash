@@ -742,9 +742,9 @@ export const ErrorCodes = {
   // ── Administrative Affairs: documents (docs/12-planning/administration-module-design-flows.md §5.15;
   // administration-module-phase-2.md §4.4). Each ships with the slice that first raises it.
   /**
-   * 422 — the act is not defined from the document's current status: a draft's edit of a request
-   * that left draft, say. Nothing was written, and a retry with a fresh version cannot help. One
-   * detail, `field` 'status', `code` the document's current status.
+   * 422 — the act is not defined from the document's current status: a draft's edit or submission
+   * of a request that left draft, say. Nothing was written, and a retry with a fresh version cannot
+   * help. One detail, `field` 'status', `code` the document's current status.
    */
   ADMINISTRATION_INVALID_TRANSITION: 'ADMINISTRATION_INVALID_TRANSITION',
   /**
@@ -752,9 +752,35 @@ export const ErrorCodes = {
    * detail per failed rule, `field` and `code` naming it. On a purchase request's create:
    * 'requester' with 'noEmployee' (the login names no employee), 'unplaced' (no branch or no
    * department) or 'placementMismatch' (the employee's branch is not their department copy's). On
-   * a draft's edit: 'lines.<i>.lineId' with 'unknownLine'. Later acts add theirs as they ship.
+   * a draft's edit: 'lines.<i>.lineId' with 'unknownLine'. On a submission, one of
+   * `ADMINISTRATION_PURCHASE_REQUEST_SUBMIT_PROBLEMS`: 'lines' with 'noLines'; 'lines.<i>.qty' with
+   * 'notPositive'; 'lines.<i>.itemId' with 'itemMissing' or 'itemInactive'; 'departmentId' with
+   * 'copyMoved' (the department copy no longer lies in the request's branch). Later acts add theirs
+   * as they ship.
    */
   ADMINISTRATION_TRANSITION_BLOCKED: 'ADMINISTRATION_TRANSITION_BLOCKED',
+  /**
+   * 422 — a submission finds nobody to decide the document (OD-19 A), so it stays a draft and takes
+   * no number; nothing was written. One detail, `field` 'approval', `code` one of
+   * `ADMINISTRATION_APPROVAL_CHAIN_PROBLEMS`: 'noChain' (no chain applies to its department and
+   * branch), 'unstaffed' (nobody holds any rung of the chain that does) or 'noEligibleApprover' (the
+   * rung it would wait on is held only by its requester, creator or submitter). The remedies are an
+   * administrator's: a chain written, a rung given to someone, or a rung removed from the chain.
+   */
+  ADMINISTRATION_APPROVAL_CHAIN_MISSING: 'ADMINISTRATION_APPROVAL_CHAIN_MISSING',
+  /**
+   * 422 — a decision or a return reaches a document no longer awaiting one: its status has left
+   * `pendingApproval`, or the approval engine finds its chain already decided or with nothing to
+   * decide (`approvals.alreadyDecided`, `approvals.nothingToDecide`, remapped by the module's
+   * adapter). Nothing was written. One detail, `field` 'status', `code` the document's status.
+   */
+  ADMINISTRATION_APPROVAL_NOT_PENDING: 'ADMINISTRATION_APPROVAL_NOT_PENDING',
+  /**
+   * 422 — the caller stands on no rung of the chain the document waits on, and holds no override
+   * that reaches the rung to decide (the engine's `approvals.notYourStep`, remapped by the module's
+   * adapter); nothing was written. No details.
+   */
+  ADMINISTRATION_APPROVAL_NOT_YOUR_STEP: 'ADMINISTRATION_APPROVAL_NOT_YOUR_STEP',
   /**
    * 422 — an item's edit changes its base unit while a document line names the item in it (design
    * §2.3.4); nothing was written. A hint read before the write; from P5 a posting is the binding

@@ -88,3 +88,24 @@ export const auditPurchaseRequestEdited = async (
   });
   signalPurchaseRequest(id, String(after.branchId));
 };
+
+/**
+ * A draft submitted to its chain (design §10.2): one `statusChange` row — the status's move, and
+ * the number when this submission took it; a returned request's next submission takes none — then
+ * its signal, so the requester's room and the branch's see it leave draft.
+ */
+export const auditPurchaseRequestSubmitted = async (
+  before: AdministrationPurchaseRequestDoc,
+  after: AdministrationPurchaseRequestDoc,
+): Promise<void> => {
+  const id = String(after._id);
+  await auditService.record({
+    entityRef: purchaseRequestEntityRef(id),
+    action: 'statusChange',
+    changes: diffChanges(
+      { status: before.status, number: before.number },
+      { status: after.status, number: after.number },
+    ),
+  });
+  signalPurchaseRequest(id, String(after.branchId));
+};

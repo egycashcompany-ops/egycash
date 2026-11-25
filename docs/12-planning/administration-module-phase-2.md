@@ -1665,7 +1665,7 @@ listed, then modified.
 | `components/ItemFormDialog.tsx`, `lib/item-form.ts` + spec | M | P2.1 (`lib/item-form.ts`), P2.W2 | the create body's type (P2.1); the item's kind |
 | `lib/purchase-request-form.ts` + spec | C | P2.W1 | form state mirroring the contracts |
 | `lib/refusals.ts` + spec | M | P2.W1 | the new refusal fields and details (§4.4) |
-| `apps/web/src/shared/lib/errors.ts` + `errors.spec.ts` | M | P2.W1 | `FRIENDLY`, en and ar |
+| `apps/web/src/shared/lib/errors.ts` + `errors.spec.ts` | M | P2.2, P2.3; P2.W1 | `FRIENDLY`, en and ar: each new code's words as it ships (P2.2, P2.3, since `errors.spec.ts` requires them); the module's error words (P2.W1) |
 | `apps/web/src/shared/lib/remembered-filters-coverage.spec.ts` | M | P2.W1, P2.W2 | the new pages |
 | `administration-routes.spec.ts`, `administration-{i18n,api-contract,realtime}.spec.ts` | M | P2.W1, P2.W2 | the guard specs (§12.3) |
 | `screen-fixtures.tsx` | M | P2.1 | the item fixture's `stockTracked` |
@@ -1756,7 +1756,7 @@ with one premise corrected: criterion 6 has the requester refresh live now, wher
    `shared/document-number.spec.ts` pass.
 8. **Series contention (RK-33).** On staging, before P2 closes, ten concurrent submissions of 100-line PRs in one
    series all commit, none exhausts the driver's 120 s retry, and the slowest commits within 5 s. That is design
-   §18.3.2's threshold for P5's postings (`administration-module-decisions-and-phases.md:2285-2286`), the only measured
+   §18.3.2's threshold for P5's postings (`administration-module-decisions-and-phases.md:2286-2288`), the only measured
    threshold for a numbered write, borrowed here. `scripts/measure-purchase-request-contention.mjs` runs it (§13), and
    the figures are recorded in design §22. A miss is put to the owner with OD-58 B, a series per branch, before P2
    closes.

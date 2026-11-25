@@ -1,7 +1,8 @@
-// The purchase request's source-scan guards (design §5.16 specs 9, 10, 12 and 13; P2 plan §12.1,
-// P2.2's share). Each holds a rule no type can: a status written from a second place, a write that
-// skips its version, the engine asked a question the host must not ask, or a content write that
-// could reach a request already ended. P2.3 and P2.4 add the submission's and the decision's own
+// The purchase request's source-scan guards (design §5.16 specs 9, 10, 12 and 13; P2 plan §12.1).
+// Each holds a rule no type can: a status written from a second place, a write that skips its
+// version, the engine asked a question the host must not ask, or a content write that could reach
+// a request already ended. P2.2 wrote the draft's; P2.3 adds the submission's conditional write and
+// its transaction — the number first, nothing announced inside it; P2.4 adds the decision's own
 // writes to the same scans, and spec 11's pairs.
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -70,11 +71,11 @@ describe('spec 10: every write is version-checked or status-filtered', () => {
 
   it('no conditional write leaves out the version or the status from its filter', () => {
     // The filter is read as the literal it is, nested braces and calls included, up to the update
-    // document that follows it; a filter held in a variable cannot be read, so it is refused.
-    // P2.2 writes no conditional update, so this has nothing to scan yet: P2.3's submission is the
-    // first, and adds `expect(writes.length).toBeGreaterThan(0)` with it.
+    // document that follows it; a filter held in a variable cannot be read, so it is refused. The
+    // submission's is the first (P2.3).
     expect(service).not.toMatch(/findOneAndUpdate\(\s*[A-Za-z_$][\w$]*\s*,/);
     const writes = [...service.matchAll(/findOneAndUpdate\(\s*(\{[\s\S]*?\})\s*,\s*\{\s*\$/g)];
+    expect(writes.length, 'the scan found the submission’s write').toBeGreaterThan(0);
     expect(writes.length, 'every conditional write was read').toBe(
       service.match(/findOneAndUpdate\(/g)?.length ?? 0,
     );
@@ -92,6 +93,27 @@ describe('spec 10: every write is version-checked or status-filtered', () => {
     expect(status).toBeGreaterThan(0);
     expect(version).toBeGreaterThan(status);
     expect(rules).toBeGreaterThan(version);
+  });
+
+  it('so is a submission’s: reach and ownership, the status, the version, then its rules', () => {
+    const submit = service.slice(
+      service.indexOf('  async submit('),
+      service.indexOf('\n  }\n', service.indexOf('  async submit(')),
+    );
+    const order = [
+      'keyCoversUnit(ctx, CREATE',
+      'isRequester(before, ctx.userId)',
+      'assertSubmittable(before)',
+      'assertCurrentVersion(before, input.version)',
+      'submitProblem(',
+      'approvalUnitOf(before)',
+      'chainForSubmission(',
+      'unitOfWork(',
+    ].map((step) => [step, submit.indexOf(step)] as const);
+    for (const [step, at] of order) expect(at, step).toBeGreaterThan(0);
+    expect(order.map(([step]) => step)).toEqual(
+      [...order].sort((a, b) => a[1] - b[1]).map(([step]) => step),
+    );
   });
 });
 
@@ -111,14 +133,28 @@ describe('spec 12: the engine is asked only what the host may ask', () => {
     });
 
   it('no `decide(` of the engine runs inside a `unitOfWork(` callback', () => {
-    // The module's code series open transactions; P2.3's submission opens the request's first.
+    // The module's code series open transactions, and the request's submission opens its first.
     const blocks = sources().flatMap((file) =>
       transactions(read(file)).map((block) => ({ file, block })),
     );
     expect(blocks.length, 'the scan found transactions at all').toBeGreaterThan(0);
+    expect(blocks.map(({ file }) => file)).toContain(SERVICE);
     for (const { file, block } of blocks) {
       expect(block, file).not.toMatch(/approvalService\.decide\(/);
     }
+  });
+
+  it('the submission’s transaction takes the number first, and announces nothing inside it', () => {
+    // Design §5.1.3, T: the counter is the first write, so a lost race gives its number back; the
+    // callback may run more than once, so the audit, the notice and the event wait for the commit.
+    const [block] = transactions(read(SERVICE));
+    expect(block, 'the submission’s transaction').toBeDefined();
+    const number = block?.indexOf('nextNumber(') ?? -1;
+    expect(number).toBeGreaterThan(0);
+    expect(block?.indexOf('findOneAndUpdate(')).toBeGreaterThan(number);
+    expect(block).not.toMatch(/audit[A-Za-z]*\(|notify[A-Za-z]*\(|announce[A-Za-z]*\(|\bemit\(/);
+    // The engine's chain and its approvers are read before the transaction begins (P2 plan §8.2).
+    expect(block).not.toMatch(/chainForSubmission\(|approvalService\./);
   });
 });
 

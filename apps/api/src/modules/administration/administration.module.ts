@@ -6,9 +6,10 @@
 // on one key and one page; P1a.2 added the items, their three keys and their page; P1a.3 added the
 // warehouses, their three keys and their page, and the people the keeper is picked from; P1b.1
 // added the suppliers, their three keys, their page and their papers' authorizer (§19.1); P2.2
-// adds the purchase requests, their four keys and their page (P2 plan §9.1). A key ships with its
-// operation and a page with its keys: a key whose page is missing fails boot, and so does a page
-// with no key.
+// adds the purchase requests, their four keys and their page (P2 plan §9.1), and P2.3 their
+// submission to the platform's approval engine, under a request type of the module's own. A key
+// ships with its operation and a page with its keys: a key whose page is missing fails boot, and so
+// does a page with no key.
 import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { seedAdministration } from './administration.seed';
@@ -22,6 +23,9 @@ import {
   supplierFileAuthorizer,
 } from './procurement/suppliers';
 import { buildAdministrationWarehousesRouter } from './warehouses/warehouses/index';
+// The module's approval request types register as the manifest loads, beside its permissions
+// (design §6.4): a chain can name only a type the engine knows, and a key the type offers.
+import './shared/approvals';
 
 // One grant over every catalog kind, as `itCatalog.manage` is (§6.2): units and item categories
 // are configuration the same people keep. Held at ORGANIZATION scope by its services (OD-04 A).

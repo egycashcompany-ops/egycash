@@ -1,13 +1,15 @@
 // A purchase request's pure rules (P2 plan §4.2, §4.4, §12.1; P2.2's share): who may raise one and
 // each refusal's detail, a draft being its requester's alone, an edit's unknown and retired lines,
 // the two separation-of-duties pairs as the record reads them, and the acts the record offers each
-// reader at each status — every `enabled` and every `reason`.
+// reader at each status — every `enabled` and every `reason`. P2.3: pair A1's set, which the
+// submission takes off the live rung's holders.
 import { ErrorCodes, type AdministrationPurchaseRequestStatus } from '@ecms/contracts';
 import { describe, expect, it } from 'vitest';
 import { type AppError } from '../../../../shared/errors';
 import {
   inPairA1,
   inPairB1,
+  pairA1Of,
   inactiveItemsRefusal,
   invalidTransition,
   isRequester,
@@ -134,6 +136,24 @@ describe('the pairs, as the record reads them (OD-21 B)', () => {
     expect(inPairA1({ ...request, submittedBy: COLLEAGUE }, COLLEAGUE)).toBe(true);
     expect(inPairA1({ ...request, createdBy: COLLEAGUE }, COLLEAGUE)).toBe(true);
     expect(inPairA1(request, APPROVER)).toBe(false);
+  });
+
+  it('A1’s set is the three ids, each once, as strings — and none for a role nobody has yet', () => {
+    // A draft not yet submitted has no submitter; on a purchase request the three are one person.
+    expect(pairA1Of(request)).toEqual([REQUESTER]);
+    // The submission names its caller as the submitter before it asks who may decide (P2 plan §8.2).
+    expect(pairA1Of({ ...request, submittedBy: REQUESTER })).toEqual([REQUESTER]);
+    // Should the three ever differ, each is barred.
+    expect(
+      pairA1Of({ requesterUserId: REQUESTER, createdBy: COLLEAGUE, submittedBy: APPROVER }),
+    ).toEqual([REQUESTER, COLLEAGUE, APPROVER]);
+    expect(
+      pairA1Of({
+        requesterUserId: { toString: () => REQUESTER },
+        createdBy: undefined,
+        submittedBy: null,
+      }),
+    ).toEqual([REQUESTER]);
   });
 
   it('B1 names whoever decided a rung of the current round, and nobody for an empty one', () => {

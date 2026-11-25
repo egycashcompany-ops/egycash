@@ -259,6 +259,11 @@ import {
   OperationsShipmentExecutionPayloadV1,
   OperationsShipmentReorderedPayloadV1,
 } from '../modules/operations.js';
+import {
+  AdministrationEvents,
+  type AdministrationEventName,
+  AdministrationPurchaseRequestSubmittedPayloadV1,
+} from '../modules/administration.js';
 
 // ── The shape a consumer sees ───────────────────────────────────────────────
 
@@ -661,6 +666,7 @@ export const EVENT_MODULE_NAMES: Readonly<Record<string, LocalizedString>> = {
   fleet: { en: 'Fleet', ar: 'الحركة' },
   it: { en: 'IT', ar: 'تقنية المعلومات' },
   operations: { en: 'Operations', ar: 'العمليات' },
+  administration: { en: 'Administrative Affairs', ar: 'الشئون الإدارية' },
 };
 
 export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
@@ -778,6 +784,9 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   standingCrew: { en: 'Standing crew', ar: 'الطاقم الثابت' },
   custody: { en: 'Vault custody', ar: 'عهدة الخزينة' },
   shipmentAssignment: { en: 'Shipment assignment', ar: 'تعيين شحنة' },
+
+  // administration (P2): the purchase request, the first document of the purchasing cycle.
+  purchaseRequest: { en: 'Purchase request', ar: 'طلب شراء' },
 };
 
 export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
@@ -1481,6 +1490,19 @@ export const OPERATIONS_EVENT_SOURCE: EventCatalogSource = {
   schemas: OPERATIONS_EVENT_PAYLOAD_SCHEMAS,
 };
 
+// Administrative Affairs (P2.3): each name lands with its emitter, stable on arrival (design §8.1) —
+// a purchase request's submission first; its approval, rejection and cancel with their acts.
+export const ADMINISTRATION_EVENT_PAYLOAD_SCHEMAS: Readonly<
+  Record<AdministrationEventName, z.ZodTypeAny | null>
+> = {
+  [AdministrationEvents.PurchaseRequestSubmitted]: AdministrationPurchaseRequestSubmittedPayloadV1,
+};
+
+export const ADMINISTRATION_EVENT_SOURCE: EventCatalogSource = {
+  moduleId: 'administration',
+  schemas: ADMINISTRATION_EVENT_PAYLOAD_SCHEMAS,
+};
+
 // ── The catalogue ───────────────────────────────────────────────────────────
 
 export const EVENT_CATALOG: readonly EventCatalogEntry[] = buildEventCatalog(
@@ -1489,6 +1511,7 @@ export const EVENT_CATALOG: readonly EventCatalogEntry[] = buildEventCatalog(
   FLEET_EVENT_SOURCE,
   IT_EVENT_SOURCE,
   OPERATIONS_EVENT_SOURCE,
+  ADMINISTRATION_EVENT_SOURCE,
 );
 
 const CATALOG_BY_NAME: ReadonlyMap<string, EventCatalogEntry> = new Map(

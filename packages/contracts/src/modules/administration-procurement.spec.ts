@@ -7,19 +7,22 @@
 // The purchase request (P2.2; phase-2 §5, §12.1): its write schemas strict, a line naming an item
 // with an integer quantity from 1 to 1,000,000, at most 100 lines, `neededBy` a real date, an
 // edit's line ids each sent once; the register's comma lists and their bounds; and each guard set
-// pinned, one reason per status (design §5.16 spec 8).
+// pinned, one reason per status (design §5.16 spec 8). The submission (P2.3): a version and
+// nothing else, and the reasons a draft is refused it.
 import { describe, expect, it } from 'vitest';
 import {
   ADMINISTRATION_PURCHASE_REQUEST_ACTIONS,
   ADMINISTRATION_PURCHASE_REQUEST_ACTION_REASONS,
   ADMINISTRATION_PURCHASE_REQUEST_ORDER_STATUSES,
   ADMINISTRATION_PURCHASE_REQUEST_STATUSES,
+  ADMINISTRATION_PURCHASE_REQUEST_SUBMIT_PROBLEMS,
   APPROVAL_PENDING,
   CONTENT_EDITABLE,
   CreateAdministrationPurchaseRequestSchema,
   ListAdministrationPurchaseRequestsQuerySchema,
   PR_CANCELLABLE,
   PR_SOURCEABLE,
+  SubmitAdministrationPurchaseRequestSchema,
   UpdateAdministrationPurchaseRequestSchema,
   type AdministrationPurchaseRequestGuardSet,
   type AdministrationPurchaseRequestStatus,
@@ -411,6 +414,35 @@ describe('a purchase request’s draft edit (P2.2)', () => {
     expect(UpdateAdministrationPurchaseRequestSchema.safeParse({ lines, version: 0 }).success).toBe(
       false,
     );
+  });
+});
+
+describe('a purchase request’s submission (P2.3)', () => {
+  it('carries the version it was read at, and nothing else — the number and the chain are the server’s', () => {
+    expect(SubmitAdministrationPurchaseRequestSchema.parse({ version: 3 })).toEqual({ version: 3 });
+    for (const body of [
+      {},
+      { version: -1 },
+      { version: 1.5 },
+      { version: 0, number: 'PR-2026-000001' },
+      { version: 0, approvalWorkflowId: oid(1) },
+    ]) {
+      expect(
+        SubmitAdministrationPurchaseRequestSchema.safeParse(body).success,
+        JSON.stringify(body),
+      ).toBe(false);
+    }
+  });
+
+  it('names the reasons a draft is refused its submission, its copy’s move among them', () => {
+    // ADMINISTRATION_TRANSITION_BLOCKED's detail codes on a submission (design §5.4 row 2, §7.6).
+    expect([...ADMINISTRATION_PURCHASE_REQUEST_SUBMIT_PROBLEMS]).toEqual([
+      'noLines',
+      'notPositive',
+      'itemMissing',
+      'itemInactive',
+      'copyMoved',
+    ]);
   });
 });
 

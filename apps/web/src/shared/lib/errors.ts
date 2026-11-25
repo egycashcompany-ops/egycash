@@ -180,6 +180,13 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'This cannot be done as the document stands — a rule of the document refuses it.',
     ADMINISTRATION_ITEM_UNIT_LOCKED:
       'This item’s unit cannot change: a purchase request line already names it in that unit.',
+    // The approval chain's refusals (P2.3): the request screens (P2.W1) name each detail's remedy.
+    ADMINISTRATION_APPROVAL_CHAIN_MISSING:
+      'Nobody can approve this document now: no approval chain applies to its department, or nobody but its requester holds the step it would wait on.',
+    ADMINISTRATION_APPROVAL_NOT_PENDING:
+      'This document is no longer awaiting a decision — reload it to see where it stands now.',
+    ADMINISTRATION_APPROVAL_NOT_YOUR_STEP:
+      'You stand on no approval step this document waits on, and no override of yours reaches it.',
     // Compliance and Risks — the files page's refusals (compliance-files-design.md §8).
     COMPLIANCE_FOLDER_NAME_TAKEN: 'Another folder already has this name — choose a different one.',
     COMPLIANCE_VIEWER_INVALID:
@@ -310,6 +317,12 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'لا يمكن تنفيذ هذا الإجراء على المستند في وضعه الحالي، لأن إحدى قواعده تمنعه.',
     ADMINISTRATION_ITEM_UNIT_LOCKED:
       'لا يمكن تغيير وحدة هذا الصنف، لأن بندًا في طلب شراء يذكره بهذه الوحدة.',
+    ADMINISTRATION_APPROVAL_CHAIN_MISSING:
+      'لا يوجد الآن من يعتمد هذا المستند: لا تنطبق على إدارته سلسلة اعتماد، أو لا يشغل مستوى الاعتماد المنتظر أحد غير مقدم الطلب.',
+    ADMINISTRATION_APPROVAL_NOT_PENDING:
+      'لم يعد هذا المستند بانتظار قرار — أعد تحميله لترى حالته الآن.',
+    ADMINISTRATION_APPROVAL_NOT_YOUR_STEP:
+      'لست على مستوى اعتماد ينتظره هذا المستند، ولا تمتد إليه صلاحية التجاوز لديك.',
     COMPLIANCE_FOLDER_NAME_TAKEN: 'يوجد مجلد آخر بهذا الاسم — اختر اسمًا غيره.',
     COMPLIANCE_VIEWER_INVALID:
       'لا يُشارَك المجلد إلا مع موظفين لهم حساب نشط، وبين من اخترتهم من ليس له حساب نشط.',

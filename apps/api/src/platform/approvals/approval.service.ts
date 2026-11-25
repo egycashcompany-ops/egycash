@@ -17,6 +17,7 @@
 // then be edited, deactivated or deleted, and only new submissions follow it.
 import { Types } from 'mongoose';
 import {
+  ErrorCodes,
   type ApprovalDecision,
   type ApprovalLevel,
   type ApprovalStep,
@@ -25,7 +26,12 @@ import {
   type AuditChange,
   type SetApprovalWorkflow,
 } from '@ecms/contracts';
-import { BusinessRuleError } from '../../shared/errors';
+import {
+  BusinessRuleError,
+  ConflictError,
+  NotFoundError,
+  StaleDocumentError,
+} from '../../shared/errors';
 import { type AuthContext } from '../../shared/types';
 import { auditService } from '../audit';
 import { userRepository } from '../users/user.repository';
@@ -154,7 +160,7 @@ class ApprovalService {
       unit,
     );
     if (chosen === null) return { workflowId: null, steps: [], status: 'noChain' };
-    return this.staffed(String(chosen.value._id), chosen.value.steps, unit);
+    return this.staffed(requestType, String(chosen.value._id), chosen.value.steps, unit);
   }
 
   /**
@@ -174,7 +180,7 @@ class ApprovalService {
   /** The full trail, plus what THIS reader may do about it. */
   async trailFor(subject: ApprovalSubject, viewer: AuthContext): Promise<ApprovalTrailDto> {
     const chain = await this.chainOf(subject);
-    const own = await ownStepsOf(viewer.userId, chain.steps, subject.unit);
+    const own = await this.ownRungsOf(viewer.userId, subject, chain.steps);
     const decision = viewerDecision(chain.steps, subject.decisions, own);
     const target = rungToDecide(chain.steps, subject.decisions);
 
@@ -243,7 +249,7 @@ class ApprovalService {
     }
     const target = rungToDecide(chain.steps, subject.decisions);
 
-    const own = await ownStepsOf(actor.userId, chain.steps, subject.unit);
+    const own = await this.ownRungsOf(actor.userId, subject, chain.steps);
     const mine = viewerDecision(chain.steps, subject.decisions, own);
 
     // Two ways to be allowed, and they are recorded differently on purpose. The owner asked for
@@ -322,29 +328,31 @@ class ApprovalService {
   }
 
   /**
-   * Write the one chain for a place, replacing whatever was there.
+   * Write the one chain for a place, replacing the row the screen's draft started from.
    *
-   * Three things are refused rather than stored, because each one gives a chain that LOOKS
+   * Four things are refused rather than stored, because each one gives a chain that LOOKS
    * configured and does not run as written: an unregistered request type, whose chain no host ever
-   * reads; a permission key no module declares, whose rung resolves to «nobody holds this», so it
+   * reads; a permission key the request type does not offer, whose rung counts as nobody's, so it
    * is passed when a staffed rung above it is decided, and with no staffed rung above it a request
-   * that reaches it waits `unstaffed` until an override within reach decides it; and a rung
-   * repeated at the same level, which would ask one person twice.
+   * that reaches it waits `unstaffed` until an override within reach decides it; a rung repeated at
+   * the same level, which would ask one person twice; and a save based on anything but the place's
+   * row as it stands now, which would replace a chain its administrator never saw (ADR-041
+   * decision 9).
    */
   async setWorkflow(input: SetApprovalWorkflow, actor: AuthContext): Promise<ApprovalWorkflowDto> {
-    if (getApprovalRequestType(input.requestType) === null) {
-      throw new BusinessRuleError('approvals.unknownRequestType');
-    }
-    // Checked against the registry this deployment actually booted with rather than a compile-time
-    // list: a key from a module nobody enabled here is exactly the kind that resolves to «nobody
-    // holds this»: its rung is passed when a staffed rung above it is decided, and with nothing
-    // staffed above it the request waits `unstaffed` until an override within reach decides it, on
-    // a chain that looks configured. Empty means the boot sync has not run (a CLI process, a test);
-    // then nothing is refused, because refusing everything would be worse than refusing nothing.
+    const type = getApprovalRequestType(input.requestType);
+    if (type === null) throw new BusinessRuleError('approvals.unknownRequestType');
+    // The type's own keys, the ones the screen offers, checked whatever the permission registry
+    // holds: a key another module declares is registered, and holders of it would still be nobody
+    // on this type's rung. The registry is checked as well, as it is booted in this deployment
+    // rather than as a compile-time list, for a key a type names that no enabled module declares.
+    // Empty means the boot sync has not run (a CLI process, a test); then the registry refuses
+    // nothing, because refusing everything would be worse, and the type's keys still hold.
+    const offered = new Set(type.permissionKeys);
     const known = new Set(rbacService.registeredPermissionKeys());
     const seen = new Set<string>();
     for (const step of input.steps) {
-      if (known.size > 0 && !known.has(step.permissionKey)) {
+      if (!offered.has(step.permissionKey) || (known.size > 0 && !known.has(step.permissionKey))) {
         throw new BusinessRuleError('approvals.unknownPermissionKey');
       }
       const at = `${step.permissionKey}::${step.level}`;
@@ -352,38 +360,45 @@ class ApprovalService {
       seen.add(at);
     }
 
+    // The draft names the row it started from, and that must be the place's row as it is now: the
+    // same row, not one deleted and written again at the place since (it starts at version 0 too),
+    // at the same version; and no row at all when the draft saw none. The write goes under the
+    // draft's version, never the one read here a moment ago, or a save from a screen loaded before
+    // another administrator's would overwrite theirs without either of them knowing.
     const existing = await approvalWorkflowRepository.findForPlace(
       input.requestType,
       input.departmentCatalogId,
       input.branchId,
     );
-    const saved =
-      existing === null
-        ? await approvalWorkflowRepository.create(
-            {
-              requestType: input.requestType,
-              departmentCatalogId:
-                input.departmentCatalogId === null
-                  ? null
-                  : new Types.ObjectId(input.departmentCatalogId),
-              branchId: input.branchId === null ? null : new Types.ObjectId(input.branchId),
-              steps: input.steps,
-              isActive: input.isActive,
-            },
-            { by: actor.userId },
-          )
-        : await approvalWorkflowRepository.updateById(
-            String(existing._id),
-            { steps: input.steps, isActive: input.isActive },
-            { by: actor.userId, version: existing.__v },
-          );
+    const basis = input.basedOn;
+    let saved: ApprovalWorkflowDoc;
+    if (existing === null) {
+      if (basis !== null) throw new StaleDocumentError();
+      saved = await this.firstChainAt(input, actor);
+    } else {
+      // The id is compared as hex in either case: the contract's `objectId()` accepts upper-case
+      // hex, which names the same row, and the row's own id prints in lower case.
+      const id = String(existing._id);
+      if (basis === null || basis.id.toLowerCase() !== id || basis.version !== existing.__v) {
+        throw new StaleDocumentError();
+      }
+      saved = await this.replaceChain(id, basis.version, input, actor);
+    }
 
     await auditService.record({
-      entityRef: { moduleId: 'platform', entityType: 'approvalWorkflow', entityId: String(saved._id) },
+      entityRef: {
+        moduleId: 'platform',
+        entityType: 'approvalWorkflow',
+        entityId: String(saved._id),
+      },
       action: existing === null ? 'create' : 'update',
       changes: [
         { field: 'requestType', old: null, new: input.requestType },
-        { field: 'steps', old: null, new: input.steps.map((s) => `${s.permissionKey}@${s.level}`).join(' → ') },
+        {
+          field: 'steps',
+          old: null,
+          new: input.steps.map((s) => `${s.permissionKey}@${s.level}`).join(' → '),
+        },
         { field: 'isActive', old: null, new: String(input.isActive) },
       ],
     });
@@ -409,7 +424,107 @@ class ApprovalService {
    */
   private async chainOf(subject: ApprovalSubject): Promise<LiveChain> {
     if (subject.pin === null) return this.chainFor(subject.requestType, subject.unit);
-    return this.staffed(subject.pin.workflowId, subject.pin.steps, subject.unit);
+    return this.staffed(
+      subject.requestType,
+      subject.pin.workflowId,
+      subject.pin.steps,
+      subject.unit,
+    );
+  }
+
+  /**
+   * The keys a rung of this request type may name, as its module declares them now.
+   *
+   * A stored rung on any other key, on a chain row or in a pin, is nobody's (ADR-041 decision 9):
+   * `setWorkflow` refuses to write one, but a row saved before it checked the type's keys may hold
+   * one, and so may a rung on a key its type has stopped offering. A type nobody registered offers
+   * none, so its rungs are nobody's.
+   */
+  private keysOf(requestType: string): ReadonlySet<string> {
+    return new Set(getApprovalRequestType(requestType)?.permissionKeys ?? []);
+  }
+
+  /**
+   * The rungs one reader stands on, measured only against the rungs on the type's own keys.
+   *
+   * A rung on another key is left out before the reader is measured, rather than its answer
+   * dropped after, so that a holder of that key never stands on it: whoever holds an unrelated key
+   * at the rung's level would otherwise decide it as their own rung, or early over the rungs below.
+   * An override within reach may still decide it, because reach is read by the rung's level.
+   */
+  private async ownRungsOf(
+    userId: string,
+    subject: ApprovalSubject,
+    steps: readonly ResolvedStep[],
+  ): Promise<number[]> {
+    const offered = this.keysOf(subject.requestType);
+    const measured = steps.flatMap((step, index) =>
+      offered.has(step.permissionKey) ? [{ step, index }] : [],
+    );
+    const own = await ownStepsOf(
+      userId,
+      measured.map((rung) => rung.step),
+      subject.unit,
+    );
+    return own.flatMap((at) => {
+      const rung = measured[at];
+      return rung === undefined ? [] : [rung.index];
+    });
+  }
+
+  /**
+   * The place's first chain. Two first saves at once both find no row, and the unique index refuses
+   * the second: its draft saw no chain where one now is, which is a stale draft like any other, so
+   * the screen meets the one code every stale save does.
+   */
+  private async firstChainAt(
+    input: SetApprovalWorkflow,
+    actor: AuthContext,
+  ): Promise<ApprovalWorkflowDoc> {
+    try {
+      return await approvalWorkflowRepository.create(
+        {
+          requestType: input.requestType,
+          departmentCatalogId:
+            input.departmentCatalogId === null
+              ? null
+              : new Types.ObjectId(input.departmentCatalogId),
+          branchId: input.branchId === null ? null : new Types.ObjectId(input.branchId),
+          steps: input.steps,
+          isActive: input.isActive,
+        },
+        { by: actor.userId },
+      );
+    } catch (error) {
+      if (error instanceof ConflictError && error.code === ErrorCodes.DUPLICATE) {
+        throw new StaleDocumentError();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * The row the draft started from, edited in place under the version the draft carries. A save
+   * between the place lookup and this write moves the version, which the repository refuses as
+   * stale; a delete in between leaves no row to write, which is the same stale draft rather than a
+   * chain that was never there.
+   */
+  private async replaceChain(
+    id: string,
+    version: number,
+    input: SetApprovalWorkflow,
+    actor: AuthContext,
+  ): Promise<ApprovalWorkflowDoc> {
+    try {
+      return await approvalWorkflowRepository.updateById(
+        id,
+        { steps: input.steps, isActive: input.isActive },
+        { by: actor.userId, version },
+      );
+    } catch (error) {
+      if (error instanceof NotFoundError) throw new StaleDocumentError();
+      throw error;
+    }
   }
 
   /**
@@ -423,14 +538,19 @@ class ApprovalService {
    * cached at all.
    */
   private async staffed(
+    requestType: string,
     workflowId: string,
     rungs: readonly StoredRung[],
     unit: Unit,
   ): Promise<LiveChain> {
+    // A rung on a key the type does not offer is unstaffed whoever holds that key, and staffing is
+    // not asked about it: like any empty rung, it is passed only on the way to a staffed rung above
+    // it (ADR-041 decision 2).
+    const offered = this.keysOf(requestType);
     const staffing = new Map<string, boolean>();
     for (const step of rungs) {
       const at = `${step.permissionKey}::${step.level}`;
-      if (!staffing.has(at)) {
+      if (offered.has(step.permissionKey) && !staffing.has(at)) {
         staffing.set(at, await hasApprovers(step.permissionKey, step.level, unit));
       }
     }
@@ -494,6 +614,7 @@ class ApprovalService {
       branch: branch === null ? null : { id: String(branch._id), name: branch.name },
       steps: row.steps,
       isActive: row.isActive !== false,
+      version: row.__v,
       updatedAt: (row.updatedAt ?? new Date()).toISOString(),
     };
   }

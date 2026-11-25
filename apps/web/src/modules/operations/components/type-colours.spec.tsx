@@ -972,3 +972,105 @@ describe('Round 34 C — a row «بدون لون», and a type with no colour', 
     expect(page).toContain('return colour === null ? undefined : rowTint(colour);');
   });
 });
+
+// Round 34 F — «و اسمحلى برضو ان ممكن عملية تكون من غير لون مش لازم ان يومى او محصنة تبقى واخده لون
+// اجبارى». Taking a type's colour off on the board is ONE press in «ألوان الأنواع», and said in words —
+// on a computer the column's head, on a phone the choice itself; the board draws such a type neutral.
+describe('Round 34 F — no type is forced to wear a colour: «بدون لون» one press, said in words', () => {
+  // «يومي» and «محصنة» both taken off; «احتياطي» keeps emerald.
+  const PLAIN = [
+    type('t-daily', 'يومي', null),
+    type('t-reserve', 'احتياطي', 'emerald'),
+    type('t-secured', 'محصنة', null),
+  ];
+  const offTagOf = (html: string, id: string): string => {
+    const start = html.indexOf(`data-type-row="${id}"`);
+    const next = html.indexOf('data-type-row="', start + 1);
+    return (
+      html
+        .slice(start, next < 0 ? undefined : next)
+        .match(/<button[^>]*data-swatch-off="true"[^>]*>[\s\S]*?<\/button>/)?.[0] ?? ''
+    );
+  };
+
+  it('the table: the «بدون لون» column’s head SAYS «بدون لون» — visible words, before the palette’s heads', () => {
+    const html = card({ types: PLAIN, listed: PLAIN });
+    const head = html.slice(
+      html.indexOf('data-swatch-off-head="true"'),
+      html.indexOf('data-swatch-head="'),
+    );
+    expect(head).toContain('data-no-colour-swatch="true"');
+    expect(head).toMatch(
+      new RegExp(`data-swatch-off-word="true"[^>]*>${ar('operations.crewPlan.colour.none')}<`),
+    );
+    // Seen, not only read aloud: no sr-only around the words.
+    expect(head).not.toContain('sr-only');
+    // English too.
+    const en = card({ types: PLAIN, listed: PLAIN }, 'en');
+    expect(en).toContain(`>${translate('en', 'operations.crewPlan.colour.none')}<`);
+  });
+
+  it('«يومي» and «محصنة» with no colour: their «بدون لون» pressed, no swatch pressed; «احتياطي» keeps its colour', () => {
+    const html = card({ types: PLAIN, listed: PLAIN });
+    for (const id of ['t-daily', 't-secured']) {
+      expect(offTagOf(html, id), id).toContain('aria-pressed="true"');
+      expect(
+        rowSwatches(html, id).some((sw) => sw.on),
+        id,
+      ).toBe(false);
+      // The tag in the card is the neutral one.
+      const at = html.indexOf(`data-type-row="${id}"`);
+      expect(html.slice(at, html.indexOf('data-swatch-off="true"', at))).toContain(
+        'data-type-tag="none"',
+      );
+    }
+    expect(offTagOf(html, 't-reserve')).toContain('aria-pressed="false"');
+    expect(rowSwatches(html, 't-reserve').filter((sw) => sw.on)).toEqual([
+      { colour: 'emerald', on: true },
+    ]);
+    // Each one is ONE press, named for its type — enabled for a manager.
+    expect(offTagOf(html, 't-reserve')).toContain(
+      `aria-label="${ar('operations.crewPlan.typeColours.pickNone', { type: 'احتياطي' })}"`,
+    );
+    expect(offTagOf(html, 't-reserve')).not.toContain('disabled');
+  });
+
+  it('a phone: each type’s first choice is the ring WITH its words, a pill — pressed for a type with none', () => {
+    const sheet = card({ types: PLAIN, listed: PLAIN, sheet: true });
+    for (const id of ['t-daily', 't-reserve', 't-secured']) {
+      const off = offTagOf(sheet, id);
+      expect(off, id).toContain('data-no-colour-swatch="true"');
+      expect(off, id).toMatch(
+        new RegExp(`data-swatch-off-word="true">${ar('operations.crewPlan.colour.none')}<`),
+      );
+      expect(off, id).toContain('h-9');
+    }
+    expect(offTagOf(sheet, 't-daily')).toContain('aria-pressed="true"');
+    expect(offTagOf(sheet, 't-reserve')).toContain('aria-pressed="false"');
+    // The words stay on the computer's head, not on every line of the table.
+    const table = card({ types: PLAIN, listed: PLAIN });
+    expect(offTagOf(table, 't-daily')).not.toContain('data-swatch-off-word');
+  });
+
+  it('the card’s subtitle says a type may have none', () => {
+    expect(ar('operations.crewPlan.typeColours.subtitle', { count: '٣' })).toContain(
+      ar('operations.crewPlan.colour.none'),
+    );
+    expect(translate('en', 'operations.crewPlan.typeColours.subtitle', { count: '3' })).toContain(
+      'or none',
+    );
+  });
+
+  it('the board’s totals in the toolbar: a type with no colour is the neutral ring, never a palette dot', () => {
+    // The strip hands each chip its type's own colour — null included — and the dot draws null neutral.
+    const page = read('../pages/CrewBoardPage.tsx');
+    const strip = page.slice(page.indexOf('data-type-counts="true"'));
+    expect(strip.slice(0, strip.indexOf('NO_SHIFT_TYPE'))).toContain(
+      '<ShiftTypeDot colour={type.colour} size="sm" />',
+    );
+    const dot = render(<ShiftTypeDot colour={null} size="sm" />);
+    expect(dot).toContain('data-type-dot="none"');
+    expect(dot).toContain(NO_COLOUR_TONE.dot);
+    expect(dot).not.toMatch(/bg-[a-z]+-500/);
+  });
+});

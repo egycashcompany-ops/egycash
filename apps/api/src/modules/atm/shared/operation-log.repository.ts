@@ -382,6 +382,7 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
     rows: readonly T[],
     leaderName: string | null,
     by: string,
+    alsoSet?: UpdateQuery<T>['$set'],
   ): Promise<number> {
     let touched = 0;
     for (const row of leaderCascadeGroups(rows)) {
@@ -391,6 +392,7 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
         openedAt: row.openedAt,
         leaderName,
         by,
+        ...(alsoSet === undefined ? {} : { alsoSet }),
       });
     }
     return touched;
@@ -399,7 +401,8 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
   /**
    * The leader cascade (contad_app.js:861-867 / :2023-2031): every OPEN row of the same branch
    * and area whose open time falls in the same Cairo shift window gets the new leader. Returns
-   * how many rows the cascade touched.
+   * how many rows the cascade touched. `alsoSet` is what a kind writes with a leader given by name
+   * (maintenance clears the employee id the name no longer stands for).
    */
   async cascadeLeader(params: {
     branchId: Types.ObjectId;
@@ -407,6 +410,7 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
     openedAt: Date;
     leaderName: string | null;
     by: string;
+    alsoSet?: UpdateQuery<T>['$set'];
   }): Promise<number> {
     const window = cairoShiftWindow(params.openedAt);
     const result = await this.model
@@ -419,7 +423,11 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
           openedAt: { $gte: window.start, $lt: window.end },
         } as FilterQuery<T>,
         {
-          $set: { leaderName: params.leaderName, updatedBy: new Types.ObjectId(params.by) },
+          $set: {
+            ...params.alsoSet,
+            leaderName: params.leaderName,
+            updatedBy: new Types.ObjectId(params.by),
+          },
           $inc: { __v: 1 },
         } as UpdateQuery<T>,
       )

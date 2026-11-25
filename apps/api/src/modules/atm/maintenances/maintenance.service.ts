@@ -33,6 +33,15 @@ import { type OpenBoard } from '../shared/operation-log.repository';
 import { atmMaintenanceRepository } from './maintenance.repository';
 import { type AtmMaintenanceDoc } from './maintenance.model';
 
+/**
+ * What every edit that writes a leader BY NAME writes with it: no employee id. The id is the close's
+ * — the person it assigned — and the purge of that person rewrites the name beside it
+ * (`employee-name-copies.ts`); a name typed or picked later is no longer theirs, and kept beside
+ * their id it would be blanked in their purge, and the close that keeps the row's leader (since
+ * 2026-11-25) would make that permanent.
+ */
+const LEADER_BY_NAME = { leaderEmployeeId: null } as const;
+
 const entityRef = (id: string) => ({ moduleId: 'atm', entityType: 'maintenance', entityId: id });
 
 const editSnapshot = (doc: AtmMaintenanceDoc) => ({
@@ -363,7 +372,10 @@ class AtmMaintenanceService {
     }
     const changingLeader = input.leaderName !== undefined && input.leaderName !== before.leaderName;
     const cascading = changingLeader && input.cascadeLeader !== false;
-    if (changingLeader && !cascading) set.leaderName = input.leaderName ?? null;
+    if (changingLeader && !cascading) {
+      set.leaderName = input.leaderName ?? null;
+      Object.assign(set, LEADER_BY_NAME);
+    }
 
     const updated = await atmMaintenanceRepository.updateById(id, set, {
       by: ctx.userId,
@@ -377,6 +389,7 @@ class AtmMaintenanceService {
         openedAt: updated.openedAt,
         leaderName: input.leaderName ?? null,
         by: ctx.userId,
+        alsoSet: LEADER_BY_NAME,
       });
     }
     await auditService.record({
@@ -399,13 +412,18 @@ class AtmMaintenanceService {
     const scope = scopeSelector(ctx, 'atmMaintenance.edit');
     let rows = await atmMaintenanceRepository.updateManyByIds(
       input.ids,
-      { leaderName: input.leaderName },
+      { leaderName: input.leaderName, ...LEADER_BY_NAME },
       { by: ctx.userId, scope },
     );
     // A leader goes over the shift; «no leader» stays on the checked rows — an empty field must
     // never clear the leader of every open maintenance in those areas and shifts.
     if (input.cascadeLeader === true && input.leaderName !== null) {
-      await atmMaintenanceRepository.cascadeLeaderOverRows(rows, input.leaderName, ctx.userId);
+      await atmMaintenanceRepository.cascadeLeaderOverRows(
+        rows,
+        input.leaderName,
+        ctx.userId,
+        LEADER_BY_NAME,
+      );
       // The cascade wrote these rows again: answer with them as stored now (their version moved).
       rows = await atmMaintenanceRepository.findByIds(input.ids, scope);
     }

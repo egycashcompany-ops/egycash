@@ -199,7 +199,9 @@ its entry here in the same PR.
   on `/atm/maintenance` shows each selected row's «قائد الطاقم» and asks for an employee only while
   a row has none; the pick is written on those rows only. `POST /atm/maintenances/close` takes
   `leaderEmployeeId` as optional and refuses (422) a set with a row without a leader when it is
-  missing, before anything closes (`docs/12-planning/atm-operations-port.md` §6e).
+  missing, before anything closes. A leader written by name (an edit or a shift cascade) now
+  clears the row's `leaderEmployeeId`, which only the close sets, so a reopened row given another
+  leader never keeps the earlier employee's id (`docs/12-planning/atm-operations-port.md` §6e).
 
 - **A shared counter for running numbers, and one Arabic name fold for every module.**
   `apps/api/src/shared/base/counter.ts` (`defineCounter`) is Fleet's custody counter written as a factory: a module

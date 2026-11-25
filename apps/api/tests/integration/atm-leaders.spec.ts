@@ -381,6 +381,7 @@ describe('the maintenance close takes a name from the list', () => {
   // لأ خليه يدخله هو». Each machine is opened, then given the leader the board would show.
   const openWithLeaders = async (
     lines: { code: string; leader: string | null }[],
+    area = 'SYN AREA',
   ): Promise<AtmMaintenanceDto[]> => {
     const machines = await request(app)
       .post('/api/v1/atm/machines/bulk')
@@ -388,7 +389,7 @@ describe('the maintenance close takes a name from the list', () => {
       .set('x-active-branch', branchId)
       .send({
         bankName: 'SYN BANK',
-        area: 'SYN AREA',
+        area,
         machines: lines.map((line) => ({ machineCode: line.code, name: `SYN ${line.code}` })),
       });
     expect(machines.status, JSON.stringify(machines.body)).toBe(200);
@@ -490,5 +491,109 @@ describe('the maintenance close takes a name from the list', () => {
       ids: [spaced?.id],
     });
     expect(refusedSpaced.status, JSON.stringify(refusedSpaced.body)).toBe(422);
+  });
+
+  it('a leader written by name later drops the employee id of an earlier close — the purge of that employee must not blank the new name', async () => {
+    // Closed under the picked employee, then reopened from the done page: the id stays with the row.
+    const closedThenReopened = async (codes: string[], area: string) => {
+      const rows = await openWithLeaders(
+        codes.map((code) => ({ code, leader: null })),
+        area,
+      );
+      const closed = await call('post', '/atm/maintenances/close', adminToken, {
+        ids: rows.map((row) => row.id),
+        leaderEmployeeId: atmPeople[0],
+      });
+      expect(closed.status, JSON.stringify(closed.body)).toBe(200);
+      for (const row of data<AtmMaintenanceDto[]>(closed)) {
+        expect(row.leaderEmployeeId).toBe(atmPeople[0]);
+        const reopened = await call('post', `/atm/maintenances/${row.id}/reopen`, adminToken, {
+          version: row.version,
+        });
+        expect(reopened.status, JSON.stringify(reopened.body)).toBe(200);
+      }
+    };
+    const board = async (): Promise<Map<string, AtmMaintenanceDto>> => {
+      const listed = await request(app)
+        .get('/api/v1/atm/maintenances?pageSize=100')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .set('x-active-branch', branchId);
+      expect(listed.status).toBe(200);
+      return byCode(data<AtmMaintenanceDto[]>(listed));
+    };
+    const patch = (path: string, body: Record<string, unknown>) =>
+      request(app)
+        .patch(`/api/v1${path}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .set('x-active-branch', branchId)
+        .send(body);
+
+    await closedThenReopened(['9111', '9112'], 'SYN AREA ONE');
+    await closedThenReopened(['9113', '9114'], 'SYN AREA SHIFT');
+    await closedThenReopened(['9115', '9116'], 'SYN AREA BULK');
+
+    // The single edit, this row only.
+    const one = (await board()).get('9111');
+    expect(
+      (
+        await patch(`/atm/maintenances/${one?.id}`, {
+          leaderName: 'سامح فؤاد',
+          cascadeLeader: false,
+          version: one?.version,
+        })
+      ).status,
+    ).toBe(200);
+    // The checked-rows edit, these rows only.
+    const two = (await board()).get('9112');
+    expect(
+      (await patch('/atm/maintenances/bulk', { ids: [two?.id], leaderName: 'كريم عادل' })).status,
+    ).toBe(200);
+    let rows = await board();
+    expect(rows.get('9111')).toMatchObject({ leaderName: 'سامح فؤاد', leaderEmployeeId: null });
+    expect(rows.get('9112')).toMatchObject({ leaderName: 'كريم عادل', leaderEmployeeId: null });
+    // Untouched rows keep the id their close gave them.
+    expect(rows.get('9113')?.leaderEmployeeId).toBe(atmPeople[0]);
+
+    // The single edit over the shift: the row and its shift neighbour.
+    const three = rows.get('9113');
+    expect(
+      (
+        await patch(`/atm/maintenances/${three?.id}`, {
+          leaderName: 'سامح فؤاد',
+          cascadeLeader: true,
+          version: three?.version,
+        })
+      ).status,
+    ).toBe(200);
+    // The checked-rows edit over the shift: the checked row and the one beside it.
+    const five = (await board()).get('9115');
+    expect(
+      (
+        await patch('/atm/maintenances/bulk', {
+          ids: [five?.id],
+          leaderName: 'كريم عادل',
+          cascadeLeader: true,
+        })
+      ).status,
+    ).toBe(200);
+    rows = await board();
+    for (const [code, name] of [
+      ['9113', 'سامح فؤاد'],
+      ['9114', 'سامح فؤاد'],
+      ['9115', 'كريم عادل'],
+      ['9116', 'كريم عادل'],
+    ] as const) {
+      expect(rows.get(code), code).toMatchObject({ leaderName: name, leaderEmployeeId: null });
+    }
+
+    // And the close that keeps the row's leader keeps it without the earlier employee's id.
+    const closed = await call('post', '/atm/maintenances/close', adminToken, {
+      ids: [rows.get('9111')?.id],
+    });
+    expect(closed.status, JSON.stringify(closed.body)).toBe(200);
+    expect(data<AtmMaintenanceDto[]>(closed)[0]).toMatchObject({
+      leaderName: 'سامح فؤاد',
+      leaderEmployeeId: null,
+    });
   });
 });

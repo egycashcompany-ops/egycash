@@ -812,7 +812,11 @@ offered nobody, and the edit dialogs' leader stayed free text.
   but ASCII spacing (`atmLeaderNamed`, one pattern for the dialog and the database filter).
   `leaderEmployeeId` is optional on `POST /atm/maintenances/close`; without it, a set that holds an
   open row with no leader is a 422 before anything closes, and a row whose leader is cleared
-  between that check and the write stays open rather than closing without one. Both kinds' edit dialogs: the leader is picked from the same names (each name once); a
+  between that check and the write stays open rather than closing without one. `leaderEmployeeId`
+  is the close's alone: every edit that writes a leader by name — the single edit, the checked
+  rows, either shift cascade — sets it to null, so a row reopened after a close and given another
+  leader never keeps the first person's id (whose purge would blank the new name, and the close
+  that keeps the leader would make that permanent). Both kinds' edit dialogs: the leader is picked from the same names (each name once); a
   name already on the row stays pickable, and the «الوردية» rule is unchanged (§4a). On a checked
   set of maintenances the box opens on the leader the rows share; «حفظ» waits for a change, and a
   clear is the ×, never a blank (the legacy's «empty clears» survives only as that explicit act). A

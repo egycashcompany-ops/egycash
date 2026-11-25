@@ -3454,6 +3454,38 @@ Repository-wide findings outside this module are listed for the owner in
     not have (the organization's MongoDB Atlas access for AI clients is off). PX-1.2 and PX-1.6 shipped on the safe side
     the plan states (a request nobody can decide waits; an off-type rung is unstaffed), and the counts stay the owner's
     or an operator's to run.
+- **P2.W0 built** (2026-11-25). Phase 2's first web pull request ships as the P2 re-detail's §3 row says
+  ([administration-module-phase-2.md](administration-module-phase-2.md) §9.4, §12.3, §13), from the P2 UI checklist's
+  P2.W0 part: `components/ReferencePicker.tsx`, the module's one reference picker, rebuilt in the module after IT's
+  `VendorPicker` (D-21), and Phase 1's keeper box, `EmployeePicker`, drawn by it with its props, its two exports and
+  its header comment kept. No key, route, page, word or API changes, so the warehouse form is reviewed alone. Where the
+  code had to choose what the re-detail leaves open:
+  - *Who owns "only on a non-empty search".* The picker calls the caller's hook as `useSearch(search, allowed &&
+    search.trim() !== '')` and shows the results box only while something is typed, so the rule is written once for
+    every user. `usePeopleSearch` keeps its own guard, unchanged; the request that leaves the browser is the same.
+  - *The hook's answer* is read as `useQuery` answers a page, `{ isPending, data?: { items } }`, a type local to the
+    file (no caller needs to name it, as HR's `ApplicantPicker` keeps its own). The page's size stays the hook's: the
+    keeper search asks for 8 (`PEOPLE_PICKER_ROWS`), and P2.W1's item search is to ask for the same.
+  - *The four texts are i18n keys* the picker says through `t`, in the reader's language; it names no key of its own,
+    so `i18n.ts` and the module's i18n spec do not change, and the module's key scan finds the keeper's four keys in
+    `EmployeePicker.tsx`.
+  - *A result row's contents* are the caller's (`renderRow`), inside the picker's button, which keeps the pressed state,
+    the classes and `text-start`. The keeper's row is the name, the «منتهي الخدمة» badge for one who has left, and the
+    code left to right, as before.
+  - *`data-keeper-chip` is dropped.* The chip's attribute named the keeper in a picker that is no longer only the
+    keeper's, and no spec or style read it (the checklist's search over `apps/web/src`). It is the one difference in
+    the markup.
+  - *No change of behaviour, shown two ways.* The keeper box's markup was rendered in 13 states (no access with neither
+    key and with `.edit` alone; empty; a pick; a refused pick; spaces typed; searching; nothing found; rows with and
+    without a pick; the create, edit and left-keeper warehouse dialogs) in Arabic and English, on `1210ebcc` and on the
+    head: all 26 are byte-identical but for that attribute. And `pages/warehouses-screen.spec.tsx` passes unchanged.
+  - *Specs.* `administration-employee-picker.spec.ts`'s no-access case reads `ReferencePicker.tsx` for `if (!allowed)`
+    and holds `EmployeePicker.tsx` to passing `allowed`, `usePeopleSearch` and `administration.people.noAccess`
+    (§12.3); its other cases stay. Beyond §13's list, `components/reference-picker.spec.tsx` renders the picker in each
+    state (no access and no search; nothing typed; a spinner; nothing found; the rows, the picked one pressed; the chip,
+    red when refused; both languages) and the keeper box on it, and holds the module to one results box. The node suite
+    has no DOM, so what was typed is seeded by replacing React's `useState` in that spec, as
+    `useDocumentTitle.spec.ts` replaces `useEffect`; a pick and a clear are read as source.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

@@ -670,6 +670,10 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // A supplier moves the supplier screens (P1b.W) — its register, its record and the home's count —
   // its papers included (§9.4); `rfqs` joins with P3 and `purchaseOrders` with P4.
   'administration.supplier': [['administration', 'suppliers']],
+  // Compliance and Risks (compliance-files-design.md §9): a folder's or a file's write re-reads the
+  // whole shelf subtree — the shelf, the folder, its files and their seen lines.
+  'compliance.folder': [['compliance', 'folders']],
+  'compliance.document': [['compliance', 'folders']],
 
   // ── Automation ─────────────────────────────────────────────────────────────
   'automation.workflow': [['automation']],

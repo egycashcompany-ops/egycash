@@ -172,6 +172,12 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'This warehouse cannot be retired while it holds stock or a document not yet ended names it.',
     ADMINISTRATION_ATTACHMENT_LIMIT:
       'This list already holds 20 documents, as many as it takes — remove one before adding another.',
+    // Compliance and Risks — the files page's refusals (compliance-files-design.md §8).
+    COMPLIANCE_FOLDER_NAME_TAKEN: 'Another folder already has this name — choose a different one.',
+    COMPLIANCE_VIEWER_INVALID:
+      'A folder is shared only with employees who have an active account — someone chosen does not.',
+    COMPLIANCE_FILE_CONTENT_MISMATCH:
+      'This file is not what its name says — a renamed picture, perhaps. Save it as a real PDF, Word or Excel file and try again.',
     RATE_LIMITED: 'Too many requests — please slow down.',
     // The server's own sentence names the file category's internal key («…for category
     // administration-supplier-documents»), so no reader is ever shown it.
@@ -290,6 +296,11 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'لا يمكن إيقاف هذا المخزن ما دام فيه رصيد أو يشير إليه مستند لم يُغلق بعد.',
     ADMINISTRATION_ATTACHMENT_LIMIT:
       'تضم هذه القائمة عشرين مستندًا، وهو أقصى ما تتسع له — أزِل أحدها قبل إضافة غيره.',
+    COMPLIANCE_FOLDER_NAME_TAKEN: 'يوجد مجلد آخر بهذا الاسم — اختر اسمًا غيره.',
+    COMPLIANCE_VIEWER_INVALID:
+      'لا يُشارَك المجلد إلا مع موظفين لهم حساب نشط، وبين من اخترتهم من ليس له حساب نشط.',
+    COMPLIANCE_FILE_CONTENT_MISMATCH:
+      'محتوى هذا الملف لا يطابق امتداده — ربما صورة غُيِّر اسمها. احفظه ملف PDF أو Word أو Excel حقيقيًا ثم أعد المحاولة.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TYPE_NOT_ALLOWED: 'هذا النوع من الملفات غير مقبول هنا.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',

@@ -1321,3 +1321,85 @@ describe('the van card and the Excel sheet read the DRAFT', () => {
     expect(sheet.rows[1]?.[0]).toBe('بدون سيارة');
   });
 });
+
+// Round 34 C — «ولو انا مثبت لون للنوع ممكن لو تندى صف اشيل لونه عادى»: a row «بدون لون» keeps it
+// through what the board does to its people — the standing crew holds no colour to give.
+describe('Round 34 C — a row «بدون لون» through the read, the standing crew and the save', () => {
+  const standingOf = (vehicleId: string, captain: string) => ({
+    vehicleId,
+    captainEmployeeIds: [captain],
+    specialist1EmployeeIds: ['s-1'],
+    specialist2EmployeeIds: [],
+    direction: 'حلوان',
+  });
+
+  it('«تحميل الطاقم الثابت» fills the row and keeps its «بدون لون» and its type — and «لون النوع» stays null', () => {
+    const rows = [
+      van('1', { shiftTypeId: 't-secured', rowColour: 'none' }),
+      van('2', { shiftTypeId: 't-secured', rowColour: null }),
+      van('3', { shiftTypeId: 't-secured', rowColour: 'navy' }),
+    ];
+    const load = loadStandingIntoPlan(
+      rows,
+      [standingOf('v-1', 'a'), standingOf('v-2', 'b'), standingOf('v-3', 'c')],
+      ['حلوان'],
+    );
+    expect(load.filledKeys).toEqual(['van:v-1', 'van:v-2', 'van:v-3']);
+    expect(load.rows.map((row) => row.slots.captain)).toEqual([['a'], ['b'], ['c']]);
+    expect(load.rows.map((row) => [row.shiftTypeId, row.rowColour])).toEqual([
+      ['t-secured', 'none'],
+      ['t-secured', null],
+      ['t-secured', 'navy'],
+    ]);
+    // Taken off again: the people go, the colour of each row stays its own.
+    const off = clearStandingFromPlan(load.rows, load.filledKeys, load.directions);
+    expect(off.map((row) => row.rowColour)).toEqual(['none', null, 'navy']);
+    // And the save sends `none` as `none`.
+    expect(toPlan('2026-11-25', planChanges(load.rows, rows)).rows[0]?.rowColour).toBe('none');
+  });
+
+  it('reads a saved `none` as «بدون لون», and a change between `none` and «لون النوع» is a change', () => {
+    const board = (rowColour: string | null) =>
+      ({
+        date: '2026-11-25',
+        rows: [
+          {
+            vehicleId: 'v-1',
+            vehicleCode: '1',
+            fleetDutyAssignmentId: 'fd1',
+            driver1EmployeeId: null,
+            driver2EmployeeId: null,
+            drivers: [],
+            missionTypeId: null,
+            uncoded: null,
+            crew: {
+              id: 'c-1',
+              captainEmployeeIds: [],
+              specialist1EmployeeIds: [],
+              specialist2EmployeeIds: [],
+              direction: null,
+              plannedTime: null,
+              notes: null,
+              shiftTypeId: 't-secured',
+              rowColour,
+              shipments: 0,
+            },
+          },
+        ],
+        vehiclelessRows: [],
+        workshopVehicles: [],
+        freeVehicles: [],
+        unidentifiedVehicles: 0,
+      }) as unknown as OperationsCrewBoardDto;
+    const [none] = toPlanRows(board('none'));
+    expect(none?.rowColour).toBe('none');
+    expect(toPlanRows(board(null))[0]?.rowColour).toBeNull();
+    // `none` and null are two states: the draft that changes one into the other has one change.
+    const original = toPlanRows(board(null));
+    const next = patchRow(original, 'van:v-1', { rowColour: 'none' });
+    expect(changeCount(planChanges(next, original))).toBe(1);
+    expect(changeCount(planChanges(patchRow(next, 'van:v-1', { rowColour: null }), original))).toBe(
+      0,
+    );
+  });
+});

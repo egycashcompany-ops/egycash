@@ -1463,6 +1463,31 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
       },
     ],
   },
+  {
+    // Compliance and Risks — the department «الالتزام والمخاطر» (docs/12-planning/
+    // compliance-files-design.md §11). One page so far, «الملفات». Last in the catalog and after
+    // System Administration: a category's order is a whole number and none is free between
+    // Administrative Affairs (29) and System Administration (30); an administrator reorders tiles
+    // in the Application Categories screen.
+    en: 'Compliance and Risks',
+    ar: 'الالتزام والمخاطر',
+    // A shield — what the department keeps the company inside of; free since Operations and Gold
+    // Vault took their own glyphs.
+    icon: 'shield',
+    sortOrder: 31,
+    apps: [
+      // The row is stored on the reader's key and opened by either key (`SHARED_NAVIGATION_ROWS`):
+      // the responsible person holds both through the seeded role, and a person a folder is shared
+      // with is given the reader's by the module itself.
+      {
+        en: 'Files',
+        ar: 'الملفات',
+        route: '/compliance/files',
+        icon: 'folder',
+        permission: 'complianceFile.view',
+      },
+    ],
+  },
 ];
 
 const ensureCategory = async (def: CategoryDef, by: string): Promise<string> => {

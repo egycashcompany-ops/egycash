@@ -92,6 +92,8 @@ export const OPERATIONS_BANK_REPORT_KEYS = Object.freeze([
 export const SHARED_NAVIGATION_ROWS: readonly SharedNavigationRow[] = [
   // «تقرير البنوك» — the shipments' readers and the vault's alike (`OPERATIONS_BANK_REPORT_KEYS`).
   { route: '/operations/reports/banks', permissions: OPERATIONS_BANK_REPORT_KEYS },
+  // «الملفات» of Compliance and Risks — the reader's key and the responsible person's alike.
+  { route: '/compliance/files', permissions: ['complianceFile.view', 'complianceFile.manage'] },
 ];
 
 /**

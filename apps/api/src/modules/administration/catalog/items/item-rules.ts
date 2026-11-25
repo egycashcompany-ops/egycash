@@ -8,9 +8,11 @@
 // on the row the write leaves, because an update that moves one level is checked against the
 // levels it keeps, which its body alone does not carry.
 import {
+  ADMINISTRATION_ITEM_UNIT_LOCKS,
   ADMINISTRATION_STOCK_LEVEL_FIELDS,
   ErrorCodes,
   type AdministrationItemReferenceField,
+  type AdministrationItemUnitLock,
   type AdministrationStockLevelField,
 } from '@ecms/contracts';
 import { AppError } from '../../../../shared/errors';
@@ -95,6 +97,21 @@ export const isStatusChangeOnly = (input: Readonly<Record<string, unknown>>): bo
   Object.entries(input).every(
     ([field, value]) => field === 'version' || field === 'isActive' || value === undefined,
   );
+
+/**
+ * The 422 for a base unit that may not change, one detail per lock the checkers reported, or null
+ * (design §2.3.4): a document line names the item in its unit, and a line's quantity means nothing
+ * in another one. Asked only of an edit that changes the unit; nothing else an edit does is
+ * locked by a line.
+ */
+export const unitLockRefusal = (locks: readonly AdministrationItemUnitLock[]): AppError | null => {
+  const found = ADMINISTRATION_ITEM_UNIT_LOCKS.filter((lock) => locks.includes(lock));
+  if (found.length === 0) return null;
+  const message = 'a document line names this item in its unit, so the unit cannot change';
+  return new AppError(ErrorCodes.ADMINISTRATION_ITEM_UNIT_LOCKED, 422, message, {
+    details: found.map((code) => ({ field: 'unitId', code, message })),
+  });
+};
 
 /**
  * The acts that name an item. A retired item is hidden from NEW references — new purchase and

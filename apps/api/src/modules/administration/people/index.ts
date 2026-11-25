@@ -1,2 +1,6 @@
 export { buildAdministrationPeopleRouter } from './people.routes';
-export { administrationPeopleService, peopleScopesOf } from './people.service';
+export {
+  administrationPeopleService,
+  peopleScopesOf,
+  type AdministrationPersonSnap,
+} from './people.service';

@@ -12,8 +12,10 @@ import { fileURLToPath } from 'node:url';
 import { Types } from 'mongoose';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { type AuthContext } from '../../shared/types';
-import { administrationModels } from './administration-indexes';
+// The manifest first: it loads the platform as a boot does, before the model list reaches the
+// approvals engine through the purchase request's pin fields.
 import { administrationModule } from './administration.module';
+import { administrationModels } from './administration-indexes';
 
 const mocks = vi.hoisted(() => ({
   audit: vi.fn(),
@@ -152,6 +154,12 @@ const WHOLE_COLLECTION_UNIQUES = new Set([
   'AdministrationCounter.ux_counter_key',
 ]);
 
+/**
+ * The unique indexes on a number a document takes after its draft (§2.1, Indexes): partial on the
+ * field's type, so drafts never collide, and never on live rows, since a number is never reused.
+ */
+const NUMBER_UNIQUES = new Set(['AdministrationPurchaseRequest.ux_number']);
+
 describe('the model list the seed syncs covers the whole module', () => {
   const covered = administrationModels.map((model) => model.collection.collectionName);
 
@@ -187,7 +195,8 @@ describe('the model list the seed syncs covers the whole module', () => {
     for (const model of administrationModels) {
       for (const [, options] of model.schema.indexes()) {
         if (options?.unique !== true) continue;
-        if (WHOLE_COLLECTION_UNIQUES.has(`${model.modelName}.${String(options.name)}`)) continue;
+        const id = `${model.modelName}.${String(options.name)}`;
+        if (WHOLE_COLLECTION_UNIQUES.has(id) || NUMBER_UNIQUES.has(id)) continue;
         expect(options.partialFilterExpression, String(options.name)).toMatchObject({
           isDeleted: false,
         });
@@ -207,6 +216,38 @@ describe('the model list the seed syncs covers the whole module', () => {
       }
     }
     expect(found.sort()).toEqual([...WHOLE_COLLECTION_UNIQUES].sort());
+  });
+
+  it('…and a document’s number only where one is taken, across every row ever written (P2.2)', () => {
+    const found: string[] = [];
+    for (const model of administrationModels) {
+      for (const [fields, options] of model.schema.indexes()) {
+        const id = `${model.modelName}.${String(options?.name)}`;
+        if (!NUMBER_UNIQUES.has(id)) continue;
+        found.push(id);
+        expect(fields, id).toEqual({ number: 1 });
+        expect(options?.unique, id).toBe(true);
+        expect(options?.partialFilterExpression, id).toEqual({ number: { $type: 'string' } });
+      }
+    }
+    expect(found.sort()).toEqual([...NUMBER_UNIQUES].sort());
+  });
+
+  it('a purchase request’s register and queues have their indexes (P2 plan §6.1)', () => {
+    const indexes = Object.fromEntries(
+      (
+        administrationModels
+          .find((model) => model.modelName === 'AdministrationPurchaseRequest')
+          ?.schema.indexes() ?? []
+      ).map(([fields, options]) => [String(options?.name), fields]),
+    );
+    expect(indexes).toEqual({
+      ux_number: { number: 1 },
+      ix_branch_status_created: { branchId: 1, status: 1, createdAt: -1 },
+      ix_department_status: { departmentId: 1, status: 1 },
+      ix_requester_created: { requesterUserId: 1, createdAt: -1 },
+      ix_sourcing: { status: 1, orderStatus: 1 },
+    });
   });
 
   it('the item’s barcode is unique only where one is set, among live rows (OD-05 (i))', () => {
@@ -277,17 +318,21 @@ describe('the seed builds the indexes first, and holds no state', () => {
     const sync = body.indexOf('await syncDeclaredIndexes(');
     const items = body.indexOf('await ensureItemCodeCounter();');
     const suppliers = body.indexOf('await ensureSupplierCodeCounter();');
+    // The year's purchase-request series (P2.2): each submission raises it again first (P2.3).
+    const requests = body.indexOf('await ensurePurchaseRequestNumberCounter();');
     const category = body.indexOf('await ensureSupplierDocumentsCategory();');
     const roles = body.indexOf('rbacService.ensureManagedRole(');
     expect(sync).toBeGreaterThanOrEqual(0);
     expect(items).toBeGreaterThan(sync);
     expect(suppliers).toBeGreaterThan(items);
-    expect(category).toBeGreaterThan(suppliers);
+    expect(requests).toBeGreaterThan(suppliers);
+    expect(category).toBeGreaterThan(requests);
     expect(roles).toBeGreaterThan(category);
     // Each step logs its own failure and the boot goes on: the write that needs it repeats it.
     for (const [from, to] of [
       [items, suppliers],
-      [suppliers, category],
+      [suppliers, requests],
+      [requests, category],
       [category, roles],
     ] as const) {
       expect(body.slice(from, to)).toMatch(/catch \(err\)[\s\S]*logger\.warn\(/);
@@ -316,7 +361,11 @@ describe('a repository’s first write waits for its collection (RK-03)', () => 
   it('finds the read-only services and only them outside that list', () => {
     const others = files('.service.ts').filter((service) => !writingServices().includes(service));
     expect(others).toEqual(['people/people.service.ts']);
-    expect(read('people/people.service.ts')).not.toMatch(/repository|\.create\(|updateById/);
+    // The people read the directory, and the organization's job titles and departments by id for
+    // a document's snapshot (P2.2) — none of the module's own repositories, and nothing written.
+    expect(read('people/people.service.ts')).not.toMatch(
+      /administration\w*Repository|\brepository\.|ensureCollection|\.create\(|updateById|findOneAndUpdate/,
+    );
   });
 
   // Those services, and the papers' links, which write the supplier row outside its service.

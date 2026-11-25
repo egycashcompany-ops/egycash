@@ -15,6 +15,11 @@
 // fail-closed rule instead (PC-12), which has no precedent inside a repository — so it is pinned
 // here, with the service that must read through it and the department the row names but never
 // narrows by (§7.7).
+//
+// Documents filed on a department copy (the purchase request, P2.2) are read by the base
+// repository over three fields — the branch, the department copy and the requester (§7.1) — with
+// one override: a `section` grant reads as `own`, since a request carries no section and the base
+// would answer that grant with the whole organization (§7.3, RK-15).
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,50 +28,73 @@ import { describe, expect, it } from 'vitest';
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 /**
- * §7.1, one row per repository as each slice ships it. `{}`: master data, read whole;
- * `{ branchField: 'branchId' }`: a branch record, read fail-closed (§7.2).
+ * §7.1, one row per repository as each slice ships it. `master`, options `{}`: read whole;
+ * `branch`, options `{ branchField: 'branchId' }`: a branch record, read fail-closed (§7.2);
+ * `document`: a document of a department copy, read over its branch, its copy and its requester.
  */
 const REPOSITORIES = [
   {
     file: 'catalog/catalog-items/catalog-item.repository.ts',
     collection: 'administration_catalog_items',
     model: 'AdministrationCatalogItemModel',
+    kind: 'master',
     options: '{}',
   },
   {
     file: 'catalog/item-categories/item-category.repository.ts',
     collection: 'administration_item_categories',
     model: 'AdministrationItemCategoryModel',
+    kind: 'master',
     options: '{}',
   },
   {
     file: 'catalog/items/item.repository.ts',
     collection: 'administration_items',
     model: 'AdministrationItemModel',
+    kind: 'master',
     options: '{}',
   },
   {
     file: 'procurement/suppliers/supplier.repository.ts',
     collection: 'administration_suppliers',
     model: 'AdministrationSupplierModel',
+    kind: 'master',
     options: '{}',
+  },
+  {
+    file: 'procurement/purchase-requests/purchase-request.repository.ts',
+    collection: 'administration_purchase_requests',
+    model: 'AdministrationPurchaseRequestModel',
+    kind: 'document',
+    options:
+      "{ branchField: 'branchId', departmentField: 'departmentId', ownerUserField: 'requesterUserId', }",
   },
   {
     file: 'warehouses/warehouses/warehouse.repository.ts',
     collection: 'administration_warehouses',
     model: 'AdministrationWarehouseModel',
+    kind: 'branch',
     options: "{ branchField: 'branchId' }",
   },
 ] as const;
 
 /**
  * §7.7: every model that stamps `departmentId` either declares it as a scope axis or is listed
- * here as reference-only, with its reason. None declares it in Phase 1.
+ * here as reference-only, with its reason. None declared it in Phase 1; the purchase request does
+ * (P2.2), and its requester's snapshot carries one more, reference-only.
  */
 const REFERENCE_ONLY_DEPARTMENTS = [
   {
     model: 'warehouses/warehouses/warehouse.model.ts',
     why: 'the owning department of a store grants nothing while OD-10 keeps it reference-only (i)',
+  },
+] as const;
+
+/** §7.1: the models whose `departmentId` is a scope axis, with its reason. */
+const DEPARTMENT_AXES = [
+  {
+    model: 'procurement/purchase-requests/purchase-request.model.ts',
+    why: 'a request is filed on its requester’s department copy, and a department reader reads that copy',
   },
 ] as const;
 
@@ -117,7 +145,11 @@ describe('every repository of the module is listed here, with its scope', () => 
 });
 
 describe('master data is read whole (§7.1)', () => {
-  const master = REPOSITORIES.filter((row) => row.options === '{}');
+  const master = REPOSITORIES.filter((row) => row.kind === 'master');
+
+  it('declares no scope at all', () => {
+    for (const row of master) expect(row.options, row.file).toBe('{}');
+  });
 
   it.each(master)('$file narrows by no scope field', (row) => {
     const source = read(row.file);
@@ -141,7 +173,7 @@ describe('master data is read whole (§7.1)', () => {
 });
 
 describe('branch records are read fail-closed (§7.2)', () => {
-  const branch = REPOSITORIES.filter((row) => row.options !== '{}');
+  const branch = REPOSITORIES.filter((row) => row.kind === 'branch');
 
   it('there is one in Phase 1 — the warehouses', () => {
     expect(branch.map((row) => row.collection)).toEqual(['administration_warehouses']);
@@ -190,11 +222,78 @@ describe('branch records are read fail-closed (§7.2)', () => {
   });
 });
 
-describe('a department a row names is reference-only (§7.7; OD-10 department (i))', () => {
+describe('documents of a department copy (§7.1, §7.3; P2.2)', () => {
+  const documents = REPOSITORIES.filter((row) => row.kind === 'document');
+
+  it('there is one so far — the purchase request', () => {
+    expect(documents.map((row) => row.collection)).toEqual(['administration_purchase_requests']);
+  });
+
+  it.each(documents)(
+    '$file reads a section grant as own, and every other scope as the base does',
+    (row) => {
+      const source = read(row.file);
+      expect(source).toContain('protected override scopeFilter(');
+      expect(source).toMatch(
+        /if \(selector\?\.scope === 'section'\) return super\.scopeFilter\(\{ \.\.\.selector, scope: 'own' \}\);\s*return super\.scopeFilter\(selector\);/,
+      );
+      // Not the branch rule: a department copy reads its copy, not its whole branch, and `own` reads
+      // the caller's own requests (§7.3).
+      expect(source).not.toContain('branchScopeMatch');
+    },
+  );
+
+  it.each(documents)('$file is read only under a selector for the key the act needs', (row) => {
+    const service = read(row.file.replace('.repository.ts', '.service.ts'));
+    expect(service).not.toContain('widestScopeSelector');
+    // The register under `.view`; the record under each held key in turn; the edit under `.edit`.
+    expect(service).toMatch(/const scope = scopeSelector\(ctx, VIEW\);/);
+    expect(service).toMatch(
+      /for \(const key of \[VIEW, APPROVE\]\) \{\s*if \(!hasPermission\(ctx, key\)\) continue;\s*const doc = await repository\.findById\(id, scopeSelector\(ctx, key\)\);/,
+    );
+    expect(service).toMatch(
+      /const scope = scopeSelector\(ctx, EDIT\);\s*const before = await repository\.findById\(id, scope\);/,
+    );
+    expect(service).toMatch(/version: input\.version,\s*scope,/);
+    // Writes ask the key's coverage of the request's Unit — its branch AND its department copy.
+    expect(service).toContain('keyCoversUnit(ctx, CREATE, branchId, copyId)');
+    expect(service).toContain(
+      'keyCoversUnit(ctx, EDIT, String(before.branchId), String(before.departmentId))',
+    );
+  });
+
+  it.each(documents)('$file writes its branch and department once, at the create', (row) => {
+    const service = read(row.file.replace('.repository.ts', '.service.ts'));
+    const update = service.slice(service.indexOf('  async update('));
+    const body = update.slice(0, update.indexOf('\n  }\n'));
+    expect(body.length, 'the scan found the edit').toBeGreaterThan(100);
+    expect(body).not.toMatch(
+      /set\.(branchId|departmentId|requesterUserId)|branchId: new|departmentId: new Types/,
+    );
+  });
+});
+
+describe('a department a row names is reference-only unless it is a scope axis (§7.7; OD-10 department (i))', () => {
   it('lists every model of the module that stamps `departmentId`', () => {
     const models = REPOSITORIES.map((row) => row.file.replace('.repository.ts', '.model.ts'));
     const stamping = models.filter((model) => read(model).includes('departmentId:'));
-    expect(stamping).toEqual(REFERENCE_ONLY_DEPARTMENTS.map((row) => row.model));
+    expect(stamping.sort()).toEqual(
+      [...REFERENCE_ONLY_DEPARTMENTS, ...DEPARTMENT_AXES].map((row) => row.model).sort(),
+    );
+  });
+
+  it.each(DEPARTMENT_AXES)('$model is a declared scope axis, with its reason', (row) => {
+    expect(read(row.model.replace('.model.ts', '.repository.ts'))).toContain(
+      "departmentField: 'departmentId'",
+    );
+    expect(row.why.length).toBeGreaterThan(20);
+    // A scalar the org merge sweeps by name (§7.7), and the snapshot's copy is reference-only.
+    expect(read(row.model)).toContain(
+      'departmentId: { type: Schema.Types.ObjectId, required: true }',
+    );
+    expect(read(row.model)).toContain(
+      'departmentId: { type: Schema.Types.ObjectId, default: null }',
+    );
   });
 
   it.each(REFERENCE_ONLY_DEPARTMENTS)('$model is no scope axis, with its reason', (row) => {

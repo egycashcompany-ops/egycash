@@ -11,9 +11,14 @@
 //
 // THE CHECKS. The levels' order, the references and the category's level are the rules'
 // (`item-rules.ts`), judged on the row the write leaves — so an edit is first held to its
-// version, or it would be judged on fields its sender never saw. A name is checked before the
-// write for the early answer; a barcode is not — `ux_barcode` is its only check — and either
-// index refusing a write that raced past is answered with the field it guards (§5.15).
+// version, or it would be judged on fields its sender never saw. A unit change asks the features
+// whose lines name items first (`item-unit-lock.ts`, P2.2): a purchase request's line keeps the
+// unit it was written in. A name is checked before the write for the early answer; a barcode is
+// not — `ux_barcode` is its only check — and either index refusing a write that raced past is
+// answered with the field it guards (§5.15).
+//
+// THE SNAPSHOTS (P2.2). A document stores a display copy of each item it names (design §2.1,
+// Snapshots); `itemSnapsOf` is that copy's one builder, owned by the row it copies (§3.5).
 import {
   foldName,
   formatAdministrationMasterCode,
@@ -50,8 +55,10 @@ import {
   referenceRefusal,
   stockLevelsRefusal,
   subcategoryRefusal,
+  unitLockRefusal,
   type StockLevels,
 } from './item-rules';
+import { itemUnitLocks } from './item-unit-lock';
 import { type AdministrationItemDoc } from './item.model';
 import { administrationItemRepository as repository } from './item.repository';
 
@@ -59,6 +66,17 @@ import { administrationItemRepository as repository } from './item.repository';
 export interface ItemLabels {
   categories: ReadonlyMap<string, ItemCategoryLabel>;
   units: ReadonlyMap<string, LocalizedString>;
+}
+
+/**
+ * What a document line copies of its item (design §2.1, `ItemSnap`): the code, the name and the
+ * base unit's name. The unit's name reads null only for a unit no longer on file, as the item's
+ * own DTO does.
+ */
+export interface AdministrationItemSnap {
+  itemCode: string;
+  itemName: LocalizedString;
+  unitName: LocalizedString | null;
 }
 
 /** The name and barcode a write would leave the row with — what the duplicate checks compare. */
@@ -215,6 +233,8 @@ class AdministrationItemService {
       isCategoryNamed: categoryId !== String(before.categoryId),
     };
     await this.assertReferences(references);
+    // A line written in the old unit would mean another quantity in the new one (§2.3.4).
+    if (references.isUnitNamed) refuseIf(unitLockRefusal(await itemUnitLocks(itemId)));
     // Every edit, the category kept as much as one named anew: an item its category's first
     // subcategory left above the level is re-filed by its next edit (OD-06 (i)) — except one that
     // only retires or brings it back, which a new level must never block (§22, P1a.2 built).
@@ -228,8 +248,7 @@ class AdministrationItemService {
       set.nameKey = claim.nameKey;
     }
     if (references.isCategoryNamed) set.categoryId = new Types.ObjectId(categoryId);
-    // The base unit may still change: no line or movement can name an item before P2 and P5, and
-    // the checkers that will make it immutable then register with their features (§2.3.4, §3.6).
+    // Only while no document line names the item in its unit — asked above (§2.3.4, §3.6).
     if (references.isUnitNamed) set.unitId = new Types.ObjectId(unitId);
     if (input.minQty !== undefined) set.minQty = input.minQty;
     if (input.reorderPointQty !== undefined) set.reorderPointQty = input.reorderPointQty;
@@ -311,3 +330,29 @@ class AdministrationItemService {
 }
 
 export const administrationItemService = new AdministrationItemService();
+
+/**
+ * The items `itemIds` name, each with the snapshot a document line copies of it — one read of the
+ * items, unfiltered (retired and deleted rows answer too: a kept line still names its item), and
+ * the unit names through the service's own labels. An id that names no item is absent, which the
+ * document answers itself.
+ */
+export const itemSnapsOf = async (
+  itemIds: readonly string[],
+): Promise<ReadonlyMap<string, { item: AdministrationItemDoc; snap: AdministrationItemSnap }>> => {
+  const items = await repository.findByIdsSystem(itemIds);
+  const { units } = await administrationItemService.labels(items);
+  return new Map(
+    items.map((item) => [
+      String(item._id),
+      {
+        item,
+        snap: {
+          itemCode: item.code,
+          itemName: { ar: item.name.ar, en: item.name.en },
+          unitName: units.get(String(item.unitId)) ?? null,
+        },
+      },
+    ]),
+  );
+};

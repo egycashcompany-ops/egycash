@@ -1,7 +1,8 @@
 // Administrative Affairs — what the whole module shares (docs/12-planning/administration-module-design.md
 // §2.8, §11.4, §19.4): the master codes (P1a.2, the supplier's in P1b.1), the yearly document
-// numbers (P2.1), the people it names (P1a.3) and the bound every typed attachment list keeps
-// (P1b.1). An item is «ITM-00001» and a supplier «SUP-00001» (OD-05 A), generated, global,
+// numbers (P2.1), the people it names (P1a.3), the bound every typed attachment list keeps
+// (P1b.1), and what every document shares from P2.2 — its lines' cap, the acts its record offers
+// and the locks its lines put on an item. An item is «ITM-00001» and a supplier «SUP-00001» (OD-05 A), generated, global,
 // permanent and never reused, the way IT's asset and consumable codes are; a purchase request is
 // «PR-2026-000001». The formatters and the parsers live here, not in the API, because a screen
 // reads a code or a number too (a scanned label, a search) — IT's `formatConsumableMemoNumber`
@@ -193,3 +194,34 @@ export interface AdministrationPersonDto {
  * both pass it.
  */
 export const ADMINISTRATION_MAX_LIST_ATTACHMENTS = 20;
+
+// ── What every document shares (design §2.1, §5.1.4; P2.2) ─────────────────
+
+/**
+ * The most lines one document holds (design §2.1, Lines): Fleet's vehicle supply contract's 100,
+ * so one posting transaction stays bounded (RK-33, measured in P5). A purchase request is the
+ * first document to keep it; a count is the one exception (§2.6).
+ */
+export const ADMINISTRATION_MAX_DOCUMENT_LINES = 100;
+
+/**
+ * One act a document's record offers its reader (design §5.1.4), recruitment's `WorkflowActionDto`
+ * shape: the act, the key it runs under, and whether this reader may run it now — with the reason
+ * when not, so a screen shows the button disabled and says why instead of hiding it. Computed on
+ * the server from the document's whole lifecycle table, so the web never re-implements one.
+ */
+export interface AdministrationAvailableActionDto {
+  key: string;
+  permission: string;
+  enabled: boolean;
+  /** Null when `enabled`; otherwise one of the document's own reasons. */
+  reason: string | null;
+}
+
+/**
+ * Why an item's base unit may not change now (`ADMINISTRATION_ITEM_UNIT_LOCKED`'s detail `code`,
+ * design §2.3.4): a document line names the item in that unit. A purchase request's line from
+ * P2.2; the receipt, issue and count lines join with their phases, each as its checker registers.
+ */
+export const ADMINISTRATION_ITEM_UNIT_LOCKS = ['purchaseRequestLine'] as const;
+export type AdministrationItemUnitLock = (typeof ADMINISTRATION_ITEM_UNIT_LOCKS)[number];

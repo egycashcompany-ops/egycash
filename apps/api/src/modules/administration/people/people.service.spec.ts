@@ -4,7 +4,9 @@
 // reference never names a leaver — within the reach of the keys that opened it, OR-ed. Every read
 // answers §7.8's seven facts and nothing else of HR's: no phone, no address, no hiring date, no
 // login. And the warehouse's two system reads ask the directory unscoped and by id: the keeper a
-// write names, and the keepers a page names, each a leaver still named as one.
+// write names, and the keepers a page names, each a leaver still named as one. From P2.2 the
+// documents' two: the caller's own employee, and the snapshot a document copies of a person, whose
+// job title and department are named by the organization catalogue, each null when it names none.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { type DirectoryEmployee, type DirectoryEmployeeListing } from '../../../platform/directory';
 import { NotFoundError } from '../../../shared/errors';
@@ -14,12 +16,20 @@ const mocks = vi.hoisted(() => ({
   search: vi.fn(),
   one: vi.fn(),
   many: vi.fn(),
+  self: vi.fn(),
+  jobTitles: vi.fn(),
+  departments: vi.fn(),
 }));
 
 vi.mock('../../../platform/directory', () => ({
   searchDirectoryEmployees: mocks.search,
   getDirectoryEmployee: mocks.one,
   getDirectoryEmployees: mocks.many,
+  getSelfDirectoryEmployee: mocks.self,
+}));
+vi.mock('../../../platform/organization', () => ({
+  jobTitleRepository: { findByIdsSystem: mocks.jobTitles },
+  departmentRepository: { findByIdsSystem: mocks.departments },
 }));
 
 const { administrationPeopleService, peopleScopesOf } = await import('./people.service');
@@ -221,5 +231,61 @@ describe('the warehouse’s system reads', () => {
   it('asks nothing for a page that names no keeper', async () => {
     expect((await administrationPeopleService.keepers([])).size).toBe(0);
     expect(mocks.many).not.toHaveBeenCalled();
+  });
+});
+
+describe('the documents’ reads (P2.2)', () => {
+  const employee = (over: Partial<DirectoryEmployee> = {}): DirectoryEmployee => ({
+    employeeId: 'e-1',
+    code: 'E-0001',
+    fullNameAr: 'منسق الإدارة',
+    status: 'active',
+    branchId: 'b1',
+    departmentId: 'd1',
+    jobTitleId: 'j1',
+    phone: null,
+    governorate: null,
+    hiredAt: null,
+    address: null,
+    ...over,
+  });
+
+  it('reads the caller’s own employee by their login, and nobody else', async () => {
+    mocks.self.mockResolvedValue(employee());
+    expect(await administrationPeopleService.self('u-1')).toEqual(employee());
+    expect(mocks.self).toHaveBeenCalledWith('u-1');
+    mocks.self.mockResolvedValue(null);
+    expect(await administrationPeopleService.self('u-2')).toBeNull();
+  });
+
+  it('copies the name and the snapshot, the names the catalogue’s for the ids HR gives', async () => {
+    mocks.jobTitles.mockResolvedValue([{ name: { ar: 'محاسب', en: 'Accountant' } }]);
+    mocks.departments.mockResolvedValue([{ name: { ar: 'المشتريات', en: 'Purchasing' } }]);
+    expect(await administrationPeopleService.resolvePerson(employee())).toEqual({
+      name: 'منسق الإدارة',
+      snap: {
+        employeeCode: 'E-0001',
+        jobTitle: { ar: 'محاسب', en: 'Accountant' },
+        departmentId: 'd1',
+        departmentName: { ar: 'المشتريات', en: 'Purchasing' },
+      },
+    });
+    expect(mocks.jobTitles).toHaveBeenCalledWith(['j1']);
+    expect(mocks.departments).toHaveBeenCalledWith(['d1']);
+  });
+
+  it('names nothing for an id that is null or names no row — and never refuses', async () => {
+    mocks.jobTitles.mockResolvedValue([]);
+    mocks.departments.mockResolvedValue([]);
+    const { snap } = await administrationPeopleService.resolvePerson(
+      employee({ jobTitleId: null, departmentId: 'd-gone' }),
+    );
+    expect(snap).toEqual({
+      employeeCode: 'E-0001',
+      jobTitle: null,
+      departmentId: 'd-gone',
+      departmentName: null,
+    });
+    expect(mocks.jobTitles).not.toHaveBeenCalled();
   });
 });

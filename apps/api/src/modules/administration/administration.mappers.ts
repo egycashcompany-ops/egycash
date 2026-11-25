@@ -2,10 +2,14 @@
 // and dates become strings, a reference's label is resolved by the caller at read time and handed
 // in, and nothing the server owns alone — `nameKey` above all — leaves it.
 import {
+  type AdministrationApprovalEntryDto,
+  type AdministrationAvailableActionDto,
   type AdministrationCatalogItemDto,
   type AdministrationItemCategoryDto,
   type AdministrationItemDto,
   type AdministrationPersonDto,
+  type AdministrationPurchaseRequestDetailDto,
+  type AdministrationPurchaseRequestDto,
   type AdministrationSupplierDetailDto,
   type AdministrationSupplierDto,
   type AdministrationWarehouseDto,
@@ -17,6 +21,10 @@ import { type AdministrationItemCategoryDoc } from './catalog/item-categories/it
 import { type ItemCategoryParentNames } from './catalog/item-categories/item-category.service';
 import { type AdministrationItemDoc } from './catalog/items/item.model';
 import { type ItemLabels } from './catalog/items/item.service';
+import {
+  type AdministrationApprovalEntrySub,
+  type AdministrationPurchaseRequestDoc,
+} from './procurement/purchase-requests/purchase-request.model';
 import { type AdministrationSupplierDoc } from './procurement/suppliers/supplier.model';
 import {
   type SupplierDetailFacts,
@@ -26,6 +34,11 @@ import { type AdministrationWarehouseDoc } from './warehouses/warehouses/warehou
 import { type WarehouseLabels } from './warehouses/warehouses/warehouse.service';
 
 const iso = (d: Date): string => d.toISOString();
+const isoOrNull = (d: Date | null): string | null => (d === null ? null : iso(d));
+/** A date-only value, stored at UTC midnight, as its 'YYYY-MM-DD'. */
+const dayOrNull = (d: Date | null): string | null => (d === null ? null : iso(d).slice(0, 10));
+const idOrNull = (id: unknown): string | null =>
+  id === null || id === undefined ? null : String(id);
 
 export const toAdministrationCatalogItemDto = (
   doc: AdministrationCatalogItemDoc,
@@ -218,4 +231,93 @@ export const toAdministrationSupplierDetailDto = (
     name: match.name,
     isActive: match.isActive,
   })),
+});
+
+/**
+ * A register row (P2 plan §6.5): the request's own snapshots name its branch, department and
+ * requester, so a page reads no other collection. Lists carry no trail (design §5.1.4).
+ */
+export const toAdministrationPurchaseRequestDto = (
+  doc: AdministrationPurchaseRequestDoc,
+): AdministrationPurchaseRequestDto => ({
+  id: String(doc._id),
+  number: doc.number,
+  status: doc.status,
+  orderStatus: doc.orderStatus,
+  branchId: String(doc.branchId),
+  branchName: doc.branch.name,
+  departmentId: String(doc.departmentId),
+  departmentName: doc.requester.departmentName ?? null,
+  requesterUserId: String(doc.requesterUserId),
+  requesterName: doc.requesterName,
+  neededBy: dayOrNull(doc.neededBy),
+  lineCount: doc.lines.length,
+  submittedAt: isoOrNull(doc.submittedAt),
+  createdAt: iso(doc.createdAt),
+  version: doc.__v,
+});
+
+const toApprovalEntryDto = (
+  entry: AdministrationApprovalEntrySub,
+): AdministrationApprovalEntryDto => ({
+  stepIndex: entry.stepIndex,
+  outcome: entry.outcome,
+  deciderUserId: idOrNull(entry.deciderUserId),
+  deciderName: entry.deciderName,
+  decidedAt: iso(entry.decidedAt),
+  comment: entry.comment,
+  overriddenWith: entry.overriddenWith,
+  stepLabel: entry.stepLabel ?? null,
+});
+
+/**
+ * The record (P2 plan §6.5): the row, the request's texts, the requester's snapshot, the lines
+ * with their snapshots and counters, the rounds a return archived as stored, every act's stamp and
+ * reason, and `actions`, the server's answer for this reader of what they may do now.
+ */
+export const toAdministrationPurchaseRequestDetailDto = (
+  doc: AdministrationPurchaseRequestDoc,
+  actions: AdministrationAvailableActionDto[],
+): AdministrationPurchaseRequestDetailDto => ({
+  ...toAdministrationPurchaseRequestDto(doc),
+  justification: doc.justification,
+  notes: doc.notes,
+  businessDate: dayOrNull(doc.businessDate),
+  requester: {
+    employeeId: String(doc.requesterEmployeeId),
+    employeeCode: doc.requester.employeeCode ?? null,
+    jobTitle: doc.requester.jobTitle ?? null,
+    departmentId: idOrNull(doc.requester.departmentId),
+    departmentName: doc.requester.departmentName ?? null,
+  },
+  lines: doc.lines.map((line) => ({
+    lineId: String(line._id),
+    itemId: String(line.itemId),
+    itemCode: line.itemCode,
+    itemName: line.itemName,
+    unitId: String(line.unitId),
+    unitName: line.unitName ?? null,
+    qty: line.qty,
+    orderedQty: line.orderedQty,
+    cancelledQty: line.cancelledQty,
+    notes: line.notes,
+  })),
+  approvalRounds: doc.approvalRounds.map((round) => ({
+    round: round.round,
+    endedBy: round.endedBy,
+    at: iso(round.at),
+    steps: round.steps.map(toApprovalEntryDto),
+  })),
+  submittedBy: idOrNull(doc.submittedBy),
+  approvedAt: isoOrNull(doc.approvedAt),
+  approvedByUserId: idOrNull(doc.approvedByUserId),
+  rejectedAt: isoOrNull(doc.rejectedAt),
+  rejectedByUserId: idOrNull(doc.rejectedByUserId),
+  returnedAt: isoOrNull(doc.returnedAt),
+  returnedByUserId: idOrNull(doc.returnedByUserId),
+  returnReason: doc.returnReason,
+  cancelledAt: isoOrNull(doc.cancelledAt),
+  cancelledByUserId: idOrNull(doc.cancelledByUserId),
+  cancelReason: doc.cancelReason,
+  availableActions: actions,
 });

@@ -10,7 +10,12 @@
 import mongoose from 'mongoose';
 import { afterEach, describe, expect, it } from 'vitest';
 import '../modules';
-import { APPLICANT_REGISTRY, SURVIVING_ROLE_KEYS, applicantTargets, employeeTargets } from './targets';
+import {
+  APPLICANT_REGISTRY,
+  SURVIVING_ROLE_KEYS,
+  applicantTargets,
+  employeeTargets,
+} from './targets';
 
 const TEMP_MODEL = 'SpecTempEmployeeScoped';
 
@@ -87,6 +92,7 @@ describe('what the classification decides', () => {
     ['it_consumable_movements', 'the stock ledger every on-hand figure sums'],
     ['hr_job_offers', 'recruitment history'],
     ['administration_warehouses', 'a store outlives its keeper'],
+    ['administration_purchase_requests', 'a need and a spending decision later documents cite'],
   ])('leaves %s completely alone (%s)', (collection) => {
     expect(find(collection)?.action).toBe('keep');
   });

@@ -154,7 +154,7 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   hr_employee_pay_items: { action: 'purge', why: 'somebody’s recurring pay item' },
   hr_contracts: { action: 'purge', why: 'somebody’s employment contract' },
   hr_candidate_drafts: { action: 'purge', why: 'the papers somebody was printed and hired with' },
-  hr_employee_paper_values: { action: 'purge', why: 'the values typed in for somebody\'s papers' },
+  hr_employee_paper_values: { action: 'purge', why: "the values typed in for somebody's papers" },
   hr_employee_loans: { action: 'purge', why: 'somebody’s loan' },
   hr_loan_installments: { action: 'purge', why: 'an installment of somebody’s loan' },
   hr_loan_repayments: { action: 'purge', why: 'a repayment of somebody’s loan' },
@@ -252,6 +252,14 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   administration_warehouses: {
     action: 'keep',
     why: 'a warehouse is a record in its own right and outlives its keeper',
+  },
+  // A purchase request names its requester, and is a need and a spending decision the later
+  // documents cite — the RFQ, the PO and, through it, the receipt (OD-64 A; design §15.3.3).
+  // Purged, they would cite nothing; kept, its requester's name is rewritten by HR's permanent
+  // delete (`employee-name-copies.ts`), and its id resolves to nobody.
+  administration_purchase_requests: {
+    action: 'keep',
+    why: 'a need and a spending decision that later documents cite',
   },
 
   // ── Owned by the user rule, not this one ──

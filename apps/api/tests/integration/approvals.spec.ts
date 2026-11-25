@@ -232,6 +232,10 @@ let branchOverride: Person;
 let otherBranchOverride: Person;
 /** Placed in the requesters' branch, holding nothing until a case grants it a `branch` rung. */
 let branchApproverId = '';
+/** `leave.view` company-wide, and an organization-scope `leave.approve` that ended yesterday. */
+let lapsedApprover: Person;
+/** Placed in the requesters' branch and suspended; holds nothing until a case grants it a rung. */
+let suspendedApproverId = '';
 
 /** One single-day annual leave, filed by the employee on the first countable day from `from`. */
 const file = async (from: number): Promise<LeaveRequestDto> => {
@@ -364,6 +368,28 @@ beforeAll(async () => {
   otherBranchOverride = await overrider('override-other@ecms.local', OTHER_BRANCH_ID, 'branch');
   branchApproverId = await mkUser('branch@ecms.local', BRANCH_ID);
 
+  // PX-1.3's two: a grant out of force (R3) and an account that is not active (R8).
+  const lapsedApproverId = await mkUser('lapsed-approver@ecms.local');
+  await rbacService.ensureAssignment(lapsedApproverId, viewerRole, 'organization');
+  await rbacService.assignRole(
+    {
+      userId: lapsedApproverId,
+      roleId: approverRole,
+      scope: 'organization',
+      validFrom: new Date(Date.now() - 2 * 86_400_000),
+      validTo: new Date(Date.now() - 86_400_000),
+    },
+    adminId,
+  );
+  lapsedApprover = { userId: lapsedApproverId, token: await login('lapsed-approver@ecms.local') };
+  suspendedApproverId = await mkUser('suspended@ecms.local', BRANCH_ID);
+  const suspended = await userService.findByIdSystem(suspendedApproverId);
+  await userService.changeStatus(
+    suspendedApproverId,
+    { status: 'suspended', version: suspended?.__v ?? 0 },
+    adminId,
+  );
+
   emp = await regEmployee();
   ess = await activateEssLogin(emp);
   await grantNextYearHeadroom(emp.id);
@@ -490,69 +516,70 @@ describe('a leave chain written through the API, and leave run on it (R12)', () 
   });
 });
 
+// The rungs and readers the fix cases share, PX-1.2's and every later pull request's.
+const UNIT_RUNG = {
+  permissionKey: 'leave.approve',
+  level: 'unit',
+  label: { ar: 'مدير الإدارة في الفرع', en: 'Unit manager' },
+};
+const BRANCH_RUNG = {
+  permissionKey: 'leave.approve',
+  level: 'branch',
+  label: { ar: 'مدير الفرع', en: 'Branch manager' },
+};
+const DEPARTMENT_RUNG = {
+  permissionKey: 'leave.approve',
+  level: 'department',
+  label: { ar: 'مدير عام الإدارة', en: 'General department manager' },
+};
+const ORGANIZATION_RUNG = {
+  permissionKey: 'leave.approve',
+  level: 'organization',
+  label: { ar: 'الموارد البشرية', en: 'Human resources' },
+};
+
+/** The company default, replaced: every request below files under it. */
+const writeChain = async (steps: object[]): Promise<void> => {
+  const res = await request(app).put('/api/v1/platform/approvals').set(auth(adminToken)).send({
+    requestType: 'hr.leave',
+    departmentCatalogId: null,
+    branchId: null,
+    steps,
+    isActive: true,
+  });
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+};
+
+/**
+ * The engine's own answer for a request, read in-process: no DTO carries it. The Unit is the
+ * one the requesters were placed in.
+ */
+const chainStatus = async (id: string): Promise<ChainStatus> => {
+  const row = await LeaveRequestModel.findById(id).lean().exec();
+  expect(row).not.toBeNull();
+  return approvalService.statusFor({
+    requestType: 'hr.leave',
+    unit: { branchId: BRANCH_ID, departmentCatalogId: CATALOG_ID, departmentId: DEPARTMENT_ID },
+    decisions: (row?.approvalSteps ?? []).map((entry) => ({
+      stepIndex: entry.stepIndex,
+      outcome: entry.outcome,
+      deciderUserId: entry.deciderUserId === null ? null : String(entry.deciderUserId),
+      decidedAt: entry.decidedAt,
+      comment: entry.comment,
+      overriddenWith: entry.overriddenWith,
+    })),
+  });
+};
+
+const refusedWith = (res: request.Response, key: string): void => {
+  expect(res.status, JSON.stringify(res.body)).toBe(422);
+  expect((res.body as { error: { message: string } }).error.message).toBe(key);
+};
+
+const outcomes = (dto: LeaveRequestDto) =>
+  dto.approvalTrail?.steps.map((s) => [s.outcome, s.overriddenWith]);
+
 describe('no staffed rung is an answer, and an override decides within its reach (PX-1.2: R2, R4)', () => {
-  const UNIT_RUNG = {
-    permissionKey: 'leave.approve',
-    level: 'unit',
-    label: { ar: 'مدير الإدارة في الفرع', en: 'Unit manager' },
-  };
-  const BRANCH_RUNG = {
-    permissionKey: 'leave.approve',
-    level: 'branch',
-    label: { ar: 'مدير الفرع', en: 'Branch manager' },
-  };
-  const DEPARTMENT_RUNG = {
-    permissionKey: 'leave.approve',
-    level: 'department',
-    label: { ar: 'مدير عام الإدارة', en: 'General department manager' },
-  };
-  const ORGANIZATION_RUNG = {
-    permissionKey: 'leave.approve',
-    level: 'organization',
-    label: { ar: 'الموارد البشرية', en: 'Human resources' },
-  };
-
-  /** The company default, replaced: every request below files under it. */
-  const writeChain = async (steps: object[]): Promise<void> => {
-    const res = await request(app).put('/api/v1/platform/approvals').set(auth(adminToken)).send({
-      requestType: 'hr.leave',
-      departmentCatalogId: null,
-      branchId: null,
-      steps,
-      isActive: true,
-    });
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-  };
-
-  /**
-   * The engine's own answer for a request, read in-process: no DTO carries it. The Unit is the
-   * one the requesters were placed in.
-   */
-  const chainStatus = async (id: string): Promise<ChainStatus> => {
-    const row = await LeaveRequestModel.findById(id).lean().exec();
-    expect(row).not.toBeNull();
-    return approvalService.statusFor({
-      requestType: 'hr.leave',
-      unit: { branchId: BRANCH_ID, departmentCatalogId: CATALOG_ID, departmentId: DEPARTMENT_ID },
-      decisions: (row?.approvalSteps ?? []).map((entry) => ({
-        stepIndex: entry.stepIndex,
-        outcome: entry.outcome,
-        deciderUserId: entry.deciderUserId === null ? null : String(entry.deciderUserId),
-        decidedAt: entry.decidedAt,
-        comment: entry.comment,
-        overriddenWith: entry.overriddenWith,
-      })),
-    });
-  };
-
-  const refusedWith = (res: request.Response, key: string): void => {
-    expect(res.status, JSON.stringify(res.body)).toBe(422);
-    expect((res.body as { error: { message: string } }).error.message).toBe(key);
-  };
-
-  const outcomes = (dto: LeaveRequestDto) =>
-    dto.approvalTrail?.steps.map((s) => [s.outcome, s.overriddenWith]);
-
   it('R2, R4: a request whose only rung nobody holds waits unstaffed; an override over the other branch is refused, an organization-scope one approves it', async () => {
     // Nobody holds `leave.approve` over a whole branch. Before PX-1.2 this request read approved
     // to the engine while leave kept it pending, and nobody could decide it.
@@ -713,5 +740,74 @@ describe('no staffed rung is an answer, and an override decides within its reach
       viewerMayDecide: false,
       viewerMayOverride: false,
     });
+  });
+});
+
+describe('only grants in force decide, and only active accounts staff a rung (PX-1.3: R3, R8)', () => {
+  it('R3: a person whose only grant at the waiting rung’s level ended yesterday is offered nothing and refused approvals.notYourStep, while HR’s grant in force keeps the rung staffed', async () => {
+    // Before PX-1.3 the reader's own rungs were read from every assignment, in force or not, so the
+    // expired grant stood on the organization rung: its holder was offered the decision, and took it.
+    await writeChain([ORGANIZATION_RUNG]);
+    const created = await file(70);
+    expect(await chainStatus(created.id)).toBe('pending');
+
+    expect((await readAs(created.id, lapsedApprover.token)).approvalTrail).toMatchObject({
+      currentStep: 0,
+      viewerMayDecide: false,
+      viewerStep: null,
+      viewerMayOverride: false,
+    });
+    refusedWith(
+      await decide(created.id, 'approve', created.version, lapsedApprover.token),
+      'approvals.notYourStep',
+    );
+
+    expect((await readAs(created.id, hrApprover.token)).approvalTrail).toMatchObject({
+      currentStep: 0,
+      viewerMayDecide: true,
+      viewerStep: 0,
+    });
+    const res = await decide(created.id, 'approve', created.version, hrApprover.token);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const done = res.body.data as LeaveRequestDto;
+    expect(done.status).toBe('approved');
+    expect(done.approvalTrail?.steps[0]?.decidedBy?.id).toBe(hrApprover.userId);
+  });
+
+  it('R8: a rung whose only holder is suspended is passed when a staffed rung follows, and as the only rung leaves the request unstaffed', async () => {
+    // The branch rung's only holder is a suspended account. Before PX-1.3 its grant kept the rung
+    // staffed: the request waited on it, and HR's approval covered it rather than passing it.
+    const grant = await rbacService.assignRole(
+      { userId: suspendedApproverId, roleId: APPROVER_ROLE_ID, scope: 'branch' },
+      ADMIN_ID,
+    );
+    try {
+      await writeChain([BRANCH_RUNG, ORGANIZATION_RUNG]);
+      const passed = await file(77);
+      expect(passed.status).toBe('pendingApproval');
+      expect(await chainStatus(passed.id)).toBe('pending');
+      expect((await readAs(passed.id, hrApprover.token)).approvalTrail).toMatchObject({
+        currentStep: 1,
+        viewerMayDecide: true,
+        viewerStep: 1,
+        viewerCovers: [],
+      });
+      const res = await decide(passed.id, 'approve', passed.version, hrApprover.token);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const done = res.body.data as LeaveRequestDto;
+      expect(done.status).toBe('approved');
+      expect(outcomes(done)).toEqual([
+        ['skipped', null],
+        ['approved', null],
+      ]);
+
+      await writeChain([BRANCH_RUNG]);
+      const stuck = await file(84);
+      expect(stuck.status).toBe('pendingApproval');
+      expect(await chainStatus(stuck.id)).toBe('unstaffed');
+      expect((await readAs(stuck.id, adminToken)).approvalTrail?.currentStep).toBe(0);
+    } finally {
+      await rbacService.revokeAssignment(String(grant._id), ADMIN_ID);
+    }
   });
 });

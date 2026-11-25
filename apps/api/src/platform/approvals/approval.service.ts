@@ -376,10 +376,13 @@ class ApprovalService {
       if (basis !== null) throw new StaleDocumentError();
       saved = await this.firstChainAt(input, actor);
     } else {
-      if (basis === null || basis.id !== String(existing._id) || basis.version !== existing.__v) {
+      // The id is compared as hex in either case: the contract's `objectId()` accepts upper-case
+      // hex, which names the same row, and the row's own id prints in lower case.
+      const id = String(existing._id);
+      if (basis === null || basis.id.toLowerCase() !== id || basis.version !== existing.__v) {
         throw new StaleDocumentError();
       }
-      saved = await this.replaceChain(basis, input, actor);
+      saved = await this.replaceChain(id, basis.version, input, actor);
     }
 
     await auditService.record({
@@ -507,15 +510,16 @@ class ApprovalService {
    * chain that was never there.
    */
   private async replaceChain(
-    basis: { id: string; version: number },
+    id: string,
+    version: number,
     input: SetApprovalWorkflow,
     actor: AuthContext,
   ): Promise<ApprovalWorkflowDoc> {
     try {
       return await approvalWorkflowRepository.updateById(
-        basis.id,
+        id,
         { steps: input.steps, isActive: input.isActive },
-        { by: actor.userId, version: basis.version },
+        { by: actor.userId, version },
       );
     } catch (error) {
       if (error instanceof NotFoundError) throw new StaleDocumentError();

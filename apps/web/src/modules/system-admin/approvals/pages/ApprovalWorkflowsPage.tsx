@@ -17,7 +17,9 @@ import {
   type ApprovalLevel,
   type ApprovalStep,
   type ApprovalWorkflowDto,
+  type Locale,
 } from '@ecms/contracts';
+import { useAppSelector } from '../../../../store';
 import { useT } from '../../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import {
@@ -32,6 +34,7 @@ import {
 } from '../../../../shared/ui';
 import { Field, Select } from '../../../../shared/ui/form';
 import { cn } from '../../../../shared/lib/cn';
+import { errorMessage } from '../../../../shared/lib/errors';
 import { BOARD_FRAME, BOARD_LIST_FILL } from '../../../../shared/ui/board-scroll';
 import { useBranchOptions } from '../../../organization/shared/references';
 import { useDepartmentCatalog } from '../../roles/api/role-queries';
@@ -41,29 +44,33 @@ import {
   useDeleteApprovalWorkflow,
   useSetApprovalWorkflow,
 } from '../api/approval-queries';
-import { basisAt, basisOf, type ChainBasis } from '../lib/chain-basis';
+import { placed, type ChainBasis, type DraftPlace } from '../lib/chain-basis';
 
-interface Draft {
-  requestType: string;
-  departmentCatalogId: string | null;
-  branchId: string | null;
+interface Draft extends DraftPlace {
   steps: ApprovalStep[];
   isActive: boolean;
   /** The listed chain this draft replaces, which its save names; null when it replaces none. */
   basedOn: ChainBasis;
 }
 
-const emptyDraft = (requestType: string): Draft => ({
-  requestType,
-  departmentCatalogId: null,
-  branchId: null,
-  steps: [],
-  isActive: true,
-  basedOn: null,
-});
+/**
+ * A new chain, opened at the type's company default. It names the chain the screen lists there,
+ * as a draft moved there would: null would say the screen saw none, and a save is refused as
+ * stale unless its basis is the place's row as it stands.
+ */
+const emptyDraft = (requestType: string, listed: readonly ApprovalWorkflowDto[]): Draft =>
+  placed({
+    requestType,
+    departmentCatalogId: null,
+    branchId: null,
+    steps: [],
+    isActive: true,
+    listed,
+  });
 
 export const ApprovalWorkflowsPage = (): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
   const workflows = useApprovalWorkflows();
   const types = useApprovalRequestTypes();
   const branches = useBranchOptions();
@@ -97,21 +104,6 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
 
   const keysFor = (requestType: string): string[] =>
     types.data?.find((type) => type.key === requestType)?.permissionKeys ?? [];
-
-  /**
-   * The draft moved to another request type or place: either is the key of another row, so it
-   * now replaces the row listed there, or none. A save that kept the old basis would be refused
-   * as stale, and rightly, since it would name a row it does not write.
-   */
-  const moved = (next: Draft): Draft => ({
-    ...next,
-    basedOn: basisAt(
-      workflows.data ?? [],
-      next.requestType,
-      next.departmentCatalogId,
-      next.branchId,
-    ),
-  });
 
   const placeOf = (row: ApprovalWorkflowDto): string => {
     if (row.department === null && row.branch === null) return t('approvals.place.default');
@@ -151,7 +143,7 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
             // Only once the chains are on screen: before the frame, loading and failing replaced
             // the whole page, this button with it.
             loading || workflows.isError || firstType === '' ? undefined : (
-              <Button onClick={() => setDraft(emptyDraft(firstType))}>
+              <Button onClick={() => setDraft(emptyDraft(firstType, workflows.data ?? []))}>
                 {t('approvals.page.add')}
               </Button>
             )
@@ -200,14 +192,16 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
                                 size="sm"
                                 variant="ghost"
                                 onClick={() =>
-                                  setDraft({
-                                    requestType: row.requestType,
-                                    departmentCatalogId: row.department?.id ?? null,
-                                    branchId: row.branch?.id ?? null,
-                                    steps: row.steps,
-                                    isActive: row.isActive,
-                                    basedOn: basisOf(row),
-                                  })
+                                  setDraft(
+                                    placed({
+                                      requestType: row.requestType,
+                                      departmentCatalogId: row.department?.id ?? null,
+                                      branchId: row.branch?.id ?? null,
+                                      steps: row.steps,
+                                      isActive: row.isActive,
+                                      listed: workflows.data ?? [],
+                                    }),
+                                  )
                                 }
                               >
                                 {t('common.edit')}
@@ -273,7 +267,7 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
               <Select
                 value={draft.requestType}
                 onChange={(e) =>
-                  setDraft(moved({ ...draft, requestType: e.target.value, steps: [] }))
+                  setDraft(placed({ ...draft, requestType: e.target.value, steps: [] }))
                 }
               >
                 {(types.data ?? []).map((type) => (
@@ -292,7 +286,7 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
                 value={draft.departmentCatalogId ?? ''}
                 onChange={(e) =>
                   setDraft(
-                    moved({
+                    placed({
                       ...draft,
                       departmentCatalogId: e.target.value === '' ? null : e.target.value,
                     }),
@@ -313,7 +307,7 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
                 value={draft.branchId ?? ''}
                 onChange={(e) =>
                   setDraft(
-                    moved({ ...draft, branchId: e.target.value === '' ? null : e.target.value }),
+                    placed({ ...draft, branchId: e.target.value === '' ? null : e.target.value }),
                   )
                 }
               >
@@ -401,8 +395,12 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
               </Button>
             </div>
 
+            {/* In the shared wording the toast uses, so a stale save reads in the screen's
+                language rather than as the server's English sentence; a refusal with no wording
+                of its own, such as the engine's `approvals.*` keys, shows the server's message as
+                before. */}
             {save.isError && (
-              <p className="text-sm text-red-600">{(save.error as Error).message}</p>
+              <p className="text-sm text-red-600">{errorMessage(save.error, locale)}</p>
             )}
           </div>
         )}

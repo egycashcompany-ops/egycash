@@ -36,3 +36,32 @@ export const basisAt = (
   );
   return row === undefined ? null : basisOf(row);
 };
+
+/** Where a draft writes, and the chains the screen listed when the draft was opened. */
+export interface DraftPlace {
+  requestType: string;
+  departmentCatalogId: string | null;
+  branchId: string | null;
+  /**
+   * The list as it stood when the draft was opened, kept with the draft. The list behind the
+   * dialog refetches whenever any chain is saved, and a version listed since is another
+   * administrator's save that this draft never saw: naming it would overwrite that save, which is
+   * the overwrite `basedOn` exists to refuse.
+   */
+  listed: readonly ApprovalWorkflowDto[];
+}
+
+/**
+ * The draft, naming the row the screen listed at its type and place when it was opened, or null
+ * where it listed none.
+ *
+ * One rule for every way a draft reaches a place: opened by Add, opened on a row by Edit, or moved
+ * by its type and place selects, there and back again. So one draft at one place always names the
+ * same basis, and null means only what the contract says it means, that the screen saw no chain
+ * there. A new draft named null over a listed chain instead would be refused as stale at every
+ * save, and no refresh would clear it.
+ */
+export const placed = <D extends DraftPlace>(draft: D): D & { basedOn: ChainBasis } => ({
+  ...draft,
+  basedOn: basisAt(draft.listed, draft.requestType, draft.departmentCatalogId, draft.branchId),
+});

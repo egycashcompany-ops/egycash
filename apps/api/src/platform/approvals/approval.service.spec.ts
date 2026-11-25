@@ -1115,6 +1115,34 @@ describe('a stored rung on a key its type does not offer (R9)', () => {
       expect(mocks.hasApprovers).not.toHaveBeenCalled();
     },
   );
+
+  it.each(WHERE)(
+    'R9: %s, a holder of its key does not decide it early over the staffed rung below, and no approval finishes the chain over it',
+    async (_where, pinned) => {
+      // A staffed chain, so the reader's own rungs alone decide what they may do: measured against
+      // every rung, a holder of the other key would stand on rung 1, above the waiting rung, and
+      // decide it early, covering the unit rung and approving the request.
+      const request = on([rung('unit'), rung('organization', OFF_TYPE)], pinned);
+      expect(await approvalService.statusFor(request())).toBe('pending');
+      holds(OFF_TYPE);
+      expect(await approvalService.trailFor(request(), actor())).toMatchObject({
+        currentStep: 0,
+        viewerMayDecide: false,
+        viewerStep: null,
+        viewerCovers: [],
+      });
+      expect(await refusalOf(approvalService.decide(request(), actor(), APPROVE))).toBe(
+        'approvals.notYourStep',
+      );
+
+      // The unit rung's own holder decides it, and the chain then waits on the rung nobody can
+      // stand on, rather than reading approved past it.
+      holds('leave.approve');
+      const decided = await approvalService.decide(request(), actor(), APPROVE);
+      expect(decided.entries.map((e) => [e.stepIndex, e.outcome])).toEqual([[0, 'approved']]);
+      expect(decided.status).toBe('unstaffed');
+    },
+  );
 });
 
 describe('saving a chain (setWorkflow)', () => {
@@ -1244,6 +1272,23 @@ describe('saving a chain (setWorkflow)', () => {
       version: 4,
     });
     expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({ action: 'update' }));
+  });
+
+  it('R9: takes a basis naming the place’s row in upper-case hex, which is the same row', async () => {
+    // `objectId()` accepts either case of hex, and the row's own id prints in lower case.
+    const existing = row(LADDER, { _id: new Types.ObjectId('64b7f0c2a1d3e4f5a6b7c8d9'), __v: 2 });
+    mocks.findForPlace.mockResolvedValue(existing);
+    mocks.updateById.mockResolvedValue({ ...existing, __v: 3 });
+    const dto = await approvalService.setWorkflow(
+      input({ basedOn: { id: '64B7F0C2A1D3E4F5A6B7C8D9', version: 2 } }),
+      actor(),
+    );
+    expect(mocks.updateById).toHaveBeenCalledWith(
+      '64b7f0c2a1d3e4f5a6b7c8d9',
+      { steps: [rung('unit'), rung('organization')], isActive: true },
+      { by: 'u-actor', version: 2 },
+    );
+    expect(dto).toMatchObject({ id: '64b7f0c2a1d3e4f5a6b7c8d9', version: 3 });
   });
 
   it('R9: refuses as stale a draft whose basis is not the place’s row as it stands, and writes nothing', async () => {

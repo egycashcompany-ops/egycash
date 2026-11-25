@@ -1140,4 +1140,52 @@ describe('a chain save names its type’s keys and the row it replaces (PX-1.6: 
       await removeChain(String(stored._id));
     }
   });
+
+  it('R9: on a staffed chain, a holder of a stored rung’s other key does not decide it early over the unit rung, and the unit holder’s approval leaves the request waiting unstaffed on it', async () => {
+    // The department's own chain in the requesters' branch: the unit rung, staffed, and above it a
+    // rung on `leave.view`, which every override holder holds company-wide. Before PX-1.6 a reader
+    // was measured against every rung, so a `leave.view` holder stood on rung 1, above the waiting
+    // rung, and decided it early, covering the unit rung and approving the request.
+    const OFF_TYPE_RUNG = { permissionKey: 'leave.view', level: 'organization', label: null };
+    const stored = await ApprovalWorkflowModel.create({
+      requestType: 'hr.leave',
+      departmentCatalogId: new Types.ObjectId(CATALOG_ID),
+      branchId: new Types.ObjectId(BRANCH_ID),
+      steps: [UNIT_RUNG, OFF_TYPE_RUNG],
+      isActive: true,
+    });
+    try {
+      const created = await file(119);
+      expect(created.status).toBe('pendingApproval');
+      expect(await chainStatus(created.id)).toBe('pending');
+
+      // `leave.view` company-wide, and an override that ended yesterday: on no rung, and no reach.
+      expect((await readAs(created.id, lapsedOverride.token)).approvalTrail).toMatchObject({
+        currentStep: 0,
+        viewerMayDecide: false,
+        viewerStep: null,
+        viewerCovers: [],
+        viewerMayOverride: false,
+      });
+      refusedWith(
+        await decide(created.id, 'approve', created.version, lapsedOverride.token),
+        'approvals.notYourStep',
+      );
+
+      // The unit rung's holder decides it, and the request then waits on the rung nobody can
+      // stand on, for an override within reach, rather than reading approved past it.
+      const res = await decide(created.id, 'approve', created.version, unitApprover.token);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const decided = res.body.data as LeaveRequestDto;
+      expect(decided.status).toBe('pendingApproval');
+      expect(outcomes(decided)).toEqual([
+        ['approved', null],
+        ['pending', null],
+      ]);
+      expect(decided.approvalTrail?.currentStep).toBe(1);
+      expect(await chainStatus(created.id)).toBe('unstaffed');
+    } finally {
+      await removeChain(String(stored._id));
+    }
+  });
 });

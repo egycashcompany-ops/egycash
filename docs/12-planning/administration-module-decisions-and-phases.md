@@ -3425,9 +3425,11 @@ Repository-wide findings outside this module are listed for the owner in
   (R1–R5, R8, R9) are fixed, with R12's tests as their baseline. The re-detail's §11 criteria, checked against merged
   main with PX-1.4 to PX-1.6 stacked on it:
   1. *One test per defect, failing before its fix.* Each fix pull request's description shows its new cases failing on
-     its base commit's source and passing on its head, guards excepted: PX-1.2 for R2 and R4 (on `c95674c4`), PX-1.3 for
-     R3 and R8 (on `46e1b345`, no guard), PX-1.4 for R1 (on `46e1b345`; the unset-pin case is its guard), PX-1.5 for R5
-     (on `b07e2f00`; the leave audit case is its guard) and PX-1.6 for R9 (on `4816dd97`, no guard).
+     its base commit's source and passing on its head, guards excepted: PX-1.2 for R2 and R4 (on `099b23f1`, PX-1.1's
+     merged head; its engine, leave and contract sources are identical to `c95674c4`, the pre-rebase base PX-1.2's
+     description names), PX-1.3 for R3 and R8 (on `46e1b345`, no guard), PX-1.4 for R1 (on `46e1b345`; the unset-pin
+     case is its guard), PX-1.5 for R5 (on `b07e2f00`; the leave audit case is its guard) and PX-1.6 for R9 (on
+     `4816dd97`, no guard).
   2. *The two unit specs exist.* `approval.service.spec.ts` (PX-1.1) and `approver-lookup.spec.ts` (PX-1.3) are under
      `apps/api/src`, which `npm run test -w apps/api` runs.
   3. *Integration coverage.* `apps/api/tests/integration/approvals.spec.ts` (PX-1.1) writes a chain through

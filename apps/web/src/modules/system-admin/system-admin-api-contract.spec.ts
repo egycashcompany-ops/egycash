@@ -461,7 +461,9 @@ describe('the approval-chain screen calls the approvals router', () => {
 
   it('uses the verbs the router declares', () => {
     // The save is a PUT to the collection, not a POST or a PATCH by id, because it writes «the
-    // chain for THIS place» — which may or may not already exist, and the client does not know.
+    // chain for THIS place», which may or may not already exist: the client names the row it
+    // replaces in `basedOn`, or null where it saw none, and the server refuses any other basis as
+    // stale (ADR-041 decision 9).
     expect(APPROVAL_ROUTES).toMatch(/router\.put\(\s*'\/'/);
     expect(APPROVAL_CLIENT).toContain("put<ApprovalWorkflowDto>('/platform/approvals', body)");
     expect(APPROVAL_ROUTES).toMatch(/router\.delete\(\s*'\/:id'/);
@@ -501,6 +503,20 @@ describe('the approval-chain screen calls the approvals router', () => {
     expect(schema).toContain('.strict()');
     const rest = APPROVALS_CONTRACT.slice((found?.index ?? 0) + (schema?.length ?? 0));
     expect(rest).toMatch(/^;\s*export type SetApprovalWorkflow = /);
+  });
+
+  it('names the chain a draft replaces by one rule, however the draft reached its place', () => {
+    // Add, Edit and the type and place selects all build the draft through `placed`, which names
+    // the row the screen listed at its place when the draft opened, or null where it listed none
+    // (`approvals/lib/chain-basis.ts`). A draft that named null over a listed chain would be
+    // refused as stale at every save, which no refresh clears; one that read its basis from the
+    // list as it refetches behind the dialog would name another administrator's newer save and
+    // overwrite it.
+    expect(APPROVAL_PAGE).toMatch(/const emptyDraft = [^=]*=>\s*placed\(/);
+    expect(APPROVAL_PAGE).toContain('setDraft(emptyDraft(firstType, workflows.data ?? []))');
+    expect(APPROVAL_PAGE.match(/setDraft\(\s*placed\(/g)).toHaveLength(4);
+    expect(APPROVAL_PAGE).not.toMatch(/basedOn: (null|basis)/);
+    expect(APPROVAL_PAGE).not.toContain('basisAt(');
   });
 
   it('offers only the levels the engine can resolve', () => {

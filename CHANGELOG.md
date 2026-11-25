@@ -37,10 +37,13 @@ its entry here in the same PR.
     only on the way to a staffed rung above it, and with none above it the request waits
     `unstaffed` until an override that reaches the rung's level decides it. Such a chain is refused
     at its next save until the rung is removed.
-  - **The chain screen** sends `basedOn` for the chain it shows: null for a new chain, the row
-    for an edit, and the row the screen lists at the new place or request type once the draft is
-    moved there, or null where it lists none. A stale save shows the stale-record message, in
-    English and Arabic as before; the screen is reloaded before that chain can be saved.
+  - **The chain screen** sends `basedOn` for the chain it shows: the row the screen listed at the
+    draft's request type and place when the dialog was opened, or null where it listed none, by
+    one rule for a new chain, an edit and a draft moved by its selects. So a new chain opened where
+    a chain is listed replaces that chain when saved, as before. A stale save is refused with the
+    stale-record message, in English and Arabic, in the dialog as in the toast, and the list behind
+    the dialog is re-read: the chain is then opened again with Edit, which names the row as it now
+    is, and saved.
   - **For HR leave,** the engine's only host: a stored `hr.leave` rung on any key but
     `leave.approve` is unstaffed from this release, so its key's holders no longer decide it, and a
     request waits past it on the next staffed rung or, with none, `unstaffed` for an override within
@@ -51,7 +54,7 @@ its entry here in the same PR.
     opened before the deploy sends no `basedOn`, and its save gets a 400 until the tab is reloaded.
   - `approval.service.spec.ts` rewrites its R9 cases to the fixed save and adds stored rungs on
     another key, on a chain row and on a pin; `apps/api/tests/integration/approvals.spec.ts` gains
-    three cases, and its earlier saves now name their row; `chain-basis.spec.ts` covers the
+    four cases, and its earlier saves now name their row; `chain-basis.spec.ts` covers the
     screen's basis; the web contract spec checks `basedOn` in the schema and in the page, and no
     longer says that a rung nobody holds approves everything. With this pull request PX-1 closes
     (design §22).

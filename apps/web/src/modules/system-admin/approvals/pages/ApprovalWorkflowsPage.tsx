@@ -99,15 +99,18 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
     }));
   }, [workflows.data]);
 
+  // Each name in the reader's language, in the list and in the editor's selects alike: request
+  // types, departments and branches all carry both, and an administrator choosing where a chain
+  // applies reads them in the screen's language, never the other one.
   const typeName = (key: string): string =>
-    types.data?.find((type) => type.key === key)?.name.ar ?? key;
+    types.data?.find((type) => type.key === key)?.name[locale] ?? key;
 
   const keysFor = (requestType: string): string[] =>
     types.data?.find((type) => type.key === requestType)?.permissionKeys ?? [];
 
   const placeOf = (row: ApprovalWorkflowDto): string => {
     if (row.department === null && row.branch === null) return t('approvals.place.default');
-    const parts = [row.department?.name.ar, row.branch?.name.ar].filter(
+    const parts = [row.department?.name[locale], row.branch?.name[locale]].filter(
       (part): part is string => part !== undefined,
     );
     return parts.join(' · ');
@@ -272,7 +275,7 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
               >
                 {(types.data ?? []).map((type) => (
                   <option key={type.key} value={type.key}>
-                    {type.name.ar}
+                    {type.name[locale]}
                   </option>
                 ))}
               </Select>
@@ -296,7 +299,7 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
                 <option value="">{t('approvals.editor.anyDepartment')}</option>
                 {(departments.data ?? []).map((department) => (
                   <option key={department.id} value={department.id}>
-                    {department.name.ar}
+                    {department.name[locale]}
                   </option>
                 ))}
               </Select>
@@ -314,7 +317,7 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
                 <option value="">{t('approvals.editor.anyBranch')}</option>
                 {(branches.data ?? []).map((branch) => (
                   <option key={branch.id} value={branch.id}>
-                    {branch.name.ar}
+                    {branch.name[locale]}
                   </option>
                 ))}
               </Select>

@@ -47,6 +47,21 @@ export interface MatrixModule {
   rows: MatrixRow[];
 }
 
+/**
+ * What an EDITOR is shown of the registry: the permissions he holds, plus the ones the role already
+ * carries (which he may take away even when he could not hand them out — the server checks only
+ * what an edit adds). One definition for the matrix and the quick-selection panel beside it, so
+ * the two never disagree about which rows exist.
+ */
+export const reachableCatalog = (
+  catalog: readonly PermissionDto[],
+  selected: readonly string[],
+  canGrant: (key: string) => boolean,
+): PermissionDto[] => {
+  const carried = new Set(selected);
+  return catalog.filter((permission) => canGrant(permission.key) || carried.has(permission.key));
+};
+
 /** The pseudo-module holding keys the registry no longer declares (distinct from Unassigned). */
 export const UNKNOWN_MODULE = 'unknown';
 

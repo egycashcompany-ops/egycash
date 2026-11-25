@@ -71,6 +71,7 @@ import {
   buildMatrixTree,
   bulkIntent,
   groupState,
+  reachableCatalog,
   rowEditability,
   selectedCount,
   UNKNOWN_MODULE,
@@ -115,10 +116,7 @@ export const RolePermissionMatrix = ({
    * whole catalog stays, because a reader asking what a role carries must be told all of it.
    */
   const editable = useMemo(
-    () =>
-      readOnly
-        ? catalog
-        : catalog.filter((p) => can(p.key) || selected.includes(p.key)),
+    () => (readOnly ? catalog : reachableCatalog(catalog, selected, can)),
     [catalog, selected, readOnly],
   );
   const tree = useMemo(() => buildMatrixTree(editable, pages, selected), [editable, pages, selected]);
@@ -349,7 +347,7 @@ export const RolePermissionMatrix = ({
                         <CardBody>
                           <ul
                             id={pagePanelId}
-                            className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3"
+                            className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
                           >
                             {shown.map((row) => {
                               const held = can(row.key);

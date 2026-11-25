@@ -28,9 +28,10 @@ its entry here in the same PR.
   - **An override reaches as far as the rung's level asks (R4).** `approval.override` decides an
     organization rung only at organization scope, a department rung only over that department in
     every branch, a branch rung only over that whole branch, and a unit rung only over that
-    department in that branch; `own` and `section` reach none, and a rung whose request lacks the
-    place its level names fails closed (`override-reach.ts`). An override held at any scope decided
-    any rung before. On an `unstaffed` chain it decides one rung at a time, and nothing above it.
+    department in that branch; `own` and `section` reach none, and below organization scope a rung
+    whose request lacks the place its level names fails closed (`override-reach.ts`). An override
+    held at any scope decided any rung before. On an `unstaffed` chain it decides one rung at a
+    time, and nothing above it.
   - **`decide` answers by the chain's status, then the actor:** `approvals.nothingToDecide` with no
     chain, `approvals.alreadyDecided` once approved or rejected, and `approvals.notYourStep` to
     anyone with neither a rung of their own nor an override that reaches the rung to decide.
@@ -38,9 +39,12 @@ its entry here in the same PR.
     now waits in `pendingApproval` instead of being approved by the lower approval, and one
     submitted with nobody on any rung waits as before. A holder of `approval.override` who reaches
     the rung can now decide either, one rung at a time, and anyone else is refused
-    `approvals.notYourStep` (both read `approvals.alreadyDecided` before); nobody who can decide
-    such a request is notified of it. A holder of an override that does not reach the rung no
-    longer sees Approve and Reject on it, and a cancelled request offers nobody a decision. Leave's
+    `approvals.notYourStep` (a request that waited with nobody on its remaining rungs was refused
+    `approvals.alreadyDecided` before); nobody who can decide such a request is notified of it. On
+    a request whose chain was deleted or deactivated, with no wider chain to fall back to, `decide`
+    now refuses `approvals.nothingToDecide` for everyone, where it refused
+    `approvals.alreadyDecided`. A holder of an override that does not reach the rung no longer sees
+    Approve and Reject on it, and a cancelled request offers nobody a decision. Leave's
     submission rule, its manager and HR path, its notices and its audit are unchanged. What leave
     should do with a request nobody can approve is the owner's question PXQ-1 (re-detail §2); until
     it is answered, such a request waits for an override. The chain screen's hint says so, in

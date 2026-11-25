@@ -444,17 +444,18 @@ describe('deciding (decide)', () => {
       ),
     ).toBe('approvals.notYourStep');
 
-    // One who also stands on a rung decides as themselves, and nothing records an override.
+    // One who also stands on a rung decides as themselves, however far their override reaches: the
+    // rung, the rungs it covers and the third fact stay theirs, and nothing records an override.
     mocks.ownStepsOf.mockResolvedValue([1]);
-    const own = await approvalService.decide(
-      subject(),
-      actor({ 'approval.override': 'own' }),
-      APPROVE,
-    );
+    const own = await approvalService.decide(subject(), ORG_OVERRIDE, APPROVE);
     expect(own.entries.map((e) => [e.stepIndex, e.outcome, e.overriddenWith])).toEqual([
       [0, 'covered', null],
       [1, 'approved', null],
     ]);
+    const ownChanges = (mocks.record.mock.calls.at(-1)?.[0] as { changes: { field: string }[] })
+      .changes;
+    expect(ownChanges.map((change) => change.field)).not.toContain('overriddenWith');
+    expect(ownChanges).toContainEqual({ field: 'covers', old: null, new: '0' });
   });
 
   it('R2: an override within reach decides the first unsettled rung of an unstaffed chain, and settles nothing above it', async () => {
@@ -484,6 +485,44 @@ describe('deciding (decide)', () => {
       [1, 'approved', 'approval.override'],
     ]);
     expect(outcome).toMatchObject({ status: 'pending', stepIndex: 1 });
+  });
+
+  it('R4: an override is read on the rung to decide, not on another rung of the chain it happens to reach', async () => {
+    // Pending: the branch-wide override reaches the empty unit rung below, not the organization
+    // rung that waits.
+    chain([rung('unit'), rung('organization')], ['organization']);
+    expect(await refusalOf(approvalService.decide(subject(), BRANCH_OVERRIDE, APPROVE))).toBe(
+      'approvals.notYourStep',
+    );
+    expect(await approvalService.trailFor(subject(), BRANCH_OVERRIDE)).toMatchObject({
+      currentStep: 1,
+      viewerMayOverride: false,
+    });
+
+    // Unstaffed: the first unsettled rung is out of reach and the next is within it. Refused, and
+    // nothing is written skipped below a rung the override does reach.
+    chain([rung('department'), rung('branch')], []);
+    expect(await refusalOf(approvalService.decide(subject(), BRANCH_OVERRIDE, APPROVE))).toBe(
+      'approvals.notYourStep',
+    );
+    expect(await approvalService.trailFor(subject(), BRANCH_OVERRIDE)).toMatchObject({
+      currentStep: 0,
+      viewerMayOverride: false,
+    });
+
+    // Pending: the waiting rung is out of reach and a rung above it is within reach. An override
+    // never decides early.
+    chain([rung('branch'), rung('department')], ['branch', 'department']);
+    const everywhere: AuthContext = {
+      ...actor({ 'approval.override': 'department' }),
+      keyReach: {
+        'approval.override': { branchIds: [], departments: [], everywhere: [String(CATALOG)] },
+      },
+    };
+    expect(await refusalOf(approvalService.decide(subject(), everywhere, APPROVE))).toBe(
+      'approvals.notYourStep',
+    );
+    expect(mocks.record).not.toHaveBeenCalled();
   });
 });
 

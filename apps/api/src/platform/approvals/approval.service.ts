@@ -256,9 +256,12 @@ class ApprovalService {
   /**
    * Write the one chain for a place, replacing whatever was there.
    *
-   * Three things are refused rather than stored, because each one produces a chain that LOOKS
-   * configured and quietly approves everything: an unregistered request type, a permission key no
-   * module declares, and a rung repeated at the same level (which would ask one person twice).
+   * Three things are refused rather than stored, because each one gives a chain that LOOKS
+   * configured and does not run as written: an unregistered request type, whose chain no host ever
+   * reads; a permission key no module declares, whose rung resolves to «nobody holds this», so it
+   * is only ever passed over, and with no staffed rung above it a request that reaches it waits
+   * `unstaffed` for an override; and a rung repeated at the same level, which would ask one person
+   * twice.
    */
   async setWorkflow(input: SetApprovalWorkflow, actor: AuthContext): Promise<ApprovalWorkflowDto> {
     if (getApprovalRequestType(input.requestType) === null) {
@@ -266,9 +269,10 @@ class ApprovalService {
     }
     // Checked against the registry this deployment actually booted with rather than a compile-time
     // list: a key from a module nobody enabled here is exactly the kind that resolves to «nobody
-    // holds this», is SKIPPED, and leaves a chain that looks configured and approves everything.
-    // Empty means the boot sync has not run (a CLI process, a test); then nothing is refused,
-    // because refusing everything would be worse than refusing nothing.
+    // holds this»: its rung is only ever passed over, and with nothing staffed above it the request
+    // waits `unstaffed` for an override, on a chain that looks configured. Empty means the boot
+    // sync has not run (a CLI process, a test); then nothing is refused, because refusing
+    // everything would be worse than refusing nothing.
     const known = new Set(rbacService.registeredPermissionKeys());
     const seen = new Set<string>();
     for (const step of input.steps) {

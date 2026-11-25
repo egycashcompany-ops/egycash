@@ -260,6 +260,26 @@ its entry here in the same PR.
 
 ### Added
 
+- **The approvals engine's baseline: its tests over today's behavior.** This is PX-1.1, the first
+  code slice of PX-1, which hardens the platform approvals engine before Administrative Affairs'
+  money approvals run on it (`docs/12-planning/administration-module-phase-px1.md` §3; ADR-041). It
+  ships tests only, the coverage the design's R12 asks for
+  (`docs/12-planning/administration-module-decisions-and-phases.md` §15.2.1), so each later fix can
+  show the case it changes. `apps/api/src/platform/approvals/approval.service.spec.ts`, the
+  service's first spec, mocks its seams and covers which chain applies and the staffing memo, a
+  rung's holder deciding and deciding early, the refusals `approvals.notYourStep` and
+  `approvals.alreadyDecided`, the override, the trail's flags, the notification list and the chain
+  save's three refusals. `apps/api/tests/integration/approvals.spec.ts` writes a two-rung `hr.leave`
+  chain through `PUT /api/v1/platform/approvals` and takes a leave request through `pendingApproval`
+  to approved and to rejected, each decision writing leave's `leaveDecision` row and the engine's
+  own. A case that pins a defect PX-1.2 to PX-1.6 fix names it: today a chain with nobody on any
+  rung, or no chain at all, reads approved (R2), an `approval.override` held at any scope decides
+  (R4), the engine records its row before leave's own write (R5), and a save accepts any registered
+  key under the version the server just read (R9). An `approval.override` that has expired already
+  decides nothing, and a guard case keeps it so. Nothing changes for HR leave or for anyone else: no
+  source file, route, key, setting or row changes. Rollback: reverting it removes the two spec
+  files and leaves nothing behind (RK-30).
+
 - **Administrative Affairs («الشئون الإدارية») on screen: the suppliers — closing Phase 1.** The
   supplier register and each supplier's record over P1b.1's API, typed in by hand as the owner asked
   («لأ خلينا من غير شيتات او بيانات دلوقتى»). This is P1b.W, the last Phase 1 pull request of the

@@ -4085,6 +4085,271 @@ its entry here in the same PR.
         التغييرات» leaving the board as it was, «تطبيق» on the question giving «حفظ (2)» and one «تراجع»
         step; the question and the footer whole at 390 with no sideways scroll; the window 625px at
         1024×768, 1366×768 and 1440×900 with the notice, nothing scrolling; English; reduced motion.
+    - E — the owner, on the screenshot of the row's colour list
+      (`ship/r34b/row-colour-picker-1440-dark.png`), circling the toolbar's start — the role legend
+      «● قائد ● أخصائي يعمل قائدًا ● أخصائي» and the hint under it: «واسمح الحاجات اللى فوق دى وحط مكاناها
+      الاجماليات بدل ما انت لما بختار حاجه بينزل سطر ل تحت». The board's head is two lines now — the
+      toolbar and the bar — and nothing picked or chosen adds a third.
+      - Gone from the board: the legend and the hint (`CrewBoardPage`), drawn nowhere else — the role
+        colours are on every chip and on the pools' heads, and every empty slot says «+ اختيار».
+        `operations.crewPlan.hint` removed (Arabic and English; nothing else read it). A reader without
+        `operationsCrew.plan` was told so in the hint's place («يمكنك الاطلاع على التشغيلة؛ …»); now by a
+        lock among the acts (`data-crew-view-only`, behind the same `!canPlan && !isRecord`), the same
+        words its name (screen-reader text) and its tooltip — no line. A past day keeps «سجل · للعرض فقط»
+        and «العودة إلى اليوم» in words in the acts' place.
+      - The totals moved up: the whole strip — «الإجمالي», a chip per type with its dot (a press filters
+        by it, a second lets go), «بدون نوع» when any, «صيانة» with its codes in its tooltip — is the
+        toolbar's start (`CrewPlanHand` handed the strip as its children), the acts at its end, ONE line
+        from 1280 (`flex-nowrap`); below 1280 the totals take a line of their own above the acts. The
+        same handlers, titles and hooks (`data-type-counts`, `data-type-count`, `data-type-archived`,
+        `data-workshop-count`); the strip still counts the whole day.
+      - The sizing (`HEAD_CHIP`, `HEAD_STRIP` in `CrewPlanFrame`): a chip 26px high, 4px inside, 3px
+        between the dot, the name and the number beside it, 10.5px (11px from 1440; the number 11 /
+        11.5px), 2px between chips — `COUNT_CHIP` (still «الطاقم الثابت»'s and «المعروض»'s) is 6px / 4px /
+        11.5px with a 12.5px number. Measured on a catalog of eleven active types, 265 rows (2–3
+        figures), «بدون نوع» 11 and «صيانة» 12: the fourteen chips are 977px in Arabic at 1440 (were
+        1,123) and 948px below it. Even so they did not fit beside the six acts in words (659px in
+        Arabic, 749px in English — 1,600px asked of the 1,320 a 1440 screen gives the board), so below
+        1760 each act but «حفظ» is its icon in a 34px square, its word kept as its name (`ACT_WORD`,
+        read by a screen reader) and in its tooltip (the standing crew's names it before its reason:
+        «الطاقم الثابت — …»); «حفظ (n)» keeps its word and its count; from 1760 every act has its word,
+        as before. The acts are then 261px (281 with «حفظ (n)»). Arabic: every chip whole at 1440 (74px to spare) and 1366
+        (29px; 9px with «حفظ (n)»).
+      - The last resort, where even that is short — Arabic at 1280 (57px), English (longer names: 130px
+        at 1440, 168 at 1366, 254 at 1280): the line scrolls sideways inside its own box, never a
+        wrap, never a sideways page. No scrollbar (it would give the box a height of its own; the box is
+        the acts' 34px whether it scrolls or not): the edge that hides chips fades (a mask — dark and
+        light alike), a plain mouse wheel over it moves it and gives the turn back to the page at its
+        edge, a trackpad or a finger as ever, and a chip reached by Tab comes into view (new
+        `lib/side-scroll.ts`: `sideEdges`, `wheelToSide`, `sideFade`, `useSideScroll`).
+      - The bar is the filters only, ONE line from 1280 (`CREW_PLAN_BAR_LINE` — the shared bar with
+        `flex-nowrap` and 8px between): the day, the van, the person (192px below 1366, 224 above), the
+        direction, the type, and «المعروض N من M — مسح التصفية» at its end in room the line keeps. On a
+        phone the type and that count share a line (the type box gives way), so a filter adds no line
+        there either.
+      - «لما بختار حاجه بينزل سطر ل تحت» — every choice measured: the table's top against the toolbar's,
+        1280, 1366 and 1440, dark, Arabic and English, today's build (dist-r34) and E's (dist-r34e), the
+        stub below (`ship/r34c/head-measure.json`). Before: picking somebody moved the table UP 6px in
+        Arabic and 26px in English (the two-line legend and hint gave way to the one-line pill); at 1280
+        every filter — a van, a person, a direction, the type list, a type chip — moved it DOWN 35px
+        («المعروض» wrapped the bar's first line). After: a chip picked up lies OVER the totals, in their
+        box (`CrewPlanHand` with children: the totals stay in it, unseen and out of the Tab order, the
+        amber pill — «تم اختيار … — اختر الخانة، أو اضغط Esc للإلغاء» and «إلغاء» — absolutely over
+        them, `aria-live="polite"` as before); «إلغاء» and Escape put it down and the totals come back.
+        Picking somebody, a van (one or three), the person search, a direction, the type list, a type
+        chip, a van and a chip together, «حفظ» taking its count: 0px each, at every width and in both
+        languages — and 0px at 768 and 1024, and at 390 (the pill, every filter). The head itself is
+        shorter: the table starts 45px higher in Arabic and 97px higher in English (the toolbar 34px,
+        was 41 / 61; the bar 64px, was 102 / 134). Opening a past day still moves the table by Round 32's
+        calm record notice (62px and its 16px gap: 78px; up to 142px on a phone in English): kept on
+        purpose — a change of day, not a choice on the board, and the notice says what a record is and
+        which changes the day ended on (before E it moved 71px in Arabic and 51 in English, the toolbar
+        losing its hint at the same time).
+      - «الطاقم الثابت» is unchanged: `CrewPlanHand` without children draws its legend, its hint and the
+        pill in their place as before; its bar and chips are the shared ones — pixel-identical in today's
+        and E's build at 1440, at rest and with a chip picked. It still shows the legend and the hint
+        over its own counters' bar; the same move there is the owner's call.
+      - i18n: `operations.crewPlan.hint` removed; in English only, shorter so more of the line is seen:
+        `operations.crewPlan.workshop` «In the workshop» → «Workshop», `operations.crewPlan.type.untyped`
+        «No type yet» → «No type».
+      - Specs. Rewritten (the rule changed): `pages/standing-crew-page.spec.tsx` «draws the board’s
+        frame, toolbar, bar, grid, slots, chips, pools and lists» (title kept: the board's bar is
+        `CREW_PLAN_BAR_LINE`, built from `CREW_PLAN_BAR` — no longer `CREW_PLAN_BAR` itself);
+        `components/crew-slot-picker.spec.tsx` «draws «+ اختيار» in every empty slot with room, and a
+        «+» beside a half-full slot’s ✕» (title kept: «the hint names «+ اختيار»» → the page reads no
+        hint and the key is gone); `operations-i18n.spec.ts` — the crew plan's key list drops `hint`
+        (its Arabic and English cases go with the key). New: `components/crew-board-head.spec.tsx` (17:
+        the legend and the hint gone, the key with them, «الطاقم الثابت» keeping its own; the strip in
+        the toolbar before the acts — its handlers, titles and hooks — and the bar the filters only;
+        one line from 1280 for the toolbar, the acts and the bar, the strip never wrapping, no
+        scrollbar, the fade; the pill over the totals — the name, «إلغاء», `aria-live`, the totals
+        unseen but kept — and Escape; the compact chip; each act's word and tooltip, «حفظ» in words;
+        the past day's words; the lock) and `lib/side-scroll.spec.ts` (10: the edges both ways with a
+        pixel of slack, the wheel, the fade).
+      - Verified on the built web (dist-r34e) against the stubbed API (`r34e/stub-e.mjs` over the r27s
+        stub — eleven active types, 265 rows, 12 vans in the workshop; `r34e/shoot-e.mjs`, 50 checks):
+        no legend and no hint; the strip in the toolbar on its one 34px line and the bar one 64px line
+        at 1280, 1366, 1440 and 1760, Arabic and English, dark and light; no sideways page scroll at
+        any width, 390 included; a van and «يومي» chosen with «المعروض ١ من ٢٦٥» shown and nothing moved;
+        a person picked — the pill within the toolbar's line, said aloud, the totals unseen — «إلغاء»
+        and Escape putting it down; the past day's mark and «العودة إلى اليوم» on the same line; the
+        lock without the grant; a wheel over the totals at 1280 carrying them to their end and the fade
+        following.
+    - F — the owner, in the same message: «و اسمحلى برضو ان ممكن عملية تكون من غير لون مش لازم ان يومى او
+      محصنة تبقى واخده لون اجبارى». Round 34 C made a type's colour optional; this answers what C left
+      open — no type is forced to take a colour: a NEW type starts with none, and nothing puts a colour
+      back on a type that has none, «يومي» and «محصنة» included.
+      - A new type starts with no colour: «إضافة نوع» (`ShiftTypeDialog`) opens on «بدون لون» and saves
+        `colour: null` unless a swatch is pressed; the palette beside it — a colour nobody wears among
+        it — is one press away. An edited type opens on its own colour, or on «بدون لون», from the
+        first paint. Round 24b's «a new type opens on a free colour of the palette» is gone:
+        `freeShiftTypeColour` (`CatalogDialogs`) and `freeColourFor` (`lib/type-colours`) removed —
+        nothing else read them. The contract and the API already create a type left without a colour
+        with none (`colour: …nullable().default(null)`, stored null), and an older client that sends a
+        colour keeps it: no contract or API change.
+      - What could force a colour back — each checked, none does: the boot's legacy nine
+        (`seedOperationsShiftTypes`: keyed on `seedKey`, `$setOnInsert` only — they get their colours
+        on a FRESH database, never again), Operations' boot step (`seedOperations`: the grants and the
+        three data migrations, none of which touches a type), the go-live data (no type in it), the
+        edit (`.partial()`: `colour` left out stays absent, so unchanged), the archive and the order,
+        the palette's size and its «unworn» swatches (`paletteFor` counts a type with none and hands it
+        nothing), and the crew save, the swap and the standing crew (a row's colour, never its type's).
+      - «ألوان الأنواع» on the board: «بدون لون» was already one press on every type's line; it is now
+        SAID, not only drawn — the column's head reads «بدون لون» under its struck ring
+        (`data-swatch-off-word`), and on a phone (no head) each type's first choice is the ring with the
+        words, a 36px pill, as the catalog's form draws it. The subtitle says it too: «لكل نوع لون من
+        ألوان اللوحة (N) أو «بدون لون»، ويجوز أن يشترك نوعان في لون واحد» (English «A colour for each type
+        from the palette (N), or none — two types may share one»). The row's «اللون» list keeps «لون
+        النوع (بدون لون)» for such a type, and the toolbar's totals (E) draw it with the neutral ring.
+      - Specs. Rewritten (the rule changed): `pages/catalogs-shift-types.spec.tsx` «starts a new type
+        on the first shown colour no ACTIVE type wears — an archived one’s is free» → «opens a NEW type
+        on «بدون لون» — no colour forced on it; the palette, a free colour among it, one press away»;
+        in the same file «a type with no colour counts in the palette and never adds a swatch of its
+        own» (title kept: `freeShiftTypeColour(WITH_BARE)` is emerald → the new type's form opens on
+        «بدون لون», emerald offered) and «the form keeps a type’s «بدون لون» when it opens on it, and
+        sends null for it» (title kept: the source lines it reads are the new opening);
+        `lib/type-colours.spec.ts` «a new type starts on the first shown colour nobody live wears, else
+        the first» → «a new type starts with no colour — the palette it is offered holds the colours
+        nobody live wears», and «a type with no colour still counts in the palette, and wears no swatch
+        of it» (title kept: `freeColourFor` → the unworn colours offered). New: in
+        `catalogs-shift-types.spec.tsx` «opens an EDITED type on the colour it has — or on «بدون لون»
+        when it has none»; `components/type-colours.spec.tsx` «Round 34 F — no type is forced to wear a
+        colour: «بدون لون» one press, said in words» (5: the head's words, «يومي» and «محصنة» pressed on
+        «بدون لون» beside a type that keeps its colour, the phone's pill, the subtitle, the totals'
+        neutral ring); API `tests/integration/operations-crew-plan.spec.ts` «Round 34 F — no type is
+        forced to wear a colour: «يومي» and «محصنة» stay bare across a boot» (1; the file run whole, 65
+        green: both taken off — one as the card sends it, one as the form does — then Operations' boot
+        step twice, an edit without `colour`, an archive and back, the order turned round and put back,
+        a day of their rows saved, a new type with no colour and an older client's with one). Each seen
+        red once: the seed writing its colour with `$set` (the API case), the form opening on a palette
+        colour (4 web cases), the card without its words (2).
+      - Verified on the real stack (`r34f/run-r34f.sh` — the live API on a MongoDB that OUTLIVES it,
+        serving dist-r34f; `r34f/shoot-r34f.mjs`, 32 checks): «يومي» set «بدون لون» from «ألوان الأنواع»
+        (one press, `PATCH { colour: null }` → 200), «محصنة» from «البيانات المرجعية» (the form → 200),
+        «طوارئ» added untouched (`POST` with `colour: null`, stored none); the API process stopped and
+        booted again on the same database (every boot step and module seed ran, nothing seeded): the
+        three still have no colour, the other seven keep theirs, ten types; on the board their rows
+        (213, 61, the row without a van — «محصنة» — and 255 — «يومي») carry no colour mark and fill
+        exactly as a row with no type, dark and light; their chips in the toolbar's totals the hollow
+        ring; 213's «اللون» list «لون النوع (بدون لون)»; «إضافة نوع» opens on «بدون لون»; the phone's
+        sheet with the pill, no sideways page scroll.
+    - Round 34 E and F verifier (the build's, never the owner's), on the owner's «و اسمحلى برضو ان ممكن
+      عملية تكون من غير لون مش لازم ان يومى او محصنة تبقى واخده لون اجبارى واسمح الحاجات اللى فوق دى وحط
+      مكاناها الاجماليات بدل ما انت لما بختار حاجه بينزل سطر ل تحت». On the real stack (the live API on a
+      MongoDB that outlives it, the built web; tomorrow 98 rows over eleven active types, six vans in the
+      workshop), at 1280, 1366 and 1440 every choice left the table where it was — but below 1280, from
+      about 1060px (1242 is a 1366 screen at 110%), the bar's five filters fill its first line, and
+      «المعروض N من M» wrapped onto a line of its own: the table 35px down on every filter, Arabic and
+      English, a plan and a record — the very line the owner asked away. Below 1280 (from 640) the count
+      now stands at the start of the toolbar's acts line, which is there already (the totals take the
+      first line, the acts the second) and has the room (`filteredCountAt`, `CrewPlanFrame`); from 1280
+      it is at the bar's end as E made it, and on a phone beside the type. Measured after, 640 to 1279
+      (twelve widths), Arabic and English, a plan and a record: 0px each. New: in
+      `components/crew-board-head.spec.tsx` the describe «Round 34 verifier — below 1280 «المعروض N من M»
+      takes no line of its own either» (2, red on the code before). Everything else E and F report held
+      on the same stack: no legend and no hint, the totals on the acts' line and the bar one line at
+      1280, 1366 and 1440 (Arabic and English, dark and light), every choice 0px there and at 390, 768
+      and 1024; «يومي» and «محصنة» taken off and still bare after the API booted twice on the same
+      database, their rows plain and their chips the neutral ring; a new type on «بدون لون». Nothing
+      else changed.
+    - Round 34 E and F critic (the build's, never the owner's), on the owner's «و اسمحلى برضو ان ممكن
+      عملية تكون من غير لون مش لازم ان يومى او محصنة تبقى واخده لون اجبارى واسمح الحاجات اللى فوق دى وحط
+      مكاناها الاجماليات بدل ما انت لما بختار حاجه بينزل سطر ل تحت». Eight findings on E (F's had none),
+      each re-checked on the built web against the stubbed API (`r34g/probe-g.mjs` over `r34e/stub-e.mjs`
+      — eleven active types, 265 rows, twelve vans in the workshop): all eight real, all fixed.
+      - A chip reached by Tab was NOT brought into view, as E said it was: Chromium leaves a partly seen
+        focused chip where it is — at 1280 in English «Emergency» stood 76 of its 89px past the strip's
+        edge, the rest under the fade. The strip now brings a chip the KEYBOARD focuses whole inside its
+        box, 28px (the fade's width) clear of each edge (`sideReveal`, and the listeners gathered in
+        `followSide` — the scroll, the wheel, the focus, the sizes — which `useSideScroll` calls), at
+        once, never smoothly (reduced motion has nothing to glide). A press focuses its chip too, and is
+        left alone: moving the line under a pressing pointer would land the release on another chip.
+        Measured: every chip, Tab after Tab from «الإجمالي» to «صيانة», whole and clear of the fade at
+        1280 (Arabic, English), 1366, 1440 and 1024 (English), 768 (Arabic) and 390 (both).
+      - «صيانة» could not be reached by the keyboard whenever the line overflowed (1280 Arabic, every
+        laptop width in English, every tablet and phone): it was a span out of the Tab order, its codes
+        only in a hover's tooltip. It takes the focus now (`tabIndex={0}`), so Tab carries the line to
+        its end, and its codes — «سيارات في الصيانة: …», or that there are none — describe it to a
+        screen reader (`aria-describedby`, the words beside the strip, not inside its scrolling box);
+        the mouse still reads them in its tooltip (`workshopWords`, built once for both).
+      - The acts lost their words at EVERY width below 1760, though from 640 to 1279 they have a line of
+        their own: unlabelled squares on a touch tablet, where a tooltip never shows. Their icons are now
+        only where they must be: from 1280 to 1759, where the totals share the acts' one line (34px
+        squares, as E made them — the owner's 1440 laptop among them), and below 820, where the words do
+        not fit one line (English at 768: 709px of words, «Save (n)» 30 more, of 720) — there in 44px
+        squares, a finger's size, «حفظ», a past day's mark and «العودة إلى اليوم» as high (`WORD_ACT`).
+        From 820 to 1279 every act has its word again, as before E. For that line to stay the acts'
+        alone, «المعروض N من M» left it (next).
+      - Where «المعروض N من M» stands below 1280: the verifier put it at the start of the acts' line;
+        it now stands at the END OF THE TOTALS' line (`filteredCountAt({ oneLineHead })` → `head`, the
+        count among the hand's children after the strip). That line never wraps — the totals give way and
+        scroll inside their box — so the count can add no line at any width, a phone's included; the
+        acts' line keeps its width for their words. On a phone it is figures only, «١٢ من ٢٦٥», the whole
+        «المعروض ١٢ من ٢٦٥» its tooltip and what a screen reader says, and «مسح التصفية» an ✕ that keeps
+        its words as its name and tooltip (`FilteredCount`'s `compact`; new key
+        `operations.crewPlan.filter.shownShort`, «{{shown}} من {{total}}» / «{{shown}} of {{total}}»).
+        So the phone's type box no longer shares its line: with «احتياطي سفر» picked by its chip it kept
+        83px at 360 in English (its icon, a figure, the chevron) — now the bar's whole width (302px at
+        360, 332 at 390), like every filter above it; the count 93px beside 227px of totals at 360.
+      - A reader without `operationsCrew.plan` was told the board is read only by a grey lock alone —
+        its words only in a hover's tooltip, nothing on a phone or to the keyboard. It is now a lock and
+        «للعرض فقط» in words (`ViewOnlyMark`, new key `operations.crewPlan.viewOnlyMark`, «View only»),
+        as the past day's «سجل · للعرض فقط» is; why, in full — «يمكنك الاطلاع على التشغيلة؛ أما التوزيع
+        فيحتاج صلاحية تخطيط الطاقم.» — its tooltip and what a screen reader says.
+      - While somebody was picked, the pill lay over the totals and hid them: no type chip could be
+        pressed to narrow the rows before choosing the slot, as it could before E. The pill now stands at
+        the START of the totals' line, on it — at most 70% of the line, 30px high in its 34px — and the
+        totals keep the rest: seen, pressed (a type chip narrows the rows and the pill stays), scrolling
+        inside their box when the room is short. The spoken region is there, empty, before anything is
+        picked (`CrewPlanHand` with children). Still nothing moves: measured below.
+      - The head's spec pinned mostly source text and class names; what it described was checked only by
+        scratch shooters — which is how E's focus claim shipped. Behaviour is now tested where node can:
+        `sideReveal` (4), and the strip's listeners driven on a stand-in box with Node's own events
+        (`followSide`, 5: Tab past the edge in English and in Arabic, a press that moves nothing, the
+        wheel and its edges, the listeners undone); `CrewPlanHand`, `FilteredCount` and `ViewOnlyMark`
+        rendered. The spec's header says what is verified only on the built page, and where.
+      - Three comments put a corrected paraphrase in quote marks as the owner's («امسح … مكانها …»); they
+        quote him as he wrote: «واسمح الحاجات اللى فوق دى وحط مكاناها الاجماليات» (`CrewBoardPage`,
+        `CrewPlanFrame`, `operations-i18n.spec.ts`).
+      - Specs. Rewritten (the rule changed), in `components/crew-board-head.spec.tsx`: «a chip picked up
+        lies OVER the totals, in their box: its name, «إلغاء», said aloud» → «a chip picked up stands at
+        the totals’ start, ON their line: its name, «إلغاء», said aloud — the totals still seen and
+        pressed»; «nothing picked: the totals shown, the spoken region there and empty» → «nothing
+        picked: the totals shown, the spoken region there and empty — no width, no gap»; «below 1760
+        each act but «حفظ» is its icon — its word its name, and its tooltip» → «from 1280 to 1759 — and
+        below 820 — each act but «حفظ» is its icon; its word its name, and its tooltip»; the describe
+        «Round 34 E — a reader without the planning grant: a lock, not a line» → «… a mark, not a line»,
+        its «the lock stands first among the acts, its words its name and its tooltip» → «stands first
+        among the acts: a lock and «للعرض فقط» in words — why in full its tooltip and what is said»; the
+        verifier's «from 1280 at the bar’s end; below it, on the acts’ line; on a phone beside the type»
+        → «from 1280 at the bar’s end; below it — a phone too — at the end of the totals’ line», and its
+        «the board asks it once, by the toolbar’s own width (1280), and draws the count in ONE place»
+        (title kept: the count inside the totals' line after the strip, `compact={phone}`, none among
+        the acts, the bar without `sm:contents`); «the toolbar holds the whole strip — «الإجمالي», the
+        types, «بدون نوع», «صيانة» — before the acts» and «the same behaviour, names and hooks: …» (titles
+        kept: «صيانة»'s words read from `workshopWords`, `title={workshopWords}` asserted).
+        `operations-i18n.spec.ts`: the crew plan's key list gains `viewOnlyMark` and `filter.shownShort`.
+        New: in `lib/side-scroll.spec.ts` the describes «Round 34 critic — a chip reached by Tab stands
+        whole inside the box, clear of the fade» (4) and «Round 34 critic — the strip’s listeners
+        (`followSide`): Tab, the wheel, the edges» (5); in `components/crew-board-head.spec.tsx` «Round
+        34 critic — «صيانة» is reached by Tab, its codes said» (2), «Round 34 critic — on a phone the
+        count is figures only, beside the totals; the type keeps its box» (2) and «Round 34 critic — the
+        owner’s words are quoted as he wrote them» (1). Each fix reverted alone, its spec seen red
+        (`r34g/red/red.log`): the focus listener (2), the keyboard-only guard (1), «صيانة»'s focus (1),
+        the acts' bands (1), the visible «للعرض فقط» (1), the compact count (1), the totals hidden while
+        held (1), the paraphrase (1).
+      - Measured on the built web (`r34g/probe-g.mjs`, the stub above), Arabic and English, dark, at
+        360, 390, 600, 640, 768, 819, 820, 900, 1024, 1100, 1180, 1242, 1279, 1280, 1366, 1440 and
+        1760: the acts in words exactly at 820–1279 and from 1760, 34px icons at 1280–1759, 44px below
+        820; then each from a fresh load — picking somebody, «إلغاء», Escape, one van, three vans, the
+        person typed, a direction, the type list, a type chip, a van and a chip, «مسح التصفية», a type
+        chip pressed WHILE somebody is held (the rows narrow, the pill stays), a row added («حفظ (١)») —
+        the table's top against the toolbar's: 0px for every one of the 442 choices (13 at each of the 17
+        widths, both languages; 646/646 checks). No sideways page scroll anywhere.
+        Somebody picked: the pill on the totals' line, the totals seen. Tab: every chip whole and 28px clear of a fade, «صيانة» reached
+        and its codes said, at the eight widths named above (16/16). F's shots taken again on the real
+        stack with this build (`r34f/shoot-r34f.mjs`, the live API on a MongoDB that outlives it, booted
+        twice): 32/32, «يومي» and «محصنة» bare across the restart as F reported.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

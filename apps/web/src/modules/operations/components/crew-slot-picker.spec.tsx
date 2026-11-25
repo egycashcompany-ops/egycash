@@ -431,7 +431,10 @@ describe('E — the page: a press on the slot, the drop’s step, one list, a sh
     expect(page).toContain('data-place={zone}');
     expect(translate('ar', 'operations.crewPlan.picker.choose.captain')).toBe('اختيار قائد');
     expect(translate('ar', 'operations.crewPlan.picker.choose.specialist')).toBe('اختيار أخصائي');
-    expect(translate('ar', 'operations.crewPlan.hint')).toContain('«+ اختيار»');
+    // Round 34 E — the toolbar's hint that named «+ اختيار» is gone with the legend (the totals took
+    // its place); the slot says it itself.
+    expect(page).not.toContain("t('operations.crewPlan.hint')");
+    expect(translate('ar', 'operations.crewPlan.hint')).toBe('operations.crewPlan.hint');
   });
 
   it('picks through the drop’s own decision and step, then puts the focus on the name just seated', () => {

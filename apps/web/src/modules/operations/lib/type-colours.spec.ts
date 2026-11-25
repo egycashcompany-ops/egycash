@@ -14,7 +14,6 @@ import {
   NO_ROW_COLOUR,
   PALETTE,
   colourWearers,
-  freeColourFor,
   gridStep,
   inPalette,
   liveTypes,
@@ -54,6 +53,10 @@ const SEEDED = [
   type('secured', 'slate'),
   type('evening', 'violet', false),
 ];
+
+/** The swatches a NEW type is offered (the palette counting it) that no live type wears. */
+const offeredUnworn = (types: readonly OperationsShiftTypeDto[]): string[] =>
+  paletteFor(types, 1).filter((colour) => colourWearers(types, colour).length === 0);
 
 describe('the palette shown — as many swatches as live types', () => {
   it('is every colour a live type wears, then the first unworn ones up to N, in the palette’s order', () => {
@@ -183,14 +186,20 @@ describe('two types, one colour — «أيوه عادي»', () => {
     expect(colourWearers(shared, 'gold')).toEqual([]);
   });
 
-  it('a new type starts on the first shown colour nobody live wears, else the first', () => {
-    // Eight live wear the first eight but violet (fifth) — archived «مسائي» wore it: free.
-    expect(freeColourFor(SEEDED)).toBe('violet');
-    expect(freeColourFor([])).toBe('rose');
-    // Everyone on one colour: the second swatch the new type would see.
-    expect(freeColourFor([type('a', 'rose'), type('b', 'rose')])).toBe('emerald');
+  // Round 34 F — «ممكن عملية تكون من غير لون مش لازم ان يومى او محصنة تبقى واخده لون اجبارى»: a new
+  // type starts with NO colour (the form opens on «بدون لون»); what it is offered still holds a colour
+  // nobody live wears, one press away.
+  it('a new type starts with no colour — the palette it is offered holds the colours nobody live wears', () => {
+    // Eight live wear the first eight but violet (fifth) — archived «مسائي» wore it: offered, unworn.
+    expect(offeredUnworn(SEEDED)).toEqual(['violet']);
+    expect(paletteFor(SEEDED, 1)).toContain('violet');
+    expect(offeredUnworn([])).toEqual(['rose']);
+    // Everyone on one colour: the second and third swatches the new type would see.
+    expect(offeredUnworn([type('a', 'rose'), type('b', 'rose')])).toEqual(['emerald', 'indigo']);
+    // Every colour worn: none is free — the new type starts on none and may share one by hand.
     const all = OPERATIONS_SHIFT_TYPE_COLOURS.map((colour, i) => type(`t${i}`, colour));
-    expect(freeColourFor(all)).toBe('rose');
+    expect(paletteFor(all, 1)).toEqual([...PALETTE]);
+    expect(offeredUnworn(all)).toEqual([]);
   });
 });
 
@@ -255,10 +264,10 @@ describe('Round 34 C — colours are optional: a type without one, a row «بد�
     // Three live types: three swatches — the two worn, then the first unworn one.
     expect(paletteFor(types)).toEqual(['rose', 'emerald', 'orange']);
     expect(colourWearers(types, 'slate')).toEqual([]);
-    // A new type is still told apart: the first unworn colour of the palette it would see.
-    expect(freeColourFor(types)).toBe('emerald');
+    // A new type starts with none (Round 34 F); the palette it would see holds the unworn ones.
+    expect(offeredUnworn(types)).toEqual(['emerald', 'indigo']);
     expect(paletteFor([BARE])).toEqual(['rose']);
-    expect(freeColourFor([BARE])).toBe('rose');
+    expect(offeredUnworn([BARE])).toEqual(['rose', 'emerald']);
   });
 
   it('«بدون لون» is no swatch of the list, and a type with none is never «off the palette»', () => {

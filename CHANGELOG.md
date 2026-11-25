@@ -9,6 +9,30 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Added
+
+- **Compliance and Risks — a new module, «الالتزام والمخاطر», with one page: «الملفات»**
+  (`docs/12-planning/compliance-files-design.md`). Folders on a shelf shaped like HR's
+  «مستندات المتقدمين», drawn with the module's own copy of that folder.
+  - **The responsible person** (`complianceFile.manage`, the seeded role «مسؤول ملفات الالتزام
+    والمخاطر») makes folders, names and renames them, puts a picture on each, chooses which active
+    employee accounts see each one, uploads PDF, Word and Excel files of up to 20 MB, renames and
+    deletes them — and sees, per file, who has seen it, how many times they opened and downloaded
+    it, and when.
+  - **A person a folder is shared with** sees only the folders whose list names them (anyone else is
+    answered 404) and may only view and download. «الملفات» appears in their sidebar because the
+    module gives them the reader role with the first folder shared and takes that grant back with
+    the last (`rbacService.removeAssignment`, new); the boot reconciles both directions.
+  - **Every opening and download is recorded** through the module's own endpoints, which are the only
+    way a reader reaches the bytes. Word and Excel files are viewed in the page — headings,
+    paragraphs, tables and sheet rows read on the server under the zip and XML rules every workbook
+    read follows; a PDF opens in a new tab.
+  - A file's type is decided by its extension and checked against its first bytes; Arabic file names
+    are kept. Refusals: `COMPLIANCE_FOLDER_NAME_TAKEN`, `COMPLIANCE_VIEWER_INVALID`,
+    `COMPLIANCE_FILE_CONTENT_MISMATCH`.
+  - Navigation: the «الالتزام والمخاطر» tile (a shield) and its «الملفات» row, opened by either key.
+    The seeded navigation now holds 146 rows.
+
 ### Fixed
 
 - **The approvals engine: the after-commit audit is opt-in per request type.** This is PX-1.5 of

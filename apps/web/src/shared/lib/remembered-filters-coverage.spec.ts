@@ -49,6 +49,7 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/administration/pages/ItemsPage.tsx', []],
   ['modules/administration/pages/SuppliersPage.tsx', []],
   ['modules/administration/pages/WarehousesPage.tsx', []],
+  ['modules/compliance/pages/ComplianceFilesPage.tsx', []],
   ['modules/atm/pages/DataEditPage.tsx', ['tab']],
   // `q`: the free-text search from before the column filters (banks, codes, name, areas — all
   // remembered), only ever deleted so an old link or remembered view sheds it.

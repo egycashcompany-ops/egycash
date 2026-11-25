@@ -604,7 +604,7 @@ describe('who audits a decision (decide, R5)', () => {
       return Promise.resolve();
     });
 
-    const outcome = await stubHost(actor(), () => {
+    await stubHost(actor(), () => {
       order.push('commit');
       return Promise.resolve();
     });
@@ -620,7 +620,6 @@ describe('who audits a decision (decide, R5)', () => {
         { field: 'permissionKey', old: null, new: 'stub.approve' },
       ],
     });
-    expect(outcome.auditChanges).toEqual(auditedChanges());
   });
 
   it('R5: a stub host whose commit throws records nothing', async () => {

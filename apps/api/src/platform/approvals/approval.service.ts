@@ -208,9 +208,10 @@ class ApprovalService {
   }
 
   /**
-   * Record one decision, and return the entries the host module must append.
+   * Decide one rung for the actor, and return the entries the host module must append and the
+   * changes the decision's audit row carries.
    *
-   * The service does not save them: the host owns its aggregate, and a request whose status,
+   * The service does not save the entries: the host owns its aggregate, and a request whose status,
    * balance and notifications all move together must move them in one write of its own. Handing
    * back the entries keeps that possible; writing them here would force every host into a second
    * transaction it did not ask for.
@@ -326,9 +327,9 @@ class ApprovalService {
    * Three things are refused rather than stored, because each one gives a chain that LOOKS
    * configured and does not run as written: an unregistered request type, whose chain no host ever
    * reads; a permission key no module declares, whose rung resolves to «nobody holds this», so it
-   * is only ever passed over, and with no staffed rung above it a request that reaches it waits
-   * `unstaffed` for an override; and a rung repeated at the same level, which would ask one person
-   * twice.
+   * is passed when a staffed rung above it is decided, and with no staffed rung above it a request
+   * that reaches it waits `unstaffed` until an override within reach decides it; and a rung
+   * repeated at the same level, which would ask one person twice.
    */
   async setWorkflow(input: SetApprovalWorkflow, actor: AuthContext): Promise<ApprovalWorkflowDto> {
     if (getApprovalRequestType(input.requestType) === null) {
@@ -336,10 +337,10 @@ class ApprovalService {
     }
     // Checked against the registry this deployment actually booted with rather than a compile-time
     // list: a key from a module nobody enabled here is exactly the kind that resolves to «nobody
-    // holds this»: its rung is only ever passed over, and with nothing staffed above it the request
-    // waits `unstaffed` for an override, on a chain that looks configured. Empty means the boot
-    // sync has not run (a CLI process, a test); then nothing is refused, because refusing
-    // everything would be worse than refusing nothing.
+    // holds this»: its rung is passed when a staffed rung above it is decided, and with nothing
+    // staffed above it the request waits `unstaffed` until an override within reach decides it, on
+    // a chain that looks configured. Empty means the boot sync has not run (a CLI process, a test);
+    // then nothing is refused, because refusing everything would be worse than refusing nothing.
     const known = new Set(rbacService.registeredPermissionKeys());
     const seen = new Set<string>();
     for (const step of input.steps) {

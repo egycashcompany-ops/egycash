@@ -8,9 +8,9 @@
 //
 // `permissionKeys` is what the configuration screen offers as steps. Free text would let an
 // administrator write a chain around a key that does not exist, which resolves to «nobody holds
-// this»: its rung is only ever passed over, and with no staffed rung above it a request that
-// reaches it waits `unstaffed` for an override — a chain that looks configured and does not run as
-// written.
+// this»: nobody decides its rung as their own, so it is passed when a staffed rung above it is
+// decided, and with no staffed rung above it a request that reaches it waits `unstaffed` until an
+// override within reach decides it — a chain that looks configured and does not run as written.
 import { type ApprovalRequestTypeDto } from '@ecms/contracts';
 
 /**

@@ -22,8 +22,8 @@ its entry here in the same PR.
   - **The option.** `registerApprovalRequestType(type, { audit: 'host' })` declares, for one
     request type, that its host records each decision; the default is `'engine'`, and one module
     may register types of both kinds. The request-type registry keeps the option beside the type:
-    `getApprovalRequestType` and `listApprovalRequestTypes`, which feed the chain screen, return the
-    type as before, without it. Re-registering a type replaces its option.
+    `listApprovalRequestTypes`, which feeds the chain screen, and `getApprovalRequestType` return
+    the type as before, without it. Re-registering a type replaces its option.
   - **What `decide` returns.** It always returns `auditChanges` as well: the decision, its rung's
     index, level and key, `overriddenWith` and the rungs it covers, the change rows the engine's own
     row carries. For a `'host'` type it records nothing, and the host records one row on its own

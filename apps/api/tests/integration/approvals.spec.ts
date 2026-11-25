@@ -10,10 +10,12 @@
 // everywhere. The administrator holds every platform and HR key but those two, and each approver
 // holds only the grant a case names.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
+import { Types } from 'mongoose';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
 import {
+  HrLeaveTemplates,
   platformPermissions,
   SettingKeys,
   type ApprovalWorkflowDto,
@@ -30,9 +32,11 @@ import { hrPermissions } from '../../src/modules/hr/hr.module';
 import {
   APPROVAL_OVERRIDE_KEY,
   approvalService,
+  readApprovalPin,
   type ChainStatus,
 } from '../../src/platform/approvals';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
+import { NotificationModel } from '../../src/platform/notifications/notification.model';
 import { rbacService } from '../../src/platform/rbac';
 import { roleAssignmentRepository } from '../../src/platform/rbac/rbac.repository';
 import { LeaveRequestModel } from '../../src/modules/hr/leave-management/leave-requests/leave-request.model';
@@ -552,7 +556,7 @@ const writeChain = async (steps: object[]): Promise<void> => {
 
 /**
  * The engine's own answer for a request, read in-process: no DTO carries it. The Unit is the
- * one the requesters were placed in.
+ * one the requesters were placed in, and the pin is the one leave stored, as leave hands it over.
  */
 const chainStatus = async (id: string): Promise<ChainStatus> => {
   const row = await LeaveRequestModel.findById(id).lean().exec();
@@ -568,6 +572,7 @@ const chainStatus = async (id: string): Promise<ChainStatus> => {
       comment: entry.comment,
       overriddenWith: entry.overriddenWith,
     })),
+    pin: row === null ? null : readApprovalPin(row),
   });
 };
 
@@ -809,5 +814,128 @@ describe('only grants in force decide, and only active accounts staff a rung (PX
     } finally {
       await rbacService.revokeAssignment(String(grant._id), ADMIN_ID);
     }
+  });
+});
+
+describe('a request keeps the chain it was submitted on (PX-1.4: R1)', () => {
+  const UNIT_RUNG = {
+    permissionKey: 'leave.approve',
+    level: 'unit',
+    label: { ar: 'مدير الإدارة في الفرع', en: 'Unit manager' },
+  };
+  const ORGANIZATION_RUNG = {
+    permissionKey: 'leave.approve',
+    level: 'organization',
+    label: { ar: 'الموارد البشرية', en: 'Human resources' },
+  };
+
+  /** The company default, written over whatever is there: every request below files under it. */
+  const putChain = async (steps: object[]): Promise<ApprovalWorkflowDto> => {
+    const res = await request(app).put('/api/v1/platform/approvals').set(auth(adminToken)).send({
+      requestType: 'hr.leave',
+      departmentCatalogId: null,
+      branchId: null,
+      steps,
+      isActive: true,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return res.body.data as ApprovalWorkflowDto;
+  };
+
+  const rungsOf = (dto: LeaveRequestDto) =>
+    dto.approvalTrail?.steps.map((s) => [s.level, s.label?.en ?? null, s.outcome]);
+
+  it('R1: a pinned request keeps its rungs and captions when its chain is edited, is decided on them, and is still decided to approved once the chain is deleted; a request filed after the delete takes the manager and HR path', async () => {
+    const saved = await putChain([UNIT_RUNG, ORGANIZATION_RUNG]);
+    const created = await file(91);
+    expect(created.status).toBe('pendingApproval');
+
+    // Edited in place to one rung nobody holds, under another caption. Read live, as before
+    // PX-1.4, the request would now wait unstaffed on it, and the unit approver would stand on
+    // nothing.
+    const edited = await putChain([
+      {
+        permissionKey: 'leave.approve',
+        level: 'branch',
+        label: { ar: 'مدير الفرع', en: 'Branch manager' },
+      },
+    ]);
+    expect(edited.id).toBe(saved.id);
+    const pinned = await readAs(created.id, adminToken);
+    expect(rungsOf(pinned)).toEqual([
+      ['unit', 'Unit manager', 'pending'],
+      ['organization', 'Human resources', 'pending'],
+    ]);
+    expect(pinned.approvalTrail).toMatchObject({ workflowId: saved.id, currentStep: 0 });
+
+    // What leave stored at submission (re-detail §5): the row it chose, and its rungs as they were.
+    const row = await LeaveRequestModel.findById(created.id).lean().exec();
+    expect(String(row?.approvalWorkflowId)).toBe(saved.id);
+    expect(row?.approvalChainShape).toEqual([UNIT_RUNG, ORGANIZATION_RUNG]);
+
+    // The notice to the next approvers follows the pin as well: the pinned organization rung's
+    // holder is told, where the edited chain's branch rung has nobody to tell.
+    const toHr = () =>
+      NotificationModel.countDocuments({
+        recipientUserId: new Types.ObjectId(hrApprover.userId),
+        templateKey: HrLeaveTemplates.RequestSubmitted,
+      }).exec();
+    const toldBefore = await toHr();
+    const first = await decide(created.id, 'approve', created.version, unitApprover.token);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect(await toHr()).toBe(toldBefore + 1);
+    const half = first.body.data as LeaveRequestDto;
+    expect(half.status).toBe('pendingApproval');
+    expect(rungsOf(half)).toEqual([
+      ['unit', 'Unit manager', 'approved'],
+      ['organization', 'Human resources', 'pending'],
+    ]);
+    expect(half.approvalTrail?.currentStep).toBe(1);
+
+    // Deleted: no chain applies any more, and the pinned request is still decided on its own.
+    const removed = await request(app)
+      .delete(`/api/v1/platform/approvals/${saved.id}`)
+      .set(auth(adminToken));
+    expect(removed.status, JSON.stringify(removed.body)).toBe(204);
+    const second = await decide(created.id, 'approve', half.version, hrApprover.token);
+    expect(second.status, JSON.stringify(second.body)).toBe(200);
+    const done = second.body.data as LeaveRequestDto;
+    expect(done.status).toBe('approved');
+    expect(rungsOf(done)).toEqual([
+      ['unit', 'Unit manager', 'approved'],
+      ['organization', 'Human resources', 'approved'],
+    ]);
+
+    // A new request finds no chain, so leave's own rule sends it down the manager and HR path;
+    // this employee has no manager, so it waits on HR.
+    const after = await file(98);
+    expect(after.status).toBe('pendingHr');
+    expect((await readAs(after.id, adminToken)).approvalTrail).toBeNull();
+  });
+
+  it('criterion 4 guard: a request whose pin fields are unset, the shape of one filed before the deploy, reads the current chain', async () => {
+    // Passes before PX-1.4 too, where no request has the fields: that is the behavior it keeps.
+    await putChain([UNIT_RUNG, ORGANIZATION_RUNG]);
+    const created = await file(105);
+    const _id = new Types.ObjectId(created.id);
+    await LeaveRequestModel.collection.updateOne(
+      { _id },
+      { $unset: { approvalWorkflowId: '', approvalChainShape: '' } },
+    );
+    const raw = await LeaveRequestModel.collection.findOne({ _id });
+    expect(raw).not.toHaveProperty('approvalWorkflowId');
+    expect(raw).not.toHaveProperty('approvalChainShape');
+
+    // Edited in place, the chain moves the unpinned request with it: it now waits on HR alone.
+    await putChain([{ ...ORGANIZATION_RUNG, label: { ar: 'شؤون العاملين', en: 'Personnel' } }]);
+    const live = await readAs(created.id, adminToken);
+    expect(rungsOf(live)).toEqual([['organization', 'Personnel', 'pending']]);
+    expect(live.approvalTrail?.currentStep).toBe(0);
+
+    const res = await decide(created.id, 'approve', live.version, hrApprover.token);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const done = res.body.data as LeaveRequestDto;
+    expect(done.status).toBe('approved');
+    expect(rungsOf(done)).toEqual([['organization', 'Personnel', 'approved']]);
   });
 });

@@ -307,8 +307,8 @@ its entry here in the same PR.
     status until OD-29 gives its values, no bank data — with its contact people as rows (at most
     20), its categories picked from both levels, and Active to retire it on an edit. Save stays
     pressable and names what is missing; an e-mail that is no address is marked before a round trip.
-    A save that meets a newer version of the supplier shows it as it now is, overwriting nothing, so
-    the next Save goes through.
+    A save that meets a newer version of the supplier shows it as it now is with the reader's own
+    changes kept over it, so the next Save goes through and undoes nothing the other person saved.
   - **Refusals worded for every record that meets them:** `ADMINISTRATION_ATTACHMENT_LIMIT` (a full
     documents list) gains its words in both languages, `ADMINISTRATION_REFERENCE_INACTIVE` now says
     «a unit or category chosen» — a supplier's retired category as well as an item's — and
@@ -353,7 +353,8 @@ its entry here in the same PR.
     `_REFERENCE_INACTIVE`, `_SUBCATEGORY_REQUIRED`, `_EMPLOYEE_EXITED`, `_DEACTIVATION_BLOCKED`), and
     each dialog also says, beside the field a refusal names, what to change. Save stays pressable and
     names what is missing. A save refused because someone saved the record meanwhile shows the record
-    as it now is, so the next Save is taken.
+    as it now is with the reader's own changes kept over it, so the next Save is taken and undoes
+    nothing the other person saved.
 
 - **Administrative Affairs («الشئون الإدارية»), third slice: warehouses, and the keeper picker.** The
   stores of each branch, «المخازن», with the «Warehouse manager / responsible person» the owner's

@@ -235,13 +235,16 @@ describe('the warehouse’s system reads', () => {
 });
 
 describe('the documents’ reads (P2.2)', () => {
+  /** A department copy as the directory names it, and one no longer on file. */
+  const D1 = '64a0000000000000000000d1';
+  const D_GONE = '64a0000000000000000000d2';
   const employee = (over: Partial<DirectoryEmployee> = {}): DirectoryEmployee => ({
     employeeId: 'e-1',
     code: 'E-0001',
     fullNameAr: 'منسق الإدارة',
     status: 'active',
     branchId: 'b1',
-    departmentId: 'd1',
+    departmentId: D1,
     jobTitleId: 'j1',
     phone: null,
     governorate: null,
@@ -266,26 +269,38 @@ describe('the documents’ reads (P2.2)', () => {
       snap: {
         employeeCode: 'E-0001',
         jobTitle: { ar: 'محاسب', en: 'Accountant' },
-        departmentId: 'd1',
+        departmentId: D1,
         departmentName: { ar: 'المشتريات', en: 'Purchasing' },
       },
     });
     expect(mocks.jobTitles).toHaveBeenCalledWith(['j1']);
-    expect(mocks.departments).toHaveBeenCalledWith(['d1']);
+    expect(mocks.departments).toHaveBeenCalledWith([D1]);
   });
 
   it('names nothing for an id that is null or names no row — and never refuses', async () => {
     mocks.jobTitles.mockResolvedValue([]);
     mocks.departments.mockResolvedValue([]);
     const { snap } = await administrationPeopleService.resolvePerson(
-      employee({ jobTitleId: null, departmentId: 'd-gone' }),
+      employee({ jobTitleId: null, departmentId: D_GONE }),
     );
     expect(snap).toEqual({
       employeeCode: 'E-0001',
       jobTitle: null,
-      departmentId: 'd-gone',
+      departmentId: D_GONE,
       departmentName: null,
     });
     expect(mocks.jobTitles).not.toHaveBeenCalled();
   });
+
+  it.each(['null', 'undefined'])(
+    'reads HR’s %s for a missing department as no department — never an id to store',
+    async (spelling) => {
+      mocks.jobTitles.mockResolvedValue([]);
+      const { snap } = await administrationPeopleService.resolvePerson(
+        employee({ departmentId: spelling }),
+      );
+      expect(snap).toMatchObject({ departmentId: null, departmentName: null });
+      expect(mocks.departments).not.toHaveBeenCalled();
+    },
+  );
 });

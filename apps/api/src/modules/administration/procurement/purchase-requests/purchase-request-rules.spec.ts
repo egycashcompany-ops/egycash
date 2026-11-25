@@ -151,8 +151,14 @@ describe('the acts a record offers (P2 plan §4.4)', () => {
   const CANCEL = 'administrationPurchaseRequest.cancel';
   const OVERRIDE = 'approval.override';
 
-  const facts = (over: Partial<ActionFacts> & { keys?: string[]; uncovered?: string[] } = {}) => {
-    const { keys = [VIEW, CREATE, EDIT], uncovered = [], ...rest } = over;
+  const facts = (
+    over: Partial<ActionFacts> & {
+      keys?: string[];
+      uncovered?: string[];
+      unloaded?: string[];
+    } = {},
+  ) => {
+    const { keys = [VIEW, CREATE, EDIT], uncovered = [], unloaded = [], ...rest } = over;
     return {
       status: 'draft' as AdministrationPurchaseRequestStatus,
       userId: REQUESTER,
@@ -162,6 +168,7 @@ describe('the acts a record offers (P2 plan §4.4)', () => {
       approvalSteps: [],
       holds: (key: string) => keys.includes(key),
       covers: (key: string) => keys.includes(key) && !uncovered.includes(key),
+      loads: (key: string) => !unloaded.includes(key),
       trail: null,
       ...rest,
     } satisfies ActionFacts;
@@ -190,6 +197,18 @@ describe('the acts a record offers (P2 plan §4.4)', () => {
     expect(acts(facts({ uncovered: [EDIT], userId: COLLEAGUE }))).toEqual([
       `edit:${EDIT}:outOfReach`,
       `submit:${CREATE}:notRequester`,
+    ]);
+  });
+
+  it('a draft: a covering key whose scope the top bar narrows away from the request says outOfReach — its route would 404', () => {
+    expect(acts(facts({ unloaded: [EDIT, CREATE] }))).toEqual([
+      `edit:${EDIT}:outOfReach`,
+      `submit:${CREATE}:outOfReach`,
+      `withdraw:${VIEW}:on`,
+    ]);
+    // The cancel is loaded under `.view` and judged by its key's cover alone (P2 plan §7.4).
+    expect(acts(facts({ keys: [VIEW, CANCEL], unloaded: [CANCEL], userId: COLLEAGUE }))).toEqual([
+      `cancel:${CANCEL}:on`,
     ]);
   });
 

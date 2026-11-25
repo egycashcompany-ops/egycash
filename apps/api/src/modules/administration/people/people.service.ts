@@ -29,6 +29,7 @@ import {
   type LocalizedString,
   type Paginated,
 } from '@ecms/contracts';
+import { Types } from 'mongoose';
 import {
   getDirectoryEmployee,
   getDirectoryEmployees,
@@ -80,6 +81,13 @@ export interface AdministrationPersonSnap {
   departmentId: string | null;
   departmentName: LocalizedString | null;
 }
+
+/**
+ * A directory id that names a place, or null. HR's directory answers `String(id)`, so a person with
+ * no department reads as the text 'null' — no place either, and never an id a snapshot may store.
+ */
+const placeOf = (id: string | null): string | null =>
+  id !== null && Types.ObjectId.isValid(id) ? id : null;
 
 /** One organization unit's name, or null for no id or a unit no longer on file. */
 const unitName = async (
@@ -159,23 +167,20 @@ class AdministrationPeopleService {
    * The person as a document copies them (design §2.1, D-22): the directory's Arabic name, and
    * the snapshot printed beside it. IT's receipt holder without its identity facts: the job
    * title's and the department's names are the organization catalogue's, each null when the id is
-   * null or names no row. It never refuses — the document's own rules judge the person first.
+   * null or names no row, and the department's id is null too when HR's spells no place. It never
+   * refuses — the document's own rules judge the person first.
    */
   async resolvePerson(
     employee: DirectoryEmployee,
   ): Promise<{ name: string; snap: AdministrationPersonSnap }> {
+    const departmentId = placeOf(employee.departmentId);
     const [jobTitle, departmentName] = await Promise.all([
       unitName(jobTitleRepository, employee.jobTitleId),
-      unitName(departmentRepository, employee.departmentId),
+      unitName(departmentRepository, departmentId),
     ]);
     return {
       name: employee.fullNameAr,
-      snap: {
-        employeeCode: employee.code,
-        jobTitle,
-        departmentId: employee.departmentId,
-        departmentName,
-      },
+      snap: { employeeCode: employee.code, jobTitle, departmentId, departmentName },
     };
   }
 

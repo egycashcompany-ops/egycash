@@ -546,7 +546,6 @@ export interface AdministrationPurchaseRequestLineDto {
 
 /** The facts printed with the requester's name (design §2.1, `PersonSnap`). */
 export interface AdministrationPurchaseRequestRequesterDto {
-  employeeId: string;
   employeeCode: string | null;
   jobTitle: LocalizedString | null;
   departmentId: string | null;

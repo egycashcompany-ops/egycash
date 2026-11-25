@@ -254,11 +254,7 @@ export interface ResolvedNameCopy {
  * in `targets.ts`.
  */
 export const nameCopiesToScrub = (): ResolvedNameCopy[] => {
-  const keep = new Set(
-    employeeTargets()
-      .filter((t) => t.action === 'keep')
-      .map((t) => t.collection),
-  );
+  const keep = new Set(employeeTargets().filter((t) => t.action === 'keep').map((t) => t.collection));
   const scrub: ResolvedNameCopy[] = [];
   const unclassified: string[] = [];
 
@@ -299,7 +295,5 @@ export const nameCopiesToScrub = (): ResolvedNameCopy[] => {
         [...new Set(unclassified)].sort().join('\n  '),
     );
   }
-  return scrub.sort((a, b) =>
-    `${a.collection}.${a.path}`.localeCompare(`${b.collection}.${b.path}`),
-  );
+  return scrub.sort((a, b) => `${a.collection}.${a.path}`.localeCompare(`${b.collection}.${b.path}`));
 };

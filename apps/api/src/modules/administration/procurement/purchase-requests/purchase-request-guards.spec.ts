@@ -69,8 +69,18 @@ describe('spec 10: every write is version-checked or status-filtered', () => {
   });
 
   it('no conditional write leaves out the version or the status from its filter', () => {
-    for (const write of service.matchAll(/findOneAndUpdate\(([\s\S]*?)\)/g)) {
-      expect(write[1]).toMatch(/__v|status/);
+    // The filter is read as the literal it is, nested braces and calls included, up to the update
+    // document that follows it; a filter held in a variable cannot be read, so it is refused.
+    // P2.2 writes no conditional update, so this has nothing to scan yet: P2.3's submission is the
+    // first, and adds `expect(writes.length).toBeGreaterThan(0)` with it.
+    expect(service).not.toMatch(/findOneAndUpdate\(\s*[A-Za-z_$][\w$]*\s*,/);
+    const writes = [...service.matchAll(/findOneAndUpdate\(\s*(\{[\s\S]*?\})\s*,\s*\{\s*\$/g)];
+    expect(writes.length, 'every conditional write was read').toBe(
+      service.match(/findOneAndUpdate\(/g)?.length ?? 0,
+    );
+    for (const write of writes) {
+      expect(write[1]).toMatch(/\b__v\b/);
+      expect(write[1]).toMatch(/\bstatus\b/);
     }
   });
 
@@ -90,12 +100,24 @@ describe('spec 12: the engine is asked only what the host may ask', () => {
     expect(sources().filter((file) => read(file).includes('statusFor('))).toEqual([]);
   });
 
+  /**
+   * Each `unitOfWork(` callback, from the call to the line that closes it at the call's own indent
+   * — or to the end of the file, which reads too much rather than too little.
+   */
+  const transactions = (source: string): string[] =>
+    [...source.matchAll(/^( *).*\bunitOfWork\(/gm)].map((call) => {
+      const end = source.indexOf(`\n${call[1] ?? ''}})`, call.index);
+      return source.slice(call.index, end === -1 ? undefined : end);
+    });
+
   it('no `decide(` of the engine runs inside a `unitOfWork(` callback', () => {
-    for (const file of sources()) {
-      const source = read(file);
-      for (const block of source.matchAll(/unitOfWork\(async[\s\S]*?\n {4}\}\);/g)) {
-        expect(block[0], file).not.toMatch(/approvalService\.decide\(/);
-      }
+    // The module's code series open transactions; P2.3's submission opens the request's first.
+    const blocks = sources().flatMap((file) =>
+      transactions(read(file)).map((block) => ({ file, block })),
+    );
+    expect(blocks.length, 'the scan found transactions at all').toBeGreaterThan(0);
+    for (const { file, block } of blocks) {
+      expect(block, file).not.toMatch(/approvalService\.decide\(/);
     }
   });
 });

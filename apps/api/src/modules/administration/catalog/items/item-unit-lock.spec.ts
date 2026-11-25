@@ -5,7 +5,7 @@
 // the edit's storage is mocked, since what is pinned is which edit is asked and refused.
 import { ErrorCodes } from '@ecms/contracts';
 import { Types } from 'mongoose';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type AppError } from '../../../../shared/errors';
 import { type AuthContext } from '../../../../shared/types';
 
@@ -109,6 +109,14 @@ describe('the registry', () => {
 });
 
 describe('the item edit asks it (§2.3.4)', () => {
+  // Its own registrant, so these cases stand alone under `-t` or `.only`: the registry is the
+  // module's, and a second registration of one lock is answered once.
+  beforeAll(() => {
+    registerItemReferenceChecker(async (itemId) =>
+      named.has(itemId) ? 'purchaseRequestLine' : null,
+    );
+  });
+
   it('an unnamed item changes its unit freely', async () => {
     await administrationItemService.update(ITEM, { unitId: OTHER_UNIT, version: 3 }, ctx);
     expect(mocks.updateById).toHaveBeenCalledWith(

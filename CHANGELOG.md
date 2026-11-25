@@ -517,8 +517,9 @@ its entry here in the same PR.
     alone; a colleague of the same department reads it and is refused the edit (403).
   - **For readers:** the register filters by status (several), department copy, requester, created
     day (Cairo days) and the start of a number, and sorts by number, created, submitted or needed
-    by; a department reader reads their copy, a branch reader the branch, `own` what they raised, a
-    `section` grant nothing. The record carries the requester's and the branch's snapshots, the
+    by; a department reader reads their copy, a branch reader the branch, `own` what they raised,
+    and a `section` grant only what its holder raised (read as `own`, since a request carries no
+    section). The record carries the requester's and the branch's snapshots, the
     lines with their items' snapshots and counters, and `availableActions` — what this reader may
     do now, with the reason when not. The procurement officer and manager, the Administrative
     Affairs manager and the auditor gain `.view`; the Administrative Affairs manager gains

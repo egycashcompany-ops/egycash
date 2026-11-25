@@ -2,11 +2,11 @@
 // §2.8, §11.4, §19.4): the master codes (P1a.2, the supplier's in P1b.1), the yearly document
 // numbers (P2.1), the people it names (P1a.3), the bound every typed attachment list keeps
 // (P1b.1), and what every document shares from P2.2 — its lines' cap, the acts its record offers
-// and the locks its lines put on an item. An item is «ITM-00001» and a supplier «SUP-00001» (OD-05 A), generated, global,
-// permanent and never reused, the way IT's asset and consumable codes are; a purchase request is
-// «PR-2026-000001». The formatters and the parsers live here, not in the API, because a screen
-// reads a code or a number too (a scanned label, a search) — IT's `formatConsumableMemoNumber`
-// precedent.
+// and the locks its lines put on an item. An item is «ITM-00001» and a supplier «SUP-00001»
+// (OD-05 A), generated, global, permanent and never reused, the way IT's asset and consumable
+// codes are; a purchase request is «PR-2026-000001». The formatters and the parsers live here, not
+// in the API, because a screen reads a code or a number too (a scanned label, a search) — IT's
+// `formatConsumableMemoNumber` precedent.
 //
 // Names are not folded here: the module folds them with the shared `foldName`
 // (`common/fold-name.ts`), so there is one fold for every module (PC-13).

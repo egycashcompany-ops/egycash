@@ -152,6 +152,11 @@ export interface ActionFacts extends PairFacts {
   /** Whether the reader's key covers the request's Unit (`keyCoversUnit`). */
   covers: (key: string) => boolean;
   /**
+   * Whether the key's own scope, as the top bar narrows it today (ADR-028), still reads the
+   * request — what the act's route loads it through before anything else is said of it.
+   */
+  loads: (key: string) => boolean;
+  /**
    * The reader's place on the current chain, from the engine's trail — null while the request
    * holds no pin, so nobody may decide it.
    */
@@ -175,7 +180,9 @@ export const purchaseRequestActions = (facts: ActionFacts): AdministrationAvaila
   const requester = isRequester(facts, facts.userId);
   const ownDraft = (key: string): ActJudgement => {
     if (!facts.holds(key)) return null;
-    if (!facts.covers(key)) return disabled(key, 'outOfReach');
+    // A Unit the key covers but its narrowed scope no longer reads is a 404 to the route: out of
+    // reach all the same. The cancel loads under `.view` (P2 plan §7.4), so `covers` alone is its.
+    if (!facts.covers(key) || !facts.loads(key)) return disabled(key, 'outOfReach');
     return requester ? enabled(key) : disabled(key, 'notRequester');
   };
   const onChain = (withPairB1: boolean): ActJudgement => {

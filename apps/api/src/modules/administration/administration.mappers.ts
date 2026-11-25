@@ -284,7 +284,6 @@ export const toAdministrationPurchaseRequestDetailDto = (
   notes: doc.notes,
   businessDate: dayOrNull(doc.businessDate),
   requester: {
-    employeeId: String(doc.requesterEmployeeId),
     employeeCode: doc.requester.employeeCode ?? null,
     jobTitle: doc.requester.jobTitle ?? null,
     departmentId: idOrNull(doc.requester.departmentId),

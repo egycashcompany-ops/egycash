@@ -73,11 +73,7 @@ describe('the names a permanent delete rewrites', () => {
   });
 
   it('only ever rewrites a row the purge is keeping', () => {
-    const kept = new Set(
-      employeeTargets()
-        .filter((t) => t.action === 'keep')
-        .map((t) => t.collection),
-    );
+    const kept = new Set(employeeTargets().filter((t) => t.action === 'keep').map((t) => t.collection));
     for (const copy of nameCopiesToScrub()) {
       // A `purge` collection's rows are deleted outright, so rewriting a name on one first would
       // be work done to a row on its way out — and a sign the two tables disagree.

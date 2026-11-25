@@ -10,12 +10,7 @@
 import mongoose from 'mongoose';
 import { afterEach, describe, expect, it } from 'vitest';
 import '../modules';
-import {
-  APPLICANT_REGISTRY,
-  SURVIVING_ROLE_KEYS,
-  applicantTargets,
-  employeeTargets,
-} from './targets';
+import { APPLICANT_REGISTRY, SURVIVING_ROLE_KEYS, applicantTargets, employeeTargets } from './targets';
 
 const TEMP_MODEL = 'SpecTempEmployeeScoped';
 

@@ -103,7 +103,8 @@ export const needsExplicitSignal = (act: MasterDataAct): boolean =>
 
 // ── Search ──────────────────────────────────────────────────────────────────
 
-const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Text as a regular expression matches it literally: every register's and document's search. */
+export const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * A register's `search`, server-side (ADR-019 rule 5): the text as typed, case ignored, for codes

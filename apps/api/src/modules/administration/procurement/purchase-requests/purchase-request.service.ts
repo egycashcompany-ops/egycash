@@ -20,6 +20,7 @@
 // applied before the write too. Every write is followed, after commit, by its audit row and the
 // branch signal.
 import {
+  ADMINISTRATION_PURCHASE_REQUEST_SORTS,
   CONTENT_EDITABLE,
   ymdToUtcDate,
   type CreateAdministrationPurchaseRequest,
@@ -37,14 +38,15 @@ import {
   hasPermission,
   keyCoversUnit,
   scopeSelector,
+  selectorBranches,
   type AuthContext,
 } from '../../../../shared/types';
 import { itemActiveFor, itemSnapsOf } from '../../catalog/items/index';
-import { administrationPeopleService, type AdministrationPersonSnap } from '../../people/index';
+import { administrationPeopleService } from '../../people/index';
 import { addDaysYmd, cairoDayStart } from '../../shared/cairo-day';
 import { ensureCounter } from '../../shared/counter.model';
 import { documentNumberAt } from '../../shared/document-number';
-import { assertCurrentVersion } from '../../shared/master-data';
+import { assertCurrentVersion, escapeRegExp } from '../../shared/master-data';
 import { auditPurchaseRequestCreated, auditPurchaseRequestEdited } from './purchase-request-audit';
 import {
   inactiveItemsRefusal,
@@ -76,14 +78,15 @@ const canonicalId = (id: string): string => String(new Types.ObjectId(id));
 const placed = (id: string | null): string | null =>
   id !== null && Types.ObjectId.isValid(id) ? canonicalId(id) : null;
 
-const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 const refuseIf = (refusal: AppError | null): void => {
   if (refusal !== null) throw refusal;
 };
 
 /** A line as the create or an edit sends it. */
 type SentLine = Pick<AdministrationPurchaseRequestLineEdit, 'lineId' | 'itemId' | 'qty' | 'notes'>;
+
+/** A person as the directory answers them, through the module's one door to people. */
+type DirectoryPerson = Parameters<typeof administrationPeopleService.resolvePerson>[0];
 
 /**
  * The yearly series' counter, raised to the highest number of this Cairo year already taken and
@@ -129,7 +132,7 @@ class AdministrationPurchaseRequestService {
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
-      sortableFields: ['number', 'createdAt', 'submittedAt', 'neededBy'],
+      sortableFields: ADMINISTRATION_PURCHASE_REQUEST_SORTS,
       scope,
     });
   }
@@ -167,6 +170,12 @@ class AdministrationPurchaseRequestService {
       approvalSteps: doc.approvalSteps,
       holds: (key) => hasPermission(ctx, key),
       covers: (key) => keyCoversUnit(ctx, key, branchId, departmentId),
+      // The branches the key's own selector reads today: `keyCoversUnit` ignores the top bar, the
+      // write's scoped load does not (ADR-028), and a button must not promise what then 404s.
+      loads: (key) => {
+        const reach = selectorBranches(scopeSelector(ctx, key));
+        return reach === 'all' || reach.includes(branchId);
+      },
       trail: null,
     });
   }
@@ -200,8 +209,8 @@ class AdministrationPurchaseRequestService {
     }
     narrowToBranch(scopeSelector(ctx, CREATE), branchId, 'branchId');
     const lines = await this.linesFor(input.lines, []);
-    const [person, branch] = await Promise.all([
-      administrationPeopleService.resolvePerson(employee),
+    const [requester, branch] = await Promise.all([
+      this.requesterOn(employee, copyId),
       branchSnap(branchId),
     ]);
 
@@ -215,8 +224,7 @@ class AdministrationPurchaseRequestService {
         departmentId: new Types.ObjectId(copyId),
         requesterUserId: new Types.ObjectId(ctx.userId),
         requesterEmployeeId: new Types.ObjectId(employee.employeeId),
-        requesterName: person.name,
-        requester: { ...person.snap, departmentId: new Types.ObjectId(copyId) },
+        ...requester,
         branch,
         neededBy: input.neededBy === undefined ? null : ymdToUtcDate(input.neededBy),
         justification: input.justification ?? null,
@@ -247,21 +255,13 @@ class AdministrationPurchaseRequestService {
     if (!CONTENT_EDITABLE[before.status]) throw invalidTransition(before.status);
     assertCurrentVersion(before, input.version);
     const lines = await this.linesFor(input.lines ?? null, before.lines);
-    const [person, branch] = await Promise.all([
+    const [requester, branch] = await Promise.all([
       this.requesterNow(before),
       branchSnap(String(before.branchId)),
     ]);
 
     // Never the branch, the department or the requester: a request stays filed where it was made.
-    const set: Partial<AdministrationPurchaseRequestDoc> = { lines, branch };
-    if (person !== null) {
-      set.requesterName = person.name;
-      set.requester = {
-        ...person.snap,
-        departmentId:
-          person.snap.departmentId === null ? null : new Types.ObjectId(person.snap.departmentId),
-      };
-    }
+    const set: Partial<AdministrationPurchaseRequestDoc> = { lines, branch, ...requester };
     if (input.neededBy !== undefined) {
       set.neededBy = input.neededBy === null ? null : ymdToUtcDate(input.neededBy);
     }
@@ -316,8 +316,15 @@ class AdministrationPurchaseRequestService {
       const named = items.get(itemId);
       const isNewReference = line.kept === null || String(line.kept.itemId) !== itemId;
       if (named === undefined) {
-        // A kept line naming the same item keeps what it copied; any other is a 404.
-        if (!isNewReference && line.kept !== null) return line.kept;
+        // A kept line naming the same item keeps what it copied, and still takes the edit's
+        // quantity and notes; any other is a 404.
+        if (!isNewReference && line.kept !== null) {
+          return {
+            ...line.kept,
+            qty: line.sent?.qty ?? line.kept.qty,
+            notes: line.sent === null ? line.kept.notes : (line.sent.notes ?? null),
+          };
+        }
         throw new NotFoundError(`lines[${String(i)}]: item not found`);
       }
       if (!itemActiveFor(named.item, isNewReference ? 'newReference' : 'existingReference')) {
@@ -339,14 +346,36 @@ class AdministrationPurchaseRequestService {
   }
 
   /**
+   * The requester as the request stores them (design §2.1, D-22): the directory's name, code and
+   * job title, beside the department the request is FILED on. At the create the two departments
+   * are one; once HR moves the person they part, and the request stays filed where it was made
+   * (P2 plan §4.2), so its snapshot keeps naming that copy — never a copy the request does not lie
+   * in, and never HR's 'null' for a department lost since — and the register's department and the
+   * record's agree (§6.5).
+   */
+  private async requesterOn(
+    employee: DirectoryPerson,
+    copyId: string,
+  ): Promise<Pick<AdministrationPurchaseRequestDoc, 'requesterName' | 'requester'>> {
+    const person = await administrationPeopleService.resolvePerson({
+      ...employee,
+      departmentId: copyId,
+    });
+    return {
+      requesterName: person.name,
+      requester: { ...person.snap, departmentId: new Types.ObjectId(copyId) },
+    };
+  }
+
+  /**
    * The requester as the directory answers now, for the snapshot a draft's save rewrites — or
    * null when it cannot say (no HR source, a person it no longer knows), and the stored copy stays.
    */
   private async requesterNow(
     doc: AdministrationPurchaseRequestDoc,
-  ): Promise<{ name: string; snap: AdministrationPersonSnap } | null> {
+  ): Promise<Pick<AdministrationPurchaseRequestDoc, 'requesterName' | 'requester'> | null> {
     const employee = await administrationPeopleService.find(String(doc.requesterEmployeeId));
-    return employee === null ? null : administrationPeopleService.resolvePerson(employee);
+    return employee === null ? null : this.requesterOn(employee, String(doc.departmentId));
   }
 }
 

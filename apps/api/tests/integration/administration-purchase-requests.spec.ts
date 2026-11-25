@@ -22,6 +22,7 @@ import {
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
 import { rbacService } from '../../src/platform/rbac';
 import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
+import { AdministrationItemModel } from '../../src/modules/administration/catalog/items/item.model';
 import { AdministrationPurchaseRequestModel } from '../../src/modules/administration/procurement/purchase-requests/purchase-request.model';
 import { AdministrationCounterModel } from '../../src/modules/administration/shared/counter.model';
 import { documentNumberAt } from '../../src/modules/administration/shared/document-number';
@@ -115,6 +116,17 @@ const draft = async (
   const res = await as(who.token).post('/purchase-requests', body);
   expect(res.status, JSON.stringify(res.body)).toBe(201);
   return data<AdministrationPurchaseRequestDetailDto>(res);
+};
+
+/** An item of its own for a case that changes or removes it, so no other case sees it move. */
+const freshItem = async (ar: string, en: string): Promise<AdministrationItemDto> => {
+  const res = await as(world.adminToken).post('/items', {
+    name: { ar, en },
+    categoryId: category.id,
+    unitId: unitA.id,
+  });
+  expect(res.status, JSON.stringify(res.body)).toBe(201);
+  return data<AdministrationItemDto>(res);
 };
 
 /** Puts a request where a later slice's act would, written straight to the collection. */
@@ -266,7 +278,6 @@ describe('a focal point’s draft (OD-16 A; P2 plan §4.2)', () => {
       approvalRounds: [],
       version: 0,
       requester: {
-        employeeId: focal.employeeId,
         // A planted employee's job title names no row, so the snapshot has none (P2 plan §12.2).
         jobTitle: null,
         departmentId: deptA1,
@@ -274,6 +285,13 @@ describe('a focal point’s draft (OD-16 A; P2 plan §4.2)', () => {
       },
     });
     expect(created.requester.employeeCode).toMatch(/^PRQ-/);
+    // Design §2.1's PersonSnap and nothing of HR's beyond it: no employee id (P2 plan §6.5).
+    expect(Object.keys(created.requester).sort()).toEqual([
+      'departmentId',
+      'departmentName',
+      'employeeCode',
+      'jobTitle',
+    ]);
     // The unit is the item's, never the client's (OD-07), and each line copies its item.
     expect(created.lines).toEqual([
       expect.objectContaining({
@@ -356,6 +374,103 @@ describe('a focal point’s draft (OD-16 A; P2 plan §4.2)', () => {
     const edited = data<AdministrationPurchaseRequestDetailDto>(res);
     expect(edited).toMatchObject({ neededBy: null, justification: null, lineCount: 1 });
     expect(edited.lines[0]?.lineId).toBe(created.lines[0]?.lineId);
+  });
+
+  describe('a draft’s save rewrites its snapshots (P2 plan §6.1)', () => {
+    it('from live data: the item’s new name and the requester’s, and no trail row for either', async () => {
+      const renamed = await requester('renamed', 'department', {
+        branchId: world.branchAId,
+        departmentId: deptA1,
+      });
+      const toner = await freshItem('حبر طابعة', 'Printer toner');
+      const created = await draft(renamed, { lines: [line(toner, 2)] });
+      expect(created.requesterName).toBe('موظف renamed');
+      const itemRenamed = await as(world.adminToken).patch(`/items/${toner.id}`, {
+        name: { ar: 'حبر طابعة ليزر', en: 'Laser printer toner' },
+        version: toner.version,
+      });
+      expect(itemRenamed.status, JSON.stringify(itemRenamed.body)).toBe(200);
+      await EmployeeModel.collection.updateOne(
+        { _id: new Types.ObjectId(renamed.employeeId) },
+        { $set: { 'personal.fullNameAr': 'اسم جديد للموظف' } },
+      );
+
+      const res = await as(renamed.token).patch(`/purchase-requests/${created.id}`, {
+        version: 0,
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const saved = data<AdministrationPurchaseRequestDetailDto>(res);
+      expect(saved.requesterName).toBe('اسم جديد للموظف');
+      expect(saved.lines[0]?.itemName).toEqual({ ar: 'حبر طابعة ليزر', en: 'Laser printer toner' });
+      // The trail compares ids, never names (design §10.1).
+      expect((await trail(created.id)).map((row) => row.action)).toEqual(['create']);
+    });
+
+    it('a requester whose HR record lost its department still saves; the copy stays the filing one', async () => {
+      const unplacedLater = await requester('unplaced-later', 'department', {
+        branchId: world.branchAId,
+        departmentId: deptA1,
+      });
+      const created = await draft(unplacedLater);
+      // HR's directory then spells the missing department 'null'; the login keeps its placement.
+      await EmployeeModel.collection.updateOne(
+        { _id: new Types.ObjectId(unplacedLater.employeeId) },
+        { $set: { departmentId: null, 'employment.departmentId': null } },
+      );
+      const res = await as(unplacedLater.token).patch(`/purchase-requests/${created.id}`, {
+        notes: 'بعد النقل',
+        version: 0,
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(data<AdministrationPurchaseRequestDetailDto>(res)).toMatchObject({
+        notes: 'بعد النقل',
+        departmentId: deptA1,
+        departmentName: { ar: 'الشئون الإدارية', en: 'Administrative Affairs' },
+        requester: {
+          departmentId: deptA1,
+          departmentName: { ar: 'الشئون الإدارية', en: 'Administrative Affairs' },
+        },
+      });
+    });
+
+    it('a requester HR moved to another copy, who still edits through a branch grant: the department named stays the filing copy’s', async () => {
+      const mover = await requester('mover', 'branch', {
+        branchId: world.branchAId,
+        departmentId: deptA1,
+      });
+      const created = await draft(mover);
+      await EmployeeModel.collection.updateOne(
+        { _id: new Types.ObjectId(mover.employeeId) },
+        {
+          $set: {
+            departmentId: new Types.ObjectId(deptA2),
+            'employment.departmentId': new Types.ObjectId(deptA2),
+          },
+        },
+      );
+      const res = await as(mover.token).patch(`/purchase-requests/${created.id}`, {
+        notes: 'بعد النقل',
+        version: 0,
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const saved = data<AdministrationPurchaseRequestDetailDto>(res);
+      expect(saved).toMatchObject({
+        branchId: world.branchAId,
+        departmentId: deptA1,
+        departmentName: { ar: 'الشئون الإدارية', en: 'Administrative Affairs' },
+        requester: {
+          departmentId: deptA1,
+          departmentName: { ar: 'الشئون الإدارية', en: 'Administrative Affairs' },
+        },
+      });
+      const [row] = data<AdministrationPurchaseRequestDto[]>(
+        await as(mover.token).get(`/purchase-requests?requesterUserId=${mover.id}`),
+      );
+      expect(row).toMatchObject({
+        departmentId: deptA1,
+        departmentName: { ar: 'الشئون الإدارية', en: 'Administrative Affairs' },
+      });
+    });
   });
 
   describe('who may raise one (P2 plan §4.4)', () => {
@@ -500,6 +615,46 @@ describe('a focal point’s draft (OD-16 A; P2 plan §4.2)', () => {
       }
     });
 
+    it('a kept line switched to a retired item is a new reference: 422 REFERENCE_INACTIVE', async () => {
+      const created = await draft(focal, { lines: [line(paper, 1)] });
+      refused(
+        await as(focal.token).patch(`/purchase-requests/${created.id}`, {
+          lines: [{ lineId: created.lines[0]?.lineId, itemId: retired.id, qty: 1 }],
+          version: 0,
+        }),
+        422,
+        'ADMINISTRATION_REFERENCE_INACTIVE',
+        ['lines.0.itemId:inactive'],
+      );
+    });
+
+    it('a kept line whose item no longer resolves keeps its copy, and still takes the edit', async () => {
+      const gone = await freshItem('ورق مقوى', 'Cardboard');
+      const created = await draft(focal, { lines: [line(gone, 1, 'قبل')] });
+      // No route removes an item; an operator's hand fix is what leaves a line naming nothing.
+      await AdministrationItemModel.collection.deleteOne({ _id: new Types.ObjectId(gone.id) });
+      const res = await as(focal.token).patch(`/purchase-requests/${created.id}`, {
+        lines: [{ lineId: created.lines[0]?.lineId, itemId: gone.id, qty: 9, notes: 'بعد' }],
+        version: 0,
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(data<AdministrationPurchaseRequestDetailDto>(res).lines).toEqual([
+        expect.objectContaining({
+          lineId: created.lines[0]?.lineId,
+          itemId: gone.id,
+          itemName: { ar: 'ورق مقوى', en: 'Cardboard' },
+          qty: 9,
+          notes: 'بعد',
+        }),
+      ]);
+      // A new line naming it is a 404.
+      const res404 = await as(focal.token).patch(`/purchase-requests/${created.id}`, {
+        lines: [line(gone, 1)],
+        version: 1,
+      });
+      expect(res404.status, JSON.stringify(res404.body)).toBe(404);
+    });
+
     it('a line id the request does not have: 422 TRANSITION_BLOCKED, unknownLine', async () => {
       const created = await draft(focal);
       const other = await draft(focal);
@@ -567,6 +722,56 @@ describe('a focal point’s draft (OD-16 A; P2 plan §4.2)', () => {
       expect(read.version).toBe(0);
     });
 
+    it('an organization-wide edit key the top bar narrows to another branch: listed outOfReach, and the edit is 404', async () => {
+      const wide = await requester(
+        'org-editor',
+        'branch',
+        { branchId: world.branchAId, departmentId: deptA1 },
+        undefined,
+        [VIEW],
+      );
+      const role = await rbacService.createRole(
+        {
+          name: { en: 'PR organization editor', ar: 'محرر طلبات الشراء على مستوى الشركة' },
+          permissionKeys: [CREATE, EDIT],
+        },
+        world.adminId,
+      );
+      await rbacService.ensureAssignment(wide.id, String(role._id), 'organization');
+      const token = await world.login(wide.email);
+      const created = await draft({ ...wide, token });
+      // The whole company: the record offers the edit, and the edit saves.
+      const whole = data<AdministrationPurchaseRequestDetailDto>(
+        await as(token).get(`/purchase-requests/${created.id}`),
+      );
+      expect(whole.availableActions.find((act) => act.key === 'edit')).toMatchObject({
+        enabled: true,
+      });
+      // Branch B in the top bar: `.view`, a home-branch grant, still reads the record; `.edit`
+      // and `.create`, organization-wide, now read branch B only (ADR-028).
+      const narrowed = data<AdministrationPurchaseRequestDetailDto>(
+        await as(token, world.branchBId).get(`/purchase-requests/${created.id}`),
+      );
+      expect(narrowed.availableActions).toEqual([
+        { key: 'edit', permission: EDIT, enabled: false, reason: 'outOfReach' },
+        { key: 'submit', permission: CREATE, enabled: false, reason: 'outOfReach' },
+        { key: 'withdraw', permission: VIEW, enabled: true, reason: null },
+      ]);
+      refused(
+        await as(token, world.branchBId).patch(`/purchase-requests/${created.id}`, {
+          notes: 'x',
+          version: 0,
+        }),
+        404,
+        'NOT_FOUND',
+      );
+      const saved = await as(token).patch(`/purchase-requests/${created.id}`, {
+        notes: 'x',
+        version: 0,
+      });
+      expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    });
+
     it('another copy’s request is a 404 to the edit, before anything else is said of it', async () => {
       const inB = await draft(focalB);
       refused(
@@ -626,7 +831,7 @@ describe('scope (design §7.1, §7.3; RK-15)', () => {
     refused(await as(token).get(`/purchase-requests/${inA1.id}`), 404, 'NOT_FOUND');
   });
 
-  it('a `section` grant reads nothing — a request carries no section, so it fails closed', async () => {
+  it('a `section` grant reads as `own` — a request carries no section, so it fails closed', async () => {
     const section = await world.person('pr-section', [VIEW], 'section', {
       branchId: world.branchAId,
       departmentId: deptA1,
@@ -807,5 +1012,30 @@ describe('the item picker and the unit lock (P2 plan §4.1, §6.2)', () => {
       version,
     });
     expect(other.status, JSON.stringify(other.body)).toBe(200);
+  });
+
+  it('a cancelled draft that never took a number locks nothing; a numbered cancelled one does', async () => {
+    const abandoned = await freshItem('مشابك ورق', 'Paper clips');
+    await plant((await draft(focal, { lines: [line(abandoned)] })).id, { status: 'cancelled' });
+    const free = await as(world.adminToken).patch(`/items/${abandoned.id}`, {
+      unitId: unitB.id,
+      version: abandoned.version,
+    });
+    expect(free.status, JSON.stringify(free.body)).toBe(200);
+
+    const decided = await freshItem('أظرف', 'Envelopes');
+    await plant((await draft(focal, { lines: [line(decided)] })).id, {
+      status: 'cancelled',
+      number: 'PR-2026-009777',
+    });
+    refused(
+      await as(world.adminToken).patch(`/items/${decided.id}`, {
+        unitId: unitB.id,
+        version: decided.version,
+      }),
+      422,
+      'ADMINISTRATION_ITEM_UNIT_LOCKED',
+      ['unitId:purchaseRequestLine'],
+    );
   });
 });

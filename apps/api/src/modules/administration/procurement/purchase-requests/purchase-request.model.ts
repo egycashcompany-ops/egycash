@@ -8,9 +8,11 @@
 // writes them again, so moving the requester does not move the request.
 //
 // SNAPSHOTS, NOT LOOKUPS (design §2.1). The requester's name and facts, the branch and each line's
-// item are copied onto the request and rewritten from live data on every draft save; the first
-// submission freezes them, so what the approvers decided is what the record shows for ever. The
-// localized copies are declared as plain nested objects, never subschemas: HR's census of name
+// item are copied onto the request and rewritten from live data on every draft save and once more
+// by each submission; frozen while the request is out of draft, so what a round's approvers
+// decided is what the record shows of it. The requester's department is the filing copy's, not
+// whatever HR names later, so the register's department and the record's never part. The localized
+// copies are declared as plain nested objects, never subschemas: HR's census of name
 // copies tests every path against /name$/, and a nested `itemName` lists only its leaves,
 // `itemName.ar` and `itemName.en`, which need no classification (P2 plan §6.4).
 //

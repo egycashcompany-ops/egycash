@@ -27,6 +27,7 @@ import {
 } from '../api/leave-queries';
 import { LeaveStatusBadge } from '../components/LeaveStatusBadge';
 import { typeLabel } from '../components/typeLabel';
+import { mayDecideOn, showsDeskCard, showsHandedToHr } from '../lib/leave-request-view';
 
 type Act = 'approve' | 'reject' | 'cancel' | 'return' | null;
 
@@ -49,8 +50,9 @@ export const LeaveRequestDetailPage = (): JSX.Element => {
   }
 
   // The engine's own status counts as pending here: the page's «may I act» gates are about the
-  // request being open, and WHO may act is answered separately — by the chain for an engine
-  // request, and by the two-desk rules for an older one.
+  // request being open, and WHO may act is answered separately — by the chain while the request is
+  // on it (`pendingApproval`), and by the manager and HR rules otherwise: a request with no chain,
+  // one routed off a chain nobody staffs, and one the chain handed to HR's step.
   const pending =
     request.status === 'pendingManager' ||
     request.status === 'pendingHr' ||
@@ -58,16 +60,15 @@ export const LeaveRequestDetailPage = (): JSX.Element => {
   /**
    * Whether to offer the decision at all.
    *
-   * On a request the ENGINE runs the chain has already answered this, against the reader's own
+   * While the ENGINE runs a request the chain has already answered this, against the reader's own
    * roles and delegations — so the screen offers exactly what the save would accept, instead of a
-   * button that turns into a 403. On an older request the two-desk rules still decide, and they
-   * are enforced on the server against a relationship the screen cannot see; there the button
-   * stays offered to anybody who can open a pending request, as it always was.
+   * button that turns into a 403. The trail's flags answer only while the request is on the chain:
+   * off it leave clears them, and a request the chain handed to HR's step is decided as any manager
+   * and HR request. There the two-desk rules decide, and they are enforced on the server against a
+   * relationship the screen cannot see; the button stays offered to anybody who can open a pending
+   * request, as it always was.
    */
-  const mayDecide =
-    request.approvalTrail === null
-      ? pending
-      : request.approvalTrail.viewerMayDecide || request.approvalTrail.viewerMayOverride;
+  const mayDecide = mayDecideOn(request);
   const busy = decide.isPending || cancel.isPending || doReturn.isPending;
   const activeError =
     (decide.isError ? decide.error : null) ??
@@ -189,41 +190,59 @@ export const LeaveRequestDetailPage = (): JSX.Element => {
 
         {/* A request the engine runs shows its configured chain instead of the two-desk list —
             the two describe different machines and drawing both would invite the reader to read
-            one as a summary of the other. */}
-        <ApprovalChainPanel trail={request.approvalTrail} />
+            one as a summary of the other. They are drawn together only on a request the chain
+            handed to HR's step, which ran on both: the card then reads "HR step" and says why, so
+            the two never share the title "Approval chain" (leave design §16.2 item 7). They share
+            the grid's third column, so the card sits under the panel it explains. */}
+        <div className="space-y-4">
+          <ApprovalChainPanel trail={request.approvalTrail} />
 
-        {request.approvalTrail === null && (
-        <Card>
-          <CardBody>
-            <h3 className="mb-3 text-sm font-semibold">{t('leave.detail.approvals')}</h3>
-            {request.approvals.length === 0 && request.pendingStep === null && (
-              <p className="text-sm text-slate-500">—</p>
-            )}
-            <ol className="space-y-3">
-              {request.approvals.map((a, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm">
-                  <span className={a.decision === 'approved' ? 'text-emerald-600' : 'text-red-600'}>
-                    {a.decision === 'approved' ? '✓' : '✕'}
-                  </span>
-                  <div>
-                    <div>
-                      {t(`leave.step.${a.step}`)} — {t(`leave.decision.${a.decision}`)}
-                    </div>
-                    {a.comment !== null && <div className="text-xs text-slate-500">{a.comment}</div>}
-                    <div className="text-xs text-slate-400">{formatDate(a.at, locale)}</div>
-                  </div>
-                </li>
-              ))}
-              {request.pendingStep !== null && (
-                <li className="flex items-start gap-2 text-sm text-amber-600">
-                  <span>…</span>
-                  <span>{t(`leave.step.${request.pendingStep}`)} — {t('leave.detail.awaiting')}</span>
-                </li>
-              )}
-            </ol>
-          </CardBody>
-        </Card>
-        )}
+          {showsDeskCard(request) && (
+            <Card>
+              <CardBody>
+                <h3 className="mb-3 text-sm font-semibold">
+                  {t(showsHandedToHr(request) ? 'leave.detail.hrStep' : 'leave.detail.approvals')}
+                </h3>
+                {showsHandedToHr(request) && (
+                  <p className="mb-3 text-xs text-amber-700 dark:text-amber-400">
+                    {t('leave.detail.handedToHr')}
+                  </p>
+                )}
+                {request.approvals.length === 0 && request.pendingStep === null && (
+                  <p className="text-sm text-slate-500">—</p>
+                )}
+                <ol className="space-y-3">
+                  {request.approvals.map((a, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      <span
+                        className={a.decision === 'approved' ? 'text-emerald-600' : 'text-red-600'}
+                      >
+                        {a.decision === 'approved' ? '✓' : '✕'}
+                      </span>
+                      <div>
+                        <div>
+                          {t(`leave.step.${a.step}`)} — {t(`leave.decision.${a.decision}`)}
+                        </div>
+                        {a.comment !== null && (
+                          <div className="text-xs text-slate-500">{a.comment}</div>
+                        )}
+                        <div className="text-xs text-slate-400">{formatDate(a.at, locale)}</div>
+                      </div>
+                    </li>
+                  ))}
+                  {request.pendingStep !== null && (
+                    <li className="flex items-start gap-2 text-sm text-amber-600">
+                      <span>…</span>
+                      <span>
+                        {t(`leave.step.${request.pendingStep}`)} — {t('leave.detail.awaiting')}
+                      </span>
+                    </li>
+                  )}
+                </ol>
+              </CardBody>
+            </Card>
+          )}
+        </div>
       </div>
 
       {activeError !== null && <p className="mt-3 text-sm text-red-600">{(activeError as Error).message}</p>}

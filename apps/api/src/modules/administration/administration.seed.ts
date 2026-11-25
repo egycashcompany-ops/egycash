@@ -7,13 +7,17 @@
 //      P2.2), raised to its highest number;
 //   3. its file categories: the suppliers' papers (OD-11 A) and the requests' files (OD-76 A,
 //      P2.6), before any upload asks for either;
-//   4. its ready-made roles (OD-78 A), as managed roles.
+//   4. its notification templates (P2 plan §11.1), before any act sends one — a send whose template
+//      is missing is swallowed, so it would tell nobody and say nothing (RK-22);
+//   5. its ready-made roles (OD-78 A), as managed roles.
 //
 // It holds no state and refuses nothing: a build that failed is a line in the log, and the write
 // that needed it is refused by its repository's `ensureCollection`, which tries the build again.
 // The counter and category steps are the same: every create repeats its counter's before its
 // transaction, and the first upload ensures the category.
+import { AdministrationTemplates } from '@ecms/contracts';
 import { logger } from '../../infrastructure/logging/logger';
+import { notificationTemplateService } from '../../platform/notifications';
 import { rbacService } from '../../platform/rbac';
 import { reportLines, reportSummary, syncDeclaredIndexes } from '../../shared/base/index-sync';
 import { administrationModels } from './administration-indexes';
@@ -27,6 +31,27 @@ import {
   ensureSupplierCodeCounter,
   ensureSupplierDocumentsCategory,
 } from './procurement/suppliers';
+
+/**
+ * The purchase request's notices (P2 plan §11.1), in-app and email, each in both languages, its one
+ * variable the request's number — nothing personal goes with it. The approvers' notice ships with
+ * the submission (P2.3); the rest join with the acts that send them.
+ */
+const ensurePurchaseRequestTemplates = async (): Promise<void> => {
+  await notificationTemplateService.ensure({
+    key: AdministrationTemplates.PurchaseRequestAwaitingDecision,
+    category: 'approval',
+    priority: 'normal',
+    subject: { ar: 'طلب شراء بانتظار قرارك', en: 'Purchase request awaiting your decision' },
+    body: {
+      ar: 'طلب الشراء {{number}} بانتظار قرارك.',
+      en: 'Purchase request {{number}} is awaiting your decision.',
+    },
+    channels: ['inApp', 'email'],
+    variables: ['number'],
+    defaultExpiryHours: null,
+  });
+};
 
 export const seedAdministration = async (): Promise<void> => {
   const report = await syncDeclaredIndexes('apply', administrationModels);
@@ -67,6 +92,14 @@ export const seedAdministration = async (): Promise<void> => {
     logger.warn(
       { module: 'administration', err },
       'the request attachments category was not ensured',
+    );
+  }
+  try {
+    await ensurePurchaseRequestTemplates();
+  } catch (err) {
+    logger.warn(
+      { module: 'administration', err },
+      'the purchase-request notification templates were not ensured',
     );
   }
 

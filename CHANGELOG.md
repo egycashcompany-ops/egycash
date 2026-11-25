@@ -597,6 +597,39 @@ its entry here in the same PR.
 
 ### Added
 
+- **Administrative Affairs («الشئون الإدارية»), purchase requests: the submission to the
+  approval chain.** This is P2.3 of Phase 2 (`docs/12-planning/administration-module-phase-2.md`
+  §3): the contracts and the API. A department's focal point sends their own draft to its approval
+  chain; nobody decides, returns or cancels one yet (P2.4, P2.5), and no screen shows them (P2.W1).
+  - **For the focal point:** `POST /api/v1/administration/purchase-requests/:id/submit` with the
+    draft's version, under `.create` — the requester's own draft alone; a colleague of the same
+    department is refused (403). It takes the request's number, «PR-2026-000001», one series for the
+    company, restarted each Cairo year, gap-free (OD-57 A, OD-58 A); a returned request will keep
+    its own. A draft with no line, or a line whose item has been retired since, is refused, each
+    line by its index.
+  - **Who can decide it, checked first (OD-19 A):** the chain written at `/system/approvals` for
+    the new request type «طلبات الشراء» / Purchase requests, at the request's own department copy
+    and branch. With no chain, with nobody on any of its rungs, or with the first rung it would wait
+    on held only by the requester, the submission is refused (422
+    `ADMINISTRATION_APPROVAL_CHAIN_MISSING`, detail `noChain`, `unstaffed` or `noEligibleApprover`)
+    and the draft stays a draft with no number. The request is decided on the chain it was
+    submitted on, whatever is done to the chain afterwards (ADR-041).
+  - **For approvers:** the holders of that first rung, other than the requester, are told in-app
+    and by email, «طلب شراء بانتظار قرارك» / "Purchase request awaiting your decision", with the
+    number only. Deciding arrives in P2.4.
+  - **For automations and HR notification rules:** a new event,
+    `administration.purchaseRequest.submitted`, with the request's ids, number, branch, department,
+    line count and the requester's ids (no names, no amounts); the module appears in the event
+    catalogue as «الشئون الإدارية» / Administrative Affairs.
+  - Audited as `statusChange` with the number, and signalled to the request's branch. New refusals
+    `ADMINISTRATION_APPROVAL_CHAIN_MISSING`, `ADMINISTRATION_APPROVAL_NOT_PENDING` and
+    `ADMINISTRATION_APPROVAL_NOT_YOUR_STEP` (the last two for P2.4's decisions), worded in both
+    languages. `scripts/measure-purchase-request-contention.mjs` runs exit criterion 8's staging
+    measurement: ten 100-line submissions at once.
+  - Rollback (RK-30): reverting removes the route, the request type, the event and the notice's
+    sender at the next deploy; submitted requests stay readable in `pendingApproval` with their
+    numbers, the template and the counter rows stay, and nothing is rewritten.
+
 - **Administrative Affairs («الشئون الإدارية»), purchase requests: request attachments.** This is
   P2.6 of Phase 2 (`docs/12-planning/administration-module-phase-2.md` §3): the contracts and the API;
   no screen shows them yet (P2.W2).

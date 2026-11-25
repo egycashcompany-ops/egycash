@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
+  ADMINISTRATION_EVENT_PAYLOAD_SCHEMAS,
   EVENT_CATALOG,
   EVENT_CATALOG_VERSION,
   EVENT_MULTI_PUBLISHER,
@@ -62,6 +63,7 @@ import { FleetEvents } from '../modules/fleet.js';
 import { HrApplicantDocumentEvents } from '../modules/hr-applicant-documents.js';
 import { OperationsEvents } from '../modules/operations.js';
 import { ItEvents } from '../modules/it.js';
+import { AdministrationEvents } from '../modules/administration.js';
 
 const HR_EVENT_CONSTANTS = [
   HrEvents,
@@ -109,6 +111,9 @@ const FLEET_EVENT_CONSTANTS = Object.values(FleetEvents);
 const OPERATIONS_EVENT_CONSTANTS = Object.values(OperationsEvents);
 // IT-1 declares the two registry events with their emit sites — both stable from day one.
 const IT_EVENT_CONSTANTS = Object.values(ItEvents);
+// Administrative Affairs declares each name with its emitter, stable on arrival (design §8.1): the
+// purchase request's submission first (P2.3), and each later act's with that act.
+const ADMINISTRATION_EVENT_CONSTANTS = Object.values(AdministrationEvents);
 // Promoted to stable by the slices that added their emit sites (FL-2..FL-6). All 22 are
 // stable — FLEET_PLANNED below derives to empty, which is the point: nothing fleet remains
 // declared-but-unpublished.
@@ -147,6 +152,9 @@ const FLEET_PLANNED = FLEET_EVENT_CONSTANTS.filter((name) => !FLEET_STABLE.has(n
 const ALL_SCHEMAS: Record<string, z.ZodTypeAny | null> = {
   ...PLATFORM_EVENT_PAYLOAD_SCHEMAS,
   ...HR_EVENT_PAYLOAD_SCHEMAS,
+  // The sample test skips a schema outside this map, so a module's own samples are checked only
+  // once its schemas are spread here (design §8.4).
+  ...ADMINISTRATION_EVENT_PAYLOAD_SCHEMAS,
 };
 
 // ── Coverage: nothing emitted is missing, nothing catalogued is invented ─────
@@ -178,6 +186,14 @@ describe('coverage', () => {
     }
   });
 
+  it('catalogues every Administrative Affairs event, under its own module', () => {
+    expect(ADMINISTRATION_EVENT_CONSTANTS).toContain('administration.purchaseRequest.submitted');
+    for (const name of ADMINISTRATION_EVENT_CONSTANTS) {
+      expect(isCatalogedEventName(name), `${name} is not catalogued`).toBe(true);
+      expect(eventCatalogEntry(name)?.moduleId, name).toBe('administration');
+    }
+  });
+
   it('invents nothing — every catalogued name is a declared event constant', () => {
     // An automation may only subscribe to what a publisher emits. A name in the catalogue that
     // no module declares would be a trigger that can never fire, and the workflow built on it
@@ -188,6 +204,7 @@ describe('coverage', () => {
       ...FLEET_EVENT_CONSTANTS,
       ...IT_EVENT_CONSTANTS,
       ...OPERATIONS_EVENT_CONSTANTS,
+      ...ADMINISTRATION_EVENT_CONSTANTS,
     ]);
     for (const name of eventCatalogNames()) {
       expect(declared.has(name), `${name} is catalogued but declared nowhere`).toBe(true);

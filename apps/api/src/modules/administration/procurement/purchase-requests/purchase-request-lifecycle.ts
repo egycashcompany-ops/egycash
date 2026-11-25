@@ -18,6 +18,7 @@ import {
   ErrorCodes,
   type AdministrationPurchaseRequestOrderStatus,
   type AdministrationPurchaseRequestStatus,
+  type AdministrationPurchaseRequestSubmitProblem,
 } from '@ecms/contracts';
 import { AppError } from '../../../../shared/errors';
 import { type ActDef, type TransitionDef, type TransitionTable } from '../../shared/lifecycle';
@@ -187,7 +188,8 @@ export interface SubmitLineFacts {
  * failed rule, or null when none fails.
  */
 export const submitProblem = (lines: readonly SubmitLineFacts[]): AppError | null => {
-  const details: { field: string; code: string }[] = [];
+  // Typed by the contract's vocabulary, so a code the web cannot read does not compile.
+  const details: { field: string; code: AdministrationPurchaseRequestSubmitProblem }[] = [];
   if (lines.length === 0) details.push({ field: 'lines', code: 'noLines' });
   lines.forEach((line, i) => {
     if (!(line.qty > 0)) details.push({ field: `lines.${String(i)}.qty`, code: 'notPositive' });

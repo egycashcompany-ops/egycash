@@ -1,9 +1,10 @@
-// The purchase request's source-scan guards (design §5.16 specs 9, 10, 12 and 13; P2 plan §12.1,
-// P2.2's share). Each holds a rule no type can: a status written from a second place, a write that
-// skips its version, the engine asked a question the host must not ask, or a content write that
-// could reach a request already ended. P2.3 and P2.4 add the submission's and the decision's own
-// writes to the same scans, and spec 11's pairs; P2.6 adds the file links, the one write outside
-// the service, which writes the list alone.
+// The purchase request's source-scan guards (design §5.16 specs 9, 10, 12 and 13; P2 plan §12.1).
+// Each holds a rule no type can: a status written from a second place, a write that skips its
+// version, the engine asked a question the host must not ask, or a content write that could reach
+// a request already ended. P2.2 wrote the draft's; P2.3 adds the submission's conditional write,
+// the repository's like every other, and its transaction — the number first, nothing announced
+// inside it; P2.4 adds the decision's own writes to the same scans, and spec 11's pairs; P2.6 adds
+// the file links, the one write outside the service, which writes the list alone.
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +32,20 @@ const FEATURE = 'procurement/purchase-requests/';
 const SERVICE = `${FEATURE}purchase-request.service.ts`;
 const REPOSITORY = `${FEATURE}purchase-request.repository.ts`;
 const FILES = `${FEATURE}purchase-request-files.ts`;
+
+/**
+ * Each call of `callee` in `source`, from its name to the parenthesis that closes it — the
+ * arguments read whole, however the call is indented or wrapped.
+ */
+const callsOf = (source: string, callee: string): string[] =>
+  [...source.matchAll(new RegExp(`${callee.replace(/[.$]/g, '\\$&')}\\(`, 'g'))].map((match) => {
+    let depth = 0;
+    for (let at = match.index + match[0].length - 1; at < source.length; at += 1) {
+      if (source[at] === '(') depth += 1;
+      else if (source[at] === ')' && --depth === 0) return source.slice(match.index, at + 1);
+    }
+    return source.slice(match.index);
+  });
 
 describe('the scan', () => {
   it('reads the module’s sources at all — a scan that matched nothing would pass', () => {
@@ -84,26 +99,26 @@ describe('spec 9: one writer of a request’s status', () => {
 describe('spec 10: every write is version-checked or status-filtered', () => {
   const service = read(SERVICE);
 
-  it('every `updateById` carries the body’s version', () => {
-    const calls = [...service.matchAll(/repository\.updateById\(([\s\S]*?)\n {4}\}\);/g)];
-    expect(calls.length, 'the scan found the edit').toBeGreaterThan(0);
-    for (const call of calls) expect(call[1]).toMatch(/version: input\.version/);
+  it('every `updateById` carries the body’s version — the edit’s and the submission’s', () => {
+    const calls = callsOf(service, 'repository.updateById');
+    expect(calls.length, 'the scan found the edit and the submission').toBe(2);
+    for (const call of calls) expect(call).toMatch(/version: input\.version/);
   });
 
-  it('no conditional write leaves out the version or the status from its filter', () => {
-    // The filter is read as the literal it is, nested braces and calls included, up to the update
-    // document that follows it; a filter held in a variable cannot be read, so it is refused.
-    // P2.2 writes no conditional update, so this has nothing to scan yet: P2.3's submission is the
-    // first, and adds `expect(writes.length).toBeGreaterThan(0)` with it.
-    expect(service).not.toMatch(/findOneAndUpdate\(\s*[A-Za-z_$][\w$]*\s*,/);
-    const writes = [...service.matchAll(/findOneAndUpdate\(\s*(\{[\s\S]*?\})\s*,\s*\{\s*\$/g)];
-    expect(writes.length, 'every conditional write was read').toBe(
-      service.match(/findOneAndUpdate\(/g)?.length ?? 0,
+  it('the service builds no query: every write is the repository’s conditional one', () => {
+    // Coding standards §2: a service builds no Mongoose query, so no write can leave out the
+    // version or the draft condition the repository's seam puts in every filter.
+    expect(service).not.toMatch(/\.(findOneAndUpdate|updateOne|updateMany|bulkWrite)\(/);
+    expect(service).not.toMatch(/\bAdministrationPurchaseRequestModel\b/);
+    const seam = readFileSync(
+      join(MODULE, '..', '..', 'shared', 'base', 'base.repository.ts'),
+      'utf8',
     );
-    for (const write of writes) {
-      expect(write[1]).toMatch(/\b__v\b/);
-      expect(write[1]).toMatch(/\bstatus\b/);
-    }
+    const [updateById] = callsOf(seam, 'this.baseFilter').filter((call) =>
+      call.includes('__v: meta.version'),
+    );
+    expect(updateById, 'the seam’s version-held filter').toBeDefined();
+    expect(updateById).toMatch(/\.\.\.this\.writeConditions\(\)/);
   });
 
   it('the file link holds the version and the draft status in its filter (P2.6)', () => {
@@ -140,6 +155,27 @@ describe('spec 10: every write is version-checked or status-filtered', () => {
     expect(version).toBeGreaterThan(status);
     expect(rules).toBeGreaterThan(version);
   });
+
+  it('so is a submission’s: reach and ownership, the status, the version, then its rules', () => {
+    const submit = service.slice(
+      service.indexOf('  async submit('),
+      service.indexOf('\n  }\n', service.indexOf('  async submit(')),
+    );
+    const order = [
+      'keyCoversUnit(ctx, CREATE',
+      'isRequester(before, ctx.userId)',
+      'assertSubmittable(before)',
+      'assertCurrentVersion(before, input.version)',
+      'submitProblem(',
+      'approvalUnitOf(before)',
+      'chainForSubmission(',
+      'unitOfWork(',
+    ].map((step) => [step, submit.indexOf(step)] as const);
+    for (const [step, at] of order) expect(at, step).toBeGreaterThan(0);
+    expect(order.map(([step]) => step)).toEqual(
+      [...order].sort((a, b) => a[1] - b[1]).map(([step]) => step),
+    );
+  });
 });
 
 describe('spec 12: the engine is asked only what the host may ask', () => {
@@ -158,14 +194,32 @@ describe('spec 12: the engine is asked only what the host may ask', () => {
     });
 
   it('no `decide(` of the engine runs inside a `unitOfWork(` callback', () => {
-    // The module's code series open transactions; P2.3's submission opens the request's first.
+    // The module's code series open transactions, and the request's submission opens its first.
     const blocks = sources().flatMap((file) =>
       transactions(read(file)).map((block) => ({ file, block })),
     );
     expect(blocks.length, 'the scan found transactions at all').toBeGreaterThan(0);
+    expect(blocks.map(({ file }) => file)).toContain(SERVICE);
     for (const { file, block } of blocks) {
       expect(block, file).not.toMatch(/approvalService\.decide\(/);
     }
+  });
+
+  it('the submission’s transaction takes the number first, and announces nothing inside it', () => {
+    // Design §5.1.3, T: the counter is the first write, so a lost race gives its number back; the
+    // callback may run more than once, so the audit, the notice and the event wait for the commit.
+    const [block] = transactions(read(SERVICE));
+    expect(block, 'the submission’s transaction').toBeDefined();
+    const number = block?.indexOf('nextNumber(') ?? -1;
+    expect(number).toBeGreaterThan(0);
+    const [write] = callsOf(block ?? '', 'repository.updateById');
+    expect(write, 'the conditional write inside it').toBeDefined();
+    expect(block?.indexOf('repository.updateById(')).toBeGreaterThan(number);
+    // Written on the transaction's session, so an abort takes the move back with the number.
+    expect(write).toMatch(/\bsession\b/);
+    expect(block).not.toMatch(/audit[A-Za-z]*\(|notify[A-Za-z]*\(|announce[A-Za-z]*\(|\bemit\(/);
+    // The engine's chain and its approvers are read before the transaction begins (P2 plan §8.2).
+    expect(block).not.toMatch(/chainForSubmission\(|approvalService\./);
   });
 });
 

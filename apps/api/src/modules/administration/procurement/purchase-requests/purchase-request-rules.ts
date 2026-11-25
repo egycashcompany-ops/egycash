@@ -126,14 +126,23 @@ export interface PairFacts {
 }
 
 /**
- * Pair A1 (design §6.6): the request's requester, creator or submitter never decides or returns
- * it. On a purchase request the three are one person, since only the requester creates, edits and
- * submits it (P2 plan §1.2 item 22).
+ * Pair A1's set (design §6.6): the request's requester, creator and submitter, each once — whom
+ * no rung of its chain counts as an approver. On a purchase request the three are one person,
+ * since only the requester creates, edits and submits it (P2 plan §1.2 item 22).
  */
+export const pairA1Of = (
+  request: Pick<PairFacts, 'requesterUserId' | 'createdBy' | 'submittedBy'>,
+): string[] => [
+  ...new Set(
+    [request.requesterUserId, request.createdBy, request.submittedBy].flatMap((id) =>
+      id === null || id === undefined ? [] : [String(id)],
+    ),
+  ),
+];
+
+/** Pair A1 (design §6.6): the request's requester, creator or submitter never decides or returns it. */
 export const inPairA1 = (request: PairFacts, userId: string): boolean =>
-  [request.requesterUserId, request.createdBy, request.submittedBy].some(
-    (id) => id !== null && id !== undefined && String(id) === userId,
-  );
+  pairA1Of(request).includes(userId);
 
 /** Pair B1 (design §6.6): one person decides one rung per round — the current round only. */
 export const inPairB1 = (request: PairFacts, userId: string): boolean =>
@@ -157,8 +166,8 @@ export interface ActionFacts extends PairFacts {
    */
   loads: (key: string) => boolean;
   /**
-   * The reader's place on the current chain, from the engine's trail — null while the request
-   * holds no pin, so nobody may decide it.
+   * The reader's place on the current chain, from the engine's trail — null when the host reads
+   * none (a request with no pin, and every request before P2.4), so nobody may decide it.
    */
   trail: { viewerMayDecide: boolean; viewerMayOverride: boolean } | null;
 }

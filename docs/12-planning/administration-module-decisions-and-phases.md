@@ -3666,6 +3666,75 @@ Repository-wide findings outside this module are listed for the owner in
     box; the re-detail's §13 now lists it. The node suite has no DOM, so what was typed is seeded by replacing React's
     `useState` in that spec, as `useDocumentTitle.spec.ts` replaces `useEffect`; a pick and a clear are read as
     source.
+- **P2.3 built** (2026-11-25). The submission ships as the P2 re-detail's §3 row says
+  ([administration-module-phase-2.md](administration-module-phase-2.md)): the adapter `shared/approvals.ts` — the
+  type registered with `{ audit: 'host' }`, the Unit, OD-19 A, the eligible-approver check and the remap —
+  `POST /:id/submit` with the yearly number (`documentNumberAt`, read once) and the pin (both fields from one
+  `pinOf`, in the conditional write), the approvers' notice, its template and the seed-coverage spec, the event
+  `.submitted`, and criterion 8's script. Nothing decides, returns or cancels a request yet. Where the code had to
+  choose what the re-detail leaves open:
+  - *The remap ships its two codes.* The §3 row puts the remap in this slice and §5 ships each code with the slice
+    that first raises it, so `ADMINISTRATION_APPROVAL_NOT_PENDING` and `…_NOT_YOUR_STEP` ship with
+    `…_CHAIN_MISSING`; nothing calls the remap before P2.4's decide. The web `FRIENDLY` table words all three now, as
+    P2.2 did its three, because `errors.spec.ts` requires every `ADMINISTRATION_` code worded as it ships; each
+    detail's remedy stays P2.W1's `lib/refusals.ts`.
+  - *A copy no longer on file reads as moved.* The Unit's guard refuses `departmentId` · `copyMoved` when the copy
+    lies in another branch, and also when the organization no longer holds it: either way no Unit of the request's
+    branch can be read. A copy written before the catalog existed, with no `catalogId` field, reads as unlinked.
+  - *The approvers told are the ones the check found.* The notice goes to the eligible approvers the submission read
+    before its transaction, the same read that passed OD-19 A, rather than a second engine read after the commit.
+  - *The conditional write is the repository's, and a lost race is answered from the request as it stands.* The
+    submission writes through `updateById` on the transaction's session, as the draft's edit does: `{ _id, __v }`
+    with the repository's draft condition (`writeConditions()`) and `.create`'s scope, so the service builds no
+    query (coding standards §2; guard spec 10). Its miss is answered inside the transaction, from a re-read under
+    that scope — 404 when the scope no longer finds the request, 422 `ADMINISTRATION_INVALID_TRANSITION` when its
+    status moved, else 409 — so the transaction aborts and its number goes back. The suite's ten-at-once case
+    submits one draft twice; the loser is refused 422 either at its status check or, when both pass the checks, by
+    the write's miss, whose number goes back. The miss's 409 branch (the draft still a draft at a moved version) has
+    no deterministic case, since the plan's race hook (§12.2) names P2.4's decide and return only.
+  - *Pair A1's set is the request's rule.* `pairA1Of` joins `purchase-request-rules.ts` (P2.2's `inPairA1` now
+    reads it), and the adapter, which imports no feature, takes the set as given, with the caller as submitter.
+  - *The registration is the manifest's import.* The adapter registers as it loads, and the manifest imports it
+    beside its permissions (design §6.4), so the type exists whatever feature loads first.
+  - *Vocabularies in the contracts*, P2.2's house style: `ADMINISTRATION_PURCHASE_REQUEST_SUBMIT_PROBLEMS` (the
+    submission's four line rules and `copyMoved`, which P2.4's decision and return also meet) and
+    `ADMINISTRATION_APPROVAL_CHAIN_PROBLEMS` (`noChain`, `unstaffed`, `noEligibleApprover`). The event catalogue
+    gains the module's name and the entity word «طلب شراء» with its first event, and its spec now checks the
+    module's samples.
+  - *P2.2's hand-planted numbers moved a year.* The integration file's P2.2 cases planted 2026 numbers for the
+    register's search, an edit's order of checks and the unit lock; this year's series would then floor above them
+    and the first submission could not take «PR-<year>-000001». They plant 2025's now, a year no case submits in;
+    what they test is unchanged. Since the boot seed already ensures this year's counter, one case of the
+    submission's own drops that counter and plants a number above it, so the floor each first submission sets for
+    its series (plan §6.3, §8.2 step 6) is held by a test.
+  - *The contention script* reads the staging URL and ten focal points' tokens from the environment, and prints
+    neither; it names the first focal point's active items cycled to 100 lines, makes the ten drafts one after
+    another and submits them at once, printing each status, number and time; it exits 1 on a miss. It cancels
+    nothing, since a cancel is P2.5's act.
+  - *Pins.* The engine and notification lines the slice relies on hold as the re-detail cites them
+    (`request-type.registry.ts:37-43`; `approval.service.ts:119-127, 152, 310-317, 540`; `workflow.model.ts:44, 74`;
+    `approval-trail.ts:26`; `notification.service.ts:115-116`). Three sets moved, each re-pinned where the re-detail
+    cites it (its §1.2 items 13, 25, 26, 28 and 31, §1.2 D, §3, §5, §6.3, §8.1–§8.3, §8.6 and §12.3):
+    - PXQ-1 (`375abac5`), on main below `90401f23`, moved HR leave's service: the registration `:67-73` → `:68-74`,
+      `ownEmployee` `:87-92` → `:88-93`, the Unit `:103-113` → `:104-114`, `subjectOf` `:124-138` → `:125-139`, the
+      create's pin `:334-341` → `:335-342`, the conditional append `:619-641` → `:626-648` (its `isDeleted` `:624` →
+      `:631`, its ids turned back `:630-634` → `:637-641`) and the trail off `pendingApproval` `:701-711` →
+      `:719-729`; and `HrLeaveTemplates`, `hr-leave.ts:554-564` → `:558-568`.
+    - This slice moved the event catalogue's `EVENT_MODULE_NAMES` `catalog.ts:657-664` → `:662-670`, its
+      `buildEventCatalog(` call `:1486-1492` → `:1508-1515` and the `approvalDecided` words `:872` → `:881`;
+      `catalog.spec.ts:147, :181` → `:152, :197`; the web `FRIENDLY` table `errors.ts:8-332` → `:8-345`; in the
+      contracts' `administration.ts`, by one line, the master codes' width (`:24-28` on `de38fd71`, now `:27-31`),
+      their pair (`:38-68`, now `:41-71`) and the attachment bound (`:112-120`, now `:189-197`), which P2.1 and
+      P2.2 had moved first; and the seed's code counters (`administration.seed.ts:35-44`, now `:66-75`, P2.2 and
+      P2.6 first).
+    - Design §18.3.2's threshold is `administration-module-decisions-and-phases.md:2286-2288`, not `:2285-2286`
+      (re-detail §16, criterion 8, corrected there).
+    - One citation runs the other way: HR's frozen leave design cites the re-detail's `ui-consistency` pass at
+      `administration-module-phase-2.md:1099` (`leave-management-design.md:834`), which P2.1 to P2.3's edits of the
+      re-detail moved to `:1255`; that design is HR's to re-pin, and it is left as it stands.
+
+    No page, key, navigation row, topic or census row changes: the page registry stays at 123 pages and 447 keys,
+    and the event catalogue reaches 224 events, every administration one reachable.
 - **P2.6 built** (2026-11-25). Request attachments ship as the P2 re-detail's §3 row says
   ([administration-module-phase-2.md](administration-module-phase-2.md)), in the supplier papers' shape (P1b.1):
   the category `administration-request-attachments`, the `purchaseRequest` authorizer, the three routes and the scan

@@ -1,6 +1,9 @@
 // Administrative Affairs' purchase requests over real HTTP, real RBAC and a real database (P2 plan
 // §12.2), one file grown by each slice of P2 (RK-01). P2.2: drafts — the register, the record, the
-// create and a draft's edit, the item reads opened to the picker, and the item's unit lock.
+// create and a draft's edit, the item reads opened to the picker, and the item's unit lock. P2.3:
+// the submission to the approval chain — OD-19 A's three refusals at the request's own Unit, on
+// chains written at `/system/approvals`' route; the yearly number, gap-free under ten submissions at
+// once; the pin; and the live rung's approvers told, less the requester.
 //
 // What a mocked spec cannot see: the requester read from HR through the directory's self lookup and
 // held to OD-16 A's placement rules; the request filed on that employee's department copy, under
@@ -15,16 +18,23 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { Types } from 'mongoose';
 import {
+  AdministrationEvents,
+  AdministrationTemplates,
+  formatAdministrationNumber,
   type AdministrationCatalogItemDto,
   type AdministrationItemCategoryDto,
   type AdministrationItemDto,
   type AdministrationPurchaseRequestDetailDto,
   type AdministrationPurchaseRequestDto,
+  type ApprovalWorkflowDto,
+  type EventEnvelope,
 } from '@ecms/contracts';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
 import { hasFileEntityAuthorizer } from '../../src/platform/files';
 import { FileCategoryModel } from '../../src/platform/files/file-category.model';
 import { FileModel } from '../../src/platform/files/file.model';
+import { subscribe } from '../../src/platform/kernel/event-bus';
+import { NotificationModel } from '../../src/platform/notifications/notification.model';
 import { administrationPurchaseRequestRepository } from '../../src/modules/administration/procurement/purchase-requests/purchase-request.repository';
 import { rbacService } from '../../src/platform/rbac';
 import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
@@ -51,6 +61,8 @@ const APPROVE = 'administrationPurchaseRequest.approve';
 const REQUESTER_KEYS = [VIEW, CREATE, EDIT];
 
 let world: AdministrationWorld;
+/** The company department A1's copy and B's are linked to; A2's copy is linked to none. */
+let catalog: string;
 /** Branch A's two department copies — one linked to a company department, one not — and B's. */
 let deptA1: string;
 let deptA2: string;
@@ -192,6 +204,7 @@ beforeAll(async () => {
     code: 'ADM-PRQ',
     name: { ar: 'الشئون الإدارية', en: 'Administrative Affairs' },
   });
+  catalog = catalogId;
   deptA1 = await org('/departments', { code: 'PRQ-A1', branchId: world.branchAId, catalogId });
   deptA2 = await org('/departments', {
     code: 'PRQ-A2',
@@ -696,7 +709,7 @@ describe('a focal point’s draft (OD-16 A; P2 plan §4.2)', () => {
 
     it('an edit of a submitted request is 422 INVALID_TRANSITION — also when its version is stale', async () => {
       const created = await draft(focal);
-      await plant(created.id, { status: 'pendingApproval', number: 'PR-2026-009001', __v: 1 });
+      await plant(created.id, { status: 'pendingApproval', number: 'PR-2025-009001', __v: 1 });
       for (const version of [1, 0]) {
         refused(
           await as(focal.token).patch(`/purchase-requests/${created.id}`, { notes: 'x', version }),
@@ -890,14 +903,14 @@ describe('the register’s filters and sorts (P2 plan §4.1)', () => {
     third = (await draft(sorter)).id;
     await plant(first, {
       status: 'pendingApproval',
-      number: 'PR-2026-000103',
+      number: 'PR-2025-000103',
       createdAt: new Date('2026-03-10T21:30:00.000Z'), // 23:30 on 10 March, Cairo time
       submittedAt: new Date('2026-03-12T08:00:00.000Z'),
       neededBy: new Date('2026-04-01T00:00:00.000Z'),
     });
     await plant(second, {
       status: 'approved',
-      number: 'PR-2026-000101',
+      number: 'PR-2025-000101',
       createdAt: new Date('2026-03-11T08:00:00.000Z'),
       submittedAt: new Date('2026-03-11T09:00:00.000Z'),
       neededBy: new Date('2026-05-01T00:00:00.000Z'),
@@ -939,11 +952,11 @@ describe('the register’s filters and sorts (P2 plan §4.1)', () => {
   });
 
   it('searches a number from its first character, without regard to case', async () => {
-    expect((await listed(reader, `${mine()}&search=pr-2026-0001`)).sort()).toEqual(
+    expect((await listed(reader, `${mine()}&search=pr-2025-0001`)).sort()).toEqual(
       [first, second].sort(),
     );
-    expect(await listed(reader, `${mine()}&search=PR-2026-000103`)).toEqual([first]);
-    expect(await listed(reader, `${mine()}&search=2026-0001`)).toEqual([]);
+    expect(await listed(reader, `${mine()}&search=PR-2025-000103`)).toEqual([first]);
+    expect(await listed(reader, `${mine()}&search=2025-0001`)).toEqual([]);
   });
 
   it.each([
@@ -1032,7 +1045,7 @@ describe('the item picker and the unit lock (P2 plan §4.1, §6.2)', () => {
     const decided = await freshItem('أظرف', 'Envelopes');
     await plant((await draft(focal, { lines: [line(decided)] })).id, {
       status: 'cancelled',
-      number: 'PR-2026-009777',
+      number: 'PR-2025-009777',
     });
     refused(
       await as(world.adminToken).patch(`/items/${decided.id}`, {
@@ -1043,6 +1056,459 @@ describe('the item picker and the unit lock (P2 plan §4.1, §6.2)', () => {
       'ADMINISTRATION_ITEM_UNIT_LOCKED',
       ['unitId:purchaseRequestLine'],
     );
+  });
+});
+
+// ── P2.3: the submission (P2 plan §8.2; design §5.4 row 2) ──────────────────
+
+describe('the submission to the approval chain (P2 plan §8.2)', () => {
+  const TYPE = 'administration.purchaseRequest';
+  const AWAITING = AdministrationTemplates.PurchaseRequestAwaitingDecision;
+  const unitRung = { permissionKey: APPROVE, level: 'unit', label: null };
+  const companyRung = { permissionKey: APPROVE, level: 'organization', label: null };
+
+  /** The approver of B's copy, on its `unit` rung through the company department (ADR-041). */
+  let approverB: Requester;
+  /** A1's focal point, who also holds `.approve` on A1's `unit` rung, and alone at first. */
+  let sole: Requester;
+  /** A focal point whose request keys reach the whole organization, placed in A1. */
+  let orgFocal: Requester;
+  /** Every submission's event, as an automation would hear it. */
+  const heard: EventEnvelope[] = [];
+
+  /** The chain the screen lists for the type at a place, named as a save names the row it replaces. */
+  const basisAt = async (
+    departmentCatalogId: string | null,
+    branchId: string | null,
+  ): Promise<{ id: string; version: number } | null> => {
+    const res = await request(world.app)
+      .get('/api/v1/platform/approvals')
+      .set('Authorization', `Bearer ${world.adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const row = data<ApprovalWorkflowDto[]>(res).find(
+      (w) =>
+        w.requestType === TYPE &&
+        (w.department?.id ?? null) === departmentCatalogId &&
+        (w.branch?.id ?? null) === branchId,
+    );
+    return row === undefined ? null : { id: row.id, version: row.version };
+  };
+
+  /** A chain written as the chain screen writes it, at `/system/approvals`' route (PX-1.6). */
+  const writeChain = async (
+    departmentCatalogId: string | null,
+    branchId: string | null,
+    steps: object[],
+  ): Promise<ApprovalWorkflowDto> => {
+    const res = await request(world.app)
+      .put('/api/v1/platform/approvals')
+      .set('Authorization', `Bearer ${world.adminToken}`)
+      .send({
+        requestType: TYPE,
+        departmentCatalogId,
+        branchId,
+        steps,
+        isActive: true,
+        basedOn: await basisAt(departmentCatalogId, branchId),
+      });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return data<ApprovalWorkflowDto>(res);
+  };
+
+  /** Someone on a copy's `unit` rung: `.approve` over the company department in their branch. */
+  const unitApprover = (who: string, branchId: string, departmentId: string) =>
+    world.person(
+      who,
+      [APPROVE],
+      'department',
+      { branchId, departmentId },
+      { departmentCatalogId: catalog, branchIds: [] },
+    );
+
+  const submit = (who: Requester, id: string, version: number) =>
+    as(who.token).post(`/purchase-requests/${id}/submit`, { version });
+
+  const submitted = async (
+    who: Requester,
+    pr: { id: string; version: number },
+  ): Promise<AdministrationPurchaseRequestDetailDto> => {
+    const res = await submit(who, pr.id, pr.version);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return data<AdministrationPurchaseRequestDetailDto>(res);
+  };
+
+  /** This Cairo year's series: its key, and the number it hands out as `seq`. */
+  const series = () => documentNumberAt('purchaseRequest', new Date()).series;
+  const numbered = (seq: number) =>
+    formatAdministrationNumber('purchaseRequest', series().year, seq);
+  const counter = async (): Promise<number> =>
+    (await AdministrationCounterModel.findOne({ key: series().key }).lean().exec())?.seq ?? -1;
+
+  /** The awaiting-decision notices about one request, to one person or, with null, to anybody. */
+  const told = (userId: string | null, requestId: string): Promise<number> =>
+    NotificationModel.countDocuments({
+      ...(userId === null ? {} : { recipientUserId: new Types.ObjectId(userId) }),
+      templateKey: AWAITING,
+      'entityRef.entityId': requestId,
+    }).exec();
+
+  beforeAll(async () => {
+    subscribe(AdministrationEvents.PurchaseRequestSubmitted, 'p2.3-integration', (envelope) => {
+      heard.push(envelope);
+    });
+    approverB = {
+      ...(await unitApprover('pr-approver-b', world.branchBId, deptB)),
+      employeeId: '',
+    };
+
+    // The focal point who holds A1's rung too: the draft keys at home, the approve key through the
+    // company department — two grants, and a session opened once both are written.
+    const signed = await unitApprover('pr-sole', world.branchAId, deptA1);
+    const draftKeys = await rbacService.createRole(
+      {
+        name: { en: 'PR sole focal', ar: 'منسق طلبات الإدارة الوحيد' },
+        permissionKeys: REQUESTER_KEYS,
+      },
+      world.adminId,
+    );
+    await rbacService.ensureAssignment(signed.id, String(draftKeys._id), 'department');
+    serial += 1;
+    sole = {
+      ...signed,
+      token: await world.login(signed.email),
+      employeeId: await plantEmployee(
+        `PRQ-${String(serial).padStart(3, '0')}`,
+        'موظف sole',
+        world.branchAId,
+        deptA1,
+        'active',
+        signed.id,
+      ),
+    };
+    orgFocal = await requester('org-focal', 'organization', {
+      branchId: world.branchAId,
+      departmentId: deptA1,
+    });
+
+    // B's copy and A1's copy each have a chain of the company department in their branch: one
+    // `unit` rung. B's is staffed by its approver; A1's, so far, by `sole` alone.
+    await writeChain(catalog, world.branchBId, [unitRung]);
+    await writeChain(catalog, world.branchAId, [unitRung]);
+  });
+
+  describe('its number (OD-57 A, OD-58 A; P2 plan §6.3)', () => {
+    let first: AdministrationPurchaseRequestDetailDto;
+
+    it('the first takes PR-<year>-000001 and this Cairo date, pins the chain and stamps its submitter', async () => {
+      const created = await draft(focalB);
+      first = await submitted(focalB, created);
+      const { businessDate } = documentNumberAt('purchaseRequest', new Date());
+      expect(first).toMatchObject({
+        status: 'pendingApproval',
+        number: numbered(1),
+        businessDate: businessDate.toISOString().slice(0, 10),
+        submittedBy: focalB.id,
+        version: 1,
+      });
+      expect(first.submittedAt).not.toBeNull();
+      expect(await counter()).toBe(1);
+
+      // The pin, whole: the chain row's id and its rungs, both from the one chain read (ADR-041
+      // decision 4), and a new round.
+      const row = await AdministrationPurchaseRequestModel.findById(created.id).lean().exec();
+      expect(row).toMatchObject({
+        approvalRequestType: TYPE,
+        approvalSteps: [],
+        approvalChainShape: [{ permissionKey: APPROVE, level: 'unit', label: null }],
+      });
+      expect(String(row?.approvalWorkflowId)).toBe((await basisAt(catalog, world.branchBId))?.id);
+
+      // After the commit: one `statusChange` row with the number, then the approvers' notice.
+      const rows = await trail(created.id);
+      expect(rows.map((r) => r.action)).toEqual(['create', 'statusChange']);
+      expect(rows[1]?.changes).toEqual([
+        { field: 'status', old: 'draft', new: 'pendingApproval' },
+        { field: 'number', old: null, new: numbered(1) },
+      ]);
+    });
+
+    it('tells the live rung’s approvers, once each, of the request — and not the requester', async () => {
+      expect(await told(approverB.id, first.id)).toBe(1);
+      expect(await told(focalB.id, first.id)).toBe(0);
+      expect(await told(null, first.id)).toBe(1);
+      const notice = await NotificationModel.findOne({
+        templateKey: AWAITING,
+        'entityRef.entityId': first.id,
+      })
+        .lean()
+        .exec();
+      expect(notice?.entityRef).toMatchObject({
+        moduleId: 'administration',
+        entityType: 'purchaseRequest',
+        entityId: first.id,
+      });
+      // Its one variable is the number, in both languages (P2 plan §11.1).
+      expect(notice?.title).toEqual({
+        ar: 'طلب شراء بانتظار قرارك',
+        en: 'Purchase request awaiting your decision',
+      });
+      expect(notice?.body).toEqual({
+        ar: `طلب الشراء ${numbered(1)} بانتظار قرارك.`,
+        en: `Purchase request ${numbered(1)} is awaiting your decision.`,
+      });
+    });
+
+    it('announces the submission with the request’s ids, number and count — nothing else', () => {
+      const event = heard.find(
+        (e) => (e.payload as { purchaseRequestId?: string }).purchaseRequestId === first.id,
+      );
+      expect(event?.name).toBe('administration.purchaseRequest.submitted');
+      expect(event?.payload).toEqual({
+        purchaseRequestId: first.id,
+        number: numbered(1),
+        branchId: world.branchBId,
+        lineCount: 1,
+        departmentId: deptB,
+        requesterUserId: focalB.id,
+        requesterEmployeeId: focalB.employeeId,
+      });
+    });
+
+    it('ten drafts submitted at once take ten consecutive numbers; the refused among them take none', async () => {
+      const drafts = await Promise.all(Array.from({ length: 10 }, () => draft(focalB)));
+      const empty = await draft(focalB, { lines: [] });
+      const before = await counter();
+      const answers = await Promise.all([
+        ...drafts.map((d) => submit(focalB, d.id, d.version)),
+        // The same draft a second time: one of the two loses its race and gives its number back.
+        submit(focalB, drafts[0]?.id ?? '', 0),
+        // A draft its rules refuse, before any number is taken.
+        submit(focalB, empty.id, empty.version),
+      ]);
+      const won = answers.filter((res) => res.status === 200);
+      expect(won).toHaveLength(10);
+      const lost = answers.filter((res) => res.status !== 200);
+      expect(lost.map((res) => `${String(res.status)} ${refusal(res).code}`).sort()).toEqual([
+        '422 ADMINISTRATION_INVALID_TRANSITION',
+        '422 ADMINISTRATION_TRANSITION_BLOCKED',
+      ]);
+      const numbers = won.map((res) => data<AdministrationPurchaseRequestDetailDto>(res).number);
+      expect(numbers.sort()).toEqual(
+        Array.from({ length: 10 }, (_, i) => numbered(before + i + 1)),
+      );
+      expect(await counter()).toBe(before + 10);
+    });
+
+    it('a returned request keeps its number and date, and its next submission takes none', async () => {
+      // Where a return (P2.4) leaves a request: back in draft, its number kept, its pin cleared.
+      // Its date and its last stamp are planted where no fresh stamp could put them, and one entry
+      // is left in its round, so each part of the write that a resubmission keeps, restamps or
+      // empties shows (P2 plan §8.2 step 7).
+      const kept = new Date(Date.UTC(series().year - 1, 11, 31));
+      const stamped = new Date('2000-01-01T00:00:00.000Z');
+      await plant(first.id, {
+        status: 'draft',
+        approvalWorkflowId: null,
+        approvalChainShape: [],
+        businessDate: kept,
+        submittedAt: stamped,
+        submittedBy: new Types.ObjectId(approverB.id),
+        approvalSteps: [
+          {
+            stepIndex: 0,
+            outcome: 'approved',
+            deciderUserId: new Types.ObjectId(approverB.id),
+            decidedAt: stamped,
+            comment: null,
+            overriddenWith: null,
+            stepLabel: null,
+            deciderName: null,
+          },
+        ],
+        __v: 2,
+      });
+      const before = await counter();
+      const sentFrom = Date.now();
+      const again = await submitted(focalB, { id: first.id, version: 2 });
+      expect(again).toMatchObject({
+        status: 'pendingApproval',
+        number: first.number,
+        businessDate: kept.toISOString().slice(0, 10),
+        submittedBy: focalB.id,
+        version: 3,
+      });
+      expect(Date.parse(again.submittedAt ?? '')).toBeGreaterThanOrEqual(sentFrom);
+      expect(await counter()).toBe(before);
+      const rows = await trail(first.id);
+      expect(rows.at(-1)?.changes).toEqual([
+        { field: 'status', old: 'draft', new: 'pendingApproval' },
+      ]);
+      // Pinned again, on the chain that applies now, and a new round.
+      const row = await AdministrationPurchaseRequestModel.findById(first.id).lean().exec();
+      expect(row?.approvalChainShape).toHaveLength(1);
+      expect(row?.approvalSteps).toEqual([]);
+    });
+
+    it('rewrites the snapshots once more as it leaves draft (design §2.1, Snapshots)', async () => {
+      const renamed = await freshItem('شريط لاصق', 'Adhesive tape');
+      const created = await draft(focalB, { lines: [line(renamed)] });
+      const rename = await as(world.adminToken).patch(`/items/${renamed.id}`, {
+        name: { ar: 'شريط لاصق عريض', en: 'Wide adhesive tape' },
+        version: renamed.version,
+      });
+      expect(rename.status, JSON.stringify(rename.body)).toBe(200);
+      const sent = await submitted(focalB, created);
+      expect(sent.lines[0]?.itemName).toEqual({ ar: 'شريط لاصق عريض', en: 'Wide adhesive tape' });
+    });
+
+    it('a first submission floors its own series: a lost counter comes back above the numbers taken', async () => {
+      // A counter row dropped or left out of a restore (P2 plan §6.3), while a number above its last
+      // one is taken: the first submission raises the series to that number before its
+      // transaction, so it neither waits for the next boot nor meets `ux_number`.
+      const top = await counter();
+      const taken = await draft(focalB);
+      await plant(taken.id, { status: 'cancelled', number: numbered(top + 40) });
+      await AdministrationCounterModel.deleteOne({ key: series().key }).exec();
+      const sent = await submitted(focalB, await draft(focalB));
+      expect(sent.number).toBe(numbered(top + 41));
+      expect(await counter()).toBe(top + 41);
+    });
+  });
+
+  describe('OD-19 A: nobody to decide it, refused (P2 plan §8.2 steps 3–4)', () => {
+    const stillDraft = async (id: string) => {
+      const row = await AdministrationPurchaseRequestModel.findById(id).lean().exec();
+      expect(row).toMatchObject({ status: 'draft', number: null, approvalWorkflowId: null });
+    };
+
+    it('no chain applies to its department: 422 CHAIN_MISSING · noChain — another department’s does not apply', async () => {
+      // A2's copy is linked to no company department, so the company department's chains in A
+      // and B — written above — are not its; and no chain is written for branch A alone yet.
+      const created = await draft(focalA2);
+      const before = await counter();
+      refused(
+        await submit(focalA2, created.id, created.version),
+        422,
+        'ADMINISTRATION_APPROVAL_CHAIN_MISSING',
+        ['approval:noChain'],
+      );
+      await stillDraft(created.id);
+      expect(await counter()).toBe(before);
+    });
+
+    it('a chain nobody holds a rung of: 422 · unstaffed', async () => {
+      // Branch A's own chain, which A2 falls under: a `branch` rung nobody in A holds.
+      await writeChain(null, world.branchAId, [
+        { permissionKey: APPROVE, level: 'branch', label: null },
+      ]);
+      const created = await draft(focalA2);
+      refused(
+        await submit(focalA2, created.id, created.version),
+        422,
+        'ADMINISTRATION_APPROVAL_CHAIN_MISSING',
+        ['approval:unstaffed'],
+      );
+      await stillDraft(created.id);
+    });
+
+    it('a live rung held only by the requester: 422 · noEligibleApprover', async () => {
+      const created = await draft(sole);
+      refused(
+        await submit(sole, created.id, created.version),
+        422,
+        'ADMINISTRATION_APPROVAL_CHAIN_MISSING',
+        ['approval:noEligibleApprover'],
+      );
+      await stillDraft(created.id);
+    });
+
+    it('still refused with a staffed rung above it; once a second person holds that rung, it passes, and only they are told', async () => {
+      // The company's rung above is staffed (an organization-wide holder), and could decide early:
+      // the live rung is what is checked (P2 plan §8.2 step 4).
+      await writeChain(catalog, world.branchAId, [unitRung, companyRung]);
+      const created = await draft(sole);
+      refused(
+        await submit(sole, created.id, created.version),
+        422,
+        'ADMINISTRATION_APPROVAL_CHAIN_MISSING',
+        ['approval:noEligibleApprover'],
+      );
+
+      const second = await unitApprover('pr-approver-a1', world.branchAId, deptA1);
+      const sent = await submitted(sole, created);
+      expect(sent).toMatchObject({ status: 'pendingApproval', number: expect.any(String) });
+      const row = await AdministrationPurchaseRequestModel.findById(created.id).lean().exec();
+      expect(row?.approvalChainShape.map((rung) => rung.level)).toEqual(['unit', 'organization']);
+      // The live rung's holders less pair A1: the second person alone — never the requester, who
+      // holds it too, nor the company rung's holder, who is not on the live rung.
+      expect(await told(second.id, created.id)).toBe(1);
+      expect(await told(sole.id, created.id)).toBe(0);
+      expect(await told(world.adminId, created.id)).toBe(0);
+      expect(await told(null, created.id)).toBe(1);
+    });
+  });
+
+  describe('the order of its checks (P2 plan §4.2)', () => {
+    it('a colleague’s submission of another’s draft is 403, though their key covers the copy', async () => {
+      const created = await draft(focal);
+      refused(await submit(colleague, created.id, created.version), 403, 'FORBIDDEN');
+      const row = await AdministrationPurchaseRequestModel.findById(created.id).lean().exec();
+      expect(row?.status).toBe('draft');
+    });
+
+    it('another copy’s request is a 404 to the submission, before anything else is said of it', async () => {
+      const created = await draft(focalB);
+      refused(await submit(focal, created.id, created.version), 404, 'NOT_FOUND');
+    });
+
+    it('a stale submission is 409; a submitted request’s is 422 INVALID_TRANSITION, also when stale', async () => {
+      const created = await draft(focal);
+      refused(await submit(focal, created.id, 5), 409, 'STALE_DOCUMENT');
+      await plant(created.id, { status: 'pendingApproval', number: 'PR-2025-009002', __v: 1 });
+      for (const version of [1, 0]) {
+        refused(
+          await submit(focal, created.id, version),
+          422,
+          'ADMINISTRATION_INVALID_TRANSITION',
+          ['status:pendingApproval'],
+        );
+      }
+    });
+
+    it('its lines: none, or an item retired since the draft: 422 TRANSITION_BLOCKED, a detail per rule', async () => {
+      const empty = await draft(focal, { lines: [] });
+      refused(
+        await submit(focal, empty.id, empty.version),
+        422,
+        'ADMINISTRATION_TRANSITION_BLOCKED',
+        ['lines:noLines'],
+      );
+      const retiring = await freshItem('أحبار', 'Inks');
+      const created = await draft(focal, { lines: [line(paper), line(retiring)] });
+      const retire = await as(world.adminToken).patch(`/items/${retiring.id}`, {
+        isActive: false,
+        version: retiring.version,
+      });
+      expect(retire.status, JSON.stringify(retire.body)).toBe(200);
+      refused(
+        await submit(focal, created.id, created.version),
+        422,
+        'ADMINISTRATION_TRANSITION_BLOCKED',
+        ['lines.1.itemId:itemInactive'],
+      );
+    });
+
+    it('a copy that no longer lies in the request’s branch: 422 · copyMoved, and no chain is asked', async () => {
+      const created = await draft(orgFocal);
+      // Only an operator's fix or the org-catalog merge rewrites a request's copy (design §7.7).
+      await plant(created.id, { departmentId: new Types.ObjectId(deptB) });
+      refused(
+        await submit(orgFocal, created.id, created.version),
+        422,
+        'ADMINISTRATION_TRANSITION_BLOCKED',
+        ['departmentId:copyMoved'],
+      );
+    });
   });
 });
 

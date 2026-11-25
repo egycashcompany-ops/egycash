@@ -314,7 +314,7 @@ describe('the seed builds the indexes first, and holds no state', () => {
     expect(body).not.toMatch(/throw |process\.exit/);
   });
 
-  it('raises the counters, then ensures the papers’ and the requests’ file categories, after the indexes and before the roles', () => {
+  it('raises the counters, then ensures the papers’ and the requests’ file categories and the templates, after the indexes and before the roles', () => {
     const sync = body.indexOf('await syncDeclaredIndexes(');
     const items = body.indexOf('await ensureItemCodeCounter();');
     const suppliers = body.indexOf('await ensureSupplierCodeCounter();');
@@ -323,6 +323,8 @@ describe('the seed builds the indexes first, and holds no state', () => {
     const category = body.indexOf('await ensureSupplierDocumentsCategory();');
     // The requests' files (P2.6): the first upload ensures the category again.
     const requestFiles = body.indexOf('await ensureRequestAttachmentsCategory();');
+    // The requests' notices (P2.3): before any act sends one (P2 plan §11.1; RK-22).
+    const templates = body.indexOf('await ensurePurchaseRequestTemplates();');
     const roles = body.indexOf('rbacService.ensureManagedRole(');
     expect(sync).toBeGreaterThanOrEqual(0);
     expect(items).toBeGreaterThan(sync);
@@ -330,14 +332,16 @@ describe('the seed builds the indexes first, and holds no state', () => {
     expect(requests).toBeGreaterThan(suppliers);
     expect(category).toBeGreaterThan(requests);
     expect(requestFiles).toBeGreaterThan(category);
-    expect(roles).toBeGreaterThan(requestFiles);
+    expect(templates).toBeGreaterThan(requestFiles);
+    expect(roles).toBeGreaterThan(templates);
     // Each step logs its own failure and the boot goes on: the write that needs it repeats it.
     for (const [from, to] of [
       [items, suppliers],
       [suppliers, requests],
       [requests, category],
       [category, requestFiles],
-      [requestFiles, roles],
+      [requestFiles, templates],
+      [templates, roles],
     ] as const) {
       expect(body.slice(from, to)).toMatch(/catch \(err\)[\s\S]*logger\.warn\(/);
     }

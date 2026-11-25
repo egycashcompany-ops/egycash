@@ -1,6 +1,7 @@
 // Purchase requests (P2 plan §4; design §5.4, §7.3, §7.5): the register, the record, the create
-// and a draft's edit — P2.2. Submission, decisions, returns, cancels and request files join with
-// their slices (P2.3 to P2.6). Nothing is deleted: a request ends in a terminal status.
+// and a draft's edit — P2.2 — and the submission to the approval chain — P2.3. A request's files
+// are `purchase-request-files.ts`'s (P2.6); decisions, returns and cancels join with their slices
+// (P2.4, P2.5). Nothing is deleted: a request ends in a terminal status.
 //
 // THE REQUESTER IS THE CALLER (OD-16 A, design §7.3). The create reads the caller's own employee
 // through the directory, never a body field, and files the request on that employee's department
@@ -18,19 +19,27 @@
 // must allow the act (422), its version must be current (409), and only then are the act's rules
 // judged (422) — the base repository's "never writable" before "someone else wrote it first",
 // applied before the write too. Every write is followed, after commit, by its audit row and the
-// branch signal.
+// branch signal, then its notices and its event.
+//
+// THE SUBMISSION IS ONE TRANSACTION (design §5.1.3, T). The chain is read and the approvers found
+// before it begins (OD-19 A); the number is its first write, and one conditional write on the
+// draft's status and version moves the request, so a submission that loses its race aborts and
+// gives its number back — the series has no gap (OD-58 A).
 import {
   ADMINISTRATION_PURCHASE_REQUEST_SORTS,
   CONTENT_EDITABLE,
+  formatAdministrationNumber,
   ymdToUtcDate,
   type CreateAdministrationPurchaseRequest,
   type ListAdministrationPurchaseRequestsQuery,
   type Paginated,
+  type SubmitAdministrationPurchaseRequest,
   type UpdateAdministrationPurchaseRequest,
   type AdministrationAvailableActionDto,
   type AdministrationPurchaseRequestLineEdit,
 } from '@ecms/contracts';
 import { Types } from 'mongoose';
+import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
 import { departmentRepository } from '../../../../platform/organization';
 import { narrowToBranch } from '../../../../shared/base/branch-scope';
 import { ForbiddenError, NotFoundError, type AppError } from '../../../../shared/errors';
@@ -43,15 +52,29 @@ import {
 } from '../../../../shared/types';
 import { itemActiveFor, itemSnapsOf } from '../../catalog/items/index';
 import { administrationPeopleService } from '../../people/index';
+import {
+  PURCHASE_REQUEST_APPROVAL_TYPE,
+  approvalUnitOf,
+  chainForSubmission,
+} from '../../shared/approvals';
 import { addDaysYmd, cairoDayStart } from '../../shared/cairo-day';
-import { ensureCounter } from '../../shared/counter.model';
-import { documentNumberAt } from '../../shared/document-number';
+import { ensureCounter, nextNumber } from '../../shared/counter.model';
+import { documentNumberAt, type DocumentNumberSeries } from '../../shared/document-number';
+import { findTransition } from '../../shared/lifecycle';
 import { assertCurrentVersion, escapeRegExp } from '../../shared/master-data';
-import { auditPurchaseRequestCreated, auditPurchaseRequestEdited } from './purchase-request-audit';
+import {
+  auditPurchaseRequestCreated,
+  auditPurchaseRequestEdited,
+  auditPurchaseRequestSubmitted,
+} from './purchase-request-audit';
+import { announcePurchaseRequestSubmitted } from './purchase-request-events';
+import { PURCHASE_REQUEST_TRANSITIONS, submitProblem } from './purchase-request-lifecycle';
+import { notifyAwaitingDecision } from './purchase-request-notices';
 import {
   inactiveItemsRefusal,
   invalidTransition,
   isRequester,
+  pairA1Of,
   purchaseRequestActions,
   requesterRefusal,
   unknownLinesRefusal,
@@ -89,13 +112,26 @@ type SentLine = Pick<AdministrationPurchaseRequestLineEdit, 'lineId' | 'itemId' 
 type DirectoryPerson = Parameters<typeof administrationPeopleService.resolvePerson>[0];
 
 /**
- * The yearly series' counter, raised to the highest number of this Cairo year already taken and
- * never lowered — at every boot, and before each submission, OUTSIDE its transaction (P2 plan
- * §6.3). A counter lost while requests exist comes back above their numbers.
+ * A yearly series' counter, raised to the highest number of its year already taken and never
+ * lowered — OUTSIDE the transaction that takes the next one (P2 plan §6.3). A counter lost while
+ * requests exist comes back above their numbers.
  */
-export const ensurePurchaseRequestNumberCounter = async (at = new Date()): Promise<void> => {
-  const { series } = documentNumberAt('purchaseRequest', at);
+const ensureSeriesCounter = async (series: DocumentNumberSeries): Promise<void> => {
   await ensureCounter(series.key, await repository.highestNumber(series));
+};
+
+/** This Cairo year's series, at every boot — and each first submission raises its own again. */
+export const ensurePurchaseRequestNumberCounter = async (at = new Date()): Promise<void> => {
+  await ensureSeriesCounter(documentNumberAt('purchaseRequest', at).series);
+};
+
+/** Whether the request's status allows its submission — the table's row 2, from `draft`. */
+const assertSubmittable = (doc: AdministrationPurchaseRequestDoc): void => {
+  if (
+    findTransition(PURCHASE_REQUEST_TRANSITIONS, doc.status, 'pendingApproval')?.action !== 'submit'
+  ) {
+    throw invalidTransition(doc.status);
+  }
 };
 
 class AdministrationPurchaseRequestService {
@@ -152,8 +188,10 @@ class AdministrationPurchaseRequestService {
 
   /**
    * What this reader may do with the request now (P2 plan §4.4), from the whole lifecycle table.
-   * No request holds a pin before its submission (P2.3), so no reader stands on its chain yet; the
-   * trail that says who does joins with the decisions (P2.4).
+   * From P2.3 a submitted request holds its pin, but the engine's trail that says who stands on its
+   * chain joins with the decisions (P2.4): until then `trail` is null for every request, so every
+   * reader's decide and return read `notYourStep` (design §22, P2.2 built). No route decides before
+   * P2.4, and no screen reads `availableActions` before P2.W1 (P2 plan §7).
    */
   actionsFor(
     doc: AdministrationPurchaseRequestDoc,
@@ -276,6 +314,116 @@ class AdministrationPurchaseRequestService {
     });
     await auditPurchaseRequestEdited(before, updated);
     return updated;
+  }
+
+  /**
+   * A draft sent to its approval chain (P2 plan §8.2; design §5.4 row 2). Loaded under `.create`'s
+   * scope; the key must cover its Unit and the caller be its requester (403); then its status (422)
+   * and its version (409); then the rules — its lines (`submitProblem`), its Unit, and OD-19 A's
+   * chain with an eligible approver on its live rung (422). Only then the transaction: the number
+   * on the first submission (a returned request keeps its own), and one conditional write that
+   * pins the chain read here, stamps the submission and rewrites the snapshots one last time.
+   *
+   * The chain is read before the transaction, so an edit of it between the read and the commit
+   * applies to the next submission: the request is decided on the pin it stored (ADR-041 decision
+   * 4). After the commit: the audit row and the signal, the approvers' notice, the event.
+   */
+  async submit(
+    id: string,
+    input: SubmitAdministrationPurchaseRequest,
+    ctx: AuthContext,
+  ): Promise<AdministrationPurchaseRequestDoc> {
+    const scope = scopeSelector(ctx, CREATE);
+    const before = await repository.findById(id, scope);
+    if (before === null) throw new NotFoundError('purchase request not found');
+    if (!keyCoversUnit(ctx, CREATE, String(before.branchId), String(before.departmentId))) {
+      throw new ForbiddenError(`${CREATE} does not cover this purchase request's department`);
+    }
+    if (!isRequester(before, ctx.userId)) {
+      throw new ForbiddenError('a draft is submitted by its requester alone');
+    }
+    assertSubmittable(before);
+    assertCurrentVersion(before, input.version);
+
+    // Every line's item, judged as a new reference: the approvers decide on what the catalog
+    // offers today, so a line whose item was retired since its draft was saved is refused here.
+    const items = await itemSnapsOf(before.lines.map((line) => String(line.itemId)));
+    refuseIf(
+      submitProblem(
+        before.lines.map((line) => {
+          const named = items.get(String(line.itemId));
+          return {
+            qty: line.qty,
+            item:
+              named === undefined ? null : { isActive: itemActiveFor(named.item, 'newReference') },
+          };
+        }),
+      ),
+    );
+    const unit = await approvalUnitOf(before);
+    // Pair A1 with this caller as the submitter: a live rung they alone hold has nobody to decide.
+    const { pin, approvers } = await chainForSubmission(
+      PURCHASE_REQUEST_APPROVAL_TYPE,
+      unit,
+      pairA1Of({ ...before, submittedBy: ctx.userId }),
+    );
+    const [lines, requester, branch] = await Promise.all([
+      this.linesFor(null, before.lines),
+      this.requesterNow(before),
+      branchSnap(String(before.branchId)),
+    ]);
+
+    // One instant for the submission's stamp, its business date and its number's year, read once
+    // (OD-57 A; RK-13), so the stored date and the counter key never fall on two sides of Cairo's
+    // midnight. A returned request keeps its number and its business date, and takes neither.
+    const submittedAt = new Date();
+    const numbering =
+      before.number === null ? documentNumberAt('purchaseRequest', submittedAt) : null;
+    await repository.ensureCollection();
+    if (numbering !== null) await ensureSeriesCounter(numbering.series);
+
+    // The repository's conditional write: `{ _id, __v }` with its draft condition and `.create`'s
+    // scope. A miss is answered inside the transaction, so it aborts and the number it took goes
+    // back: the request re-read as it stands, 404 when the scope no longer finds it, 422 when its
+    // status moved, else 409.
+    const after = await unitOfWork(async (session) => {
+      const taken =
+        numbering === null
+          ? {}
+          : {
+              number: formatAdministrationNumber(
+                numbering.series.kind,
+                numbering.series.year,
+                await nextNumber(numbering.series.key, session),
+              ),
+              businessDate: numbering.businessDate,
+            };
+      return repository.updateById(
+        id,
+        {
+          status: 'pendingApproval',
+          ...taken,
+          approvalRequestType: PURCHASE_REQUEST_APPROVAL_TYPE,
+          // The pin, whole, from the one `pinOf` above: the fields' own check that an id comes with
+          // its rungs runs at create and save only, never in an update (P2 plan §1.2 item 28), so
+          // this write is what keeps the two together.
+          approvalWorkflowId: new Types.ObjectId(pin.workflowId),
+          approvalChainShape: [...pin.steps],
+          approvalSteps: [],
+          submittedAt,
+          submittedBy: new Types.ObjectId(ctx.userId),
+          lines,
+          branch,
+          ...requester,
+        },
+        { by: ctx.userId, version: input.version, scope, session },
+      );
+    });
+
+    await auditPurchaseRequestSubmitted(before, after);
+    await notifyAwaitingDecision(after, approvers);
+    await announcePurchaseRequestSubmitted(after);
+    return after;
   }
 
   /**

@@ -8,8 +8,9 @@
 // three keys and page, their route and collection, their topic, their papers' authorizer, and the
 // supplier keys each bundle gains; P2.2: the purchase requests' four keys and page, their route and
 // collection, their topic, the department requester's bundle and the request keys four others gain
-// (P2 plan §9), and the item reads opened to the request's create key; P2.6: the requests' files —
-// their authorizer and their three routes.
+// (P2 plan §9), and the item reads opened to the request's create key; P2.3: the submission's
+// route, and the request type the manifest registers with the approval engine as it loads; P2.6:
+// the requests' files — their authorizer and their three routes.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +25,8 @@ import {
   administrationPages,
   administrationPermissions,
 } from './administration.module';
+// After the manifest, which loads the adapter that registers the type (and the engine with it).
+import { getApprovalRequestType, listApprovalRequestTypes } from '../../platform/approvals';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const read = (relative: string): string => readFileSync(join(HERE, relative), 'utf8');
@@ -449,7 +452,7 @@ describe('the purchase-request routes (P2 plan §4.1)', () => {
   const gate = (route: { body: string }): string =>
     (/authorize(?:Any)?\(([^)]*)\)/.exec(route.body)?.[1] ?? '').replace(/\s+/g, ' ').trim();
 
-  it('serves P2.2’s four routes: the register, the record, the create and a draft’s edit', () => {
+  it('serves P2.2’s four routes and P2.3’s submission, under the key that raised the draft', () => {
     expect(
       routes
         .filter((r) => !r.path.includes('/attachments'))
@@ -459,7 +462,10 @@ describe('the purchase-request routes (P2 plan §4.1)', () => {
       "GET /:id 'administrationPurchaseRequest.view', 'administrationPurchaseRequest.approve'",
       "POST / 'administrationPurchaseRequest.create'",
       "PATCH /:id 'administrationPurchaseRequest.edit'",
+      "POST /:id/submit 'administrationPurchaseRequest.create'",
     ]);
+    const submit = routes.find((r) => r.path === '/:id/submit')?.body ?? '';
+    expect(submit).toContain('body: SubmitAdministrationPurchaseRequestSchema');
   });
 
   it('serves P2.6’s three file routes: written under either draft key, read as the record is', () => {
@@ -483,6 +489,23 @@ describe('the purchase-request routes (P2 plan §4.1)', () => {
     expect(routes.filter((r) => r.method === 'delete').map((r) => r.path)).toEqual([
       '/:id/attachments/:attachmentId',
     ]);
+  });
+
+  it('registers the purchase request with the approval engine as the manifest loads (design §6.4)', () => {
+    // The chain screen offers only a registered type's keys, and a save naming another is refused
+    // (ADR-041 decision 9), so a chain can name `.approve` and nothing else.
+    expect(getApprovalRequestType('administration.purchaseRequest')).toEqual({
+      key: 'administration.purchaseRequest',
+      moduleId: 'administration',
+      name: { ar: 'طلبات الشراء', en: 'Purchase requests' },
+      permissionKeys: ['administrationPurchaseRequest.approve'],
+    });
+    expect(
+      listApprovalRequestTypes()
+        .filter((type) => type.moduleId === 'administration')
+        .map((type) => type.key),
+    ).toEqual(['administration.purchaseRequest']);
+    expect(read('administration.module.ts')).toContain("import './shared/approvals';");
   });
 
   it('registers the request’s line lock with the items as its index loads (§6.2)', () => {

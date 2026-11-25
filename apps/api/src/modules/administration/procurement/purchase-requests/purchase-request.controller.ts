@@ -8,6 +8,7 @@ import {
   type AdministrationPurchaseRequestDetailDto,
   type CreateAdministrationPurchaseRequest,
   type ListAdministrationPurchaseRequestsQuery,
+  type SubmitAdministrationPurchaseRequest,
   type UpdateAdministrationPurchaseRequest,
 } from '@ecms/contracts';
 import { created, ok, okPage, validated } from '../../../../platform/web';
@@ -74,6 +75,15 @@ export const updateAdministrationPurchaseRequest = async (
   const { body, params } = validated<UpdateAdministrationPurchaseRequest, never, IdParam>(req);
   const ctx = authContext(req);
   ok(res, await detailOf(ctx, await service.update(params.id, body, ctx)));
+};
+
+export const submitAdministrationPurchaseRequest = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const { body, params } = validated<SubmitAdministrationPurchaseRequest, never, IdParam>(req);
+  const ctx = authContext(req);
+  ok(res, await detailOf(ctx, await service.submit(params.id, body, ctx)));
 };
 
 // ── A request's files (P2.6) ────────────────────────────────────────────────

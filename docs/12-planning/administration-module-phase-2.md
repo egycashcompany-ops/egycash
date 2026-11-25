@@ -220,11 +220,11 @@ PX-1 re-detail §4–§6). Where the P2 text predates the ADR, the ADR wins:
     (`warehouses/warehouses/warehouse-holds.ts:1-34`), and the item edit still changes the unit freely
     (`catalog/items/item.service.ts:229-231`). P2.2 ships the registry and the PR as its first registrant (§6.2).
 12. The attachment limit. Request attachments inherit Phase 1's bound, `ADMINISTRATION_MAX_LIST_ATTACHMENTS` (20,
-    `packages/contracts/src/modules/administration.ts:120`), and its refusal `ADMINISTRATION_ATTACHMENT_LIMIT`
+    `packages/contracts/src/modules/administration.ts:197`), and its refusal `ADMINISTRATION_ATTACHMENT_LIMIT`
     (`packages/contracts/src/errors/index.ts:732-737`), which design §5.15's P2 table does not list.
 13. An older citation error. Design §7.5's basis for refusing an unplaced account, `leave-request.service.ts:85-90`
-    (leave's `ownEmployee`, now at `:87-92`), refuses only a login with no employee; an employee with no department is
-    filed with a null department (`unitOf`, `leave-request.service.ts:103-113`). P2 refuses both (§4.2).
+    (leave's `ownEmployee`, now at `:88-93`), refuses only a login with no employee; an employee with no department is
+    filed with a null department (`unitOf`, `leave-request.service.ts:104-114`). P2 refuses both (§4.2).
 
 **C. Plan-of-record changes this re-detail makes, and its one reading of ADR-041 (item 17).** Each item that sets a
 new rule names the alternative it rejects.
@@ -295,9 +295,11 @@ new rule names the alternative it rejects.
     set; a further pair is the owner's to decide, each alone (`administration-module-decisions-and-phases.md:917-930`).
 
 **D. Moved and corrected line pins** that P2's pull requests touch (no behavior changed; the counts they pin are in
-§12.3). Each pull request re-pins the lines it moves; these are read after P2.2, with the `de38fd71` pin beside each:
+§12.3). Each pull request re-pins the lines it moves; these are read after P2.2, with the `de38fd71` pin beside each,
+and P2.3's moves after them:
 
-- web `FRIENDLY` is `apps/web/src/shared/lib/errors.ts:8-332` (`:8-307` on `de38fd71`; design §5.15 cites `:8-266`);
+- web `FRIENDLY` is `apps/web/src/shared/lib/errors.ts:8-345` after P2.3 (`:8-332` after P2.2, `:8-307` on `de38fd71`;
+  design §5.15 cites `:8-266`);
 - the module's realtime rows are `apps/api/src/platform/realtime/realtime-registry.ts:245-264` (`:245-259`), and
   `platform.approval` is classified at `:343-347` (`:331-335`);
 - the module's web rows are `apps/web/src/platform/realtime/invalidation-registry.ts:652-675` (`:652-672`), and
@@ -310,7 +312,15 @@ new rule names the alternative it rejects.
   `apps/api/tests/integration/auth-seed-login.spec.ts:40`, with the breakdown at `:299-308` and the groups at `:325`;
 - corrected, not moved: the audit service's `recordMany` is `apps/api/src/platform/audit/audit.service.ts:251-273`.
   Design §10.1 cites `:229-274`, which starts at its doc comment (`administration-module-design-integration.md:499`);
-  the file has not changed since `9efdcbd9`.
+  the file has not changed since `9efdcbd9`;
+- moved by P2.3, read after it, with the pin before it beside each: the event catalogue's `EVENT_MODULE_NAMES`,
+  `packages/contracts/src/events/catalog.ts:662-670` (`:657-664`), its `buildEventCatalog(` call `:1508-1515`
+  (`:1486-1492`) and the `approvalDecided` words `:881` (`:872`); `catalog.spec.ts`'s `ALL_SCHEMAS` `:152` (`:147`)
+  and its "invents nothing" case `:197` (`:181`); in `packages/contracts/src/modules/administration.ts`, the master
+  codes' width `:27-31` (`:24-28` on `de38fd71`), their pair `:41-71` (`:38-68`) and the attachment bound
+  `ADMINISTRATION_MAX_LIST_ATTACHMENTS` `:189-197` (`:112-120`), each moved by P2.1 and P2.2 first; the seed's code
+  counters, `apps/api/src/modules/administration/administration.seed.ts:66-75` (`:35-44`), moved by P2.2 and P2.6
+  first; and `FRIENDLY`, above.
 
 **E. The second drift check, on the engine PX-1 built** (2026-11-25, §3). It read `a4434d00`, PX-1.6's head, against
 §1.2 A items 1–5 and 17, Terms, §4.4, §8, §10.2 and §12's engine-facing cases, and against how HR leave now hosts the
@@ -344,7 +354,7 @@ differs from this re-detail:
     *Rejected:* counting from `currentStep` in P2.4, an extra engine read per decision that the sweep cannot make, which
     would send one stop's notices to two audiences under one idempotency key (§11.2).
 25. **Off `pendingApproval` the trail marks no rung** (§8.6; §12.2). Leave's `trailFor` returns the engine's trail with
-    `currentStep: null` as well as the four fields this re-detail names (`leave-request.service.ts:701-711`): a
+    `currentStep: null` as well as the four fields this re-detail names (`leave-request.service.ts:719-729`): a
     cancelled request's chain still reads `pending` or `unstaffed` to the engine, and the panel marks "waiting here"
     from `currentStep` alone (`apps/web/src/platform/approvals/ApprovalChainPanel.tsx:61, 84-88`). This re-detail copied
     the four fields of PX-1's re-detail (`administration-module-phase-px1.md:362-371`), which leave's later fix for a
@@ -354,8 +364,8 @@ differs from this re-detail:
 26. **The subject maps the stored entries** (§8.1; §8.3 step 6). `DecidedEntry.deciderUserId` is a string or null
     (`approval-trail.ts:26-36`), while a PR's stored `ApprovalEntry` holds an ObjectId and two snapshots (design §2.1,
     `administration-module-design.md:735-738`). Leave's `subjectOf` maps each stored entry to the engine's six fields,
-    the id as a string (`leave-request.service.ts:124-138`), and its append turns the returned ids back into ObjectIds
-    (`:630-634`). Passed raw, the PR's entries would not typecheck, and `trailFor` would collect decider ids and look up
+    the id as a string (`leave-request.service.ts:125-139`), and its append turns the returned ids back into ObjectIds
+    (`:637-641`). Passed raw, the PR's entries would not typecheck, and `trailFor` would collect decider ids and look up
     their names by an ObjectId (`approval.service.ts:187-199`). The adapter maps them as leave does, for every call that
     passes a subject (§8.1), and the append converts back (§8.3 step 6).
 27. **No rung has a caption** (§6.1; §8.6; §9.5; criterion 13). The chain screen writes none: a rung row offers a key
@@ -373,7 +383,7 @@ differs from this re-detail:
 28. **The pin is written by an update** (§8.2 step 7). `approvalPinFields`' validator, which refuses an id with no
     rungs, runs only where Mongoose validates a document, at create and save; no update in ECMS runs validators
     (`workflow.model.ts:44-61, 74-86`). Leave pins inside its create, where it runs
-    (`leave-request.service.ts:334-341`). P2 is the first host to pin through an update, the submission's conditional
+    (`leave-request.service.ts:335-342`). P2 is the first host to pin through an update, the submission's conditional
     write, so that write alone keeps the two fields together: it sets `approvalWorkflowId` to an ObjectId of
     `pin.workflowId` and `approvalChainShape` to `pin.steps`, from one `pinOf` result. After §8.2 step 3, `pinOf` never
     returns null or an id without rungs (`approval.service.ts:119-127`).
@@ -404,13 +414,20 @@ differs from this re-detail:
       `:87-92`; the Unit, `:101-111` → `:103-113` (item 13; §8.1); the conditional append, `:589-611` → `:619-641`
       (§8.3); PX-1's leave-trail paragraph, `administration-module-phase-px1.md:360-369` → `:362-371` (§8.6), and that
       file's other cited lines by two (`:198` → `:200`, `:765-817` → `:767-819`);
+    - HR leave again, after this re-detail: PXQ-1 (`375abac5`) moved the service's lines down, each re-pinned where it
+      stands (read at P2.3): the registration `:67-73` → `:68-74` (§8.1); `ownEmployee` `:87-92` → `:88-93` (item 13);
+      the Unit `:103-113` → `:104-114` (item 13; §8.1); `subjectOf` `:124-138` → `:125-139` (item 26; §8.1); the
+      create's pin `:334-341` → `:335-342` (item 28; §8.2 step 7); the conditional append `:619-641` → `:626-648`, its
+      `isDeleted: false` `:624` → `:631` and its ids turned back `:630-634` → `:637-641` (item 26; §8.3); the trail off
+      `pendingApproval` `:701-711` → `:719-729` (item 25; §8.6); and `HrLeaveTemplates`,
+      `packages/contracts/src/modules/hr-leave.ts:554-564` → `:558-568` (§5);
     - the chain screen (§3, the P2.0 row and note 1): the Arabic names, `ApprovalWorkflowsPage.tsx:91-92, 97-101, 260,
       282, 298` → `:102-103, 108-114, 275, 299, 317`; the rung keys, `:214, 323-327` → `:229, 342-346`. PX-1.6 also
       added the reader's `locale` (`:73`) and `errorMessage(save.error, locale)` (`:402-404`), which P2.0 can reuse;
     - the design: every citation of `administration-module-decisions-and-phases.md` past its §16.12 log moved three
       lines down when the owner's answers of 2026-11-25 were logged (`:1940-1942`).
 
-Not drift, and kept as written: leave's append filter also carries `isDeleted: false` (`leave-request.service.ts:624`),
+Not drift, and kept as written: leave's append filter also carries `isDeleted: false` (`leave-request.service.ts:631`),
 which §8.3's leaves out, since no PR is soft-deleted in P2; and `LiveChain.status` is typed with all five statuses
 (`approval.service.ts:87-97`), while `chainFor` gives only the three of item 3.
 
@@ -609,7 +626,7 @@ chain screen as well. It found the engine as §1.2 A describes it and asks for n
 
 | Pull request | Content | Depends on | Size |
 |---|---|---|---|
-| **P2.0** | Platform prerequisites. The audit verb `approvalDecision` in `AUDIT_ACTIONS`, with its rationale comment and its en and ar labels, "approval decided" and «البت في اعتماد», the catalog's wording (`packages/contracts/src/events/catalog.ts:872`). The approval panel, which shows the Arabic caption today, shows a rung's caption in the reader's language, else the level's name, which is what it shows in practice, since the chain screen writes no caption (§1.2 item 27), and drops the raw `permissionKey · level` line (`apps/web/src/platform/approvals/ApprovalChainPanel.tsx:76-79, 95-97`; note 1). The chain screen, which shows Arabic names today, names request types and places in the reader's language, in its list and in its editor's three selects (`apps/web/src/modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx:102-103, 108-114, 275, 299, 317`), with the reader's `locale` it already reads (`:73`), and keeps every string its source scan pins (§1.2 item 30) | PX-1 closed (PX-1.6 edits the same page); deployed before P2.4 as §15 orders | about 250 |
+| **P2.0** | Platform prerequisites. The audit verb `approvalDecision` in `AUDIT_ACTIONS`, with its rationale comment and its en and ar labels, "approval decided" and «البت في اعتماد», the catalog's wording (`packages/contracts/src/events/catalog.ts:881`). The approval panel, which shows the Arabic caption today, shows a rung's caption in the reader's language, else the level's name, which is what it shows in practice, since the chain screen writes no caption (§1.2 item 27), and drops the raw `permissionKey · level` line (`apps/web/src/platform/approvals/ApprovalChainPanel.tsx:76-79, 95-97`; note 1). The chain screen, which shows Arabic names today, names request types and places in the reader's language, in its list and in its editor's three selects (`apps/web/src/modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx:102-103, 108-114, 275, 299, 317`), with the reader's `locale` it already reads (`:73`), and keeps every string its source scan pins (§1.2 item 30) | PX-1 closed (PX-1.6 edits the same page); deployed before P2.4 as §15 orders | about 250 |
 | **P2.1** | Numbering and the item's kind. The yearly formatter and parser in contracts; the yearly series key and floor in `shared/document-number.ts`; `shared/cairo-day.ts`, a re-export of the contracts' Cairo calendar; items gain `stockTracked` (contract, model, service, DTO, audit snapshot). No key, route or page | PX-1 closed | about 350 |
 | **P2.2** | Drafts. Keys `.view`, `.create`, `.edit` and `.approve`, and the page (§9.1); the model with every field of §6.1 and its indexes; `shared/lifecycle.ts` and the whole lifecycle table (§7); the register, the record, create, and draft edits that only the requester may make (§1.2 item 22); the item reads opened to `.create` for the picker, `activeFor` and the many-id item read exported; the item unit lock and its first registrant; the topic and its web row; audit `create` and `update`; the census rows of §6.4; the department requester bundle, `.view` in four bundles and `.approve` in the Administrative Affairs manager's (§9.3) | P2.1; PX-1.4 (the pin fields) | about 1,200 |
 | **P2.3** | Submission. The adapter: registration with `{ audit: 'host' }`, the Unit, OD-19 A, the eligible-approver check, the remap; `POST /:id/submit`, the number and the pin; the approvers' notice and its template, and the seed-coverage spec; the event `.submitted`; criterion 8's contention script (§16) | P2.2; PX-1.5 | about 700 |
@@ -723,7 +740,7 @@ notices through `.catch()`, then its event (design §5.1.2; §10, §11).
   delete intent, so a removal is asked as a write (`supplier-files.ts:83-98`).
 - **List B**, design §11.4's typed list, editable only while the PR is a draft (OD-76 after submission (i)): an add's
   filter carries `status: 'draft'`, the version and the 20-entry bound, so two racing adds cannot both pass it
-  (`administration.ts:112-120`); a full list answers 422 `ADMINISTRATION_ATTACHMENT_LIMIT`. A failed link write
+  (`administration.ts:189-197`); a full list answers 422 `ADMINISTRATION_ATTACHMENT_LIMIT`. A failed link write
   soft-deletes the new file (design §11.4), under the same write intent: if the requester's own submission lands
   between the upload and the link, that cleanup is refused and the file stays unlinked. Nothing lists it, since the
   list and the scan states read the links, and it is accepted. The link audits `update` with an `attachment`
@@ -791,11 +808,11 @@ is its requester.
 
 | File | P2 adds |
 |---|---|
-| `packages/contracts/src/modules/administration.ts` | `ADMINISTRATION_DOCUMENT_KINDS = ['purchaseRequest']`, their prefixes (`PR`) and `ADMINISTRATION_DOCUMENT_DIGITS = 6`; `formatAdministrationNumber(kind, year, seq)` and `parseAdministrationNumber(number)`, which read only the formatter's own spelling, as the master-code pair does (`:38-68`); `ADMINISTRATION_MAX_DOCUMENT_LINES = 100`; `AdministrationAvailableActionDto { key, permission, enabled, reason }`, recruitment's shape (design §5.1.4); `ADMINISTRATION_ITEM_UNIT_LOCKS = ['purchaseRequestLine']`, the unit-lock checkers' answers (§6.2); `AdministrationEvents`, one flat `as const` with the four P2 names, and their `…PayloadV1` schemas (§10.3); `AdministrationTemplates`, the template keys of §11.1, HR leave's shape (`packages/contracts/src/modules/hr-leave.ts:554-564`); `ADMINISTRATION_REQUEST_ATTACHMENTS_FILE_CATEGORY` and its MIME list |
+| `packages/contracts/src/modules/administration.ts` | `ADMINISTRATION_DOCUMENT_KINDS = ['purchaseRequest']`, their prefixes (`PR`) and `ADMINISTRATION_DOCUMENT_DIGITS = 6`; `formatAdministrationNumber(kind, year, seq)` and `parseAdministrationNumber(number)`, which read only the formatter's own spelling, as the master-code pair does (`:41-71`); `ADMINISTRATION_MAX_DOCUMENT_LINES = 100`; `AdministrationAvailableActionDto { key, permission, enabled, reason }`, recruitment's shape (design §5.1.4); `ADMINISTRATION_ITEM_UNIT_LOCKS = ['purchaseRequestLine']`, the unit-lock checkers' answers (§6.2); `AdministrationEvents`, one flat `as const` with the four P2 names, and their `…PayloadV1` schemas (§10.3); `AdministrationTemplates`, the template keys of §11.1, HR leave's shape (`packages/contracts/src/modules/hr-leave.ts:558-568`); `ADMINISTRATION_REQUEST_ATTACHMENTS_FILE_CATEGORY` and its MIME list |
 | `packages/contracts/src/modules/administration-procurement.ts` | `ADMINISTRATION_PURCHASE_REQUEST_STATUSES` (six) and `…_ORDER_STATUSES` (three); the guard sets `PR_SOURCEABLE`, `APPROVAL_PENDING`, `CONTENT_EDITABLE` and `PR_CANCELLABLE`, each a `Readonly<Record<status, boolean>>` (design §5.14); `CreateAdministrationPurchaseRequestSchema { neededBy?, justification?, notes?, lines }`, each line `{ itemId, qty, notes? }`, 0 to 100 lines, `qty` an integer from 1 to 1,000,000 (design §2.1, Quantities), `neededBy` a `YYYY-MM-DD` date (`isYmd`, `packages/contracts/src/common/cairo-date.ts:89`), past dates allowed, since a returned draft may carry one; `UpdateAdministrationPurchaseRequestSchema` with `version`, `null` clearing a field and `lines` replacing the list, each line `{ lineId?, itemId, qty, notes? }` (§4.2); `SubmitAdministrationPurchaseRequestSchema { version }`; `ListAdministrationPurchaseRequestsQuerySchema`, `PaginationQuerySchema` extended with §4.1's filters, `status` as `listQuery(status)` and `departmentIds` as `listQuery(objectId(), 200)`; `ADMINISTRATION_PURCHASE_REQUEST_ACTIONS` and `…_ACTION_REASONS`, §4.4's keys and reasons; `DecideAdministrationPurchaseRequestSchema`, the platform's `DecideApprovalSchema` (`packages/contracts/src/platform/approvals.ts:212-217`) plus `version` and `cuts?: { lineId, qty }[]`, at most 100 with distinct `lineId`s, each `qty` an integer from 1 to 1,000,000 that the service bounds by the line's open quantity (§7.3), refusing cuts on a rejection; `ReturnAdministrationPurchaseRequestSchema { version, reason }` and `CancelAdministrationPurchaseRequestSchema { version, reason? }`, a reason being 1 to 1,000 characters; `AddAdministrationPurchaseRequestAttachmentSchema` and `AdministrationPurchaseRequestAttachmentVersionQuerySchema`, as the supplier's (`administration-procurement.ts:100-117`); the list, detail, summary and attachment DTOs (§6.5) |
 | `packages/contracts/src/modules/administration-catalog.ts` | `stockTracked` on the item create (default `true`), update and DTO (`:223, 254, 270`); `CreateAdministrationItemInput` (`z.input`), the client's create type, in which `stockTracked` may be left out (P2.1); the item list's `stockTracked` filter is not added |
 | `packages/contracts/src/errors/index.ts` | eight codes, the seven of design §5.15 and one more: `ADMINISTRATION_INVALID_TRANSITION`, `…_TRANSITION_BLOCKED`, `…_REASON_REQUIRED`, `…_APPROVAL_CHAIN_MISSING`, `…_APPROVAL_NOT_PENDING`, `…_APPROVAL_NOT_YOUR_STEP` (422) and `…_SEPARATION_OF_DUTIES` (403); and `ADMINISTRATION_ITEM_UNIT_LOCKED` (422, §1.2 item 21). Each ships in the slice that first raises it, with its doc comment naming its details (§4.4). An exited requester reuses Phase 1's `ADMINISTRATION_EMPLOYEE_EXITED`, whose comment gains the PR's case |
-| `packages/contracts/src/events/catalog.ts` | `ADMINISTRATION_EVENT_PAYLOAD_SCHEMAS`, `ADMINISTRATION_EVENT_SOURCE` appended to `buildEventCatalog` (`:1486-1492`), `EVENT_MODULE_NAMES.administration` (`:657-664`) and the entity word `purchaseRequest` (design §8.3). Every action word exists |
+| `packages/contracts/src/events/catalog.ts` | `ADMINISTRATION_EVENT_PAYLOAD_SCHEMAS`, `ADMINISTRATION_EVENT_SOURCE` appended to `buildEventCatalog` (`:1508-1515`), `EVENT_MODULE_NAMES.administration` (`:662-670`) and the entity word `purchaseRequest` (design §8.3). Every action word exists |
 | `packages/contracts/src/platform/notification-target.ts` (P2.W1) | `'administration/purchaseRequest': (id) => '/administration/purchase-requests/' + id` in `ENTITY_ROUTES` (`:36-42`), in the slice that mounts the route, since every entry must be a route the client declares (`:33-34`); until then a PR notice opens the inbox (`:56-57`) |
 | `packages/contracts/src/platform/audit.ts` (P2.0) | `approvalDecision`, appended after `applicantFolderDeleted` (`:214`) with its rationale comment |
 
@@ -903,11 +920,11 @@ RK-03; design §2.1 note 10). No index carries `departmentId` with uniqueness (d
   the highest number used, never at 0. Only the server writes PR numbers; the formatter-spelling rule is the master
   codes' (`shared/document-number.ts:8-16`), kept so the module has one floor read and a number written outside the
   server, by an operator's hand fix, cannot floor the series wrongly. The seed also ensures the current year's
-  counter, as it does the code counters (`administration.seed.ts:35-44`).
+  counter, as it does the code counters (`administration.seed.ts:66-75`).
 - A refused submission rolls its increment back, so the series has no gap (`apps/api/src/shared/base/counter.ts:7-12`).
   A returned PR keeps its number, and its next submission takes none.
 - Width: six digits; a number past them grows wider with no leading zero, as the master codes do
-  (`packages/contracts/src/modules/administration.ts:24-28`).
+  (`packages/contracts/src/modules/administration.ts:27-31`).
 - The floor read. `highestCodePipeline` and `floorFrom` read the `code` field and master codes
   (`shared/document-number.ts:52-70`), so `shared/document-number.ts` adds `DocumentNumberSeries { kind, year, key,
   prefix }`, `highestNumberPipeline(series)` and `numberFloorFrom(series, rows)`. The pipeline's `$match` reads
@@ -1049,13 +1066,13 @@ The route is gated by `.view`; the service picks the row from the status and the
 ### 8.1 The request type and the Unit
 
 - **Registration** at module load, beside the permissions (`request-type.registry.ts:37-43`; leave's,
-  `leave-request.service.ts:67-73`): key `administration.purchaseRequest`, module `administration`, name «طلبات
+  `leave-request.service.ts:68-74`): key `administration.purchaseRequest`, module `administration`, name «طلبات
   الشراء» / "Purchase requests", `permissionKeys: ['administrationPurchaseRequest.approve']`, option
   `{ audit: 'host' }` (ADR-041 decision 7). It lives in `shared/approvals.ts`, which imports no feature
   (`administration-isolation.spec.ts`).
 - **The Unit** is `{ branchId: PR.branchId, departmentId: PR.departmentId, departmentCatalogId }`, the last read from
   the department copy at every call through `departmentRepository.findById` (design §7.6), never from the current
-  placement as leave's is (`leave-request.service.ts:103-113`). So moving the requester does not move the request,
+  placement as leave's is (`leave-request.service.ts:104-114`). So moving the requester does not move the request,
   while a copy linked to a company department after submission gains its `catalogId`, and with it the rungs and grants
   that match on the company department (P2-R13; ADR-041 decision 4 keeps staffing current). A guard refuses 422
   `ADMINISTRATION_TRANSITION_BLOCKED` when the copy no longer lies in the PR's branch (design §7.6). The PR's own fields
@@ -1065,7 +1082,7 @@ The route is gated by `.view`; the service picks the row from the status and the
   one helper in the adapter for every call that passes one: the submission's `currentApprovers`, `decide`, `trailFor`
   for the return and the detail, and the notices' `currentApprovers`. `decisions` maps each entry of
   `PR.approvalSteps` to the engine's `DecidedEntry`, its six fields only, with `deciderUserId` as a string or null,
-  as leave's `subjectOf` does (`leave-request.service.ts:124-138`; `approval-trail.ts:26-36`): a stored entry holds an
+  as leave's `subjectOf` does (`leave-request.service.ts:125-139`; `approval-trail.ts:26-36`): a stored entry holds an
   ObjectId and the two snapshots, and the engine collects decider ids and looks up their names as strings
   (`approval.service.ts:187-199`; §1.2 item 26). P2 always pins, so `pin` is never null after submission (ADR-041
   decision 10).
@@ -1095,7 +1112,7 @@ The route is gated by `.view`; the service picks the row from the status and the
    `approvalSteps: []`, `submittedAt` and `submittedBy`, the snapshots rewritten once more, and bumps `__v`. A miss is
    re-read and answered 422 or 409. The pin is step 4's `pinOf` result written whole, `approvalWorkflowId` as an
    ObjectId of its `workflowId` and `approvalChainShape` as its `steps`, as leave's create sets them
-   (`leave-request.service.ts:334-341`). The fields' own check that an id comes with its rungs runs only at create and
+   (`leave-request.service.ts:335-342`). The fields' own check that an id comes with its rungs runs only at create and
    save, never in an update (`workflow.model.ts:44-61`), so this write is the pin's only guard; after step 3 `pinOf`
    never returns null or an id without rungs (§1.2 item 28).
 8. After commit: audit `statusChange` with `number`; the signal; the awaiting-decision notice to the eligible
@@ -1123,10 +1140,10 @@ not this one: the PR is decided on the pin it stored (ADR-041 decision 4).
    (design §5.15). An override within its reach decides, recorded as `overriddenWith` (OD-69 (i); ADR-041 decision 6).
 6. The conditional append, one `findOneAndUpdate` on `{ _id, status: 'pendingApproval', __v: version,
    'approvalSteps.<n>': { $exists: false } }`, where `<n>` is the number of entries read at load, so the filter fails
-   once anyone has appended since. It is the shape of leave's (`leave-request.service.ts:619-641`) with the version
+   once anyone has appended since. It is the shape of leave's (`leave-request.service.ts:626-648`) with the version
    added (design §5.1.3, A). It pushes the entries `decide` returned, one per rung the decision settles (its own, and
    the rungs below it that it covers or skips, ADR-041 decision 2), each with `deciderUserId` back as an ObjectId, as
-   leave's does (`:630-634`), its `stepLabel` from the pin and the actor's `deciderName`, writes the cuts, maps the
+   leave's does (`:637-641`), its `stepLabel` from the pin and the actor's `deciderName`, writes the cuts, maps the
    engine's status (`pending` and `unstaffed` keep `pendingApproval`; `approved` and `rejected` set their status and
    stamp), and bumps `__v`. A miss is re-read and answered in §4.2's order: a status that has left `pendingApproval` is
    422 `ADMINISTRATION_APPROVAL_NOT_PENDING`, whatever the version; a PR still pending with a moved version, or a new
@@ -1193,7 +1210,7 @@ requester's notice. No event: a return emits nothing (design §8.2).
   decision 3). Outside `APPROVAL_PENDING` (approved, rejected, or cancelled from `pendingApproval` or `approved`, which
   keeps its pin and its partial decisions) the trail comes back with `currentStep` null, `viewerMayDecide` and
   `viewerMayOverride` false, `viewerStep` null and `viewerCovers` empty, as leave's does
-  (`leave-request.service.ts:701-711`; `administration-module-phase-px1.md:362-371` names the last four). The panel
+  (`leave-request.service.ts:719-729`; `administration-module-phase-px1.md:362-371` names the last four). The panel
   offers its actions on the two flags alone (`ApprovalChainPanel.tsx:130-132`) and marks a rung "waiting here" from
   `currentStep` alone (`:61, 84-88`), and a cancelled PR's chain still reads `pending` or `unstaffed` to the engine; on
   an approved or rejected PR the engine already answers `currentStep` null (§1.2 item 25).
@@ -1550,7 +1567,7 @@ This table gives every count P2's pull requests pin, from its value on `de38fd71
 | `apps/web/src/modules/system-admin/system-admin-i18n.spec.ts` | + a case pinning `approvalDecision` in `AUDIT_ACTIONS` and its en and ar labels to the catalog's `approvalDecided` words (`EVENT_ACTION_NAMES`), since its census only checks that each verb has a label | P2.0 |
 | `targets.spec.ts:76-91`; `workforce-reset.spec.ts:223-246, :362-363` (after P2.2 `:223-247, :364-365`) | +1 `keep`; the untouched list 14 → 15 entries; the recruitment count 13 → 14, and its comment's "The other thirteen" (`:362`) "The other fourteen" | P2.2 |
 | `employee-name-copies.spec.ts:36, :43-60` (after P2.2 `:36, :43-61`) | 16 → 17 copies, and the comment's "Sixteen copies across eight collections" "Seventeen copies across nine collections" | P2.2 |
-| `packages/contracts/src/events/catalog.spec.ts:147, :181` | each event in `ALL_SCHEMAS` and the "invents nothing" set | P2.3–P2.5 |
+| `packages/contracts/src/events/catalog.spec.ts:152, :197` (`:147, :181` before P2.3) | each event in `ALL_SCHEMAS` and the "invents nothing" set | P2.3–P2.5 |
 | `packages/contracts/src/platform/notification-target.spec.ts` | the PR route's case: a PR notice's target is its record | P2.W1 |
 | `administration-catalog.spec.ts` (integration) | `stockTracked`; the widened read gate | P2.1, P2.2 |
 | contracts `administration-catalog.spec.ts`; `administration-indexes.spec.ts`; `apps/web/src/modules/administration/screen-fixtures.tsx` | the create-parse case expects `stockTracked: true`, the contract's default; the item service's input and the web's item fixture carry `stockTracked: true`, type-only. No page-registry, navigation or census count changes in P2.1 | P2.1 |
@@ -1595,7 +1612,7 @@ listed, then modified.
 | `administration.module.ts` + `.spec.ts` | M | P2.2–P2.7 | keys, page, routes, collection, the file authorizer (P2.6), `scheduledTasks` (P2.7) |
 | `administration.seed.ts` | M | P2.2–P2.7 | the year's counter (P2.2); each template in its slice (P2.3–P2.5, P2.7); the request-attachments category (P2.6) |
 | `administration.seed.spec.ts` | C, M | P2.3; P2.4, P2.5, P2.7 | every sent template seeded |
-| `administration-indexes.ts` + `administration-indexes.spec.ts` | M | P2.1 (the spec), P2.2, P2.6 (the spec) | the item input's parsed `stockTracked` (P2.1); the PR model; the seed's request-attachments step in its order (P2.6) |
+| `administration-indexes.ts` + `administration-indexes.spec.ts` | M | P2.1 (the spec), P2.2, P2.3 and P2.6 (the spec) | the item input's parsed `stockTracked` (P2.1); the PR model; the seed's templates step (P2.3) and request-attachments step (P2.6) in its order |
 | `administration-roles.ts` | M | P2.2, P2.5 | §9.3 |
 | `administration.mappers.ts` | M | P2.1; P2.2; P2.6 | `stockTracked ?? true` on the item DTO; the PR DTOs; the detail's files with their scan states (P2.6) |
 | `administration-scope-guards.spec.ts` | M | P2.2 | the PR repository's fields |
@@ -1666,7 +1683,7 @@ listed, then modified.
 | `components/ItemFormDialog.tsx`, `lib/item-form.ts` + spec | M | P2.1 (`lib/item-form.ts`), P2.W2 | the create body's type (P2.1); the item's kind |
 | `lib/purchase-request-form.ts` + spec | C | P2.W1 | form state mirroring the contracts |
 | `lib/refusals.ts` + spec | M | P2.W1 | the new refusal fields and details (§4.4) |
-| `apps/web/src/shared/lib/errors.ts` + `errors.spec.ts` | M | P2.W1 | `FRIENDLY`, en and ar |
+| `apps/web/src/shared/lib/errors.ts` + `errors.spec.ts` | M | P2.2, P2.3; P2.W1 | `FRIENDLY`, en and ar: each new code's words as it ships (P2.2, P2.3, since `errors.spec.ts` requires them); the module's error words (P2.W1) |
 | `apps/web/src/shared/lib/remembered-filters-coverage.spec.ts` | M | P2.W1, P2.W2 | the new pages |
 | `administration-routes.spec.ts`, `administration-{i18n,api-contract,realtime}.spec.ts` | M | P2.W1, P2.W2 | the guard specs (§12.3) |
 | `screen-fixtures.tsx` | M | P2.1 | the item fixture's `stockTracked` |
@@ -1757,7 +1774,7 @@ with one premise corrected: criterion 6 has the requester refresh live now, wher
    `shared/document-number.spec.ts` pass.
 8. **Series contention (RK-33).** On staging, before P2 closes, ten concurrent submissions of 100-line PRs in one
    series all commit, none exhausts the driver's 120 s retry, and the slowest commits within 5 s. That is design
-   §18.3.2's threshold for P5's postings (`administration-module-decisions-and-phases.md:2285-2286`), the only measured
+   §18.3.2's threshold for P5's postings (`administration-module-decisions-and-phases.md:2286-2288`), the only measured
    threshold for a numbered write, borrowed here. `scripts/measure-purchase-request-contention.mjs` runs it (§13), and
    the figures are recorded in design §22. A miss is put to the owner with OD-58 B, a series per branch, before P2
    closes.

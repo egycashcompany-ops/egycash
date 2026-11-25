@@ -437,6 +437,9 @@ describe('files', () => {
     expect(asManager.every((doc) => doc.seen?.sharedWith === 2 && doc.seen.seenBy === 0)).toBe(
       true,
     );
+    const shelf = data<ComplianceFolderDto[]>(await api(readerA).get('/folders'));
+    expect(shelf[0]?.documentCount).toBe(3);
+    expect(shelf[0]?.lastUploadedAt).not.toBeNull();
   });
 
   it('may be renamed by the responsible person and by nobody else', async () => {

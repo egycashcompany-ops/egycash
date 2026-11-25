@@ -69,7 +69,7 @@ export const ComplianceFilesPage = (): JSX.Element => {
       <PageHeader
         title={t('compliance.nav.files')}
         breadcrumbs={[
-          { label: t('compliance.module.title') },
+          { label: t('compliance.module.title'), to: '/' },
           { label: t('compliance.nav.files') },
         ]}
         actions={

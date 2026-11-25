@@ -8,12 +8,14 @@
 // `sm`, and always below it, where there is no pointer to hover with (the repo's `RowActions` rule,
 // as the reference's bin is). The tile is therefore a container holding the folder button and its
 // controls as siblings, because a button inside a button is invalid HTML.
-import { type ComplianceFolderDto } from '@ecms/contracts';
+import { type ComplianceFolderDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useAppSelector } from '../../../store';
 import { cn } from '../../../shared/lib/cn';
+import { formatDate } from '../../../shared/lib/format';
 import { EmptyState, LoadingState, Pagination, SearchInput } from '../../../shared/ui';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
-import { EditIcon, FolderIcon, TrashIcon, UsersIcon } from '../../../shared/ui/icons';
+import { EditIcon, FolderIcon, TrashIcon } from '../../../shared/ui/icons';
 import { useComplianceFolders } from '../api/compliance-queries';
 import { FolderCover } from './file-bits';
 import { FolderShell } from './folder-shell';
@@ -55,6 +57,7 @@ const Tile = ({
   onDelete: () => void;
 }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
   return (
     <div className="group relative" data-folder={folder.id}>
       <button
@@ -75,14 +78,19 @@ const Tile = ({
           >
             {folder.name}
           </span>
-          {manager && (
-            <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-              <UsersIcon className="h-3.5 w-3.5" />
-              {folder.viewers.length === 0
+          {/* The line under the name, as the family always writes one: for the responsible person
+              who it is shared with, for a reader when a file was last added. */}
+          <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+            {manager
+              ? folder.viewers.length === 0
                 ? t('compliance.files.notShared')
-                : t('compliance.files.sharedWith', { n: folder.viewers.length })}
-            </span>
-          )}
+                : t('compliance.files.sharedWith', { n: folder.viewers.length })
+              : folder.lastUploadedAt === null
+                ? t('compliance.files.noFilesYet')
+                : t('compliance.files.lastAdded', {
+                    date: formatDate(folder.lastUploadedAt, locale),
+                  })}
+          </span>
         </span>
       </button>
       {manager && (

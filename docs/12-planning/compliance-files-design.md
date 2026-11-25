@@ -198,13 +198,21 @@ Built after HR's `/applicant-documents` shelf, with the module's **own copy** of
 (`folder-shell.tsx`) and file helpers, as the owner chose (§1):
 
 - the shelf — one 3D folder per folder, its picture on the front, its file count in the corner, its
-  name under it; a search remembered in the URL; for the responsible person, how many people each
-  folder is shared with, and edit/delete controls on the caption row; «مجلد جديد» in the header;
+  name under it and a line under the name: how many people it is shared with for the responsible
+  person, when a file was last added for a reader; a search remembered in the URL; edit/delete
+  controls on the caption row for the responsible person; «مجلد جديد» in the header;
 - the folder — its files, each with «عرض» and «تنزيل», and «تنزيل الكل»; for the responsible person,
   who it is shared with, «رفع ملف», and per file «اطّلع n من m», «تغيير الاسم» and «حذف»;
-- dialogs for the folder (name, people, picture), the upload (checked for kind and 20 MB before it
-  is sent, with progress), the rename, the Word/Excel preview, the seen report, and the
-  confirmations.
+- dialogs for the folder (name, people, picture — through the shared `PhotoPickButton`), the upload
+  (the shared `FileUpload`, the kind and 20 MB checked before it is sent, with progress), the
+  rename, the Word/Excel preview, the seen report, and the confirmations. A save refused because
+  someone saved the record meanwhile is rebased on the record as it now is, keeping what was typed,
+  and a folder save that stopped part-way continues from what was saved.
+
+The page was checked by a separate agent against the checklist drawn from the reference and the
+newest module (after a calibration that found a planted difference); its findings were settled by
+the decision order and fixed — the shared pickers, the stale-save rebase, one word for «عرض», the
+reference's neutral file glyph and the line under each folder's name among them.
 
 ## 12. Tests
 

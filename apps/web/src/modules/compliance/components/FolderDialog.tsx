@@ -11,16 +11,10 @@
 // name as its title, Close and «تنزيل الكل» in the footer. One level — a folder holds files, not
 // drawers.
 import { useState } from 'react';
-import {
-  type ComplianceDocumentDto,
-  type ComplianceDocumentKind,
-  type ComplianceFolderDto,
-  type Locale,
-} from '@ecms/contracts';
+import { type ComplianceDocumentDto, type ComplianceFolderDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { useAppSelector } from '../../../store';
-import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
 import { formatDateTime } from '../../../shared/lib/format';
 import { Button } from '../../../shared/ui/Button';
@@ -50,14 +44,6 @@ import { RenameDocumentDialog } from './RenameDocumentDialog';
 import { SeenReportDialog } from './SeenReportDialog';
 import { UploadDocumentDialog } from './UploadDocumentDialog';
 
-/** Each kind's glyph tile, in the colour office suites give it, so a list reads at a glance. */
-const KIND_TILE: Record<ComplianceDocumentKind, string> = {
-  pdf: 'bg-red-50 text-red-600 ring-red-100 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900/60',
-  word: 'bg-sky-50 text-sky-700 ring-sky-100 dark:bg-sky-950/40 dark:text-sky-300 dark:ring-sky-900/60',
-  excel:
-    'bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900/60',
-};
-
 const FileRow = ({
   doc,
   manager,
@@ -77,7 +63,14 @@ const FileRow = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // «اطّلع n من m» — only where the folder is shared with someone: a folder shared with nobody
+  // says so once, above the list, not again on every file.
+  const seen = manager && doc.seen !== null && doc.seen.sharedWith > 0 ? doc.seen : null;
+  const seenText =
+    seen === null ? '' : t('compliance.seen.badge', { seen: seen.seenBy, total: seen.sharedWith });
   return (
+    // `flex-wrap`, unlike the reference's row: the responsible person's row carries five actions,
+    // and on a phone they go under the name rather than past the dialog's edge.
     <li
       className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-2.5 dark:border-slate-700 dark:bg-slate-900"
       data-document={doc.id}
@@ -87,13 +80,9 @@ const FileRow = ({
         title={t('compliance.file.view')}
         aria-label={`${t('compliance.file.view')} — ${doc.name}`}
         onClick={onView}
-        className={cn(
-          'flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg ring-1 transition hover:ring-brand-400',
-          KIND_TILE[doc.kind],
-        )}
+        className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 text-slate-500 ring-1 ring-slate-200 transition hover:ring-brand-400 dark:bg-slate-800 dark:ring-slate-700"
       >
         <FileIcon className="h-5 w-5" />
-        <span className="text-[10px] font-bold uppercase">{t(`compliance.kind.${doc.kind}`)}</span>
       </button>
       <span className="min-w-0 flex-1">
         <span
@@ -108,23 +97,13 @@ const FileRow = ({
         </span>
       </span>
       <span className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-        {manager && doc.seen !== null && (
-          <button
-            type="button"
+        {seen !== null && (
+          <RowButton
             onClick={onSeen}
-            title={t('compliance.seen.open')}
-            className={cn(
-              'inline-flex min-h-[34px] items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold transition-colors',
-              doc.seen.sharedWith > 0 && doc.seen.seenBy === doc.seen.sharedWith
-                ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-300'
-                : 'bg-amber-50 text-amber-800 hover:bg-amber-100 dark:bg-amber-950/50 dark:text-amber-300',
-            )}
-          >
-            <EyeIcon className="h-3.5 w-3.5" />
-            {doc.seen.sharedWith === 0
-              ? t('compliance.files.notShared')
-              : t('compliance.seen.badge', { seen: doc.seen.seenBy, total: doc.seen.sharedWith })}
-          </button>
+            label={seenText}
+            ariaLabel={`${t('compliance.seen.open')} — ${seenText}`}
+            icon={<UsersIcon className="h-3.5 w-3.5" />}
+          />
         )}
         <RowButton
           onClick={onView}
@@ -133,7 +112,7 @@ const FileRow = ({
         />
         <RowButton
           onClick={onDownload}
-          label={t('compliance.file.download')}
+          label={t('common.download')}
           icon={<DownloadIcon className="h-3.5 w-3.5" />}
         />
         {manager && (
@@ -146,7 +125,7 @@ const FileRow = ({
             <RowButton
               onClick={onDelete}
               tone="danger"
-              label={t('compliance.file.delete')}
+              label={t('common.delete')}
               icon={<TrashIcon className="h-3.5 w-3.5" />}
             />
           </>
@@ -185,18 +164,21 @@ export const FolderDialog = ({
   const [saving, setSaving] = useState(false);
   const files = documents.data?.items ?? [];
 
-  const failed = (): void => {
-    toast.error(t('compliance.file.openFailed'));
+  const viewFailed = (): void => {
+    toast.error(t('compliance.file.viewFailed'));
+  };
+  const downloadFailed = (): void => {
+    toast.error(t('compliance.file.downloadFailed'));
   };
   const view = (doc: ComplianceDocumentDto): void => {
     if (doc.kind === 'pdf') {
-      void openDocument(doc.id).then((done) => !done && failed());
+      void openDocument(doc.id).then((done) => !done && viewFailed());
     } else {
       setPreviewing(doc);
     }
   };
   const download = (doc: ComplianceDocumentDto): void => {
-    void downloadDocument(doc.id, doc.fileName).then((done) => !done && failed());
+    void downloadDocument(doc.id, doc.fileName).then((done) => !done && downloadFailed());
   };
   /** Every file in turn (a browser asks once before saving several). */
   const downloadAll = async (): Promise<void> => {
@@ -207,7 +189,7 @@ export const FolderDialog = ({
       await new Promise((resolve) => window.setTimeout(resolve, 350));
     }
     setSaving(false);
-    if (failures > 0) failed();
+    if (failures > 0) downloadFailed();
   };
   const confirmRemove = async (): Promise<void> => {
     if (removing === null) return;
@@ -234,7 +216,7 @@ export const FolderDialog = ({
         footer={
           <>
             <Button variant="secondary" onClick={onClose}>
-              {t('compliance.folder.close')}
+              {t('common.close')}
             </Button>
             {onEdit !== undefined && current !== null && (
               <Button variant="ghost" onClick={() => onEdit(current)}>

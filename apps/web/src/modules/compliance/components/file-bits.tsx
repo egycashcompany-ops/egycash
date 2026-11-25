@@ -18,6 +18,8 @@ export const openDocument = async (id: string): Promise<boolean> => {
   // The tab is opened BEFORE the bytes arrive: a tab opened after an `await` is a pop-up the
   // browser blocks, because it no longer follows the click.
   const tab = window.open('', '_blank');
+  // What `noopener` does for a tab opened at its address: the new tab cannot reach back.
+  if (tab !== null) tab.opener = null;
   try {
     const href = URL.createObjectURL(await documentBlob(id, 'view'));
     if (tab === null) {
@@ -105,12 +107,15 @@ export const FolderCover = ({
 export const RowButton = ({
   onClick,
   label,
+  ariaLabel,
   icon,
   tone = 'default',
   busy = false,
 }: {
   onClick: () => void;
   label: string;
+  /** Where the label shows a state, the act it opens — read aloud in place of the label. */
+  ariaLabel?: string;
   icon: ReactNode;
   tone?: 'default' | 'danger';
   busy?: boolean;
@@ -119,6 +124,7 @@ export const RowButton = ({
     type="button"
     onClick={onClick}
     disabled={busy}
+    {...(ariaLabel === undefined ? {} : { 'aria-label': ariaLabel, title: ariaLabel })}
     className={cn(
       'inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border bg-white px-2.5 text-xs font-semibold transition-colors disabled:opacity-60 dark:bg-slate-900',
       tone === 'danger'

@@ -37,7 +37,7 @@ export const ConfirmDeleteDialog = ({
           </Button>
           <Button variant="danger" loading={busy} onClick={onConfirm}>
             <TrashIcon className="h-4 w-4" />
-            {t('compliance.confirm.delete')}
+            {t('common.delete')}
           </Button>
         </>
       }

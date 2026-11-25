@@ -116,6 +116,8 @@ export interface ComplianceFolderDto {
   /** Changes whenever the picture does, so a screen knows to fetch the new one. */
   coverVersion: string | null;
   documentCount: number;
+  /** When the newest file in it was added; null while it holds none. */
+  lastUploadedAt: string | null;
   /**
    * Who sees the folder. Sent to the responsible person only: a reader is told the folder is
    * theirs, never who else it is shared with — an empty list for them.

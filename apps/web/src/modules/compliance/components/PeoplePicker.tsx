@@ -59,8 +59,8 @@ export const PeoplePicker = ({
               <button
                 type="button"
                 onClick={() => toggle(person)}
-                aria-label={`${t('compliance.people.remove')} — ${personName(person, locale)}`}
-                title={t('compliance.people.remove')}
+                aria-label={`${t('common.remove')} — ${personName(person, locale)}`}
+                title={t('common.remove')}
                 className="rounded-md p-1 text-brand-700 hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-brand-300 dark:hover:bg-brand-900/60"
               >
                 <CloseIcon className="h-3.5 w-3.5" />

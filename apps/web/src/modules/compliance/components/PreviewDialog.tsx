@@ -138,12 +138,12 @@ export const PreviewDialog = ({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
-            {t('compliance.folder.close')}
+            {t('common.close')}
           </Button>
           {document !== null && (
             <Button onClick={() => onDownload(document)}>
               <DownloadIcon className="h-4 w-4" />
-              {t('compliance.file.download')}
+              {t('common.download')}
             </Button>
           )}
         </>

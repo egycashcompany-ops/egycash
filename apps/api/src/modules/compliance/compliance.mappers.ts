@@ -15,14 +15,15 @@ import { type ComplianceFolderDoc } from './folders/folder.model';
  */
 export const toComplianceFolderDto = (
   doc: ComplianceFolderDoc,
-  documentCount: number,
+  stats: { count: number; lastUploadedAt: Date } | undefined,
   people: ReadonlyMap<string, CompliancePersonDto> | null,
 ): ComplianceFolderDto => ({
   id: String(doc._id),
   name: doc.name,
   hasCover: doc.cover !== null,
   coverVersion: doc.cover === null ? null : String(doc.cover.fileId),
-  documentCount,
+  documentCount: stats?.count ?? 0,
+  lastUploadedAt: stats === undefined ? null : stats.lastUploadedAt.toISOString(),
   viewers:
     people === null
       ? []

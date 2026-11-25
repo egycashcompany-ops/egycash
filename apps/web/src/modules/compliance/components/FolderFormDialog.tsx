@@ -6,7 +6,7 @@
 // its picture (set or taken off). Each call answers the folder's new version, which the next one
 // carries, so the three never race one another. A refusal stops the chain where it happened and is
 // said in the alert box; what was saved before it stays saved.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   COMPLIANCE_COVER_MAX_MB,
   COMPLIANCE_COVER_MIMES,
@@ -20,8 +20,10 @@ import { useAppSelector } from '../../../store';
 import { ApiError } from '../../../shared/lib/api-client';
 import { errorMessage } from '../../../shared/lib/errors';
 import { Button } from '../../../shared/ui/Button';
+import { PhotoPickButton } from '../../../shared/ui/PhotoPick';
 import { Field, Input } from '../../../shared/ui/form';
 import { FolderIcon, ImageIcon, TrashIcon, UploadIcon } from '../../../shared/ui/icons';
+import { getFolder } from '../api/compliance-api';
 import { useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
@@ -35,6 +37,9 @@ import { ComplianceDialogFrame } from './ComplianceDialogFrame';
 import { FolderCover } from './file-bits';
 import { FolderShell } from './folder-shell';
 import { PeoplePicker } from './PeoplePicker';
+
+const isStale = (error: unknown): boolean =>
+  error instanceof ApiError && error.code === ErrorCodes.STALE_DOCUMENT;
 
 /** What the picture box holds: the folder's own, a new file, or nothing (taken off). */
 type CoverChoice = { kind: 'keep' } | { kind: 'new'; file: File; url: string } | { kind: 'none' };
@@ -58,10 +63,19 @@ export const FolderFormDialog = ({
   const [cover, setCover] = useState<CoverChoice>({ kind: 'keep' });
   const [failure, setFailure] = useState<unknown>(null);
   const [coverProblem, setCoverProblem] = useState<string | null>(null);
-  const input = useRef<HTMLInputElement>(null);
+  /**
+   * The folder as the server last answered it — what the next save writes against. It starts as
+   * the folder opened (null for a new one), and moves with every step that lands: so a retry after
+   * a step was refused continues from what was saved (a new folder created before its picture was
+   * refused is not created twice), and a save refused because someone saved the folder meanwhile
+   * (`STALE_DOCUMENT`) is rebased on the folder as it now is, keeping what was typed — the way
+   * Administrative Affairs' dialogs rebase.
+   */
+  const [base, setBase] = useState<ComplianceFolderDto | null>(folder);
 
   useEffect(() => {
     if (!open) return;
+    setBase(folder);
     setName(folder?.name ?? '');
     setViewers(folder?.viewers ?? []);
     setCover({ kind: 'keep' });
@@ -89,9 +103,7 @@ export const FolderFormDialog = ({
   const nameTaken =
     failure instanceof ApiError && failure.code === ErrorCodes.COMPLIANCE_FOLDER_NAME_TAKEN;
 
-  const pick = (file: File | undefined): void => {
-    if (input.current !== null) input.current.value = '';
-    if (file === undefined) return;
+  const pick = (file: File): void => {
     if (!(COMPLIANCE_COVER_MIMES as readonly string[]).includes(file.type)) {
       setCoverProblem(t('compliance.folderForm.coverWrongType'));
       return;
@@ -104,33 +116,38 @@ export const FolderFormDialog = ({
     setCover({ kind: 'new', file, url: URL.createObjectURL(file) });
   };
 
-  const hasPicture = cover.kind === 'new' || (cover.kind === 'keep' && folder?.hasCover === true);
+  const hasPicture = cover.kind === 'new' || (cover.kind === 'keep' && base?.hasCover === true);
 
   const save = async (): Promise<void> => {
     setFailure(null);
     try {
       const ids = viewers.map((person) => person.userId);
       let saved: ComplianceFolderDto;
-      if (folder === null) {
+      if (base === null) {
         saved = await create.mutateAsync({ name: name.trim(), viewerUserIds: ids });
       } else {
-        const changes = folderChanges(folder, name, ids);
+        const changes = folderChanges(base, name, ids);
         saved =
           changes === null
-            ? folder
+            ? base
             : await update.mutateAsync({
-                id: folder.id,
-                body: { ...changes, version: folder.version },
+                id: base.id,
+                body: { ...changes, version: base.version },
               });
       }
+      setBase(saved);
       if (cover.kind === 'new') {
         saved = await setPicture.mutateAsync({
           id: saved.id,
           file: cover.file,
           version: saved.version,
         });
+        setBase(saved);
+        setCover({ kind: 'keep' });
       } else if (cover.kind === 'none' && saved.hasCover) {
         saved = await takeOff.mutateAsync({ id: saved.id, version: saved.version });
+        setBase(saved);
+        setCover({ kind: 'keep' });
       }
       toast.success(
         t(folder === null ? 'compliance.folderForm.created' : 'compliance.folderForm.updated'),
@@ -139,6 +156,10 @@ export const FolderFormDialog = ({
       onClose();
     } catch (error) {
       setFailure(error);
+      if (isStale(error) && base !== null) {
+        const fresh = await getFolder(base.id).catch(() => null);
+        if (fresh !== null) setBase(fresh);
+      }
     }
   };
 
@@ -147,18 +168,13 @@ export const FolderFormDialog = ({
     if (cover.kind === 'new') {
       return <img src={cover.url} alt="" className="h-full w-full object-cover" />;
     }
-    if (cover.kind === 'keep' && folder !== null && folder.hasCover) {
+    if (cover.kind === 'keep' && base !== null && base.hasCover) {
       return (
-        <FolderCover
-          folderId={folder.id}
-          version={folder.coverVersion}
-          alt=""
-          fallback={fallback}
-        />
+        <FolderCover folderId={base.id} version={base.coverVersion} alt="" fallback={fallback} />
       );
     }
     return fallback;
-  }, [cover, folder]);
+  }, [cover, base]);
 
   return (
     <ComplianceDialogFrame
@@ -167,15 +183,15 @@ export const FolderFormDialog = ({
       size="lg"
       tall
       title={t(
-        folder === null ? 'compliance.folderForm.addTitle' : 'compliance.folderForm.editTitle',
+        base === null ? 'compliance.folderForm.addTitle' : 'compliance.folderForm.editTitle',
       )}
-      {...(folder === null ? {} : { description: folder.name })}
+      {...(base === null ? {} : { description: base.name })}
       required={required}
       onSave={save}
       busy={busy}
       error={failure === null ? null : errorMessage(failure, locale)}
     >
-      <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_170px]">
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_170px]">
         <div className="space-y-4">
           <Field
             label={t('compliance.folderForm.name')}
@@ -198,7 +214,11 @@ export const FolderFormDialog = ({
           </Field>
         </div>
 
-        <Field label={t('compliance.folderForm.cover')} error={coverProblem ?? undefined}>
+        <Field
+          label={t('compliance.folderForm.cover')}
+          hint={t('compliance.folderForm.coverHint', { size: COMPLIANCE_COVER_MAX_MB })}
+          error={coverProblem ?? undefined}
+        >
           <div className="flex flex-col items-center gap-2">
             <FolderShell
               size="sm"
@@ -208,28 +228,26 @@ export const FolderFormDialog = ({
                 </span>
               }
             />
-            <input
-              ref={input}
-              type="file"
+            <PhotoPickButton
               accept={COMPLIANCE_COVER_MIMES.join(',')}
-              className="hidden"
-              onChange={(event) => pick(event.target.files?.[0])}
-            />
-            <Button size="sm" variant="secondary" onClick={() => input.current?.click()}>
+              onFile={pick}
+              disabled={busy}
+              label={t(
+                hasPicture ? 'compliance.folderForm.coverChange' : 'compliance.folderForm.coverAdd',
+              )}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+            >
               {hasPicture ? <ImageIcon className="h-4 w-4" /> : <UploadIcon className="h-4 w-4" />}
               {t(
                 hasPicture ? 'compliance.folderForm.coverChange' : 'compliance.folderForm.coverAdd',
               )}
-            </Button>
+            </PhotoPickButton>
             {hasPicture && (
               <Button size="sm" variant="ghost-danger" onClick={() => setCover({ kind: 'none' })}>
                 <TrashIcon className="h-4 w-4" />
                 {t('compliance.folderForm.coverRemove')}
               </Button>
             )}
-            <p className="text-center text-xs text-slate-500 dark:text-slate-400">
-              {t('compliance.folderForm.coverHint', { size: COMPLIANCE_COVER_MAX_MB })}
-            </p>
           </div>
         </Field>
       </div>

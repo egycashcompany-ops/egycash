@@ -27,14 +27,14 @@ const present = async (
   docs: readonly ComplianceFolderDoc[],
 ): Promise<ComplianceFolderDto[]> => {
   const ids = docs.map((doc) => String(doc._id));
-  const counts = await complianceDocumentRepository.countByFolder(ids);
+  const stats = await complianceDocumentRepository.statsByFolder(ids);
   const people = isComplianceManager(ctx)
     ? await compliancePeopleService.byIds(
         docs.flatMap((doc) => doc.viewerUserIds.map(String)),
         ctx.userId,
       )
     : null;
-  return docs.map((doc) => toComplianceFolderDto(doc, counts.get(String(doc._id)) ?? 0, people));
+  return docs.map((doc) => toComplianceFolderDto(doc, stats.get(String(doc._id)), people));
 };
 
 const one = async (ctx: AuthContext, doc: ComplianceFolderDoc): Promise<ComplianceFolderDto> => {

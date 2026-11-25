@@ -15,21 +15,28 @@ class ComplianceDocumentRepository extends BaseRepository<ComplianceDocumentDoc>
     return { folderId: new Types.ObjectId(folderId) };
   }
 
-  /** How many live files each of `folderIds` holds, in one read; a folder with none is absent. */
-  async countByFolder(folderIds: readonly string[]): Promise<Map<string, number>> {
+  /**
+   * How many live files each of `folderIds` holds, and when the newest was added, in one read; a
+   * folder with none is absent.
+   */
+  async statsByFolder(
+    folderIds: readonly string[],
+  ): Promise<Map<string, { count: number; lastUploadedAt: Date }>> {
     if (folderIds.length === 0) return new Map();
     const rows = await this.model
-      .aggregate<{ _id: Types.ObjectId; n: number }>([
+      .aggregate<{ _id: Types.ObjectId; n: number; last: Date }>([
         {
           $match: {
             folderId: { $in: folderIds.map((id) => new Types.ObjectId(id)) },
             isDeleted: false,
           },
         },
-        { $group: { _id: '$folderId', n: { $sum: 1 } } },
+        { $group: { _id: '$folderId', n: { $sum: 1 }, last: { $max: '$uploadedAt' } } },
       ])
       .exec();
-    return new Map(rows.map((row) => [String(row._id), row.n]));
+    return new Map(
+      rows.map((row) => [String(row._id), { count: row.n, lastUploadedAt: row.last }]),
+    );
   }
 
   /** Every live file of one folder, whole — what deleting the folder takes with it. */

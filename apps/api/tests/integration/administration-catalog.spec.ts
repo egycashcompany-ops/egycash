@@ -161,26 +161,43 @@ describe('the seed', () => {
     expect(
       Object.fromEntries(roles.map((role) => [role.key, [...role.permissionKeys].sort()])),
     ).toEqual({
-      'administration-storekeeper': ['administrationItem.view', 'administrationWarehouse.view'],
+      'administration-storekeeper': [
+        'administrationItem.view',
+        'administrationSupplier.view',
+        'administrationWarehouse.view',
+      ],
       'administration-procurement-officer': [
         'administrationItem.view',
+        'administrationSupplier.view',
         'administrationWarehouse.view',
       ],
       'administration-procurement-manager': [
         'administrationItem.view',
+        'administrationSupplier.view',
         'administrationWarehouse.view',
       ],
-      'administration-affairs-manager': ['administrationItem.view', 'administrationWarehouse.view'],
+      'administration-affairs-manager': [
+        'administrationItem.view',
+        'administrationSupplier.view',
+        'administrationWarehouse.view',
+      ],
       'administration-master-data': [
         'administrationCatalog.manage',
         'administrationItem.create',
         'administrationItem.edit',
         'administrationItem.view',
+        'administrationSupplier.create',
+        'administrationSupplier.edit',
+        'administrationSupplier.view',
         'administrationWarehouse.create',
         'administrationWarehouse.edit',
         'administrationWarehouse.view',
       ],
-      'administration-auditor': ['administrationItem.view', 'administrationWarehouse.view'],
+      'administration-auditor': [
+        'administrationItem.view',
+        'administrationSupplier.view',
+        'administrationWarehouse.view',
+      ],
     });
     const master = roles.find((role) => role.key === 'administration-master-data');
     expect(master?.name).toEqual({

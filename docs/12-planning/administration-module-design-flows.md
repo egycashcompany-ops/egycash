@@ -377,7 +377,7 @@ flowchart LR
   recommended: enforce). OD-47.4 (iii), an adjustment line of kind `transitLoss` on the in-transit bucket approved on
   the write-off chain, would change the movement legs and the adjustment kinds (§2.4.2, §4.3.7). Until OD-47.4 is
   answered, a one-person loss is a known control gap.
-- **Two steps are the owner's requirement** (D-3). His brief asks for dispatch, receipt, partial receipt and difference
+- **Two steps are the owner's requirement** (D-3). The owner's brief asks for dispatch, receipt, partial receipt and difference
   handling: «ولا تعتبر الكمية انتقلت نهائيًا بمجرد الضغط على "Transfer"». The nearest precedent, Operations' secured
   shipment, climbs `draft → inVault → dispatched → completed`
   (`apps/api/src/modules/operations/shipments/shipment-status.ts:25-36`). Its vault receipt records one receiver, the
@@ -477,7 +477,7 @@ a boundary).
 
 ### 4.5 The owner's procurement questions
 
-The owner's brief (2026-10-29) asks these questions of the purchasing cycle. Each row quotes his words, then gives them
+The owner's brief (2026-10-29) asks these questions of the purchasing cycle. Each row quotes the owner's words, then gives them
 in English.
 
 | # | Question | What the design supports technically | Decided by |

@@ -3,10 +3,11 @@
 //
 // The one manifest of the module, grown slice by slice exactly as IT's and ATM's were, never a
 // second one. P1a.1 shipped the catalog's first two lists — units of measure and item categories —
-// on one key and one page; P1a.2 added the items, their three keys and their page; P1a.3 adds the
-// warehouses, their three keys and their page, and the people the keeper is picked from; suppliers
-// join in P1b.1 (§19.1). A key ships with its operation and a page with its keys: a key whose page
-// is missing fails boot, and so does a page with no key.
+// on one key and one page; P1a.2 added the items, their three keys and their page; P1a.3 added the
+// warehouses, their three keys and their page, and the people the keeper is picked from; P1b.1
+// adds the suppliers, their three keys, their page and their papers' authorizer (§19.1). A key
+// ships with its operation and a page with its keys: a key whose page is missing fails boot, and
+// so does a page with no key.
 import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { seedAdministration } from './administration.seed';
@@ -14,6 +15,10 @@ import { buildAdministrationCatalogItemsRouter } from './catalog/catalog-items';
 import { buildAdministrationItemCategoriesRouter } from './catalog/item-categories';
 import { buildAdministrationItemsRouter } from './catalog/items';
 import { buildAdministrationPeopleRouter } from './people/index';
+import {
+  buildAdministrationSuppliersRouter,
+  supplierFileAuthorizer,
+} from './procurement/suppliers';
 import { buildAdministrationWarehousesRouter } from './warehouses/warehouses/index';
 
 // One grant over every catalog kind, as `itCatalog.manage` is (§6.2): units and item categories
@@ -58,10 +63,25 @@ const itemPermissions = declarePermissions(
   'administration.items',
 );
 
+// The supplier register (§6.2; OD-01 C, ADR-040): `view` reads it organization-wide, papers
+// included — master data is read whole (§7.1) — and `create`, `edit` write it, deactivation and
+// papers included, at organization scope (OD-04 A). The Arabic resource name follows the verbal
+// noun of each label, so it is genitive — «عرض الموردين», as Fleet's «عرض السائقين» — while the
+// page keeps the nominative «الموردون».
+const supplierPermissions = declarePermissions(
+  'administration',
+  'administrationSupplier',
+  { en: 'Suppliers', ar: 'الموردين' },
+  ['view', 'create', 'edit'],
+  [],
+  'administration.suppliers',
+);
+
 export const administrationPermissions: PermissionDef[] = [
   ...warehousePermissions,
   ...itemPermissions,
   ...catalogPermissions,
+  ...supplierPermissions,
 ];
 
 export const administrationPages: PageDef[] = [
@@ -86,6 +106,13 @@ export const administrationPages: PageDef[] = [
     route: '/administration/catalogs',
     sortOrder: 30,
   },
+  {
+    id: 'administration.suppliers',
+    moduleId: 'administration',
+    name: { en: 'Suppliers', ar: 'الموردون' },
+    route: '/administration/suppliers',
+    sortOrder: 40,
+  },
 ];
 
 export const administrationModule: ModuleManifest = {
@@ -105,15 +132,19 @@ export const administrationModule: ModuleManifest = {
     { prefix: '/administration/warehouses', router: buildAdministrationWarehousesRouter() },
     // The keeper picker (§7.8): read-only, over the platform directory.
     { prefix: '/administration/people', router: buildAdministrationPeopleRouter() },
+    { prefix: '/administration/suppliers', router: buildAdministrationSuppliersRouter() },
   ],
-  // Bookkeeping included (§3.3): the counter the item codes are taken from.
+  // Bookkeeping included (§3.3): the counter the item and supplier codes are taken from.
   collections: [
     'administration_catalog_items',
     'administration_item_categories',
     'administration_items',
     'administration_warehouses',
+    'administration_suppliers',
     'administration_counters',
   ],
   eventSubscriptions: [],
+  // A supplier's papers are filed under `administration/supplier` (§11.3).
+  fileEntityAuthorizers: [supplierFileAuthorizer],
   seed: seedAdministration,
 };

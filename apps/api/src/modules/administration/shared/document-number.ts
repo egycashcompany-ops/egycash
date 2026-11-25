@@ -2,8 +2,8 @@
 // floor is read. The printed forms live in the contracts (`formatAdministrationMasterCode`), which
 // a screen reads too; this file holds only what the server needs to hand a number out.
 //
-// P1a.2 has one series, the item code: global and never reset, so its key carries no year (OD-05
-// A). The supplier code (P1b.1) and the yearly document series (P2) join this table.
+// Two series so far, the item code (P1a.2) and the supplier code (P1b.1): global and never reset,
+// so their keys carry no year (OD-05 A). The yearly document series (P2) join this table.
 //
 // THE FLOOR. A counter that went missing must come back at the highest number already used, never
 // at 0, where every create would meet `ux_code` on «ITM-00001» for ever. The floor is read from the
@@ -34,6 +34,12 @@ export const ITEM_CODE_SERIES: MasterCodeSeries = {
   kind: 'item',
   key: 'item:global',
   prefix: ADMINISTRATION_MASTER_CODE_PREFIXES.item,
+};
+
+export const SUPPLIER_CODE_SERIES: MasterCodeSeries = {
+  kind: 'supplier',
+  key: 'supplier:global',
+  prefix: ADMINISTRATION_MASTER_CODE_PREFIXES.supplier,
 };
 
 const DIGITS = ADMINISTRATION_MASTER_CODE_DIGITS;

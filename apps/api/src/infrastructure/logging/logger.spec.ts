@@ -5,7 +5,7 @@
 import { Writable } from 'node:stream';
 import { pino, type Logger } from 'pino';
 import { describe, expect, it } from 'vitest';
-import { PII_REDACTION_PATHS, REGISTER_SECRET_FIELD_NAMES } from './logger';
+import { CONTACT_PHONE_PATHS, PII_REDACTION_PATHS, REGISTER_SECRET_FIELD_NAMES } from './logger';
 
 const captureLine = (log: (instance: Logger) => void): Record<string, unknown> => {
   const chunks: string[] = [];
@@ -81,5 +81,23 @@ describe('logger redaction paths', () => {
     });
     expect(line.entryId).toBe('abc');
     expect(line.counts).toEqual({ rotated: 2 });
+  });
+});
+
+describe('a contact person’s phone, one array deeper than `*.phone` reaches', () => {
+  it('is on the list at three depths', () => {
+    for (const path of CONTACT_PHONE_PATHS) expect(PII_REDACTION_PATHS).toContain(path);
+  });
+
+  it.each([
+    ['at the root', (contacts: unknown) => ({ contacts })],
+    ['one level deep', (contacts: unknown) => ({ supplier: { contacts } })],
+    ['two levels deep', (contacts: unknown) => ({ req: { body: { contacts } } })],
+  ])('is redacted %s, every contact of the list', (_label, wrap) => {
+    const line = captureLine((log) => {
+      log.info(wrap([{ name: 'n', phone: FAKE }, { phone: FAKE }]), 'contacts');
+    });
+    expect(JSON.stringify(line)).not.toContain(FAKE);
+    expect(JSON.stringify(line)).toContain('[REDACTED]');
   });
 });

@@ -1,8 +1,9 @@
 // Administrative Affairs — what the whole module shares (docs/12-planning/administration-module-design.md
-// §2.8, §19.4): the master codes (P1a.2) and the people it names (P1a.3). An item is «ITM-00001»
-// (OD-05 A), generated, global, permanent and never reused, the way IT's asset and consumable codes
-// are; P1b.1 adds the supplier's «SUP-». The formatter and the parser live here, not in the API,
-// because a screen reads a code too (a scanned label, a search) — IT's `formatConsumableMemoNumber`
+// §2.8, §11.4, §19.4): the master codes (P1a.2, the supplier's in P1b.1), the people it names
+// (P1a.3) and the bound every typed attachment list keeps (P1b.1). An item is «ITM-00001» and a
+// supplier «SUP-00001» (OD-05 A), generated, global, permanent and never reused, the way IT's asset
+// and consumable codes are. The formatter and the parser live here, not in the API, because a
+// screen reads a code too (a scanned label, a search) — IT's `formatConsumableMemoNumber`
 // precedent.
 //
 // Names are not folded here: the module folds them with the shared `foldName`
@@ -10,15 +11,15 @@
 import { z } from 'zod';
 import { PaginationQuerySchema, objectId } from '../common/index.js';
 
-/** Each master that takes a generated code. Grows with its slice (the supplier, P1b.1). */
-export const ADMINISTRATION_MASTER_KINDS = ['item'] as const;
+/** Each master that takes a generated code: the item (P1a.2) and the supplier (P1b.1). */
+export const ADMINISTRATION_MASTER_KINDS = ['item', 'supplier'] as const;
 export type AdministrationMasterKind = (typeof ADMINISTRATION_MASTER_KINDS)[number];
 
 /** Each master's prefix: one per kind, and a kind without one does not compile. */
-export const ADMINISTRATION_MASTER_CODE_PREFIXES = { item: 'ITM' } as const satisfies Record<
-  AdministrationMasterKind,
-  string
->;
+export const ADMINISTRATION_MASTER_CODE_PREFIXES = {
+  item: 'ITM',
+  supplier: 'SUP',
+} as const satisfies Record<AdministrationMasterKind, string>;
 
 /**
  * The width a code pads to. A number past it simply grows wider — «ITM-100000» — rather than
@@ -108,3 +109,12 @@ export interface AdministrationPersonDto {
   departmentId: string | null;
   jobTitleId: string | null;
 }
+
+/**
+ * The most entries one typed attachment list holds (design §11.4, list B): a supplier's papers now,
+ * a request's and a receipt's later. It bounds the record's size and keeps one list inside a single
+ * read of its files' scan states (§11.5); the write that would add one more is refused
+ * (`ADMINISTRATION_ATTACHMENT_LIMIT`), its filter carrying the bound so two racing adds cannot
+ * both pass it.
+ */
+export const ADMINISTRATION_MAX_LIST_ATTACHMENTS = 20;

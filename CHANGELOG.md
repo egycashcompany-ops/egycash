@@ -305,10 +305,58 @@ its entry here in the same PR.
     warehouse keys §6.5 gives them: the view key for «أمين المخزن», «موظف المشتريات», «مدير المشتريات»,
     «مدير الشئون الإدارية» and «المراجع الداخلي», all three for «مسؤول البيانات الأساسية».
 
+- **Administrative Affairs («الشئون الإدارية»), suppliers: the register, the «SUP-» code and the
+  suppliers' papers.** The «Suppliers» master data the owner's request names, typed on the screens
+  as the owner asked («لأ خلينا من غير شيتات او بيانات دلوقتى»), so nothing is loaded at deploy.
+  This is P1b.1 of the design (`docs/12-planning/administration-module-decisions-and-phases.md`
+  §19.1), under ADR-040: the register is the module's own, a platform seam may read it later, and
+  IT's vendors and Fleet's workshops are untouched. The API only; the Suppliers screen arrives with
+  P1b.W.
+  - **Three keys and a page:** `administrationSupplier.view`, `.create` and `.edit` («عرض
+    الموردين», «إنشاء الموردين», «تعديل الموردين») on «الموردون», over
+    `/api/v1/administration/suppliers` and `/suppliers/:id`. Any holder of `.view` reads the whole
+    register, a retired supplier by its id included; the writes need the key at ORGANIZATION scope
+    (OD-04 A), as every master-data write does.
+  - **What a supplier holds** (OD-11 A): its trade name in Arabic and English, phone, e-mail,
+    address, up to 20 contact people, the item categories it supplies, its tax and commercial
+    registration numbers, payment terms as free text, notes, and active or retired (OD-12 A). No
+    bank, IBAN or account data and no national id. The VAT status is kept empty until OD-29 gives
+    its values. A contact's phone is redacted from the logs at the root and up to two levels deep
+    (`CONTACT_PHONE_PATHS`).
+  - **A generated code, «SUP-00001»** (OD-05 A), on the same counter machinery as the items' under
+    its own key, `supplier:global`: two creates at once get consecutive codes, a create refused
+    inside its transaction gives its number back, and the seed and every create raise the counter
+    above the highest code already given.
+  - **One supplier per name; a repeated tax number warns.** The Arabic name is compared folded
+    («قطعه» = «قطعة») under a unique index, so two spellings typed at the same moment make one
+    supplier (409 `ADMINISTRATION_DUPLICATE`, field `name`). A tax number another supplier holds is
+    saved — a supplier's branches may be separate records — and the supplier's record names up to
+    five other holders, retired ones marked (OD-11 (i)).
+  - **Categories:** the supplier's categories must exist (404) and, when named anew, be active
+    (422 `ADMINISTRATION_REFERENCE_INACTIVE`, naming each retired one); a supplier keeps one that
+    retired later. The categories list now also opens to `administrationSupplier.create` and
+    `.edit`, so the supplier form can pick them; `?categoryId=` of a category reads its
+    subcategories' suppliers too.
+  - **The suppliers' papers** (OD-11 A): a file category of their own, «مستندات الموردين», PDF and
+    images up to 10 MB, kept for ever (OD-76 (i), OD-77 A). `POST /suppliers/:id/attachments` files
+    one under the supplier with its label and the version the person saw; a `GET` of
+    `/suppliers/:id/attachments/:attachmentId` sends it inline, `private, no-store`, refused while a
+    virus scan is pending (`FILE_SCAN_PENDING`) or after it blocked the file (`FILE_BLOCKED`); a
+    `DELETE` of the same path removes the link and keeps the file. A supplier holds at most 20
+    papers (422 `ADMINISTRATION_ATTACHMENT_LIMIT`), an upload its link does not reach is withdrawn,
+    its record shows each paper's scan state, and a paper is never reached through another
+    supplier. The platform's own file paths ask the supplier's keys, writes only at organization
+    scope.
+  - **Every ready-made role reads suppliers** (OD-78 A): the storekeeper, the procurement officer
+    and manager, the Administrative Affairs manager and the auditor gain `.view`; «مسؤول البيانات
+    الأساسية» gains all three.
+  - Audited as `create`, `update`, `activate` and `deactivate`, a paper's link as an `update` naming
+    it; the realtime topic `administration.supplier`.
+
 - **Administrative Affairs («الشئون الإدارية»), second slice: items, and the «ITM-» code.** The
   item master every store, request and order will name, with the «Category / Subcategory» the
-  owner's request lists among an item's fields, typed on the screens as he asked («لأ خلينا من غير
-  شيتات او بيانات دلوقتى»), so nothing is loaded at deploy. This is P1a.2 of the design
+  owner's request lists among an item's fields, typed on the screens as the owner asked
+  («لأ خلينا من غير شيتات او بيانات دلوقتى»), so nothing is loaded at deploy. This is P1a.2 of the design
   (`docs/12-planning/administration-module-decisions-and-phases.md` §19.1): the API only; the
   Items screen arrives with P1a.W.
   - **Three keys and a page:** `administrationItem.view`, `.create` and `.edit` («عرض الأصناف»,

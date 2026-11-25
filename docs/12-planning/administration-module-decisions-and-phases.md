@@ -381,7 +381,7 @@ preferably before P3 (§11.2).
 | Kind | What | When it runs | Approved by | Rules |
 |---|---|---|---|---|
 | 1. Boot-safe | index builds (§15.3.2); create-if-missing seeds (counters with a `$max` floor, file categories, templates); the platform's own syncs; managed roles (D-20); repairs that only add | every boot (§15.1) | the pull request's review | Fleet's three rules: nothing deleted, nothing invented, re-running changes nothing (`modules/fleet/fleet.migration.ts:1-12`); duplicate-key tolerant, because seeds run concurrently (RK-28) |
-| 2. Go-live loads | OD-63 B's counted opening file; OD-68's master-data load when it comes as a file | once per versioned run key, started by the deploy (IT's precedent: `server.ts:149` and `worker.ts:115` start `startItConsumablesOpeningGoLive`) | the owner, on the file itself, reviewed with him in its pull request ("reviewed with the owner", `it/go-live/consumables-opening.ts:4`) | rows validated with the screens' schemas; refusal rather than a partial load; the run row written last; audit after commit. Recommended for OD-63 B's counted opening file, where a wrong quantity is the costly mistake (OD-68's master-data load follows IT's steps, which have no such mode): the first deploy only reports what it would load, behind an environment switch, as `INDEX_SYNC_MODE` does for indexes (`infrastructure/config/env.ts:194`), standing in for class 3's dry run |
+| 2. Go-live loads | OD-63 B's counted opening file; OD-68's master-data load when it comes as a file | once per versioned run key, started by the deploy (IT's precedent: `server.ts:149` and `worker.ts:115` start `startItConsumablesOpeningGoLive`) | the owner, on the file itself, reviewed jointly in its pull request ("reviewed with the owner", `it/go-live/consumables-opening.ts:4`) | rows validated with the screens' schemas; refusal rather than a partial load; the run row written last; audit after commit. Recommended for OD-63 B's counted opening file, where a wrong quantity is the costly mistake (OD-68's master-data load follows IT's steps, which have no such mode): the first deploy only reports what it would load, behind an environment switch, as `INDEX_SYNC_MODE` does for indexes (`infrastructure/config/env.ts:194`), standing in for class 3's dry run |
 | 3. Migrations and merges | the supplier merge (§15.3.5 a), IT stores (b), a change to the name fold (e), any backfill or destructive operation | operator CLI only; never at boot, never as a side effect of a feature slice (D-17) | the owner, on the production dry run's output | ADR-031's discipline (§15.3.5) |
 
 No class-3 operation runs against production without the owner's explicit approval of its dry-run output (D-17). The
@@ -460,7 +460,7 @@ it names (§19.2).
 | OD-76 | file formats, if OD-11 keeps supplier papers | A, formats (i): PDF and images | the supplier-papers category | P1b |
 | OD-77 | retention, likewise | A: keep everything (`retentionDays: null`) | the same category | P1b |
 | OD-78 | ready-made roles | A: §6.5's bundles as ready-made roles | module seed | P1a, P1b |
-| OD-83 | page frame | B: board frame on registers, applied unless the owner objects (his frame in Fleet, ATM, IT, System Administration) | the P1a.W and P1b.W pages | P1a, P1b |
+| OD-83 | page frame | B: board frame on registers, applied unless the owner objects (the owner's frame in Fleet, ATM, IT, System Administration) | the P1a.W and P1b.W pages | P1a, P1b |
 
 A file category's rules are fixed when `ensure()` first creates it, so a later answer to OD-76 or OD-77 reaches the
 supplier-papers category only through an operator `PATCH` (§11.1).
@@ -1205,7 +1205,7 @@ Administrative Affairs is OD-66.
   the owner dropped the names («انا مش عاوز اى اسماء»): a vault receipt now records one receiver, the signed-in user
   (`apps/api/src/modules/operations/vault/vault-custody.service.ts:99-103`;
   `packages/contracts/src/modules/operations.ts:2957-2970`).
-  The question to the owner says so: A is the shape he chose for the vault's cash receipt. His request lists one
+  The question to the owner says so: A is the shape the owner chose for the vault's cash receipt. The owner's request lists one
   «Receiving user» among a goods receipt's fields.
 - **Options** **A** the keeper alone (S). **B** named, distinct, current employees, the poster among them (S–M; a
   directory check; `inspection.members`, §2.6, under B only). **C** two sign-ins (M; a status and a rule).
@@ -1413,7 +1413,7 @@ Administrative Affairs is OD-66.
 - **Options** **A** the destination's in-transit balance; the carrier as text; overdue after N days (S; the overdue
   reminder rides a notification idempotency key, or PX-2's marks, §18.1 A10). **B** the source's (M; a ledger change).
   One step is not offered: the owner's request asks for Dispatch, Receipt, Partial receipt and Difference handling, and
-  says «ولا تعتبر الكمية انتقلت نهائيًا بمجرد الضغط على "Transfer"» (D-3). IT's one-step transfer, «فوراً», was his
+  says «ولا تعتبر الكمية انتقلت نهائيًا بمجرد الضغط على "Transfer"» (D-3). IT's one-step transfer, «فوراً», was the owner's
   choice for IT consumables (`apps/api/src/modules/it/consumables/consumable-transfer.service.ts:5-11`), not for these
   warehouses.
 - **Recommendation** A.
@@ -1571,7 +1571,7 @@ Administrative Affairs is OD-66.
     the supplier sends the paper; §12.5). **(iii)** nothing in ECMS (S; the live handoff overstates the payable until
     a person notices).
 - **Recommendation** B (§12.3): the owner's own example chain puts the invoice in Procurement, before Finance
-  («Procurement → PO → Receiving → Invoice → Finance»), and his request lists «Invoices» among procurement's
+  («Procurement → PO → Receiving → Invoice → Finance»), and the owner's request lists «Invoices» among procurement's
   documents; so whoever ordered and received checks the bill. Choose A if the rule that Operations never compute money
   owed is to hold. Under B: match (i); a difference (i); GRNs (i); billing (i); non-stock lines (i); one PO per
   registration (i); duplicates refused; the post-hand-over notice (i) (§12.4, §12.5).
@@ -1740,8 +1740,8 @@ Administrative Affairs is OD-66.
     section entry goes before `HR: [`, §13.2).
   - *Labels:* the row labels belong here, with their terms from OD-67 (§13.3). The launcher tile's glyph is OD-62.1;
     the row glyphs (`box` for Items, `warehouse` for Warehouses) are the design's (§13.3).
-  - *OD-62.1, the launcher tile's picture:* the owner chose the tiles of Operations, Organization, Gold Vault and ATM
-    himself and asked that each say its department, «عايز كل أيقونة تكون بتعبر عن اسم الإدارة»
+  - *OD-62.1, the launcher tile's picture:* the owner personally chose the tiles of Operations, Organization, Gold Vault and ATM
+    and asked that each say its department, «عايز كل أيقونة تكون بتعبر عن اسم الإدارة»
     (`apps/web/src/platform/navigation/module-icons.spec.ts:3-4, 68-72`); a box shows the stores, while the department
     later takes on facilities and office services (§13.1). **A** a box, for the stores (S; a new `BoxIcon`, §13.1).
     **B** another picture the owner names (S; one new glyph, worn by no other tile).
@@ -1755,7 +1755,7 @@ Administrative Affairs is OD-66.
     rows ship, or their rows are `retired` and their addresses redirected, §13.3). **(iii)** a «التقارير» hub over the
     report pages, each tab on its §14.5 key (M; the same pieces). **(iv)** the home row as a shared row, shown to a holder
     of any of the module's register keys (S; one contracts entry, grown each phase).
-- **Recommendation** A; sections (i); one row per screen (i), a hub only if the owner asks for one, as he did for HR;
+- **Recommendation** A; sections (i); one row per screen (i), a hub only on the owner's request, as HR's was;
   the tile picture OD-62.1 A, a box.
 
 #### OD-63: Opening balances (P5)
@@ -1907,9 +1907,9 @@ Administrative Affairs is OD-66.
   (§19.5) are this module's first consumers of `Fact`, and `CatalogsPage` of the tablist.
 - **Options** **A** plain `PageContainer` (S; as 37 of 71 list pages are). **B** the board frame on registers (S;
   `BOARD_FRAME`, `stickyHead`).
-- **Recommendation** B, applied as the default unless the owner objects: he has asked for this frame module by module,
+- **Recommendation** B, applied as the default unless the owner objects: the owner has asked for this frame module by module,
   in Fleet, ATM, IT and System Administration, and the IT pages this module follows wear it (§13.5, §13.6); A only if
-  he wants this module's registers to scroll as one page.
+  the owner wants this module's registers to scroll as one page.
 
 #### OD-85: Volumes and success measures (P5)
 - **Q** How many warehouses, items and stock documents a month are expected, how many keepers post at the same time,
@@ -1921,10 +1921,10 @@ Administrative Affairs is OD-66.
   P5 and a count's start and posting in P7, against the thresholds of §18.3.2 (P5) and §18.3.3 (P7), which the phase's
   re-detail re-sets if this entry's figures differ. Phase 1's exit criteria are CI, scope and the owner's acceptance on
   staging (§19.10).
-- **Options** **A** the owner gives the figures and his measures of success now (S; the assumptions are checked
+- **Options** **A** the owner gives the figures and the measures of success now (S; the assumptions are checked
   against them before P5). **B** the design's stated assumptions stand until P5 measures them (S; success is judged
   only at each phase's acceptance).
-- **Recommendation** A, with B's assumptions as the defaults until he answers.
+- **Recommendation** A, with B's assumptions as the defaults until the owner answers.
 
 ### 16.12 Decision log
 
@@ -2108,7 +2108,7 @@ pull request outside the module, never mixed with module code.
    donations of OD-33 (recommended default: A, an approved `adjustmentIn`) have no way in. A GRN keyed in error is
    OD-84 (recommended default: B, a supplier return with the reason code `entryError` that gives back PO
    `receivedQty`, which P5 already ships; §4.3.2). Adjustments need only the ledger and PX-1; P7 keeps transfers and
-   counts. The owner decides when he approves the plan: if adjustments stay in P7, he accepts those gaps in writing.
+   counts. The owner decides when approving the plan: if adjustments stay in P7, the owner accepts those gaps in writing.
    Under OD-52 B (counts only) there are no standalone adjustments, and the gaps last until P7's counts.
 5. **Note PC-12.** `apps/api/src/shared/base/branch-scope.ts`, beside `org-scope-match.ts`, holds ATM's fail-closed
    branch-scope rule (`apps/api/src/modules/atm/shared/branch-scope.ts:36-126`): `branchScopeMatch`,
@@ -2738,7 +2738,7 @@ C = create, M = modify; "C, M" = created in the first pull request listed and mo
 | `go-live/<list>-import.ts` + spec | C if OD-68 A | P1a.2 (units, categories, items); P1b.1 (suppliers) | pure: the file's shape and rows, validated with the screens' Create schemas, and the folded-name match that makes a row naming a live record that record (IT's `apps/api/src/modules/it/go-live/consumables-opening-import.ts` shape) |
 | `go-live/<list>.ts` | C if OD-68 A | the same | the boot step: it creates each row through the owning feature's exported create function with its session (§3.4), so `catalog/*` and `procurement/suppliers` stay the sole writers of their collections (§3.3); every collection the transaction writes awaits its `ensureCollection` before it (`apps/api/src/modules/it/go-live/consumables-opening.ts:161-163`); a versioned run key in IT's shape (`go-live:administration-<list>-<yyyy-mm>:v1`, as `apps/api/src/modules/it/go-live/consumables-opening.ts:77-78`); the run row written last, in the same transaction; an audit `create` per row after commit |
 | `shared/go-live-run.model.ts` | C if OD-68 A | the first of those pull requests | the run marker (`it/go-live/go-live-run.model.ts`), in `administrationModels`, so `sync-indexes.models.ts` does not change; otherwise it arrives in P5 under OD-63 B |
-| `apps/api/assets/administration-go-live/<list>-<yyyy-mm>.json` | C if OD-68 A | the same as its step | the owner's file, reviewed with him before it is committed, as IT's are (`apps/api/assets/it-go-live/`; `tsup.config.ts:47` copies `assets/` into the build); no supplier contact data: contacts are typed in the app after the load (§15.3.5 d) |
+| `apps/api/assets/administration-go-live/<list>-<yyyy-mm>.json` | C if OD-68 A | the same as its step | the owner's file, reviewed with the owner before it is committed, as IT's are (`apps/api/assets/it-go-live/`; `tsup.config.ts:47` copies `assets/` into the build); no supplier contact data: contacts are typed in the app after the load (§15.3.5 d) |
 
 **Platform registries and global specs**
 
@@ -3025,9 +3025,9 @@ Repository-wide findings outside this module are listed for the owner in
     `docs/10-reviews/2026-11-administration-design-cross-module-findings.md` (eleven items).
   - *For the owner*, new from this stage: the launcher tile's picture (OD-62.1); a receiving committee or the signed-in
     receiver (OD-35); goods sent back on a new transfer (OD-47.3 D); whether Procurement checks supplier bills (OD-54).
-- **FROZEN v1.0** (2026-11-24). The owner approved the design. He took every recommended default in §16 as the working
+- **FROZEN v1.0** (2026-11-24). The owner approved the design. The owner took every recommended default in §16 as the working
   answer, to be changed later by revision, answered OD-68 B (no data files for now: master data is typed in on the
-  screens) and asked for one phase at a time, each closed before the next; he also renewed the zod waiver to 2026-12-26
+  screens) and asked for one phase at a time, each closed before the next; the owner also renewed the zod waiver to 2026-12-26
   (§16.12). OD-68 B removes the go-live rows from Phase 1: the §19.8 rows marked "if OD-68 A" do not apply, and nothing
   else changes.
 - **Drift check against `9efdcbd9`** (2026-11-24, the repository's `drift-check` skill). `main` had moved 59 commits
@@ -3196,6 +3196,61 @@ Repository-wide findings outside this module are listed for the owner in
     first document that names a warehouse (P5).
   - *Fields.* `location` is free text up to 200 characters, `notes` up to 2,000 as an item's; the code is required,
     trimmed, in the org units' pattern. `GET /warehouses/branch-options` takes no query: a stray one is a 400.
+- **P1b.1 built** (2026-11-24). The supplier register ships as §19.1 says, under the owner's answers (§16.12) and
+  ADR-040 (OD-01 C: module-owned now, a platform seam later, IT vendors and Fleet workshops untouched): suppliers,
+  the `SUP-` code on `supplier:global`, the categories read widened for supplier editors, and supplier papers (OD-11
+  A) with their category, authorizer and three endpoints; every bundle §6.5 gives a supplier key gains it, titled as
+  before. OD-68 B: no go-live step, no run model, no entrypoint change. Built beside P1a.3 and rebased onto it, so
+  the shared lists (manifest, roles, errors, realtime registries, this section) hold both. Where the code had to
+  choose what the design leaves open:
+  - *The tax-number warning (OD-11 (i))* rides the record, after ATM's seal duplicates (`duplicates` on its DTO):
+    every single-supplier answer (`GET /:id`, the create, the edit and both paper writes) is the detail DTO, whose
+    `taxNumberMatches` names up to five other suppliers holding the same number, newest first, retired ones marked
+    `isActive: false`; the register's rows carry none. The number is compared as typed, trimmed; whether
+    «123-456-789» and «123456789» are one number is for the owner, so no normalisation is applied.
+  - *The VAT status* has no values until OD-29 gives them, so it ships holding null alone
+    (`ADMINISTRATION_SUPPLIER_VAT_STATUSES = []`), any value refused (400): the stored shape is final and the values
+    join without a migration. Listed for the owner with OD-29.
+  - *Categories.* Each must exist (404, as P1a's references) and one named anew must be active, by the category's
+    own `activeFor` ("stays out of every new choice"): 422 `ADMINISTRATION_REFERENCE_INACTIVE`, one detail per
+    retired category, field `categoryIds`, its `message` the id (IT's value-in-message precedent); a supplier keeps a
+    category that retired after it was named. Either level may be named; how an RFQ matches a top-level category to
+    its subcategories' items is P3's. Ids are canonical and named once, in the order first given, at most 100 (a
+    stored list's bound, not a business rule). `?categoryId=` reads a category with its subcategories, as the item
+    register does. Only `.create` and `.edit` join the categories read (§19.3), so `.view` alone fills no category
+    filter; every seeded bundle with the supplier view key also holds `administrationItem.view`.
+  - *A paper's link is versioned.* §11.4's "link writes are version-guarded" is read literally: the link takes the
+    multipart fields `label` (1–200, a file's display name) and `version` (the HR hiring-documents shape), the
+    removal `?version=` (ATM's `AtmVersionQuerySchema`), and both move the supplier's `__v`, so an edit decided before
+    a paper was linked is stale. The bound of 20 rides in the link write's filter and, since §5.15 names no code for
+    it, answers a new module-wide one, 422 `ADMINISTRATION_ATTACHMENT_LIMIT` (`ADMINISTRATION_MAX_LIST_ATTACHMENTS`);
+    a full list is refused before a byte is stored. The collection is made ready before the upload, so a failed
+    index build stores nothing, and a link write that misses or throws withdraws its upload (§11.4's "failed link
+    write", as IT's signed copy does on any throw). The endpoint takes an upload only, never a JSON link of an existing
+    file, so §19.7's "a link to a file of another category or entity" cannot be made: the strict schema refuses a
+    `fileId`, and a paper is never reached through another supplier (404).
+  - *OD-76 on a record with no draft.* No supplier paper is required (OD-76 A names none), so no gate reads the scan
+    states, which the detail shows per paper (`scanStatus`, null for a file gone or archived, «الملف غير متاح»; the
+    file id stays on the server). A writer holding `.edit` without `.view` (a custom role: every §6.5 bundle with a
+    write key holds `.view`) gets each write's detail with every `scanStatus` null and Files not asked, since the
+    authorizer would refuse each lookup and audit it as `permissionDenied` in their name. "After submission (i)" has
+    nothing to apply to, so the list is open at every status, retired included; whether a retired supplier's papers
+    freeze is for the owner.
+  - *The authorizer's write branch* takes `.edit` at organization scope, the paper endpoints' own OD-04 A rule, so a
+    branch holder of `.edit` with a `file.*` key cannot write the papers through `/platform/files` (§11.3's table
+    names only the key). The category resolver ensures the category once more when the cached one is no longer found.
+  - *The intake* is the module's `shared/file-upload.ts`: one helper, its cap `min(category + 5, MAX_UPLOAD_MB)`, with
+    the latin1 file-name decode Fleet's and ATM's uploads apply, written here because the module imports no other
+    (§3.7). A paper's display name in Files is its label.
+  - *Words and logs.* The keys' Arabic resource name is the genitive «الموردين», so the labels read «عرض الموردين»
+    as Fleet's read «عرض السائقين»; the page keeps «الموردون». §6.8's nested contact phones join the logger's
+    redaction list at three depths (`CONTACT_PHONE_PATHS`), the slice's one change outside the module's registries;
+    masking phones in the register is P1b.W's (§13.6 B). Registration numbers are trimmed, 1–50 characters, the
+    Organization's own bounds, with no format imposed.
+  - *Roles.* §6.5's "+ create/edit if OD-04 gives suppliers to procurement" is not met under OD-04 A, so only the
+    master-data administrator writes suppliers.
+  - *For P1b.W:* the supplier rows show category names, so the category topics' web rows gain `suppliers` with the
+    screen that shows them; the new refusal code needs its en and ar `FRIENDLY` text then.
 - **Findings about other modules** (not this design's work, and not in `docs/10-reviews/technical-debt.md`, which
   holds only items someone decided to defer) are listed for their owners in
   `docs/10-reviews/2026-11-administration-design-cross-module-findings.md`.

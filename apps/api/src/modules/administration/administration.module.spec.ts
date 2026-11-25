@@ -4,13 +4,16 @@
 // collections, the units and the item categories; P1a.2: the items' three keys and page, their
 // route, their collection and the counter's, their topic and the five bundles their key opens;
 // P1a.3: the warehouses' three keys and page, their route and the people's, their collection,
-// their topic, and the warehouse keys in the six bundles §6.5 gives them.
+// their topic, and the warehouse keys in the six bundles §6.5 gives them; P1b.1: the suppliers'
+// three keys and page, their route and collection, their topic, their papers' authorizer, and the
+// supplier keys each bundle gains.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { platformSatisfies, validateManifest } from '../../platform/kernel/module-registry';
 import { REALTIME_TOPICS } from '../../platform/realtime';
+import { supplierFileAuthorizer } from './procurement/suppliers';
 import { ADMINISTRATION_ROLE_BUNDLES } from './administration-roles';
 import {
   administrationModule,
@@ -21,7 +24,7 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const read = (relative: string): string => readFileSync(join(HERE, relative), 'utf8');
 
-describe('administration module manifest (Administrative Affairs, P1a.3)', () => {
+describe('administration module manifest (Administrative Affairs, P1b.1)', () => {
   it('passes kernel manifest validation', () => {
     expect(() => {
       validateManifest(administrationModule);
@@ -40,22 +43,28 @@ describe('administration module manifest (Administrative Affairs, P1a.3)', () =>
       'administrationItem.create',
       'administrationItem.edit',
       'administrationItem.view',
+      'administrationSupplier.create',
+      'administrationSupplier.edit',
+      'administrationSupplier.view',
       'administrationWarehouse.create',
       'administrationWarehouse.edit',
       'administrationWarehouse.view',
     ]);
-    // §6.3's order: the warehouses first (10), then the items (20) and the catalogs (30).
+    // §6.3's order: the warehouses first (10), then the items (20), the catalogs (30) and the
+    // suppliers (40).
     expect(administrationPages.map((p) => p.id)).toEqual([
       'administration.warehouses',
       'administration.items',
       'administration.catalogs',
+      'administration.suppliers',
     ]);
-    expect(administrationPages.map((p) => p.sortOrder)).toEqual([10, 20, 30]);
+    expect(administrationPages.map((p) => p.sortOrder)).toEqual([10, 20, 30, 40]);
     expect(administrationModule.routes.map((r) => r.prefix).sort()).toEqual([
       '/administration/catalog-items',
       '/administration/item-categories',
       '/administration/items',
       '/administration/people',
+      '/administration/suppliers',
       '/administration/warehouses',
     ]);
     expect([...administrationModule.collections].sort()).toEqual([
@@ -63,12 +72,42 @@ describe('administration module manifest (Administrative Affairs, P1a.3)', () =>
       'administration_counters',
       'administration_item_categories',
       'administration_items',
+      'administration_suppliers',
       'administration_warehouses',
     ]);
     expect(administrationModule.eventSubscriptions).toEqual([]);
     expect(administrationModule.scheduledTasks ?? []).toEqual([]);
     expect(administrationModule.jobHandlers ?? []).toEqual([]);
-    expect(administrationModule.fileEntityAuthorizers ?? []).toEqual([]);
+  });
+
+  it('claims exactly one file entity, the supplier, for its papers (OD-11 A, §11.3)', () => {
+    expect(administrationModule.fileEntityAuthorizers).toEqual([supplierFileAuthorizer]);
+    expect(supplierFileAuthorizer.entityType).toBe('supplier');
+    // Not opted into the separate delete intent: a removal is asked as a write (§11.3).
+    expect(supplierFileAuthorizer.understandsDelete).toBeUndefined();
+  });
+
+  it('labels the supplier keys in formal Arabic, the resource genitive after its verbal noun', () => {
+    const names = Object.fromEntries(
+      administrationPermissions
+        .filter((p) => p.resource === 'administrationSupplier')
+        .map((p) => [p.key, p.name]),
+    );
+    expect(names).toEqual({
+      'administrationSupplier.view': { en: 'View Suppliers', ar: 'عرض الموردين' },
+      'administrationSupplier.create': { en: 'Create Suppliers', ar: 'إنشاء الموردين' },
+      'administrationSupplier.edit': { en: 'Edit Suppliers', ar: 'تعديل الموردين' },
+    });
+  });
+
+  it('names the supplier page as §6.3 does, after the catalogs', () => {
+    expect(administrationPages.find((p) => p.id === 'administration.suppliers')).toEqual({
+      id: 'administration.suppliers',
+      moduleId: 'administration',
+      name: { en: 'Suppliers', ar: 'الموردون' },
+      route: '/administration/suppliers',
+      sortOrder: 40,
+    });
   });
 
   it('is named as the owner names the department (OD-62 A) — never plain “Administration”', () => {
@@ -132,14 +171,17 @@ describe('the ready-made roles (OD-78 A, D-20)', () => {
     }
   });
 
-  it('gives each bundle §6.5’s P1a keys, as far as they have shipped', () => {
+  it('gives each bundle §6.5’s P1a and P1b keys, as far as they have shipped', () => {
     expect(bundle('administration-storekeeper')?.permissionKeys).toEqual([
       'administrationWarehouse.view',
       'administrationItem.view',
+      'administrationSupplier.view',
     ]);
+    // OD-04 A keeps the supplier writes central: the officer reads the register, never writes it.
     expect(bundle('administration-procurement-officer')?.permissionKeys).toEqual([
       'administrationItem.view',
       'administrationWarehouse.view',
+      'administrationSupplier.view',
     ]);
     expect(bundle('administration-master-data')?.permissionKeys).toEqual([
       'administrationWarehouse.view',
@@ -149,6 +191,9 @@ describe('the ready-made roles (OD-78 A, D-20)', () => {
       'administrationItem.create',
       'administrationItem.edit',
       'administrationCatalog.manage',
+      'administrationSupplier.view',
+      'administrationSupplier.create',
+      'administrationSupplier.edit',
     ]);
   });
 
@@ -157,6 +202,13 @@ describe('the ready-made roles (OD-78 A, D-20)', () => {
       b.permissionKeys.some(
         (key) => key === 'administrationWarehouse.create' || key === 'administrationWarehouse.edit',
       ),
+    ).map((b) => b.key);
+    expect(writers).toEqual(['administration-master-data']);
+  });
+
+  it('no bundle but the master-data desk writes a supplier (OD-04 A)', () => {
+    const writers = ADMINISTRATION_ROLE_BUNDLES.filter((b) =>
+      b.permissionKeys.some((k) => k.startsWith('administrationSupplier.') && !k.endsWith('.view')),
     ).map((b) => b.key);
     expect(writers).toEqual(['administration-master-data']);
   });
@@ -211,6 +263,12 @@ describe('the realtime topics (§19.6)', () => {
     });
   });
 
+  it('classifies suppliers on their own view key (P1b.1, §9.2)', () => {
+    expect(REALTIME_TOPICS['administration.supplier']).toEqual({
+      permission: 'administrationSupplier.view',
+    });
+  });
+
   it('classifies items, and moves units and categories to the item key — the wider of their reads', () => {
     for (const topic of [
       'administration.item',
@@ -230,23 +288,32 @@ describe('the realtime topics (§19.6)', () => {
       'administration.catalogItem',
       'administration.item',
       'administration.itemCategory',
+      'administration.supplier',
       'administration.warehouse',
     ]);
   });
 });
 
 describe('the catalog reads (§19.3)', () => {
+  const routesOf = (file: string): string[] =>
+    [...read(file).matchAll(/router\.(get|post|patch)\([\s\S]*?\n {2}\);/g)].map((m) => m[0]);
+  const gateOf = (route: string): string =>
+    (/authorizeAny\(([\s\S]*?)\)/.exec(route)?.[1] ?? '').replace(/\s+/g, ' ').trim();
+
   it.each([
-    'catalog/catalog-items/catalog-item.routes.ts',
-    'catalog/item-categories/item-category.routes.ts',
-  ])('%s reads under the item key or the catalog key, and writes under the catalog key', (file) => {
-    const source = read(file);
-    const [list, ...writes] = [
-      ...source.matchAll(/router\.(get|post|patch)\([\s\S]*?\n {2}\);/g),
-    ].map((m) => m[0]);
-    expect(list).toContain(
-      "authorizeAny('administrationItem.view', 'administrationCatalog.manage')",
-    );
+    [
+      'catalog/catalog-items/catalog-item.routes.ts',
+      "'administrationItem.view', 'administrationCatalog.manage'",
+    ],
+    [
+      // A supplier editor picks the categories a supplier supplies (P1b.1); no supplier key reads
+      // the units, which no supplier names.
+      'catalog/item-categories/item-category.routes.ts',
+      "'administrationItem.view', 'administrationCatalog.manage', 'administrationSupplier.create', 'administrationSupplier.edit',",
+    ],
+  ])('%s reads under its keys, and writes under the catalog key alone', (file, gate) => {
+    const [list, ...writes] = routesOf(file);
+    expect(gateOf(list ?? '')).toBe(gate);
     expect(writes.length).toBe(2);
     for (const write of writes)
       expect(write).toContain("authorize('administrationCatalog.manage')");
@@ -296,5 +363,32 @@ describe('the warehouse routes (§19.3)', () => {
 
   it('keeps the warehouse keys off the organization-only list — a warehouse is a branch record (§6.7)', () => {
     expect(read('shared/org-authority.ts')).not.toContain('administrationWarehouse');
+  });
+});
+
+describe('the supplier routes (§19.3)', () => {
+  const source = read('procurement/suppliers/supplier.routes.ts');
+  const routes = [
+    ...source.matchAll(/router\.(get|post|patch|delete)\(\s*'([^']+)',[\s\S]*?\n {2}\);/g),
+  ].map((m) => ({ method: m[1] ?? '', path: m[2] ?? '', body: m[0] }));
+  const gate = (route: { body: string }): string =>
+    /authorize\('([^']+)'\)/.exec(route.body)?.[1] ?? '';
+
+  it('serves the seven routes §19.3 lists, papers included, and no supplier delete', () => {
+    expect(routes.map((r) => `${r.method.toUpperCase()} ${r.path} ${gate(r)}`)).toEqual([
+      'GET / administrationSupplier.view',
+      'GET /:id administrationSupplier.view',
+      'POST / administrationSupplier.create',
+      'PATCH /:id administrationSupplier.edit',
+      'POST /:id/attachments administrationSupplier.edit',
+      'GET /:id/attachments/:attachmentId administrationSupplier.view',
+      'DELETE /:id/attachments/:attachmentId administrationSupplier.edit',
+    ]);
+  });
+
+  it('validates every :param route’s params', () => {
+    for (const route of routes.filter((r) => r.path.includes(':'))) {
+      expect(route.body, `${route.method} ${route.path}`).toMatch(/params: \w+ParamSchema/);
+    }
   });
 });

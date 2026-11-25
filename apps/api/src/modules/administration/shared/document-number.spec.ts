@@ -1,9 +1,21 @@
-// The item code's series (design §2.8, §19.7): its counter key, the prefix its floor reads, and
-// the floor itself — the highest number at any width, so a counter that went missing past
-// «ITM-99999» does not come back below a code already used.
+// The master codes' series (design §2.8, §19.7): their counter keys, the prefix each floor reads,
+// and the floor itself — the highest number at any width, so a counter that went missing past
+// «ITM-99999» does not come back below a code already used. The supplier's series is the item's
+// machinery under its own key and prefix, so neither ever floors at the other's codes.
 import { formatAdministrationMasterCode } from '@ecms/contracts';
 import { describe, expect, it } from 'vitest';
-import { ITEM_CODE_SERIES, floorFrom, highestCodePipeline } from './document-number';
+import {
+  ITEM_CODE_SERIES,
+  SUPPLIER_CODE_SERIES,
+  floorFrom,
+  highestCodePipeline,
+} from './document-number';
+
+// The pipeline's first stage is its `$match` on the code; the cast names that one stage's shape.
+const patternOf = (series: typeof ITEM_CODE_SERIES): RegExp => {
+  const [match] = highestCodePipeline(series);
+  return new RegExp((match as { $match: { code: { $regex: string } } }).$match.code.$regex);
+};
 
 describe('the item code series (OD-05 A)', () => {
   it('counts on `item:global` — global, never reset, so no year in its key', () => {
@@ -72,5 +84,40 @@ describe('the item code series (OD-05 A)', () => {
     expect(floorFrom(ITEM_CODE_SERIES, [{ top: 'ITM-00042' }])).toBe(42);
     expect(floorFrom(ITEM_CODE_SERIES, [{ top: 'ITM-000042' }])).toBe(0);
     expect(floorFrom(ITEM_CODE_SERIES, [{ top: null }])).toBe(0);
+  });
+});
+
+describe('the supplier code series (OD-05 A)', () => {
+  it('counts on `supplier:global`, global and never reset like the item’s', () => {
+    expect(SUPPLIER_CODE_SERIES).toEqual({
+      kind: 'supplier',
+      key: 'supplier:global',
+      prefix: 'SUP',
+    });
+    expect(SUPPLIER_CODE_SERIES.key).not.toBe(ITEM_CODE_SERIES.key);
+  });
+
+  it('reads its floor from «SUP-» codes only, never an item’s', () => {
+    const pattern = patternOf(SUPPLIER_CODE_SERIES);
+    expect(pattern.source.startsWith('^SUP-'), 'anchored, so `ux_code` serves it').toBe(true);
+    for (const code of ['SUP-00001', 'SUP-99999', 'SUP-100000']) {
+      expect(pattern.test(code), code).toBe(true);
+    }
+    for (const code of ['ITM-00001', 'XSUP-00001', 'sup-00001', 'SUP-000042', 'SUP-0042']) {
+      expect(pattern.test(code), code).toBe(false);
+    }
+    expect(patternOf(ITEM_CODE_SERIES).test('SUP-00001'), 'and the item’s never reads one').toBe(
+      false,
+    );
+  });
+
+  it('floors at the number its highest code carries, and at 0 on another master’s code', () => {
+    for (const seq of [1, 42, 100_000]) {
+      const code = formatAdministrationMasterCode('supplier', seq);
+      expect(floorFrom(SUPPLIER_CODE_SERIES, [{ top: code }]), code).toBe(seq);
+    }
+    expect(floorFrom(SUPPLIER_CODE_SERIES, [])).toBe(0);
+    expect(floorFrom(SUPPLIER_CODE_SERIES, [{ top: 'ITM-00042' }])).toBe(0);
+    expect(floorFrom(ITEM_CODE_SERIES, [{ top: 'SUP-00042' }])).toBe(0);
   });
 });

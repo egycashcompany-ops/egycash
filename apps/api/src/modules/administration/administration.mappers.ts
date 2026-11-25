@@ -6,6 +6,8 @@ import {
   type AdministrationItemCategoryDto,
   type AdministrationItemDto,
   type AdministrationPersonDto,
+  type AdministrationSupplierDetailDto,
+  type AdministrationSupplierDto,
   type AdministrationWarehouseDto,
   type AdministrationWarehouseKeeperDto,
 } from '@ecms/contracts';
@@ -15,6 +17,11 @@ import { type AdministrationItemCategoryDoc } from './catalog/item-categories/it
 import { type ItemCategoryParentNames } from './catalog/item-categories/item-category.service';
 import { type AdministrationItemDoc } from './catalog/items/item.model';
 import { type ItemLabels } from './catalog/items/item.service';
+import { type AdministrationSupplierDoc } from './procurement/suppliers/supplier.model';
+import {
+  type SupplierDetailFacts,
+  type SupplierLabels,
+} from './procurement/suppliers/supplier.service';
 import { type AdministrationWarehouseDoc } from './warehouses/warehouses/warehouse.model';
 import { type WarehouseLabels } from './warehouses/warehouses/warehouse.service';
 
@@ -144,4 +151,69 @@ export const toAdministrationKeeperDto = (
   code: employee.code,
   fullNameAr: employee.fullNameAr,
   status: employee.status,
+});
+
+/**
+ * A register row (§19.4): `labels` holds the category names the caller resolved, a category it
+ * could not name reading null rather than failing the row. Its papers are the detail's alone.
+ */
+export const toAdministrationSupplierDto = (
+  doc: AdministrationSupplierDoc,
+  labels: SupplierLabels,
+): AdministrationSupplierDto => ({
+  id: String(doc._id),
+  code: doc.code,
+  name: doc.name,
+  phone: doc.phone,
+  email: doc.email,
+  address: doc.address,
+  contacts: doc.contacts.map((contact) => ({
+    name: contact.name,
+    role: contact.role,
+    phone: contact.phone,
+    email: contact.email,
+  })),
+  categories: doc.categoryIds.map((categoryId) => {
+    const id = String(categoryId);
+    return { id, name: labels.categories.get(id) ?? null };
+  }),
+  taxNumber: doc.taxNumber,
+  commercialRegistry: doc.commercialRegistry,
+  vatStatus: doc.vatStatus,
+  paymentTerms: doc.paymentTerms,
+  notes: doc.notes,
+  isActive: doc.isActive,
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+/**
+ * The record as its page reads it (§13.6 B): the row, each paper with its file's scan state read
+ * at read time (null for a file gone or archived, §11.5), and the other holders of its tax number
+ * — a warning, never a block (OD-11 (i)). A paper's file id stays on the server: the paper is read
+ * through its own route, by `attachmentId`.
+ */
+export const toAdministrationSupplierDetailDto = (
+  doc: AdministrationSupplierDoc,
+  facts: SupplierDetailFacts,
+): AdministrationSupplierDetailDto => ({
+  ...toAdministrationSupplierDto(doc, facts.labels),
+  attachments: doc.attachments.map((paper) => ({
+    attachmentId: String(paper.attachmentId),
+    categoryKey: paper.categoryKey,
+    label: paper.label,
+    fileName: paper.fileName,
+    mime: paper.mime,
+    size: paper.size,
+    addedByUserId: String(paper.addedByUserId),
+    addedAt: iso(paper.addedAt),
+    scanStatus: facts.scanStates.get(String(paper.fileId)) ?? null,
+  })),
+  taxNumberMatches: facts.taxNumberMatches.map((match) => ({
+    id: String(match._id),
+    code: match.code,
+    name: match.name,
+    isActive: match.isActive,
+  })),
 });

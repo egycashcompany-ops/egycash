@@ -1311,7 +1311,7 @@ narrows it, because that guard lower-cases the source and refuses substrings:
 | C. B + payment facts | also records "paid on" and a reference | the same, with a paid state | Record-only precedents exist: loan `disburse` records `disbursedAt` (`packages/contracts/src/modules/hr-employee-loans.ts:144-151`) and payroll `pay` records `paidOn` and a reference (`packages/contracts/src/modules/hr-payroll.ts:588-599`), each "that a payment was made elsewhere" (`docs/12-planning/employee-loans-design.md:239-241`). The cost: Administrative Affairs would type a fact Finance owns |
 
 Recommended default: B, so that whoever ordered and received checks the bill. The owner's own example chain puts the
-invoice in Procurement before Finance, «Procurement → PO → Receiving → Invoice → Finance», and his brief lists
+invoice in Procurement before Finance, «Procurement → PO → Receiving → Invoice → Finance», and the owner's brief lists
 «Invoices» among the documents procurement needs. Choose A if the context map's rule "Operations never compute money
 owed" (`docs/01-domain/bounded-contexts.md:105`) is to hold; OD-54 puts the choice to the owner.
 
@@ -1753,7 +1753,7 @@ an unknown key falls back silently (`app-icon.tsx:106-109`). Each module tile we
 existing alternative, `inbox`, is already worn by five rows, among them IT consumables
 (`apps/api/src/seed-navigation.ts:945`). `box` describes the stores; the department later takes on facilities and
 office services (§0). So the tile glyph is OD-62.1 (A, a box, for the stores, recommended default;
-B, another picture the owner names): the owner has chosen module tile glyphs himself
+B, another picture the owner names): the owner has personally chosen module tile glyphs
 (`apps/web/src/platform/navigation/module-icons.spec.ts:68-72`) and objected to ones that do not say what the
 department is (`:3-4`). The `warehouse` row glyph is the design's.
 
@@ -2137,8 +2137,8 @@ settled it:
   IT 14, Operations 12, System Administration 9, Organization 2) and `BOARD_FRAME` in 59 (Fleet 16, ATM 14, IT 14,
   System Administration 9, Operations 4, Organization 2); of the 71 list members at `4c0fa1b0` (69 at `b03522f`), 34
   wear it (Fleet 15, IT 14, ATM 2, Organization 2, Operations 1), IT's `ConsumablesPage` and `ItCatalogsPage` among
-  them. He has since asked for it in two more places, and the IT pages this module follows wear it (§13.5), so OD-83
-  applies it to the registers here by default (B, unless the owner objects; A only if he wants this module's registers
+  them. The owner has since asked for it in two more places, and the IT pages this module follows wear it (§13.5), so OD-83
+  applies it to the registers here by default (B, unless the owner objects; A only if the owner wants this module's registers
   to scroll as one page).
 - **Branch filter.** It offers only the branches the reader's `administrationWarehouse.view` reaches under the top
   bar's choice, named and ordered as the switcher names and orders them (`apps/web/src/platform/layout/BranchSwitcher.tsx:67-75`),

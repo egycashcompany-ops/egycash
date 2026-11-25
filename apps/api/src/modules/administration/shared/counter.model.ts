@@ -1,7 +1,7 @@
 // The module's running numbers (design §2.3.1, §2.8): `administration_counters`, one row per series,
-// built with the shared counter factory (PC-13) instead of a third copy of Fleet's. P1a.2's one
-// series is the item code, `item:global` (OD-05 A); the supplier code (P1b.1) and the yearly
-// document series (P2) join it as keys, never as collections.
+// built with the shared counter factory (PC-13) instead of a third copy of Fleet's. Two series so
+// far, the item code `item:global` (P1a.2) and the supplier code `supplier:global` (P1b.1), both
+// OD-05 A; the yearly document series (P2) join them as keys, never as collections.
 //
 // Bookkeeping, not business data: no repository, no soft delete, no version (§2.1). Written only
 // through the two functions below, which keep the factory's two halves apart:

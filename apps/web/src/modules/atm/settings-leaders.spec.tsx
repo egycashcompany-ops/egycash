@@ -252,6 +252,47 @@ describe('the leader pickers', () => {
     expect(closeWith([])).toContain(t('atm.maintenance.noEmployeesHint'));
   });
 
+  // The owner (2026-11-25): «عايز اسم الموظف دا يجي تلقائي من قائد الطاقم فى الجدول لو مُعين .. لو
+  // لأ خليه يدخله هو».
+  const closeRows = (rows: AtmMaintenanceDto[]): string => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(atmLeaderOptionsKey(), PEOPLE);
+    return render(<CloseMaintenanceDialog open rows={rows} onClose={() => undefined} />, qc);
+  };
+  const led = (id: string, leaderName: string | null): AtmMaintenanceDto =>
+    ({ ...ROW, id, leaderName }) as AtmMaintenanceDto;
+  const submitDisabled = (html: string): boolean =>
+    / disabled=""/u.test(/<button[^>]*type="submit"[^>]*>/u.exec(html)?.[0] ?? 'missing');
+  const listed = (html: string): string[] =>
+    [...html.matchAll(/<li[^>]*>(.*?)<\/li>/gu)].map((match) => match[1] ?? '');
+
+  it('rows that all name their crew leader close under them — no employee box', () => {
+    const html = closeRows([led('m1', 'سامح فؤاد'), led('m2', 'كريم عادل')]);
+    expect(html).not.toContain('role="combobox"');
+    expect(html).not.toContain(t('atm.maintenance.assignEmployee'));
+    expect(html).toContain(t('atm.maintenance.closeLeader', { name: 'سامح فؤاد' }));
+    expect(html).toContain(t('atm.maintenance.closeLeader', { name: 'كريم عادل' }));
+    expect(html).toContain(t('atm.maintenance.closeBody', { count: 2 }));
+    // Nothing to pick, so nothing holds the close back.
+    expect(submitDisabled(html)).toBe(false);
+  });
+
+  it('a set with rows that name none asks for the employee for those rows only, and says so', () => {
+    const html = closeRows([led('m1', 'سامح فؤاد'), led('m2', null), led('m3', '  ')]);
+    expect(html).toContain('role="combobox"');
+    expect(html).toContain(t('atm.maintenance.assignEmployeeHint', { count: 2 }));
+    expect(html).toContain(t('atm.maintenance.closeLeader', { name: 'سامح فؤاد' }));
+    const rows = listed(html);
+    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => row.includes(t('atm.maintenance.closeNoLeader')))).toEqual([
+      false,
+      true,
+      true,
+    ]);
+    // Until someone is picked, the close waits.
+    expect(submitDisabled(html)).toBe(true);
+  });
+
   it('shows each person with their HR code, so two of one name are told apart', () => {
     expect(PEOPLE.map(leaderOptionLabel)).toEqual([
       'أحمد سعيد محمد (0101)',

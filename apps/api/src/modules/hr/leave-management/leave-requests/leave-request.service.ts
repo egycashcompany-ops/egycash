@@ -52,6 +52,7 @@ import { leaveBalanceService, serviceMonthsOf, type YearPortion } from '../leave
 import { resolveLeaveAttachmentsCategoryId } from './leave-request.files';
 import { LeaveRequestModel, type LeaveRequestDoc, type LeaveRequestEntity } from './leave-request.model';
 import { leaveRequestRepository } from './leave-request.repository';
+import { initialStatusFor, statusAfterChainDecision } from './leave-request.routing';
 
 const ORG_SUBJECT = { userId: null, branchId: null };
 
@@ -309,28 +310,28 @@ class LeaveRequestService {
       );
     }
 
-    // Which machine runs this request is decided ONCE, here, and never revisited: a request that
-    // starts on the two-desk rails finishes on them even if somebody writes a chain tomorrow, and
-    // a request that starts on a chain keeps that chain's shape. Switching a live request between
-    // the two would leave a trail that reads as neither.
+    // Which path runs this request is chosen ONCE, here. It is the chain only when a rung of it is
+    // staffed. A chain nobody holds takes the manager and HR path, as no chain does: on the chain
+    // the request would wait, and nobody who could decide it would be told (leave design §16,
+    // PXQ-1).
+    // A request on that path finishes on it even if somebody staffs the chain or writes one
+    // tomorrow. The only later move is one way: a request on the chain whose remaining rungs nobody
+    // holds goes to HR's step and keeps its trail (`decideOnChain`).
     //
-    // It keeps that shape because the create below pins it: the chain's row and rungs are written
-    // in the same create that stamps `pendingApproval`, and the engine decides the request on them
-    // whatever is done to the row afterwards (ADR-041 decision 4). Without the pin an edit would
-    // lay the decisions already taken over other rungs.
+    // A request on the chain keeps that chain's shape because the create below pins it: the chain's
+    // row and rungs are written in the same create that stamps `pendingApproval`, and the engine
+    // decides the request on them whatever is done to the row afterwards (ADR-041 decision 4).
+    // Without the pin an edit would lay the decisions already taken over other rungs. A request
+    // routed off a chain nobody staffs stores no pin, so the pin keeps meaning the chain a request
+    // ran on.
     //
     // And the engine takes over only where a chain was actually configured for this employee's
     // place. That is what makes this change migrate nothing: until an administrator writes a
     // chain, every leave request behaves exactly as it did yesterday.
     const unit = await this.unitOf(employee);
     const chain = await approvalService.chainFor(LEAVE_REQUEST_TYPE, unit);
-    const onEngine = chain.steps.length > 0;
-    const pin = pinOf(chain);
-    const initialStatus = onEngine
-      ? 'pendingApproval'
-      : employee.employment.managerId !== null
-        ? 'pendingManager'
-        : 'pendingHr';
+    const initialStatus = initialStatusFor(chain.status, employee.employment.managerId !== null);
+    const pin = initialStatus === 'pendingApproval' ? pinOf(chain) : null;
     const doc = await leaveRequestRepository.create(
       {
         ...(pin === null
@@ -417,6 +418,11 @@ class LeaveRequestService {
         { field: 'type', old: null, new: type.code },
         { field: 'span', old: null, new: `${dateOnlyIso(start)}..${dateOnlyIso(end)} (${String(days)}d)` },
         { field: 'employee', old: null, new: employee.code },
+        // The chain that applied and that nobody staffs, so a reader of the row sees why the
+        // request took the manager and HR path (leave design §16.2 item 5).
+        ...(chain.status === 'unstaffed'
+          ? [{ field: 'unstaffedChain', old: null, new: chain.workflowId }]
+          : []),
       ],
     });
     await emit(HrLeaveEvents.Requested, {
@@ -486,7 +492,9 @@ class LeaveRequestService {
     // A request the engine is running takes the engine's path whole: who may decide, which rung he
     // decides, and what that cancels are all its answers, and none of the two-desk checks below
     // apply to it. They are not merely redundant there — `isSubjectManager` would let the
-    // employee's line manager decide a rung the chain never gave him.
+    // employee's line manager decide a rung the chain never gave him. A request the chain handed
+    // to HR's step is `pendingHr`, and runs on the checks below as any HR step does: one rule
+    // decides HR's step however the request reached it (leave design §16.2 item 2).
     if (request.status === 'pendingApproval') {
       return this.decideOnChain(ctx, request, employee, verdict, input);
     }
@@ -584,6 +592,10 @@ class LeaveRequestService {
    * The write is conditional on the trail the decision was computed against (`approvalSteps` of
    * exactly that length), which is the same guard `status` gives the older path: two managers
    * pressing approve at the same moment must not both append a rung.
+   *
+   * A decision that leaves nobody on the rungs that remain hands the request to HR's step in that
+   * same write (leave design §16.2 item 2). No entry is written for the rungs nobody reached: a
+   * `skipped` there would make the engine read the chain as approved before HR decides.
    */
   private async decideOnChain(
     ctx: AuthContext,
@@ -610,12 +622,7 @@ class LeaveRequestService {
       throw new BusinessRuleError('an attachment is required before approval');
     }
 
-    const nextStatus =
-      outcome.status === 'approved'
-        ? 'approved'
-        : outcome.status === 'rejected'
-          ? 'rejected'
-          : 'pendingApproval';
+    const nextStatus = statusAfterChainDecision(outcome.status);
     const updated = await LeaveRequestModel.findOneAndUpdate(
       {
         _id: request._id,
@@ -661,6 +668,12 @@ class LeaveRequestService {
       await this.notifyEmployee(updated, employee, HrLeaveTemplates.RequestRejected);
       return updated;
     }
+    if (nextStatus === 'pendingHr') {
+      // HR is told as when a manager's approval hands a request to HR, and the employee is not
+      // (leave design §16.2 item 6).
+      await this.notifyPendingApprover(updated, employee);
+      return updated;
+    }
     if (nextStatus === 'pendingApproval') {
       await this.notifyChainApprovers(updated, unit);
       return updated;
@@ -681,14 +694,19 @@ class LeaveRequestService {
   /**
    * The configured chain behind one request, and what THIS reader may do about it.
    *
-   * Null for a request the two-desk machine is running — not an empty trail, because those are
-   * different facts and a screen must not draw an empty chain over a request that never had one.
+   * Null for a request with no engine entries that is not on the chain — not an empty trail,
+   * because those are different facts and a screen must not draw an empty chain over a request
+   * that never had one.
    *
    * A request that is no longer `pendingApproval` keeps its trail and offers nobody a decision on
    * it. The engine reads only the chain, and a cancelled request's chain may still be waiting on a
-   * staffed rung, or be `unstaffed`, which offers the override. The detail page shows Approve and
-   * Reject whenever the trail says so, and `decide` would only refuse the click («only a pending
-   * request can be decided»).
+   * staffed rung, or be `unstaffed`, which offers the override. On the chain the detail page shows
+   * Approve and Reject whenever the trail says so, and `decide` would only refuse the click («only
+   * a pending request can be decided»).
+   *
+   * A request the chain handed to HR's step keeps its trail the same way, with nothing offered on
+   * it: HR's step is not a rung. The page shows that step in its manager and HR card and offers its
+   * decision from the header's buttons, as on any manager and HR request (leave design §16.2 item 7).
    */
   async trailFor(request: LeaveRequestDoc, ctx: AuthContext): Promise<ApprovalTrailDto | null> {
     if (request.approvalSteps.length === 0 && request.status !== 'pendingApproval') return null;
@@ -714,11 +732,12 @@ class LeaveRequestService {
   /** Whoever is standing on the rung the request now waits for — read live, never stored. */
   private async notifyChainApprovers(request: LeaveRequestDoc, unit: Unit): Promise<void> {
     const userIds = await approvalService.currentApprovers(this.subjectOf(request, unit));
-    // Nobody to tell is not an error here. A decision can leave the request `unstaffed`, with
-    // nobody on any rung that is left, and then there is nobody to tell: it waits for an override,
-    // which no notice reaches. A lookup can also come back empty because somebody just left the
-    // rung. Either way the request stays where it is and the screen still shows it; a thrown error
-    // would lose the decision that was just written.
+    // Nobody to tell is not an error here. A decision no longer leaves a request `unstaffed` on the
+    // chain: one with nobody on any rung that is left goes to HR's step instead (leave design
+    // §16.2 item 2). The list comes back empty when a rung's holders left while the request waited
+    // on it (leave design §16.3, LQ-1): it then waits for an override, which no notice reaches. The
+    // request stays where it is and the screen still shows it; a thrown error would lose the
+    // decision that was just written.
     if (userIds.length === 0) return;
     await notificationsService
       .notify({

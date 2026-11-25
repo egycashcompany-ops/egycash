@@ -220,8 +220,10 @@ export interface WorkCalendarDto {
  * there are exactly two desks with those names. A configured chain can run «مدير حركة الفرع ←
  * مدير عام الحركة ← الموارد البشرية», or one rung, or five, and no status word can keep up with
  * that — the rung a request is waiting on is read from its trail, where it is a fact rather than
- * a guess. The two older words stay valid and untouched: requests filed before a chain was written
- * finish on the rails they started on, which is why this change migrates no rows at all.
+ * a guess. The two older words stay valid and untouched: requests filed before a chain was written,
+ * and requests on a chain nobody staffs, take the manager and HR path and finish on it, which is
+ * why this change migrates no rows at all. A request on a chain that nobody can take further goes
+ * to `pendingHr` (leave design §16.2).
  */
 export const LEAVE_REQUEST_STATUSES = [
   'pendingManager',
@@ -343,12 +345,14 @@ export interface LeaveRequestDto {
   /**
    * The step the request is waiting on — the two-desk machine's own word.
    *
-   * Null on a request the ENGINE is running, where the question has no two-word answer: read
+   * Null while the ENGINE is running a request, where the question has no two-word answer: read
    * `approvalTrail.currentStep` instead, which names an index into a chain the company configured.
+   * A request the chain handed to HR reads `hr`.
    */
   pendingStep: 'manager' | 'hr' | null;
   /**
-   * The configured chain and how far it has got — null on a request filed before one existed.
+   * The configured chain and how far it has got — null when the request has no engine entries
+   * and is not on the chain.
    *
    * Carries what THIS reader may do about it, which is why it is on the request's own DTO rather
    * than a second call: a screen that had to ask twice would draw the buttons a moment after the

@@ -416,13 +416,17 @@ export const openMaintenances = (body: {
       openedAt: body.openedAt,
     }),
   );
+/** `leaderEmployeeId` only when a row names no crew leader — it is written on those rows only. */
 export const closeMaintenances = async (
   ids: string[],
-  leaderEmployeeId: string,
+  leaderEmployeeId?: string,
 ): Promise<AtmMaintenanceDto[]> =>
   (
     await inBulkBatches(ids, (batch) =>
-      post<AtmMaintenanceDto[]>('/atm/maintenances/close', { ids: batch, leaderEmployeeId }),
+      post<AtmMaintenanceDto[]>('/atm/maintenances/close', {
+        ids: batch,
+        ...(leaderEmployeeId === undefined ? {} : { leaderEmployeeId }),
+      }),
     )
   ).flat();
 export const reopenMaintenance = (id: string, version: number): Promise<AtmMaintenanceDto> =>

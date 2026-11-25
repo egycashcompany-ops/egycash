@@ -1,6 +1,10 @@
 import { type ClientSession, type FilterQuery, type Types } from 'mongoose';
 import { AtmOperationLogRepository } from '../shared/operation-log.repository';
-import { AtmMaintenanceModel, type AtmMaintenanceDoc } from './maintenance.model';
+import {
+  AtmMaintenanceModel,
+  maintenanceFromTicketFilter,
+  type AtmMaintenanceDoc,
+} from './maintenance.model';
 
 // The mail `duplication` question is the shared `openMachineCodes`/`hasOpenOperation`: "does
 // this machine have an OPEN maintenance on the ticket's day?" — any branch. The legacy asked
@@ -26,9 +30,10 @@ class AtmMaintenanceRepository extends AtmOperationLogRepository<AtmMaintenanceD
     ticketId: Types.ObjectId,
     session: ClientSession | null = null,
   ): Promise<AtmMaintenanceDoc[]> {
+    // The index's own predicate rides along, so the read runs on `ix_maintenance_from_ticket` and
+    // not over the branch's whole log (maintenance.model.ts).
     const filter = {
-      branchId,
-      mailTicketId: ticketId,
+      $and: [{ branchId, mailTicketId: ticketId }, maintenanceFromTicketFilter()],
     } as FilterQuery<AtmMaintenanceDoc>;
     return this.model.find(filter).session(session).lean<AtmMaintenanceDoc[]>().exec();
   }

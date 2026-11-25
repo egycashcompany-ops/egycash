@@ -120,9 +120,11 @@ P2 also makes two changes to items, both named by the design for this phase:
 its exit criteria met and the owner told (`administration-module-phase-px1.md:200`). PX-1's own code starts only once
 Phase 1 is closed, "its exit criteria met and the owner told" (`administration-module-phase-px1.md:66-68`). Design §22
 records Phase 1's pull requests merged and criteria 1 to 8 checked, with criterion 9, the owner's acceptance on staging,
-"the one left" (`administration-module-decisions-and-phases.md:3397-3402`). Phase 1 is therefore not closed yet:
-PX-1.1, and with it P2, waits until criterion 9 is recorded in design §22, or the owner waives it. The order is the
-owner's rule: «وامشى Phase واحده وبعد ما نقفل كل واحده ندخل على اللى بعدها» (design §16.12).
+"the one left" (`administration-module-decisions-and-phases.md:3397-3402`). The order was the owner's rule:
+«وامشى Phase واحده وبعد ما نقفل كل واحده ندخل على اللى بعدها» (design §16.12). On 2026-11-25 the owner told the work
+to carry on and finish P2, merge it, and stop there, «كمل وخلص P2 وأدمجها وأقف عندها» (design §16.12): PX-1 and P2 run to their merge with
+criterion 9 still owed, and nothing after P2 starts. Criterion 9 stays open, and is recorded in design §22 when the
+owner gives it.
 
 ### 1.1 The owner's answers P2 applies
 
@@ -332,8 +334,10 @@ differs from this re-detail:
     inside the engine (`approversFor`), and `currentApprovers` names the live rung's holders only, so §8.2 step 5
     stands. Terms and PRQ-2's evidence, which said the host could not tell the live rung, are corrected. The stuck
     audience is still chosen by the rungs left, counted from the first unsettled rung, in the decision's notice (P2.4)
-    and in the sweep (P2.7) alike, as PRQ-2 (b)'s answer words it. Everyone in that audience reaches every rung left, so
-    the notice never goes to someone who cannot act on it. It can leave out someone who can: when the empty rungs below
+    and in the sweep (P2.7) alike, as PRQ-2 (b)'s answer words it. The audience's organization-scope and whole-branch holders
+    reach every rung left; a delegate confined to one department copy, or a holder barred by pair A1 or B1 (§8.4), may
+    still be told of a rung they cannot decide, since the audience filters by key, scope and the PR's read only. It can
+    leave out someone who can: when the empty rungs below
     a live rung held only by the A1 set include a `department` or `organization` rung, the audience is the organization
     one, although an override then decides the live rung alone, by its level, and those rungs are appended as `skipped`.
     *Rejected:* counting from `currentStep` in P2.4, an extra engine read per decision that the sweep cannot make, which
@@ -363,8 +367,8 @@ differs from this re-detail:
     else by its position, "Step n" / «الخطوة n», n being `stepIndex` plus one. *Rejected:* a level stored on each entry,
     a third snapshot in design §2.1's `ApprovalEntry` for a fallback; and a caption field in P2.0's chain editor, a
     platform screen change nothing asks for, after which a rung may still have no caption. P4's re-detail, whose PO
-    paper reprints the rounds (design §2.1 note 6), may add the level, absence-safe. The design review is asked to
-    confirm.
+    paper reprints the rounds (design §2.1 note 6), may add the level, absence-safe. This is settled here as an
+    engineering choice with its alternatives recorded; P2.W1's pull request shows it.
 28. **The pin is written by an update** (§8.2 step 7). `approvalPinFields`' validator, which refuses an id with no
     rungs, runs only where Mongoose validates a document, at create and save; no update in ECMS runs validators
     (`workflow.model.ts:44-61, 74-86`). Leave pins inside its create, where it runs
@@ -588,7 +592,8 @@ why in its description.
 **Dependencies outside the module.** P2's code waits for PX-1 to close (design §18.2's graph, PX-1 → P2,
 `administration-module-decisions-and-phases.md:2189-2190`): PX-1.4 brings the pin fields P2.2's model spreads, PX-1.5
 the audit option P2.3 registers with, and PX-1.6 the chain save P2's integration file writes through. PX-1 itself
-waits for Phase 1 to close, which waits on Phase 1's criterion 9 (§1). PC-7, requester liveness from notices, is soft:
+waited for Phase 1 to close; the owner's instruction of 2026-11-25, «كمل وخلص P2 وأدمجها وأقف عندها», lets PX-1 and P2 run to their merge
+with Phase 1's criterion 9 still owed (§1). PC-7, requester liveness from notices, is soft:
 P2 ships without it (design §18.1; §1.2 item 20).
 
 **A second drift check, on the merged engine.** This re-detail's drift check ran before the engine code P2 calls
@@ -596,7 +601,8 @@ existed. After PX-1.6 merges, a drift check reads the merged engine against §1.
 §8: `chainFor`'s `status`, `pinOf`, `readApprovalPin`, `approvalPinFields`, the `{ audit: 'host' }` option, `decide`'s
 `auditChanges` and refusal keys, and `currentApprovers` with a pin and on an `unstaffed` chain. A docs pull request of
 its own carries it, with its entry in design §22 and any difference folded into this re-detail; it is reviewed and
-merged before P2.0 opens. It ran on 2026-11-25, on `a4434d00`, PX-1.6's head, and read HR leave's hosting and the
+merged before P2.0 opens. It ran on 2026-11-25, on `a4434d00`, PX-1.6's head before PX-1.6 merged (if PX-1.6
+merges with a change to a file §1.2 E cites, those pins are read again before P2.0), and read HR leave's hosting and the
 chain screen as well. It found the engine as §1.2 A describes it and asks for no engine change; its differences are
 §1.2 E's items 23 to 31, folded into the sections each names.
 

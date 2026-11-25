@@ -663,12 +663,18 @@ describe('atm maintenance — the differences from replenishment', () => {
     expect(leaders.get(second.id)).toBe('Tarek');
   });
 
-  it('REFUSES to close without a real employee — the required assignee', async () => {
+  it('REFUSES to close a row with no crew leader without a real employee — the required assignee', async () => {
+    // The row named «Yasser» above; a row with a leader closes under it (atm-leaders.spec.ts).
+    const cleared = await request(app)
+      .patch('/api/v1/atm/maintenances/bulk')
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ ids: [maintenanceId], leaderName: null, cascadeLeader: false });
+    expect(cleared.status).toBe(200);
     const missing = await request(app)
       .post('/api/v1/atm/maintenances/close')
       .set('Authorization', `Bearer ${alexToken}`)
       .send({ ids: [maintenanceId] });
-    expect(missing.status).toBe(400);
+    expect(missing.status).toBe(422);
 
     // A syntactically valid id that names nobody the directory can answer for.
     const unknown = await request(app)

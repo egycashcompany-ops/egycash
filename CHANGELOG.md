@@ -193,6 +193,14 @@ its entry here in the same PR.
 
 ### Changed
 
+- **ATM maintenance close: the crew leader on the row is the one the close keeps.** The owner
+  (2026-11-25): «لما بيتم تقفيل صيانة لماكينة ATM كان بيطلب منه اسم الشخص اللى قفلها / عايز اسم
+  الموظف دا يجي تلقائي من قائد الطاقم فى الجدول لو مُعين .. لو لأ خليه يدخله هو». The close dialog
+  on `/atm/maintenance` shows each selected row's «قائد الطاقم» and asks for an employee only while
+  a row has none; the pick is written on those rows only. `POST /atm/maintenances/close` takes
+  `leaderEmployeeId` as optional and refuses (422) a set with a row without a leader when it is
+  missing, before anything closes (`docs/12-planning/atm-operations-port.md` §6e).
+
 - **A shared counter for running numbers, and one Arabic name fold for every module.**
   `apps/api/src/shared/base/counter.ts` (`defineCounter`) is Fleet's custody counter written as a factory: a module
   names its own `<module>_counters` collection and gets `ensure` (create-if-missing, raised to a floor and never

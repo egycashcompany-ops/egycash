@@ -376,4 +376,119 @@ describe('the maintenance close takes a name from the list', () => {
     expect(after?.closedAt).not.toBeNull();
     expect(after?.leaderEmployeeId).toBe(atmPeople[0]);
   });
+
+  // The owner (2026-11-25): «عايز اسم الموظف دا يجي تلقائي من قائد الطاقم فى الجدول لو مُعين .. لو
+  // لأ خليه يدخله هو». Each machine is opened, then given the leader the board would show.
+  const openWithLeaders = async (
+    lines: { code: string; leader: string | null }[],
+  ): Promise<AtmMaintenanceDto[]> => {
+    const machines = await request(app)
+      .post('/api/v1/atm/machines/bulk')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .set('x-active-branch', branchId)
+      .send({
+        bankName: 'SYN BANK',
+        area: 'SYN AREA',
+        machines: lines.map((line) => ({ machineCode: line.code, name: `SYN ${line.code}` })),
+      });
+    expect(machines.status, JSON.stringify(machines.body)).toBe(200);
+    const opened = await request(app)
+      .post('/api/v1/atm/maintenances/open')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .set('x-active-branch', branchId)
+      .send({
+        rows: lines.map((line) => ({
+          machineCode: line.code,
+          serviceType: 'عطل',
+          referenceNumber: null,
+        })),
+      });
+    expect(opened.status, JSON.stringify(opened.body)).toBe(200);
+    const rows = data<{ opened: AtmMaintenanceDto[] }>(opened).opened;
+    expect(rows).toHaveLength(lines.length);
+    for (const line of lines) {
+      if (line.leader === null) continue;
+      const row = rows.find((r) => r.machineCode === line.code);
+      const named = await request(app)
+        .patch('/api/v1/atm/maintenances/bulk')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .set('x-active-branch', branchId)
+        .send({ ids: [row?.id], leaderName: line.leader, cascadeLeader: false });
+      expect(named.status, JSON.stringify(named.body)).toBe(200);
+    }
+    return rows;
+  };
+  const byCode = (rows: AtmMaintenanceDto[]): Map<string, AtmMaintenanceDto> =>
+    new Map(rows.map((row) => [row.machineCode, row]));
+
+  it('closes rows that name their crew leader under that name — no employee asked', async () => {
+    const rows = await openWithLeaders([
+      { code: '9102', leader: 'سامح فؤاد' },
+      { code: '9103', leader: 'كريم عادل' },
+    ]);
+    const closed = await call('post', '/atm/maintenances/close', adminToken, {
+      ids: rows.map((row) => row.id),
+    });
+    expect(closed.status, JSON.stringify(closed.body)).toBe(200);
+    const after = byCode(data<AtmMaintenanceDto[]>(closed));
+    expect(after.get('9102')).toMatchObject({ leaderName: 'سامح فؤاد', leaderEmployeeId: null });
+    expect(after.get('9103')).toMatchObject({ leaderName: 'كريم عادل', leaderEmployeeId: null });
+    expect(after.get('9102')?.closedAt).not.toBeNull();
+    expect(after.get('9103')?.closedAt).not.toBeNull();
+    expect(after.get('9102')?.closedByName).not.toBeNull();
+  });
+
+  it('a mixed set: the rows with a leader keep it, the rest take the picked employee', async () => {
+    const rows = await openWithLeaders([
+      { code: '9104', leader: 'كريم عادل' },
+      { code: '9105', leader: null },
+      // Spacing alone names nobody — the dialog shows the row as without a leader too.
+      { code: '9106', leader: '  ' },
+    ]);
+    const closed = await call('post', '/atm/maintenances/close', adminToken, {
+      ids: rows.map((row) => row.id),
+      leaderEmployeeId: atmPeople[1],
+    });
+    expect(closed.status, JSON.stringify(closed.body)).toBe(200);
+    const after = byCode(data<AtmMaintenanceDto[]>(closed));
+    expect(after.get('9104')).toMatchObject({ leaderName: 'كريم عادل', leaderEmployeeId: null });
+    for (const code of ['9105', '9106']) {
+      expect(after.get(code)).toMatchObject({
+        leaderName: 'أحمد سعيد محمد',
+        leaderEmployeeId: atmPeople[1],
+      });
+    }
+    // One close, one instant, on every row.
+    const instants = new Set([...after.values()].map((row) => row.closedAt));
+    expect(instants.size).toBe(1);
+    expect([...instants][0]).not.toBeNull();
+  });
+
+  it('refuses a set with a row without a leader when no employee is given — and closes none of it', async () => {
+    const rows = await openWithLeaders([
+      { code: '9107', leader: 'كريم عادل' },
+      { code: '9108', leader: null },
+    ]);
+    const refused = await call('post', '/atm/maintenances/close', adminToken, {
+      ids: rows.map((row) => row.id),
+    });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
+    const listed = await request(app)
+      .get('/api/v1/atm/maintenances?pageSize=100')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .set('x-active-branch', branchId);
+    expect(listed.status).toBe(200);
+    const open = data<AtmMaintenanceDto[]>(listed);
+    expect(open.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(open.find((m) => m.id === row.id)?.closedAt).toBeNull();
+    }
+
+    // Spacing alone is no leader here either — the same test of a name as the dialog's.
+    const [spaced] = await openWithLeaders([{ code: '9109', leader: '   ' }]);
+    const refusedSpaced = await call('post', '/atm/maintenances/close', adminToken, {
+      ids: [spaced?.id],
+    });
+    expect(refusedSpaced.status, JSON.stringify(refusedSpaced.body)).toBe(422);
+  });
 });

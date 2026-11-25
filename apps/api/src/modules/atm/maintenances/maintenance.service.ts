@@ -2,7 +2,9 @@
 // (contad_app.js:1045-2200), plus the create-from-mail path the mail-ticket service calls.
 // The differences from replenishment are the legacy's own, not a redesign — port doc §2.3.
 import {
+  ATM_LEADER_NAMED,
   ErrorCodes,
+  atmLeaderNamed,
   normalizeAtmMachineCode,
   type AtmLeaderOptionDto,
   type AtmOpenBoardQuery,
@@ -261,27 +263,51 @@ class AtmMaintenanceService {
   }
 
   /**
-   * Close, single or checked set (contad_app.js:1963-1983): close time now, closer recorded, AND
-   * the assigned employee written as the row's leader — the required datalist of the close modal.
-   * The employee must be a real, employed person the directory answers for (gold's rule).
+   * Close, single or checked set (contad_app.js:1963-1983): close time now and the closer
+   * recorded. Since 2026-11-25 a row that already names its crew leader keeps that name — the
+   * leader the board shows is the one the close keeps — and the assigned employee is written only
+   * on the rows that name none (`atmLeaderNamed`). The employee is then required, and must be a
+   * real, employed person the directory answers for (gold's rule). Either refusal comes before any
+   * write, so a refused close closes nothing.
    */
   async close(input: CloseAtmMaintenances, ctx: AuthContext): Promise<AtmMaintenanceDoc[]> {
-    const employee = await getDirectoryEmployee(input.leaderEmployeeId);
-    if (employee === null || employee.status === 'exited') {
-      throw new BusinessRuleError('الموظف المحدد غير متاح للتعيين.');
+    const scope = scopeSelector(ctx, 'atmMaintenance.complete');
+    let assigned: { id: Types.ObjectId; name: string } | null = null;
+    if (input.leaderEmployeeId !== undefined) {
+      const employee = await getDirectoryEmployee(input.leaderEmployeeId);
+      if (employee === null || employee.status === 'exited') {
+        throw new BusinessRuleError('الموظف المحدد غير متاح للتعيين.');
+      }
+      assigned = { id: new Types.ObjectId(employee.employeeId), name: employee.fullNameAr };
+    } else {
+      const open = (await atmMaintenanceRepository.findByIds(input.ids, scope)).filter(
+        (row) => row.closedAt === null,
+      );
+      if (open.some((row) => !atmLeaderNamed(row.leaderName))) {
+        throw new BusinessRuleError('يلزم تعيين موظف للعمليات التي ليس لها قائد طاقم.');
+      }
     }
     const closedAt = new Date();
-    const rows = await atmMaintenanceRepository.updateManyByIds(
-      input.ids,
-      {
-        closedAt,
-        closedById: new Types.ObjectId(ctx.userId),
-        closedByName: actorName(ctx),
-        leaderEmployeeId: new Types.ObjectId(employee.employeeId),
-        leaderName: employee.fullNameAr,
-      },
-      { by: ctx.userId, scope: scopeSelector(ctx, 'atmMaintenance.complete'), onlyOpen: true },
-    );
+    const closing = {
+      closedAt,
+      closedById: new Types.ObjectId(ctx.userId),
+      closedByName: actorName(ctx),
+    };
+    const meta = { by: ctx.userId, scope, onlyOpen: true };
+    // The rows that name their leader close under it. A row whose leader was cleared since the
+    // check above is left open here rather than closed without one.
+    let rows = await atmMaintenanceRepository.updateManyByIds(input.ids, closing, {
+      ...meta,
+      where: { leaderName: ATM_LEADER_NAMED },
+    });
+    // The rest take the assigned employee as their leader.
+    if (assigned !== null) {
+      rows = await atmMaintenanceRepository.updateManyByIds(
+        input.ids,
+        { ...closing, leaderEmployeeId: assigned.id, leaderName: assigned.name },
+        { ...meta, where: { leaderName: { $not: ATM_LEADER_NAMED } } },
+      );
+    }
     // Only the rows THIS request closed (its instant) — one already closed kept its own; their
     // trail in one queue add, as the write was one.
     await auditService.recordMany(

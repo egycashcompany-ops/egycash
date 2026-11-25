@@ -572,9 +572,11 @@ export const useOpenAtmMaintenances = () => {
 export const useCloseAtmMaintenances = () => {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ ids, leaderEmployeeId }: { ids: string[]; leaderEmployeeId: string }) =>
+    mutationFn: ({ ids, leaderEmployeeId }: { ids: string[]; leaderEmployeeId?: string }) =>
       api.closeMaintenances(ids, leaderEmployeeId),
-    onSuccess: () => invalidateMaintenances(client),
+    // Settled, not only success: batches before a refused one did close, and a refusal for a
+    // row whose leader was cleared meanwhile is answered by the board showing it as it is now.
+    onSettled: () => invalidateMaintenances(client),
   });
 };
 

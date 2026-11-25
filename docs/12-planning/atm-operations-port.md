@@ -803,9 +803,16 @@ offered nobody, and the edit dialogs' leader stayed free text.
 - **The card** «موظفو الصراف الآلي — قائمة القائد»: every active department with its branch and
   its people counted, the ATM one marked «باسم الصراف الآلي», a stored one retired since marked «لم
   تعد نشطة»; the count of names the pickers offer; «استخدام إدارة الصراف الآلي باسمها» saves `[]`.
-- **The pickers.** The close: a searchable box, required, each person «name (code)» — the search
-  reads that label, never the employee id — and the close writes their HR name as the leader, as
-  before. Both kinds' edit dialogs: the leader is picked from the same names (each name once); a
+- **The pickers.** The close: a searchable box, each person «name (code)» — the search reads that
+  label, never the employee id — and the close writes their HR name as the leader of the rows that
+  name none. Since 2026-11-25 («عايز اسم الموظف دا يجي تلقائي من قائد الطاقم فى الجدول لو مُعين ..
+  لو لأ خليه يدخله هو») a row that already names its crew leader closes under that name, and the
+  box is shown, and required, only while a selected row names none — its hint counts those rows,
+  and each row in the dialog shows «قائد الطاقم: …» or «بدون قائد طاقم». A name is any character
+  but ASCII spacing (`atmLeaderNamed`, one pattern for the dialog and the database filter).
+  `leaderEmployeeId` is optional on `POST /atm/maintenances/close`; without it, a set that holds an
+  open row with no leader is a 422 before anything closes, and a row whose leader is cleared
+  between that check and the write stays open rather than closing without one. Both kinds' edit dialogs: the leader is picked from the same names (each name once); a
   name already on the row stays pickable, and the «الوردية» rule is unchanged (§4a). On a checked
   set of maintenances the box opens on the leader the rows share; «حفظ» waits for a change, and a
   clear is the ×, never a blank (the legacy's «empty clears» survives only as that explicit act). A

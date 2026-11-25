@@ -14504,8 +14504,13 @@ const en: Record<string, string> = {
   'atm.maintenance.empty.earlier': 'No maintenance left open from earlier days.',
   'atm.maintenance.closed': 'Closed.',
   'atm.maintenance.closeTitle': 'Close maintenance',
-  'atm.maintenance.closeBody': 'Close {{count}} operation(s)? Assigning an employee is required.',
+  'atm.maintenance.closeBody':
+    'Close {{count}} operation(s)? One with a crew leader closes under that leader.',
+  'atm.maintenance.closeLeader': 'Crew leader: {{name}}',
+  'atm.maintenance.closeNoLeader': 'No crew leader',
   'atm.maintenance.assignEmployee': 'Assign employee',
+  'atm.maintenance.assignEmployeeHint':
+    'Recorded as the crew leader of the {{count}} operation(s) without one.',
   'atm.maintenance.pickEmployee': 'Choose an employee…',
   'atm.maintenance.noEmployeesHint':
     'No ATM employees were found. Choose their department on the ATM settings page.',
@@ -30663,8 +30668,11 @@ const ar: Record<string, string> = {
   'atm.maintenance.empty.earlier': 'لا توجد صيانات مفتوحة من أيام سابقة.',
   'atm.maintenance.closed': 'تم الإغلاق.',
   'atm.maintenance.closeTitle': 'إغلاق صيانة',
-  'atm.maintenance.closeBody': 'إغلاق {{count}} عملية؟ تعيين موظف إلزامي.',
+  'atm.maintenance.closeBody': 'إغلاق {{count}} عملية؟ العملية التي لها قائد طاقم تُغلق باسمه.',
+  'atm.maintenance.closeLeader': 'قائد الطاقم: {{name}}',
+  'atm.maintenance.closeNoLeader': 'بدون قائد طاقم',
   'atm.maintenance.assignEmployee': 'تعيين موظف',
+  'atm.maintenance.assignEmployeeHint': 'يُسجَّل قائدًا للطاقم في {{count}} عملية بدون قائد طاقم.',
   'atm.maintenance.pickEmployee': 'اختر موظفًا…',
   'atm.maintenance.noEmployeesHint':
     'لم يُعثر على موظفين للصراف الآلي. اختر إدارتهم من صفحة إعدادات الصراف الآلي.',

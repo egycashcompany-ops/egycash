@@ -1067,11 +1067,28 @@ export interface OpenAtmMaintenancesResultDto {
   alreadyOpenCodes: string[];
 }
 
-/** Close: single or checked set, always with the assigned employee (contad_app.js:1963-1983). */
+/**
+ * Whether a maintenance row already names its crew leader (قائد الطاقم): any character but ASCII
+ * spacing. One pattern for the close dialog and for the database filter of the close — the
+ * characters are spelled out because `\s` means different things to JavaScript and to MongoDB.
+ */
+export const ATM_LEADER_NAMED = /[^\t\n\f\r ]/;
+
+export function atmLeaderNamed(name: string | null | undefined): boolean {
+  return typeof name === 'string' && ATM_LEADER_NAMED.test(name);
+}
+
+/**
+ * Close: single or checked set (contad_app.js:1963-1983). The legacy asked for the employee on
+ * every close; since 2026-11-25 (owner: «عايز اسم الموظف دا يجي تلقائي من قائد الطاقم فى الجدول لو
+ * مُعين .. لو لأ خليه يدخله هو») a row that already names its crew leader closes under that name,
+ * and `leaderEmployeeId` is written only on the rows that name none — it is required while any
+ * open row of `ids` names none, which the server checks.
+ */
 export const CloseAtmMaintenancesSchema = z
   .object({
     ids: z.array(objectId()).min(1).max(ATM_BULK_MAX_IDS),
-    leaderEmployeeId: objectId(),
+    leaderEmployeeId: objectId().optional(),
   })
   .strict();
 export type CloseAtmMaintenances = z.infer<typeof CloseAtmMaintenancesSchema>;

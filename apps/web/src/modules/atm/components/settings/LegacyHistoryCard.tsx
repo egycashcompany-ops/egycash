@@ -112,14 +112,18 @@ export const LegacyHistoryCard = (): JSX.Element => {
   const branchOf = (name: LocalizedString | null): string =>
     name === null ? t('atm.settings.unknownBranch') : localized(name, locale);
 
-  /** One step; a busy run is waited for and tried again, never shown as a failure. */
-  const stepOf = async (runId: string): Promise<AtmLegacyImportRunDto> => {
+  /**
+   * One step; a busy run is waited for and tried again, never shown as a failure. Null when the
+   * card went away during a pause — the page closed pauses the run, so no further step is sent.
+   */
+  const stepOf = async (runId: string): Promise<AtmLegacyImportRunDto | null> => {
     for (let tries = 1; ; tries += 1) {
       try {
         return await stepLegacyImport(runId);
       } catch (error) {
-        if (!isStepBusy(error) || tries >= BUSY_TRIES || !alive.current) throw error;
+        if (!isStepBusy(error) || tries >= BUSY_TRIES) throw error;
         await pause(BUSY_PAUSE_MS);
+        if (!alive.current) return null;
       }
     }
   };
@@ -129,7 +133,9 @@ export const LegacyHistoryCard = (): JSX.Element => {
     setBusy({ source: run.source, kind: 'run', ...legacyRunProgress(run) });
     try {
       while (run.state === 'running' && alive.current) {
-        run = await stepOf(run.id);
+        const next = await stepOf(run.id);
+        if (next === null) return;
+        run = next;
         if (alive.current) setBusy({ source: run.source, kind: 'run', ...legacyRunProgress(run) });
       }
       if (run.state === 'done') {
@@ -139,7 +145,8 @@ export const LegacyHistoryCard = (): JSX.Element => {
         );
       }
     } catch (error) {
-      toast.error(legacyErrorText(error, t, locale));
+      // A step that fails after the card closed is not news on whatever page the reader is on.
+      if (alive.current) toast.error(legacyErrorText(error, t, locale));
     } finally {
       if (alive.current) setBusy(null);
       restale();
@@ -171,7 +178,7 @@ export const LegacyHistoryCard = (): JSX.Element => {
         );
       }
     } catch (error) {
-      toast.error(legacyErrorText(error, t, locale));
+      if (alive.current) toast.error(legacyErrorText(error, t, locale));
     } finally {
       if (alive.current) setBusy(null);
       restale();

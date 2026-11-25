@@ -16078,7 +16078,7 @@ const en: Record<string, string> = {
     'Another data move is running. Wait until it finishes, then try again.',
   'atm.settings.legacy.title': 'Import the old history',
   'atm.settings.legacy.hint':
-    'Copies the closed replenishments and maintenances of the old system into the branch each belonged to. Nothing already in the new system is changed, and each source can be undone.',
+    'Copies only the replenishments and maintenances closed (Done) in the old system into the branch each belonged to. Nothing already in the new system is changed, and each source can be undone.',
   'atm.settings.legacy.row': '«{{source}}» into {{branch}}',
   'atm.settings.legacy.noBranch': "No active branch carries this source's code.",
   'atm.settings.legacy.never': 'Not imported yet',
@@ -16106,13 +16106,12 @@ const en: Record<string, string> = {
     '{{count}} operations copied from «{{source}}» will be removed, including any reopened or edited since. The old system keeps its own.',
   'atm.settings.legacy.dialogTitle': 'Import «{{source}}» into {{branch}}',
   'atm.settings.legacy.intro':
-    'The closed replenishments and maintenances of «{{source}}» are copied into {{branch}}, as the old system recorded them.',
+    'The replenishments and maintenances closed (Done) in «{{source}}» are copied into {{branch}}, as the old system recorded them. Operations still open there are not copied.',
   'atm.settings.legacy.keeps':
     'An operation already in the new system is never changed; importing again adds only what is missing. Nothing is written to the old system.',
   'atm.settings.legacy.cutover': 'Started on the new system at',
   'atm.settings.legacy.cutoverHint':
     "Operations closed from this moment on are the branch's own work and are not copied. Empty: copy them all.",
-  'atm.settings.legacy.includeOpen': 'Include operations still open in the old system',
   'atm.settings.legacy.confirm': 'Import',
   'atm.settings.legacy.nothing': 'The old system holds no operation for this source.',
   'atm.settings.legacy.noneToCopy': 'No operation would be copied with these settings.',
@@ -16122,9 +16121,9 @@ const en: Record<string, string> = {
   'atm.settings.legacy.count.total': 'In the old system',
   'atm.settings.legacy.count.deleted': 'Deleted there',
   'atm.settings.legacy.count.noOpenTime': 'Without an open time',
-  'atm.settings.legacy.count.open': 'Still open',
+  'atm.settings.legacy.count.open': 'Not closed (not Done)',
   'atm.settings.legacy.count.afterCutover': 'Closed after the start on the new system',
-  'atm.settings.legacy.count.unresolved': 'Machine not in the register',
+  'atm.settings.legacy.count.unresolved': 'Machine not in the ATM register',
   'atm.settings.legacy.count.toImport': 'To copy',
   'atm.settings.legacy.times': 'Times',
   'atm.settings.legacy.mode.utc':
@@ -16132,7 +16131,7 @@ const en: Record<string, string> = {
   'atm.settings.legacy.mode.cairoLabelled':
     '{{kind}}: open times recorded as Cairo clock time ({{matching}} of {{rows}} operations show it) — corrected when copied.',
   'atm.settings.legacy.unresolved':
-    'Machine codes not in the branch register — their operations are not copied. Add the machine, then import again:',
+    "Machine codes not in the branch's ATM register — their operations are not copied. Add the machine, then import again:",
   'atm.settings.legacy.unclear':
     'How the old system recorded the times of {{kinds}} cannot be told with confidence, so nothing will be imported.',
   'atm.settings.legacy.error.running':
@@ -16142,9 +16141,9 @@ const en: Record<string, string> = {
   'atm.settings.legacy.error.busy':
     'Another request is still working on this import. Try again in a minute.',
   'atm.settings.legacy.error.unreadable':
-    "The system cannot read this source's database. Ask the administrator to grant read access, then try again.",
+    "The new system cannot read this source's database. Ask the administrator to grant read access, then try again.",
   'atm.settings.legacy.error.moveRunning':
-    'A branch data move is running. Try again when it finishes.',
+    'A branch data move is running. Wait until it finishes, then try again.',
   // ── The attendance handoff of 22 November ───────────────────────────────────
   // «ساعات العمل» as a settings tab, the repeated-scan log, the daily sheet's new table and
   // hero, the employee pop-up, and «ملفات الموظفين» as folders.
@@ -32264,7 +32263,7 @@ const ar: Record<string, string> = {
     'يجري الآن نقل بيانات آخر. انتظر حتى ينتهي، ثم أعد المحاولة.',
   'atm.settings.legacy.title': 'استيراد السجل القديم',
   'atm.settings.legacy.hint':
-    'ينسخ التغذية والصيانة المغلقة من النظام القديم إلى الفرع الذي كانت له. لا يتغيّر شيء موجود في النظام الجديد، ويمكن التراجع عن كل مصدر.',
+    'ينسخ التغذية والصيانة المغلقة (Done) فقط من النظام القديم إلى الفرع الذي كانت له. لا يتغيّر شيء موجود في النظام الجديد، ويمكن التراجع عن كل مصدر.',
   'atm.settings.legacy.row': '«{{source}}» إلى {{branch}}',
   'atm.settings.legacy.noBranch': 'لا يوجد فرع نشط بكود هذا المصدر.',
   'atm.settings.legacy.never': 'لم يُستورد بعد',
@@ -32292,13 +32291,12 @@ const ar: Record<string, string> = {
     'ستُحذف {{count}} عملية منسوخة من «{{source}}»، ومعها ما أُعيد فتحه أو عُدّل بعد النسخ. يبقى النظام القديم كما هو.',
   'atm.settings.legacy.dialogTitle': 'استيراد «{{source}}» إلى {{branch}}',
   'atm.settings.legacy.intro':
-    'تُنسخ التغذية والصيانة المغلقة في «{{source}}» إلى {{branch}} كما سجّلها النظام القديم.',
+    'تُنسخ التغذية والصيانة المغلقة (Done) في «{{source}}» إلى {{branch}} كما سجّلها النظام القديم. لا تُنسخ العمليات التي ما زالت مفتوحة فيه.',
   'atm.settings.legacy.keeps':
     'لا تتغيّر أي عملية موجودة في النظام الجديد، وإعادة الاستيراد تضيف الناقص فقط. لا يُكتب شيء في النظام القديم.',
   'atm.settings.legacy.cutover': 'بدأ العمل على النظام الجديد في',
   'atm.settings.legacy.cutoverHint':
     'العمليات المغلقة من هذه اللحظة فصاعداً من عمل الفرع على النظام الجديد ولا تُنسخ. إن تُرك فارغاً تُنسخ كلها.',
-  'atm.settings.legacy.includeOpen': 'تضمين العمليات التي ما زالت مفتوحة في النظام القديم',
   'atm.settings.legacy.confirm': 'استيراد',
   'atm.settings.legacy.nothing': 'لا توجد عمليات لهذا المصدر في النظام القديم.',
   'atm.settings.legacy.noneToCopy': 'لا توجد عمليات تُنسخ بهذه الإعدادات.',
@@ -32308,9 +32306,9 @@ const ar: Record<string, string> = {
   'atm.settings.legacy.count.total': 'في النظام القديم',
   'atm.settings.legacy.count.deleted': 'محذوفة هناك',
   'atm.settings.legacy.count.noOpenTime': 'بلا وقت فتح',
-  'atm.settings.legacy.count.open': 'ما زالت مفتوحة',
+  'atm.settings.legacy.count.open': 'لم تُغلق (ليست Done)',
   'atm.settings.legacy.count.afterCutover': 'أُغلقت بعد بدء العمل على النظام الجديد',
-  'atm.settings.legacy.count.unresolved': 'الماكينة غير موجودة في السجل',
+  'atm.settings.legacy.count.unresolved': 'الماكينة غير موجودة في سجل الماكينات',
   'atm.settings.legacy.count.toImport': 'ستُنسخ',
   'atm.settings.legacy.times': 'الأوقات',
   'atm.settings.legacy.mode.utc':
@@ -32318,7 +32316,7 @@ const ar: Record<string, string> = {
   'atm.settings.legacy.mode.cairoLabelled':
     '{{kind}}: أوقات الفتح مسجلة بساعة القاهرة ({{matching}} من {{rows}} عملية تُظهر ذلك) — تُصحَّح عند النسخ.',
   'atm.settings.legacy.unresolved':
-    'أكواد ماكينات غير موجودة في سجل الفرع — لا تُنسخ عملياتها. أضف الماكينة ثم أعد الاستيراد:',
+    'أكواد ماكينات غير موجودة في سجل ماكينات الفرع — لا تُنسخ عملياتها. أضف الماكينة ثم أعد الاستيراد:',
   'atm.settings.legacy.unclear':
     'لا يمكن التأكد من طريقة تسجيل أوقات {{kinds}} في النظام القديم، لذلك لن يُستورد شيء.',
   'atm.settings.legacy.error.running':
@@ -32327,9 +32325,9 @@ const ar: Record<string, string> = {
   'atm.settings.legacy.error.busy':
     'ما زال طلب آخر يعمل على هذا الاستيراد. أعد المحاولة بعد دقيقة.',
   'atm.settings.legacy.error.unreadable':
-    'لا يستطيع النظام قراءة قاعدة بيانات هذا المصدر. اطلب من المسؤول منح صلاحية القراءة، ثم أعد المحاولة.',
+    'لا يستطيع النظام الجديد قراءة قاعدة بيانات هذا المصدر. اطلب من المسؤول منح صلاحية القراءة، ثم أعد المحاولة.',
   'atm.settings.legacy.error.moveRunning':
-    'يجري الآن نقل بيانات فرع. أعد المحاولة بعد انتهاء النقل.',
+    'يجري الآن نقل بيانات فرع. انتظر حتى ينتهي، ثم أعد المحاولة.',
   // ── The attendance handoff of 22 November ───────────────────────────────────
   // «ساعات العمل» as a settings tab, the repeated-scan log, the daily sheet's new table and
   // hero, the employee pop-up, and «ملفات الموظفين» as folders.

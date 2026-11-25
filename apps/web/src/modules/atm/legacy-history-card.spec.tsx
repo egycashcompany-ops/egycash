@@ -65,7 +65,6 @@ const run = (over: Partial<AtmLegacyImportRunDto> = {}): AtmLegacyImportRunDto =
     branchId: ALEX,
     branchName: { ar: 'الاسكندرية', en: 'Alexandria' },
     cutoverAt: '2026-11-23T19:57:01.000Z',
-    includeOpen: false,
     state: 'done',
     nextKind: null,
     replenishment: { ...kind, read: 62_431, written: 43_000, timeMode: 'cairoLabelled' },
@@ -107,7 +106,6 @@ const preview = (over: Partial<AtmLegacyImportPreviewDto> = {}): AtmLegacyImport
   branchId: ALEX,
   branchName: null,
   cutoverAt: null,
-  includeOpen: false,
   sourceFound: true,
   replenishment: kindPreview(),
   maintenance: kindPreview(),
@@ -232,10 +230,10 @@ describe('the preview and the body', () => {
     expect(cutoverFromLocal('2026-11-23T21:57')).toBe(new Date('2026-11-23T21:57').toISOString());
     expect(cutoverFromLocal('')).toBeNull();
     // The server's suggestion travels as it came, to the second.
-    expect(legacyImportBody('alex', '2026-11-23T19:57:01.000Z', true)).toEqual({
+    // Only «Done» operations are copied: the body carries no switch for open ones.
+    expect(legacyImportBody('alex', '2026-11-23T19:57:01.000Z')).toEqual({
       source: 'alex',
       cutoverAt: '2026-11-23T19:57:01.000Z',
-      includeOpen: true,
     });
   });
 
@@ -321,7 +319,6 @@ describe('the preview and the body', () => {
         'atm.settings.legacy.keeps',
         'atm.settings.legacy.cutover',
         'atm.settings.legacy.cutoverHint',
-        'atm.settings.legacy.includeOpen',
         'atm.settings.legacy.confirm',
         'atm.settings.legacy.nothing',
         'atm.settings.legacy.counts',

@@ -17,8 +17,11 @@ its entry here in the same PR.
   وأكتوبر .. ماعدا أسيوط». A card on `/atm/settings` (`atmSettings.manage`, company-wide) for the
   five legacy deployments — `alex`, `portsaid`, `tanta`, `wsal`, `egycash` — each into the branch
   its code names.
+  - **Only closed («Done») operations move** — the owner: «عايز اللى يتنقل بس سجل الصيانة والتغذية
+    اللى اتقفل Done». Done is `end: 1` with a close time, the two signals asked together; there is
+    no switch for open rows, and work still open in a legacy system is opened in ECMS by hand.
   - **A preview first**, counted by the run's own rules: the rows to copy, and each row left out
-    under the first reason (deleted, no open time, still open, closed after the branch began working
+    under the first reason (deleted, no open time, not Done, closed after the branch began working
     in ECMS, a machine the register lacks — its code listed).
   - **Times read from the data**: a legacy row's id records when it was written, so each kind's open
     times are read as true instants or as Cairo clock time (the replenishment bug), and a kind the

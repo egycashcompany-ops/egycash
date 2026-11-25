@@ -548,12 +548,11 @@ export const AtmLegacyImportBodySchema = z
   .object({
     source: z.enum(ATM_LEGACY_SOURCE_NAMES),
     /**
-     * The moment the branch began working in ECMS (ISO): a legacy row closed — or, when open rows
-     * are included, opened — at or after it is the branch's own and is not copied. Null: no cut.
+     * The moment the branch began working in ECMS (ISO): a legacy row closed at or after it is the
+     * branch's own and is not copied. Null: no cut. Only closed («Done») rows are ever copied —
+     * the owner, 2026-11-25 (design §4.5) — so there is no switch for open ones.
      */
     cutoverAt: z.string().datetime({ offset: true }).nullable(),
-    /** Rows still open in the legacy system — off by default (design §4.5). */
-    includeOpen: z.boolean(),
   })
   .strict();
 export type AtmLegacyImportBody = z.output<typeof AtmLegacyImportBodySchema>;
@@ -589,7 +588,10 @@ export interface AtmLegacyUndoResultDto {
   remaining: number;
 }
 
-/** Why a legacy row is left out — the first rule it fails (design §4.1). */
+/**
+ * Why a legacy row is left out — the first rule it fails (design §4.1). `open`: not closed in the
+ * legacy system — not «Done» (`end: 1` with a close time) — and never copied.
+ */
 export const ATM_LEGACY_SKIP_REASONS = [
   'deleted',
   'noOpenTime',
@@ -658,7 +660,6 @@ export interface AtmLegacyImportPreviewDto {
   branchId: string;
   branchName: LocalizedString | null;
   cutoverAt: string | null;
-  includeOpen: boolean;
   /** False when the source holds no row of either kind (a missing database reads as empty). */
   sourceFound: boolean;
   replenishment: AtmLegacyKindPreviewDto;
@@ -692,7 +693,6 @@ export interface AtmLegacyImportRunDto {
   branchId: string;
   branchName: LocalizedString | null;
   cutoverAt: string | null;
-  includeOpen: boolean;
   state: AtmLegacyRunState;
   /** The kind the next step reads; null once both are read. */
   nextKind: AtmLegacyKind | null;

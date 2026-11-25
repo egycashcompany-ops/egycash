@@ -4,7 +4,7 @@
 // the rules are asserted by tests rather than proved by running an import against production data.
 import { type Types } from 'mongoose';
 import { normalizeAtmMachineCode } from '@ecms/contracts';
-import { type LegacyOperation, type LegacyTimeMode, repairLegacyInstant } from './legacy-transform';
+import { type LegacyOperation, type LegacyTimeMode } from './legacy-transform';
 
 /**
  * Why a legacy row is not imported — the FIRST rule of §4.1 it fails, in that order — or `import`.
@@ -21,10 +21,8 @@ export const LEGACY_ROW_VERDICTS = [
 export type LegacyRowVerdict = (typeof LEGACY_ROW_VERDICTS)[number];
 
 export interface LegacyRowRules {
-  mode: LegacyTimeMode;
   /** The moment the branch began working in ECMS (§4.4). Null: no cut. */
   cutoverAt: Date | null;
-  includeOpen: boolean;
   resolve: (rawCode: unknown) => Types.ObjectId | null;
 }
 
@@ -41,9 +39,18 @@ export const legacyRowDeleted = (doc: Pick<LegacyOperation, 'deleted'>): boolean
   Number(doc.deleted ?? 0) === 1;
 
 /**
- * The rules of §4.1, in order. The cut (§4.4): a closed row is history when it CLOSED before the
- * branch began working in ECMS — a close time was always a true instant (port doc §7) — and an open
- * row, when it was opened before then.
+ * «Done» in the legacy system: closed (`end: 1`) WITH a close time. In every legacy deployment the
+ * two agree on every row (read 2026-11-25: alex, portsaid, tanta, wsal, both kinds); both are
+ * asked, so a row only one of them calls closed stays out rather than being guessed at.
+ */
+export const legacyRowDone = (doc: Pick<LegacyOperation, 'end' | 'close_time'>): boolean =>
+  Number(doc.end ?? 0) === 1 && isDate(doc.close_time);
+
+/**
+ * The rules of §4.1, in order. Only a «Done» row is copied — the owner (2026-11-25): «عايز اللى
+ * يتنقل بس سجل الصيانة والتغذية اللى اتقفل Done» (§4.5). The cut (§4.4): a closed row is history
+ * when it CLOSED before the branch began working in ECMS — a close time was always a true instant
+ * (port doc §7).
  */
 export const classifyLegacyRow = (
   doc: LegacyOperation,
@@ -51,13 +58,9 @@ export const classifyLegacyRow = (
 ): LegacyRowOutcome => {
   if (legacyRowDeleted(doc)) return { verdict: 'deleted' };
   if (!isDate(doc.open_time)) return { verdict: 'noOpenTime' };
-  const closed = isDate(doc.close_time);
-  if (!closed && !rules.includeOpen) return { verdict: 'open' };
-  if (rules.cutoverAt !== null) {
-    const at = closed
-      ? (doc.close_time as Date)
-      : (repairLegacyInstant(doc.open_time, rules.mode) as Date);
-    if (at.getTime() >= rules.cutoverAt.getTime()) return { verdict: 'afterCutover' };
+  if (!legacyRowDone(doc)) return { verdict: 'open' };
+  if (rules.cutoverAt !== null && (doc.close_time as Date).getTime() >= rules.cutoverAt.getTime()) {
+    return { verdict: 'afterCutover' };
   }
   const machineId = rules.resolve(doc.mach_id);
   if (machineId === null) return { verdict: 'unresolved', code: legacyCodeLabel(doc.mach_id) };

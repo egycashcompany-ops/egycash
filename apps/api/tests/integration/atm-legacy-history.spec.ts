@@ -141,8 +141,9 @@ const REP = {
   // A zero-padded code files under the register's 9002.
   r2: rep('2026-11-12T19:00:00Z', { mach_id: '009002', close_time: at('2026-11-12T19:40:00Z') }),
   r3: rep('2026-11-13T08:00:00Z', { deleted: 1, close_time: at('2026-11-13T08:30:00Z') }),
-  // Still open in the legacy system.
-  r4: rep('2026-11-15T07:00:00Z', { end: 0 }),
+  // Not «Done»: marked ended with no close time (reopened, then cut off). Only a row both signals
+  // call closed is copied (the owner, 2026-11-25).
+  r4: rep('2026-11-15T07:00:00Z', { end: 1 }),
   // Closed after the branch began working in ECMS: the branch's own.
   r5: rep('2026-11-24T05:00:00Z', { close_time: at('2026-11-24T05:30:00Z') }),
   r6: rep('2026-11-05T08:00:00Z', { mach_id: '7777', close_time: at('2026-11-05T08:10:00Z') }),
@@ -178,13 +179,18 @@ const MAINT = {
     mach_id: 'HDB-ATM 9501',
     close_time: at('2026-11-11T08:40:00Z'),
   }),
-  m3: maint('2026-11-20T08:00:00Z', { mach_id: '9002', end: 0 }),
+  // Not «Done» either: a close time on a row still marked open.
+  m3: maint('2026-11-20T08:00:00Z', {
+    mach_id: '9002',
+    end: 0,
+    close_time: at('2026-11-20T09:00:00Z'),
+  }),
   m4: maint('2026-11-21T08:00:00Z', { deleted: 1, close_time: at('2026-11-21T09:00:00Z') }),
 };
 
 const legacyDb = (name: string) => mongoose.connection.useDb(name, { useCache: true });
 
-const BODY = { source: 'alex', cutoverAt: SWITCH, includeOpen: false };
+const BODY = { source: 'alex', cutoverAt: SWITCH };
 
 const preview = async (body: Record<string, unknown>): Promise<AtmLegacyImportPreviewDto> => {
   const res = await call('post', '/atm/legacy-import/preview', adminToken, body);
@@ -341,10 +347,20 @@ describe('the preview — what a run would copy, by the run’s own rules', () =
     expect(dto.replenishment.lastOpenedAt).toBe('2026-11-23T08:00:00.000Z');
   });
 
-  it('no cutover: the branch’s own rows are copied too; the open switch adds the open rows', async () => {
-    const dto = await preview({ ...BODY, cutoverAt: null, includeOpen: true });
-    expect(dto.replenishment.toImport).toBe(7); // + r4 (open), + r5 (closed after the switch)
-    expect(dto.maintenance.toImport).toBe(3); // + m3 (open)
+  it('no cutover: the branch’s own rows are copied too; a row not «Done» never is', async () => {
+    const dto = await preview({ ...BODY, cutoverAt: null });
+    expect(dto.replenishment.toImport).toBe(6); // + r5 (closed after the switch); never r4
+    expect(dto.replenishment.skipped.open).toBe(1);
+    expect(dto.maintenance.toImport).toBe(2); // never m3
+    expect(dto.maintenance.skipped.open).toBe(1);
+  });
+
+  it('a body that still asks for open rows is refused — there is no such switch', async () => {
+    const res = await call('post', '/atm/legacy-import/preview', adminToken, {
+      ...BODY,
+      includeOpen: true,
+    });
+    expect(res.status).toBe(400);
   });
 
   it('a source with no rows previews as not found, never as an error', async () => {

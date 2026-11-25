@@ -30,11 +30,11 @@ export const LEGACY_CODES_LISTED = 10;
 export const cutoverFromLocal = (value: string): string | null =>
   value === '' ? null : new Date(value).toISOString();
 
+/** What the preview and the start send — only «Done» operations are copied, so no open switch. */
 export const legacyImportBody = (
   source: AtmLegacySource,
   cutoverAt: string | null,
-  includeOpen: boolean,
-): AtmLegacyImportBody => ({ source, cutoverAt, includeOpen });
+): AtmLegacyImportBody => ({ source, cutoverAt });
 
 /** «استيراد» runs only on a preview that found rows, decided both modes, and has rows to copy. */
 export const legacyImportAllowed = (preview: AtmLegacyImportPreviewDto): boolean =>
@@ -120,11 +120,15 @@ const LEGACY_ERRORS: Partial<Record<string, string>> = {
   [ErrorCodes.ATM_BRANCH_MOVE_RUNNING]: 'atm.settings.legacy.error.moveRunning',
 };
 
-/** A refusal in the reader's language; anything else as the shared helper words it. */
-export const legacyErrorText = (error: unknown, t: Translate, locale: Locale): string => {
+/** This card's own refusal in the reader's language; undefined for any other failure. */
+export const legacyRefusalText = (error: unknown, t: Translate): string | undefined => {
   const key = error instanceof ApiError ? LEGACY_ERRORS[error.code] : undefined;
-  return key === undefined ? errorMessage(error, locale) : t(key);
+  return key === undefined ? undefined : t(key);
 };
+
+/** A refusal in the reader's language; anything else as the shared helper words it. */
+export const legacyErrorText = (error: unknown, t: Translate, locale: Locale): string =>
+  legacyRefusalText(error, t) ?? errorMessage(error, locale);
 
 /** A step refused because another step holds the run — retried, never shown as a failure. */
 export const isStepBusy = (error: unknown): boolean =>

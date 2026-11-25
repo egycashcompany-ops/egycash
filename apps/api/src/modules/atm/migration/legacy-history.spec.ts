@@ -33,9 +33,7 @@ const index = legacyMachineIndex([
 ]);
 
 const rules = (over: Partial<LegacyRowRules> = {}): LegacyRowRules => ({
-  mode: 'utc',
   cutoverAt: null,
-  includeOpen: false,
   resolve: (raw) => resolveLegacyMachine(index, raw),
   ...over,
 });
@@ -45,6 +43,7 @@ const row = (over: Partial<LegacyOperation> = {}): LegacyOperation => ({
   mach_id: '9001',
   open_time: new Date('2026-11-05T06:00:00.000Z'),
   close_time: new Date('2026-11-05T07:00:00.000Z'),
+  end: 1,
   deleted: 0,
   ...over,
 });
@@ -70,10 +69,13 @@ describe('which legacy row is imported — the first rule it fails, in order', (
     expect(classifyLegacyRow(row({ open_time: '' }), rules()).verdict).toBe('noOpenTime');
   });
 
-  it('a row still open is skipped unless the run includes open rows', () => {
-    const open = row({ close_time: null });
-    expect(classifyLegacyRow(open, rules()).verdict).toBe('open');
-    expect(classifyLegacyRow(open, rules({ includeOpen: true })).verdict).toBe('import');
+  it('only a «Done» row is copied: closed (end 1) with a close time — never an open one', () => {
+    expect(classifyLegacyRow(row({ close_time: null, end: 0 }), rules()).verdict).toBe('open');
+    // A row only one of the two signals calls closed stays out rather than being guessed at.
+    expect(classifyLegacyRow(row({ close_time: null, end: 1 }), rules()).verdict).toBe('open');
+    expect(classifyLegacyRow(row({ end: 0 }), rules()).verdict).toBe('open');
+    expect(classifyLegacyRow(row({ end: undefined }), rules()).verdict).toBe('open');
+    expect(classifyLegacyRow(row({ end: '1' }), rules()).verdict).toBe('import');
   });
 
   it('a closed row is the branch’s own when it closed at or after the switch — whenever it opened', () => {
@@ -87,18 +89,9 @@ describe('which legacy row is imported — the first rule it fails, in order', (
     );
   });
 
-  it('an included open row is the branch’s own when it OPENED at or after the switch, as the mode reads it', () => {
-    // Stamped 10:30Z: as UTC that is after the switch; as Cairo wall clock it is 08:30Z, before.
-    const open = row({ open_time: new Date('2026-11-05T10:30:00.000Z'), close_time: null });
-    expect(classifyLegacyRow(open, rules({ cutoverAt: SWITCH, includeOpen: true })).verdict).toBe(
-      'afterCutover',
-    );
-    expect(
-      classifyLegacyRow(
-        open,
-        rules({ cutoverAt: SWITCH, includeOpen: true, mode: 'cairo-labelled' }),
-      ).verdict,
-    ).toBe('import');
+  it('an open row opened before the switch is still not copied', () => {
+    const open = row({ open_time: new Date('2026-11-05T06:00:00.000Z'), close_time: null, end: 0 });
+    expect(classifyLegacyRow(open, rules({ cutoverAt: SWITCH })).verdict).toBe('open');
   });
 
   it('a code the register lacks is skipped and named', () => {

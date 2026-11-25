@@ -281,7 +281,6 @@ const runAuditChanges = (run: AtmLegacyImportRunDoc): AuditChange[] => [
   { field: 'source', old: null, new: run.source },
   { field: 'branchId', old: null, new: String(run.branchId) },
   { field: 'cutoverAt', old: null, new: run.cutoverAt?.toISOString() ?? null },
-  { field: 'includeOpen', old: null, new: run.includeOpen },
   { field: 'state', old: null, new: run.state },
   { field: 'modes', old: null, new: run.modes },
   { field: 'counts', old: null, new: run.counts },
@@ -318,7 +317,6 @@ const runDto = (
   branchId: String(run.branchId),
   branchName,
   cutoverAt: run.cutoverAt === null ? null : run.cutoverAt.toISOString(),
-  includeOpen: run.includeOpen,
   state: run.state,
   nextKind: run.state === 'running' ? run.cursor.kind : null,
   replenishment: kindRunDto(run.counts.replenishment, run.modes.replenishment),
@@ -412,9 +410,7 @@ const copyNext = async (
   const picked: { doc: LegacyOperation; machineId: Types.ObjectId }[] = [];
   for (const doc of docs) {
     const outcome = classifyLegacyRow(doc, {
-      mode: transformMode(run.modes[kind]),
       cutoverAt: run.cutoverAt,
-      includeOpen: run.includeOpen,
       resolve: (code) => resolveLegacyMachine(index, code),
     });
     if (outcome.verdict === 'import') picked.push({ doc, machineId: outcome.machineId });
@@ -525,14 +521,13 @@ export const atmLegacyHistoryService = {
       let last: Date | null = null;
       await readLegacy(input.source, async () => {
         const cursor = legacyCollection(input.source, kind)
-          .find({}, { projection: { mach_id: 1, open_time: 1, close_time: 1, deleted: 1 } })
+          // `end` with `close_time` is «Done» (legacyRowDone) — the rule needs both.
+          .find({}, { projection: { mach_id: 1, open_time: 1, close_time: 1, end: 1, deleted: 1 } })
           .batchSize(5_000);
         for await (const raw of cursor) {
           const doc = raw as unknown as LegacyOperation;
           const outcome = classifyLegacyRow(doc, {
-            mode,
             cutoverAt,
-            includeOpen: input.includeOpen,
             resolve: (code) => resolveLegacyMachine(index, code),
           });
           if (outcome.verdict === 'import') {
@@ -570,7 +565,6 @@ export const atmLegacyHistoryService = {
       branchId: String(branch.id),
       branchName: branch.name,
       cutoverAt: cutoverAt === null ? null : cutoverAt.toISOString(),
-      includeOpen: input.includeOpen,
       sourceFound: totals.replenishment + totals.maintenance > 0,
       replenishment: kinds.replenishment,
       maintenance: kinds.maintenance,
@@ -606,7 +600,6 @@ export const atmLegacyHistoryService = {
       source: input.source,
       branchId: branch.id,
       cutoverAt: cutoverOf(input),
-      includeOpen: input.includeOpen,
       modes,
       evidence,
       totals,

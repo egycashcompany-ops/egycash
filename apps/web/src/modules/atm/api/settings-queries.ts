@@ -25,7 +25,8 @@
 // None of the others declares `onError`: a refused write reaches the reader through the global
 // mutation toast in their own language (`shared/lib/query-client.ts`) — one failure, one message.
 // The move does, because its dialog words the 409 itself («ظهر ما يمنعه منذ المعاينة»), where the
-// global toast could only repeat the server's English sentence.
+// global toast could only repeat the server's English sentence; so does the legacy history's start,
+// whose dialog words its refusals (another run, a move, an unreadable source) the same way.
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type AtmDisplaySetting,

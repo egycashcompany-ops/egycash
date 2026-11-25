@@ -118,8 +118,9 @@ A legacy row is copied when all of these hold, and is counted under the first on
 
 1. it is not deleted (`deleted` ≠ 1);
 2. it has an `open_time`;
-3. it is closed (`close_time` is a date), unless the run includes open rows (§4.5). `end` is not
-   read: ATM-7 already takes `close_time` as the truth (port doc G3);
+3. it is «Done» in the legacy system: closed (`end` is 1) **and** given a close time (`close_time`
+   is a date). Only Done rows are ever copied (§4.5); in every deployment the two signals agree on
+   every row, and a row only one of them calls closed stays out;
 4. it belongs before the cutover (§4.4), when the run has one;
 5. its machine code resolves to a machine of the target branch (§4.2).
 
@@ -161,10 +162,9 @@ work entered again in ECMS (Shorouk). Copying the legacy record of what ECMS alr
 show it twice; dropping the switch day whole would lose what was finished in the legacy system that
 morning. So the cut is a **moment**, not a day: the moment the branch began working in ECMS.
 
-- A **closed** legacy row is history when it was **closed** before that moment — its close time is
-  a true instant. A row closed after it was finished while ECMS was in use, and ECMS has its own
-  record of it.
-- An **open** legacy row (when included) is history when it was opened before that moment.
+A closed («Done») legacy row is history when it was **closed** before that moment — its close time
+is a true instant. A row closed after it was finished while ECMS was in use, and ECMS has its own
+record of it. An open row is never copied (§4.5), whenever it was opened.
 
 The screen suggests the moment: the branch's first own ECMS row (not deleted, not copied) written
 on the first Cairo day it wrote at least 20 — a few test rows earlier do not count. It is editable
@@ -172,12 +172,20 @@ to the minute; an empty cut copies every eligible row. For Alexandria it is 2026
 (21:57 Cairo). It is asked for one source when its dialog opens, not for every source when the card
 does.
 
-### 4.5 Rows still open
+### 4.5 Rows still open — never copied
 
-Off by default. In a branch that has moved, a legacy row left open was either finished without its
-close being recorded or entered again in ECMS; copied, it would sit on the open board as stale work.
-The switch is for Port Said, imported on the day it moves (§7): its rows open then are the work in
-hand. Whether a given open row is still real work is the reader's call; the preview counts them.
+The owner, 2026-11-25: «عايز اللى يتنقل بس سجل الصيانة والتغذية اللى اتقفل Done» — only the
+replenishments and maintenances closed («Done») move. There is no switch for open rows: the body
+has no such field and a request that sends one is refused (400). In a branch that has moved, a
+legacy row left open was either finished without its close being recorded or entered again in ECMS;
+copied, it would sit on the open board as stale work. Work still open in a branch's legacy system
+when it moves is opened in ECMS by hand, as any new work is. The preview counts the open rows
+(`open`, «لم تُغلق (ليست Done)») so the reader sees what stays behind.
+
+"Done" is read from both fields the legacy app writes on a close — `end: 1` and `close_time`
+(`legacyRowDone`). Read on 2026-11-25 across alex, portsaid, tanta and wsal, both kinds: every row
+with a close time has `end: 1`, every row without one has `end: 0`, and `status` is 0 throughout, so
+asking both changes no count today; it keeps out a row a later edit leaves half-closed.
 
 ### 4.6 How rows are written
 
@@ -246,7 +254,7 @@ Under `/atm/legacy-import`; every route requires `atmSettings.manage` at organiz
 | ------------------------------------ | ------------------------------------------------------------------------ |
 | `GET /`                              | the five sources: each one's branch, last run and rows copied now        |
 | `GET /sources/:source/cutover`       | the suggested cut (§4.4)                                                 |
-| `POST /preview`                      | `{ source, cutoverAt, includeOpen }` → §4.1's counts per kind, the unresolved codes, the time evidence and whether it decides |
+| `POST /preview`                      | `{ source, cutoverAt }` → §4.1's counts per kind, the unresolved codes, the time evidence and whether it decides |
 | `POST /runs`                         | the same body → starts a run                                             |
 | `POST /runs/:runId/step`             | one step → the run                                                       |
 | `POST /sources/:source/undo`         | one batch of the undo → removed, remaining                               |
@@ -279,8 +287,8 @@ are undecided), and «استيراد», held back until the preview allows it.
   that lead with the branch and the close time, in chunks ([PR #796](https://github.com/egycashcompany-ops/egycash/pull/796));
   a range over the old months reads those months' rows, as it reads any other month's. Their speed
   over the copied volume was not measured here.
-- With open rows included: the open boards show them; a later branch move counts them as open work
-  on the machines it plans (`machineTwinOpen`); the mail duplication check sees them on their day.
+- Nothing on the open boards: only closed rows are copied (§4.5), so no copy is open work for a
+  later branch move (`machineTwinOpen`) or for the mail duplication check.
 - The branch move refuses while a run holds the lock (§4.7).
 
 ## 5. Alternatives considered
@@ -329,11 +337,12 @@ are undecided), and «استيراد», held back until the preview allows it.
 After it deploys, on `/atm/settings`, for each source: «معاينة», check the counts, the time modes
 and the unresolved codes, then «استيراد».
 
-1. Shorouk, Tanta, Alexandria — they have moved; keep the suggested cut and leave open rows out.
-2. Port Said — on the day it moves to ECMS, once it has stopped writing in the legacy system,
-   with open rows included: its open rows are then the work in hand, and nothing in the legacy
-   system changes after the copy. A copy made earlier is a snapshot whose later legacy changes do
-   not follow (§4.6): undo it, then import again on that day.
+1. Shorouk, Tanta, Alexandria — they have moved; keep the suggested cut.
+2. Port Said — on the day it moves to ECMS, once it has stopped writing in the legacy system: its
+   Done rows are then complete, and the work still open there is opened in ECMS by hand (§4.5). A
+   copy made earlier is a snapshot whose later legacy changes do not follow (§4.6): a row closed in
+   the legacy system after it is added by importing again (insert-only), so an earlier copy needs
+   no undo.
 3. Mohandessin — once its legacy rows are in the `egycash` database (§9).
 
 Registering a machine the preview names, then importing again, adds its rows.
@@ -380,7 +389,8 @@ start of a run (§4.7); the Nits on wording, terms, the field list, the T1 point
 
 Accepted: the suggestion of a cut for dates already known, and the open-row switch for a move whose
 date is unknown — both are measurements the screen needs anyway (the cut is a moment no one has
-written down; Port Said moves later). Declined (Nits): the five database names in contracts (they
+written down; Port Said moves later). The switch was then removed by the owner's word the same day —
+only Done rows move (§4.5) — and «Done» is read from `end` and `close_time` together. Declined (Nits): the five database names in contracts (they
 are the owner's list, and the screen shows them); `source` naming both the legacy database and a
 maintenance's origin (different objects, never side by side).
 

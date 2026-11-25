@@ -37,7 +37,6 @@ export interface AtmLegacyImportRunDoc {
   branchId: Types.ObjectId;
   /** The moment the branch began working in ECMS (design §4.4); null: no cut. */
   cutoverAt: Date | null;
-  includeOpen: boolean;
   state: AtmLegacyRunState;
   /** Where the next step reads: the kind, and the last legacy `_id` read of it. Kind null: done. */
   cursor: { kind: AtmLegacyKind | null; after: Types.ObjectId | null };
@@ -75,7 +74,6 @@ const runSchema = new Schema<AtmLegacyImportRunDoc>(
     source: { type: String, required: true, enum: ATM_LEGACY_SOURCE_NAMES },
     branchId: { type: Schema.Types.ObjectId, required: true },
     cutoverAt: { type: Date, default: null },
-    includeOpen: { type: Boolean, required: true },
     state: { type: String, required: true, enum: ATM_LEGACY_RUN_STATES },
     cursor: {
       kind: { type: String, enum: [...ATM_LEGACY_KINDS, null], default: null },

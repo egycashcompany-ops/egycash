@@ -5,6 +5,8 @@
 // times — and «استيراد» stays held back until the preview allows it, with a sentence saying why.
 // The run itself steps in the card, which shows its progress.
 //
+// Only operations closed in the old system («Done») are ever copied — the owner (2026-11-25): «عايز
+// اللى يتنقل بس سجل الصيانة والتغذية اللى اتقفل Done» — so the dialog offers no switch for open ones.
 // The cut is a MOMENT: the branch's first own row in ECMS, suggested by the server. A legacy row
 // closed at or after it is the branch's own work, entered in ECMS, and is not copied.
 import { useEffect, useState } from 'react';
@@ -20,7 +22,7 @@ import { useAppSelector } from '../../../../store';
 import { useT } from '../../../../platform/localization/useT';
 import { Button } from '../../../../shared/ui/Button';
 import { Dialog } from '../../../../shared/ui/Dialog';
-import { Checkbox, Field, Input } from '../../../../shared/ui/form';
+import { Field, Input } from '../../../../shared/ui/form';
 import { ErrorState } from '../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { cn } from '../../../../shared/lib/cn';
@@ -37,6 +39,7 @@ import {
   legacyErrorText,
   legacyImportAllowed,
   legacyImportBody,
+  legacyRefusalText,
   shownSkipReasons,
   unclearKinds,
   unresolvedCodesText,
@@ -189,12 +192,10 @@ export const LegacyHistoryDialog = ({
   const start = useStartAtmLegacyImport();
   /** The cut as a moment (ISO) — `undefined` until the server's suggestion has answered. */
   const [cutover, setCutover] = useState<string | null | undefined>(undefined);
-  const [includeOpen, setIncludeOpen] = useState(false);
 
   // A fresh dialog starts from the server's suggestion, once it has answered.
   useEffect(() => {
     setCutover(undefined);
-    setIncludeOpen(false);
   }, [subject?.source]);
   useEffect(() => {
     if (cutover !== undefined || suggested.data === undefined) return;
@@ -203,9 +204,7 @@ export const LegacyHistoryDialog = ({
   }, [cutover, suggested.data, subject?.source]);
 
   const body =
-    subject === null || cutover === undefined
-      ? null
-      : legacyImportBody(subject.source, cutover, includeOpen);
+    subject === null || cutover === undefined ? null : legacyImportBody(subject.source, cutover);
   const preview = useAtmLegacyPreview(body);
   const allowed =
     preview.data !== undefined &&
@@ -223,6 +222,12 @@ export const LegacyHistoryDialog = ({
       // The hook declares `onError`, so the global toast stays quiet: this is the one message.
       toast.error(legacyErrorText(error, t, locale));
     }
+  };
+
+  /** This card's own refusal in the reader's words; any other failure as the panel words it. */
+  const refusal = (error: unknown): { description?: string } => {
+    const text = legacyRefusalText(error, t);
+    return text === undefined ? {} : { description: text };
   };
 
   const names = { source: subject?.source ?? '', branch: subject?.branch ?? '' };
@@ -271,20 +276,21 @@ export const LegacyHistoryDialog = ({
             onChange={(e) => setCutover(cutoverFromLocal(e.target.value))}
           />
         </Field>
-        <div data-legacy-field="includeOpen">
-          <Checkbox
-            label={t('atm.settings.legacy.includeOpen')}
-            checked={includeOpen}
-            disabled={start.isPending}
-            onChange={() => setIncludeOpen((value) => !value)}
-          />
-        </div>
         {suggested.isError ? (
-          <ErrorState error={suggested.error} onRetry={() => void suggested.refetch()} />
+          <ErrorState
+            error={suggested.error}
+            {...refusal(suggested.error)}
+            onRetry={() => void suggested.refetch()}
+          />
         ) : cutover === undefined || preview.isLoading ? (
           <p className="text-slate-500 dark:text-slate-400">{t('common.loading')}</p>
         ) : preview.isError ? (
-          <ErrorState error={preview.error} onRetry={() => void preview.refetch()} />
+          // An unreadable source is refused in the server's Arabic: worded here in the reader's.
+          <ErrorState
+            error={preview.error}
+            {...refusal(preview.error)}
+            onRetry={() => void preview.refetch()}
+          />
         ) : preview.data !== undefined ? (
           <div
             className={cn(

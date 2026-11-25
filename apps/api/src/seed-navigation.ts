@@ -1299,6 +1299,51 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
     ],
   },
   {
+    // Administrative Affairs — the company's department «الشئون الإدارية»: its warehouses and, from
+    // P1b, its procurement (docs/12-planning/administration-module-design-integration.md §13.1–
+    // §13.3). Never named 'Administration': categories are found by their English name, and that
+    // one is System Administration's, below. Placed after ATM, outside the spans the HR-sections and
+    // Operations specs read; sortOrder 29 puts it between ATM (28) and System Administration (30).
+    // One row per screen and no sections yet (OD-62 A). Every `permission` is the key the client
+    // route guard checks in apps/web/src/modules/administration/routes.tsx — the home row's is the
+    // one exception: the index carries no guard and decides what to show from the reader's grants.
+    en: 'Administrative Affairs',
+    ar: 'الشئون الإدارية',
+    // A box — the stores the department keeps (OD-62.1 A); the Items row wears it too.
+    icon: 'box',
+    sortOrder: 29,
+    apps: [
+      {
+        en: 'Administrative Affairs Home',
+        ar: 'الرئيسية',
+        route: '/administration',
+        icon: 'home',
+        permission: 'administrationItem.view',
+      },
+      {
+        en: 'Warehouses',
+        ar: 'المخازن',
+        route: '/administration/warehouses',
+        icon: 'warehouse',
+        permission: 'administrationWarehouse.view',
+      },
+      {
+        en: 'Items',
+        ar: 'الأصناف',
+        route: '/administration/items',
+        icon: 'box',
+        permission: 'administrationItem.view',
+      },
+      {
+        en: 'Units and categories',
+        ar: 'وحدات القياس والتصنيفات',
+        route: '/administration/catalogs',
+        icon: 'tag',
+        permission: 'administrationCatalog.manage',
+      },
+    ],
+  },
+  {
     en: 'Administration',
     ar: 'الإدارة',
     // A department is not its settings screen: the briefcase reads as "administration",

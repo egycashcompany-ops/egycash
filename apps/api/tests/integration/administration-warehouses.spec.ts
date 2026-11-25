@@ -17,6 +17,7 @@ import {
   type AdministrationPersonDto,
   type AdministrationWarehouseBranchOptionDto,
   type AdministrationWarehouseDto,
+  type MyApplicationCategoryDto,
   type OrgUnitOptionDto,
 } from '@ecms/contracts';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
@@ -25,6 +26,7 @@ import { seedAdministration } from '../../src/modules/administration/administrat
 import { AdministrationWarehouseModel } from '../../src/modules/administration/warehouses/warehouses/warehouse.model';
 import { administrationWarehouseRepository } from '../../src/modules/administration/warehouses/warehouses/warehouse.repository';
 import { registerWarehouseHoldChecker } from '../../src/modules/administration/warehouses/warehouses/index';
+import { syncNavigationCatalog } from '../../src/seed-navigation';
 import {
   administrationApi,
   bootAdministration,
@@ -793,5 +795,54 @@ describe('the branch options (§19.3)', () => {
 
   it('takes no query', async () => {
     expect((await as(wh.orgToken).get('/warehouses/branch-options?branchId=x')).status).toBe(400);
+  });
+});
+
+// From P1a.W (§19.7, §19.10.2): the sidebar the API hands a reader is exactly the rows of the keys
+// they hold — the `operations-navigation.spec.ts` precedent, over the seeded catalog.
+describe('the sidebar', () => {
+  /** The routes of one reader's sidebar, sections included, by category. */
+  const sidebarOf = async (token: string): Promise<Map<string, string[]>> => {
+    const res = await request(world.app)
+      .get('/api/v1/platform/me/applications')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return new Map(
+      data<MyApplicationCategoryDto[]>(res).map((group) => [
+        group.name.en,
+        [
+          ...group.applications.map((a) => a.route),
+          ...group.sections.flatMap((section) => section.applications.map((a) => a.route)),
+        ],
+      ]),
+    );
+  };
+
+  beforeAll(async () => {
+    await syncNavigationCatalog();
+  });
+
+  it('a role holding only `administrationWarehouse.view` gets exactly the Warehouses row', async () => {
+    const reader = await world.person(
+      'sidebar-reader',
+      ['administrationWarehouse.view'],
+      'organization',
+    );
+    const sidebar = await sidebarOf(reader.token);
+    expect([...sidebar.entries()]).toEqual([
+      ['Administrative Affairs', ['/administration/warehouses']],
+    ]);
+  });
+
+  it('the super-admin sees the module’s four rows, under its own category', async () => {
+    const sidebar = await sidebarOf(world.adminToken);
+    expect(sidebar.get('Administrative Affairs')).toEqual([
+      '/administration',
+      '/administration/warehouses',
+      '/administration/items',
+      '/administration/catalogs',
+    ]);
+    // Never filed under System Administration, whose English name it must not take.
+    expect(sidebar.get('Administration') ?? []).not.toContain('/administration/warehouses');
   });
 });

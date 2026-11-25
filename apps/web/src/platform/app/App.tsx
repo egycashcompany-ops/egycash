@@ -36,6 +36,7 @@ const FleetRoutes = lazy(() => import('../../modules/fleet/routes'));
 const OperationsRoutes = lazy(() => import('../../modules/operations/routes'));
 const AtmRoutes = lazy(() => import('../../modules/atm/routes'));
 const ItRoutes = lazy(() => import('../../modules/it/routes'));
+const AdministrationRoutes = lazy(() => import('../../modules/administration/routes'));
 const GoldRoutes = lazy(() => import('../../modules/gold/routes'));
 // The customer portal is a SEPARATE surface, not a page of the app: its own login, its own
 // chrome, no sidebar. Neither route is wrapped in RequireAuth — that guard redirects to the
@@ -263,7 +264,10 @@ export const App = (): JSX.Element => {
           }
         />
         {/* Their old addresses: a bookmark lands on the same screen, now a tab of «الإعدادات». */}
-        <Route path="/announcements/*" element={<Navigate to="/hr-settings/announcements" replace />} />
+        <Route
+          path="/announcements/*"
+          element={<Navigate to="/hr-settings/announcements" replace />}
+        />
         <Route
           path="/notification-rules/*"
           element={<Navigate to="/hr-settings/notification-rules" replace />}
@@ -441,6 +445,22 @@ export const App = (): JSX.Element => {
                 }
               >
                 <ItRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/administration/*"
+          element={
+            <RequireAuth>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
+                <AdministrationRoutes />
               </Suspense>
             </RequireAuth>
           }

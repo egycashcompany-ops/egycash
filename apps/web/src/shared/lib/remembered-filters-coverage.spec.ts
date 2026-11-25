@@ -44,6 +44,10 @@ const pageFiles = (dir: string): string[] =>
 
 /** Screens that remember their filters, with the params each deliberately does NOT remember. */
 const COVERED: readonly (readonly [string, readonly string[]])[] = [
+  // `kind`: the catalogs' tab — a link to the categories opens the categories (as IT's catalogs).
+  ['modules/administration/pages/CatalogsPage.tsx', ['kind']],
+  ['modules/administration/pages/ItemsPage.tsx', []],
+  ['modules/administration/pages/WarehousesPage.tsx', []],
   ['modules/atm/pages/DataEditPage.tsx', ['tab']],
   // `q`: the free-text search from before the column filters (banks, codes, name, areas — all
   // remembered), only ever deleted so an old link or remembered view sheds it.
@@ -282,6 +286,8 @@ const MIGRATION_PENDING: readonly string[] = [];
  * with no control on the page, and `page`-only lists.
  */
 const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
+  ['modules/administration/pages/AdministrationHomePage.tsx'],
+  ['modules/administration/pages/ItemDetailPage.tsx'],
   ['modules/atm/pages/AtmOverviewPage.tsx'],
   // AT-D4 has no filters to remember, and the detector does not flag it — so no note either, which
   // this file's own rule calls a stale look. It is the WHOLE list of machine ids nothing in ECMS

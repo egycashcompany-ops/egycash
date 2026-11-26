@@ -27,7 +27,15 @@ import { useRecruitmentStageCounts } from '../../counters/stage-counts-queries';
 import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
 import { GenerateBatchDialog } from '../../evaluation-batches/components/GenerateBatchDialog';
 import { RecordResultDialog } from '../components/RecordResultDialog';
-import { useBulkEvaluations, useEvaluationPhases, useEvaluations } from '../api/evaluation-queries';
+import { IdCardHoverIcon } from '../../applicants/components/IdCardHoverIcon';
+import {
+  useBulkEvaluations,
+  useEvaluationPhases,
+  useEvaluations,
+  useSetEvaluationMotherName,
+} from '../api/evaluation-queries';
+import { EditIcon } from '../../../../../shared/ui/icons';
+import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
@@ -126,6 +134,23 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
   const [batchOpen, setBatchOpen] = useState(false);
   const [resultFor, setResultFor] = useState<EvaluationDto | null>(null);
   const [reason, setReason] = useState('');
+  // «اسم الأم» — the security check form asks for it; typed on THIS record, never the applicant file.
+  const isSecurityCheck = phase?.key === 'securityCheck';
+  const saveMotherName = useSetEvaluationMotherName();
+  const [motherFor, setMotherFor] = useState<EvaluationDto | null>(null);
+  const [motherName, setMotherName] = useState('');
+  const submitMotherName = async (): Promise<void> => {
+    const row = motherFor;
+    const value = motherName.trim();
+    if (row === null || value.length < 2) return;
+    try {
+      await saveMotherName.mutateAsync({ id: row.id, motherName: value, version: row.version });
+      toast.success(t('batches.motherName.saved'));
+      setMotherFor(null);
+    } catch {
+      // surfaced globally
+    }
+  };
   const bulk = useBulkEvaluations(() => {
     selection.clear();
     setRejectOpen(false);
@@ -144,8 +169,54 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
         <span>{e.applicantName}</span>
       ),
     },
+    {
+      // «الوظيفة» — the job the applicant holds now (not the snapshot from when the check opened).
+      key: 'position',
+      header: t('evaluations.columns.position'),
+      render: (e) => e.currentPosition ?? e.placementLabel.position ?? '—',
+    },
+    ...(isSecurityCheck
+      ? [
+          {
+            key: 'motherName',
+            header: t('batches.columns.motherName'),
+            render: (e: EvaluationDto) => (
+              <div className="flex items-center gap-1">
+                {e.motherName === null || e.motherName === undefined || e.motherName.trim() === '' ? (
+                  <span className="text-xs text-amber-600 dark:text-amber-400">{t('batches.motherName.missing')}</span>
+                ) : (
+                  <span>{e.motherName}</span>
+                )}
+                {e.status === 'waiting' && (
+                  <Can permission="evaluation.manage">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label={`${t('batches.motherName.edit')} — ${e.applicantName}`}
+                      title={t('batches.motherName.edit')}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setMotherFor(e);
+                        setMotherName(e.motherName ?? '');
+                      }}
+                    >
+                      <EditIcon className="h-4 w-4" />
+                    </Button>
+                  </Can>
+                )}
+              </div>
+            ),
+          },
+        ]
+      : []),
     { key: 'status', header: t('evaluations.columns.status'), render: (e) => <EvaluationStatusBadge status={e.status} /> },
-    { key: 'files', header: t('evaluations.columns.files'), align: 'center', render: (e) => e.files.length },
+    {
+      // «المرفقات» — the applicant's National-ID card, shown on hover.
+      key: 'files',
+      header: t('evaluations.columns.files'),
+      align: 'center',
+      render: (e) => <IdCardHoverIcon applicantId={e.applicantId} name={e.applicantName} />,
+    },
     { key: 'createdAt', header: t('evaluations.columns.opened'), render: (e) => formatDate(e.createdAt, locale) },
     // RW9 — an individual phase is worked one applicant at a time: the result document and the
     // decision are recorded right here, without a detour through the detail page.
@@ -279,6 +350,31 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
       >
         <Field label={t('bulk.reason.title')}>
           <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+        </Field>
+      </Dialog>
+
+      <Dialog
+        open={motherFor !== null}
+        onClose={() => setMotherFor(null)}
+        title={t('batches.motherName.edit')}
+        description={t('evaluations.motherName.hint', { name: motherFor?.applicantName ?? '' })}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setMotherFor(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              loading={saveMotherName.isPending}
+              disabled={motherName.trim().length < 2}
+              onClick={() => void submitMotherName()}
+            >
+              {t('common.save')}
+            </Button>
+          </>
+        }
+      >
+        <Field label={t('batches.columns.motherName')}>
+          <Input value={motherName} maxLength={200} onChange={(e) => setMotherName(e.target.value)} />
         </Field>
       </Dialog>
 

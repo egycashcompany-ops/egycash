@@ -199,6 +199,26 @@ export const staffRemoveApplicantDocument = async (req: Request, res: Response):
   ok(res, await applicantDocumentService.staffRemove(authContext(req), params.applicantId, params.typeId));
 };
 
+type CardParam = { applicantId: string; side: 'front' | 'back' | 'portrait' };
+
+/** HR's rotate / crop of a card image — the edited picture becomes the card's next version. */
+export const editApplicantCard = async (req: Request, res: Response): Promise<void> => {
+  const { params, body } = validated<{ note: string }, unknown, CardParam>(req);
+  ok(res, await applicantDocumentService.editCard(authContext(req), params.applicantId, params.side, binaryOf(req), body.note));
+};
+
+/** Every version of a card image, with who made it and when. */
+export const applicantCardHistory = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<unknown, unknown, CardParam>(req);
+  ok(res, await applicantDocumentService.cardHistory(authContext(req), params.applicantId, params.side));
+};
+
+/** Bring an earlier version of a card image back (as a new version — nothing is lost). */
+export const restoreApplicantCard = async (req: Request, res: Response): Promise<void> => {
+  const { params, body } = validated<{ fileId: string }, unknown, CardParam>(req);
+  ok(res, await applicantDocumentService.restoreCard(authContext(req), params.applicantId, params.side, body.fileId));
+};
+
 export const staffReplaceApplicantCard = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<unknown, unknown, { applicantId: string; side: 'front' | 'back' | 'portrait' }>(req);
   ok(res, await applicantDocumentService.staffReplaceCard(authContext(req), params.applicantId, params.side, binaryOf(req)));

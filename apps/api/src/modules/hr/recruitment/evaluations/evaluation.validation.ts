@@ -10,6 +10,7 @@ export {
   RemoveEvaluationFileSchema,
   SetEvaluationAppointmentSchema,
   SetPlacementRecommendationSchema,
+  SetEvaluationMotherNameSchema,
   ListEvaluationsQuerySchema,
   BulkEvaluationsSchema,
 } from '@ecms/contracts';

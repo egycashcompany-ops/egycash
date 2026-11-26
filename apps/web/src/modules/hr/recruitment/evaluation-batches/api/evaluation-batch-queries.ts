@@ -16,6 +16,7 @@ import {
   type DecideBatchItem,
   type EvaluationBatchDto,
   type IssueEvaluationBatch,
+  type SetBatchItemAddress,
   type SetBatchItemMotherName,
   type UpdateEvaluationBatch,
   type VoidBatchItem,
@@ -50,6 +51,12 @@ export const useEvaluationBatch = (id: string) =>
     queryKey: detailKey(MODULE, FEATURE, id),
     queryFn: () => api.getEvaluationBatch(id),
     enabled: id !== '',
+    // While the package is being built in the worker, look again every 2 s so the new PDF's
+    // button appears by itself — no reload needed after «تحديث الكشف».
+    refetchInterval: (query) => {
+      const status = query.state.data?.package.status;
+      return status === 'queued' || status === 'building' ? 2000 : false;
+    },
   });
 
 /** The selection pool for a new batch — only fetched while the picker is open. */
@@ -107,6 +114,20 @@ export const useSetBatchItemMotherName = (id: string) => {
     mutationFn: (vars: { applicantId: string; body: SetBatchItemMotherName }) =>
       api.setBatchItemMotherName(id, vars.applicantId, vars.body),
     onSuccess: seed,
+  });
+};
+
+/** «بيانات ناقصة» — fill a member's address; the applicant file and the batch both take it. */
+export const useSetBatchItemAddress = (id: string) => {
+  const qc = useQueryClient();
+  const seed = useSeedBatch();
+  return useMutation({
+    mutationFn: (vars: { applicantId: string; body: SetBatchItemAddress }) =>
+      api.setBatchItemAddress(id, vars.applicantId, vars.body),
+    onSuccess: (batch, vars) => {
+      seed(batch);
+      void qc.invalidateQueries({ queryKey: detailKey('hr', 'applicants', vars.applicantId) });
+    },
   });
 };
 

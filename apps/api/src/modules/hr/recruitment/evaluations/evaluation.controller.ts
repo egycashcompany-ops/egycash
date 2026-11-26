@@ -11,6 +11,8 @@ import {
   type RemoveEvaluationFile,
   type SetEvaluationAppointment,
   type SetPlacementRecommendation,
+  type SetEvaluationMotherName,
+  type EvaluationDto,
   type UpdateEvaluationPhase,
   type UploadEvaluationFile,
 } from '@ecms/contracts';
@@ -22,6 +24,7 @@ import { type UploadedBinary } from '../../../../platform/files';
 import { evaluationPhaseService } from './evaluation-phase.service';
 import { withBulkWorkflowEnvelope, withWorkflowEnvelope } from '../workflow';
 import { evaluationService } from './evaluation.service';
+import { applicantService } from '../applicants';
 import { type EvaluationDoc } from './evaluation.model';
 import { toEvaluationDto, toEvaluationPhaseDto } from './evaluation.mapper';
 
@@ -63,7 +66,28 @@ export const updateEvaluationPhase = async (req: Request, res: Response): Promis
 export const listEvaluations = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query } = validated<never, ListEvaluationsQuery>(req);
-  okPage(res, await evaluationService.list(query, scopeSelector(ctx, 'evaluation.view')), toEvaluationDto);
+  const page = await evaluationService.list(query, scopeSelector(ctx, 'evaluation.view'));
+  const facts = await applicantService.queueFacts(page.items.map((e) => String(e.applicantId)));
+  okPage(res, page, (doc) => withQueueFacts(doc, facts));
+};
+
+/**
+ * A queue row with what the queue shows beside the record: «الوظيفة» as the applicant's job NOW
+ * (not the snapshot taken when the check opened), and «اسم الأم» as typed on this record, else
+ * the applicant file's.
+ */
+const withQueueFacts = (
+  doc: EvaluationDoc,
+  facts: Map<string, { position: string | null; motherName: string | null }>,
+): EvaluationDto => {
+  const fact = facts.get(String(doc.applicantId));
+  const own = doc.motherName ?? null;
+  return {
+    ...toEvaluationDto(doc),
+    currentPosition: fact?.position ?? null,
+    motherName: own ?? fact?.motherName ?? null,
+    motherNameOnRecord: own !== null,
+  };
 };
 
 export const openEvaluation = async (req: Request, res: Response): Promise<void> => {
@@ -147,6 +171,15 @@ export const setEvaluationAppointment = async (req: Request, res: Response): Pro
 };
 
 /** RW5 — the reviewer's advisory placement recommendation; never moves the candidate by itself. */
+/** The security-check queue's «اسم الأم» — this record only; answers with the row as the queue shows it. */
+export const setEvaluationMotherName = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<SetEvaluationMotherName, never, IdParam>(req);
+  const doc = await evaluationService.setMotherName(ctx, params.id, body, scopeSelector(ctx, 'evaluation.manage'));
+  const facts = await applicantService.queueFacts([String(doc.applicantId)]);
+  ok(res, withQueueFacts(doc, facts));
+};
+
 export const setEvaluationRecommendation = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<SetPlacementRecommendation, never, IdParam>(req);

@@ -78,6 +78,7 @@ import {
 import { backfillEmployeeLoanDepartments } from './employee-loans';
 import { ensureTrainingCertificateCategory, seedTrainingCourses } from './training';
 import { ensureMedicalDocumentCategory } from './medical';
+import { backfillDefaultJobAtFirstInterview } from './recruitment/default-job.backfill';
 
 // `kind` says what a platform IS — how applications from it normally arrive. It does not say
 // whether the platform has an application link: every active source can be published to, whatever
@@ -558,6 +559,13 @@ export const seedHrRecruitment = async (): Promise<void> => {
     if (moved > 0) logger.info({ moved }, 'recruitment: cleared applicants moved to the offer stage');
   } catch (error) {
     logger.warn({ err: error }, 'recruitment: moving cleared applicants to the offer stage skipped');
+  }
+  // «أخصائي نقل أموال» is every candidate's default job from the first interview on; candidates
+  // already interviewing without a job get it now (only an EMPTY job is ever filled).
+  try {
+    await backfillDefaultJobAtFirstInterview();
+  } catch (error) {
+    logger.warn({ err: error }, 'recruitment: default first-interview job backfill skipped');
   }
   // Employee-registry boot migration (frozen design §10) — idempotent, legacy docs only.
   await migrateEmployeesToRegistry();

@@ -48,6 +48,11 @@ export interface EvaluationDoc extends BaseDocFields, StageDocFields {
   appointmentAt: Date | null;
   recommendedPlacement: StagePlacement | null;
   recommendationNote: string | null;
+  /**
+   * Mother's name for the security-check form, typed on THIS record by HR. Null = not typed here;
+   * the applicant file's value is used instead. Never written back to the applicant.
+   */
+  motherName?: string | null;
   decidedBy: Types.ObjectId | null;
   decidedAt: Date | null;
 }
@@ -83,6 +88,7 @@ const evaluationSchema = new Schema<EvaluationDoc>(
     appointmentAt: { type: Date, default: null },
     recommendedPlacement: { type: placementSchema, default: null },
     recommendationNote: { type: String, default: null },
+    motherName: { type: String, default: null },
     decidedBy: { type: Schema.Types.ObjectId, default: null },
     decidedAt: { type: Date, default: null },
     // I5 — no `decisionHistory` here. Re-decisions are recorded once, on the canonical

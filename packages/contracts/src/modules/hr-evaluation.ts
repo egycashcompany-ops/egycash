@@ -268,6 +268,17 @@ export interface EvaluationDto extends AttemptMarkerDto {
   /** The placement in force when this record was opened; immutable (RW4). */
   placement: PlacementDto;
   placementLabel: PlacementLabelDto;
+  /**
+   * The applicant's job AS IT IS NOW («الوظيفة»), filled on queue lists. `placementLabel` above is
+   * the snapshot from when the record opened, which a later reassignment does not change.
+   */
+  currentPosition?: string | null;
+  /**
+   * Security check only: the mother's name the form will print — typed on this record by HR, else
+   * the applicant file's. `motherNameOnRecord` says which (true = typed here).
+   */
+  motherName?: string | null;
+  motherNameOnRecord?: boolean;
   /** Advisory: a different seat/branch this phase recommends (RW5). Never moves the candidate. */
   recommendedPlacement: PlacementDto | null;
   recommendationNote: string | null;
@@ -321,3 +332,19 @@ export const EvaluationOpenedPayloadV1 = z.object({
   attempt: z.number().int().min(1),
   batchId: objectId().optional(),
 });
+
+/**
+ * Type or correct the mother's name on ONE security-check record (the queue's «اسم الأم»). Written
+ * on that record only — the applicant file is never changed. A batch built from the record prints
+ * it, and an open batch already holding the applicant takes it too.
+ */
+export const SetEvaluationMotherNameSchema = z
+  .object({
+    motherName: z.string().trim().min(2).max(200),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type SetEvaluationMotherName = z.infer<typeof SetEvaluationMotherNameSchema>;
+
+/** Emitted when HR types a mother's name on a security-check record (evaluation-batches follow it). */
+export const HR_EVALUATION_MOTHER_NAME_SET = 'hr.evaluation.motherNameSet';

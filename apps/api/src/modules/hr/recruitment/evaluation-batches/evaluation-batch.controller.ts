@@ -22,6 +22,7 @@ import {
   type ListBatchCandidatesQuery,
   type ListEvaluationBatchesQuery,
   type RemoveBatchItem,
+  type SetBatchItemAddress,
   type SetBatchItemMotherName,
   type UpdateEvaluationBatch,
   type UploadBatchResult,
@@ -29,6 +30,7 @@ import {
 } from '@ecms/contracts';
 import { created, ok, okPage, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
+import { hasPermission } from '../../../../shared/types';
 import { ForbiddenError, ValidationError } from '../../../../shared/errors';
 import { type UploadedBinary } from '../../../../platform/files';
 import {
@@ -156,6 +158,19 @@ export const setEvaluationBatchItemMotherName = async (req: Request, res: Respon
     body,
     scope,
   );
+  ok(res, toEvaluationBatchDto(doc));
+};
+
+/**
+ * «بيانات ناقصة» — a member's address, saved on the applicant file. Needs the batch grant AND
+ * `applicant.edit`, since it writes the applicant's own record.
+ */
+export const setEvaluationBatchItemAddress = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<SetBatchItemAddress, never, ItemParam>(req);
+  const scope = await batchManageScope(ctx, params.id);
+  if (!hasPermission(ctx, 'applicant.edit')) throw new ForbiddenError();
+  const doc = await evaluationBatchService.setItemAddress(ctx, params.id, params.applicantId, body, scope);
   ok(res, toEvaluationBatchDto(doc));
 };
 

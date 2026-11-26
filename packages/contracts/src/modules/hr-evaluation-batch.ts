@@ -369,3 +369,23 @@ export const HrEvaluationBatchTemplates = {
   Issued: 'hr.evaluationBatchIssued',
   Returned: 'hr.evaluationBatchReturned',
 } as const;
+
+/**
+ * Fill in a member's address from the batch screen («بيانات ناقصة»). It is the applicant's REAL
+ * address, so it is saved on the applicant file (official address) — fixed once, for every form —
+ * and copied onto this batch's item at once. Same shape the applicant form asks for.
+ */
+export const SetBatchItemAddressSchema = z
+  .object({
+    address: z
+      .object({
+        line1: z.string().trim().min(1).max(500),
+        line2: z.string().trim().max(500).optional(),
+        city: z.string().trim().min(1).max(200),
+        governorate: z.string().trim().min(1).max(200),
+      })
+      .strict(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type SetBatchItemAddress = z.infer<typeof SetBatchItemAddressSchema>;

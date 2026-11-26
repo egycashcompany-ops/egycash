@@ -9,6 +9,7 @@ import {
   type EvaluationPhaseDto,
   type OpenEvaluation,
   type SetEvaluationAppointment,
+  type SetEvaluationMotherName,
   type Paginated,
   type UpdateEvaluationPhase,
   type WorkflowEnvelopeDto,
@@ -87,3 +88,7 @@ export const updateEvaluationPhase = (id: string, body: UpdateEvaluationPhase): 
 /** Bulk approve/reject one phase's queue (RW10/RW17) — answers a partial-success envelope. */
 export const bulkEvaluations = (body: BulkEvaluations): Promise<BulkWorkflowResultDto> =>
   post<BulkWorkflowResultDto>('/hr/evaluations/bulk', body);
+
+/** The security-check queue's «اسم الأم» — typed on this record only, never the applicant file. */
+export const setEvaluationMotherName = (id: string, body: SetEvaluationMotherName): Promise<EvaluationDto> =>
+  patch<EvaluationDto>(`/hr/evaluations/${id}/mother-name`, body);

@@ -41,6 +41,9 @@ import {
   staffPutApplicantDocument,
   staffRemoveApplicantDocument,
   staffReplaceApplicantCard,
+  editApplicantCard,
+  applicantCardHistory,
+  restoreApplicantCard,
   listApplicantFolders,
   getApplicantFolder,
   listApplicantDocumentTypes,
@@ -55,6 +58,7 @@ import {
   ApplicantParamSchema,
   StaffDocumentBodySchema,
 } from './applicant-document.validation';
+import { EditNationalIdCardSchema, RestoreNationalIdCardSchema } from '@ecms/contracts';
 
 /** Outer multipart cap (first-line defence); the file category's `maxSizeMb` is authoritative. */
 const DOCUMENT_MAX_MB = 15;
@@ -219,6 +223,29 @@ export const buildApplicantDocumentsRouter = (): Router => {
     multipartSingle(),
     validate({ params: ApplicantCardSideParamSchema }),
     asyncHandler(staffReplaceApplicantCard),
+  );
+  // Rotate / crop a card image, its version history (who and when), and restoring a version.
+  router.post(
+    '/:applicantId/card/:side/edit',
+    authenticate,
+    authorize('applicantDocument.review'),
+    multipartSingle(),
+    validate({ body: EditNationalIdCardSchema, params: ApplicantCardSideParamSchema }),
+    asyncHandler(editApplicantCard),
+  );
+  router.get(
+    '/:applicantId/card/:side/history',
+    authenticate,
+    authorize('applicant.view'),
+    validate({ params: ApplicantCardSideParamSchema }),
+    asyncHandler(applicantCardHistory),
+  );
+  router.post(
+    '/:applicantId/card/:side/restore',
+    authenticate,
+    authorize('applicantDocument.review'),
+    validate({ body: RestoreNationalIdCardSchema, params: ApplicantCardSideParamSchema }),
+    asyncHandler(restoreApplicantCard),
   );
 
   return router;

@@ -633,3 +633,37 @@ export const CameraIcon = (p: IconProps): JSX.Element => (
     <circle cx="12" cy="13" r="3" />
   </Base>
 );
+
+/** Rotate a quarter turn clockwise. */
+export const RotateCwIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+    <path d="M21 3v5h-5" />
+  </Base>
+);
+
+/** Rotate a quarter turn counter-clockwise. */
+export const RotateCcwIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+    <path d="M3 3v5h5" />
+  </Base>
+);
+
+/** Crop. */
+export const CropIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+    <path d="M18 22V8a2 2 0 0 0-2-2H2" />
+  </Base>
+);
+
+/** An identity card: a photo square and two lines of text. */
+export const IdCardIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="2" y="5" width="20" height="14" rx="2" />
+    <circle cx="8" cy="11" r="2" />
+    <path d="M5 16c.6-1.4 1.7-2 3-2s2.4.6 3 2" />
+    <path d="M14 10h5M14 14h3" />
+  </Base>
+);

@@ -12,6 +12,7 @@
 // missed, so history is self-healing instead of silently lossy.
 import { Types, type ClientSession } from 'mongoose';
 import {
+  maskNationalId,
   type LocalizedString,
   type RecruitmentStageKind,
   type RecruitmentTimelineType,
@@ -31,6 +32,14 @@ import {
   type TimelinePlacement,
   type TimelinePlacementLabel,
 } from './recruitment-timeline.model';
+
+/** How a changed detail is named in the history note. */
+const DETAIL_LABEL: Record<'motherName' | 'nationalId' | 'fullNameAr' | 'address', string> = {
+  address: 'العنوان',
+  motherName: 'اسم الأم',
+  nationalId: 'الرقم القومي',
+  fullNameAr: 'الاسم',
+};
 
 /** What a caller supplies; the ids, timestamps and defaults are the service's business. */
 export interface RecordTimelineInput {
@@ -243,6 +252,46 @@ class RecruitmentTimelineService {
           : { documentName: input.subject.name }),
         ...(input.metadata ?? {}),
       },
+    });
+  }
+
+  /**
+   * One personal detail of the candidate changed — «اسم الأم», the National-ID number, the name —
+   * with who changed it, where (the applicant file, a security-check record, a batch), and the
+   * old and new values. A National-ID number is written MASKED: the history is read far more
+   * widely than the record itself.
+   *
+   * `recordSafe`: a history write never fails the edit. Each change is its own entry (the
+   * discriminator carries the instant), because two corrections of the same field are two facts.
+   */
+  async recordDetailChange(input: {
+    applicantId: string;
+    applicantCode: string;
+    branchId: Types.ObjectId | null;
+    actorUserId: string | null;
+    field: 'motherName' | 'nationalId' | 'fullNameAr' | 'address';
+    from: string | null;
+    to: string | null;
+    /** Where the edit was made, in Arabic — «ملف المتقدم», «الفحص الأمني», «الدفعة SEC-…». */
+    where: string;
+  }): Promise<RecruitmentTimelineDoc | null> {
+    if ((input.from ?? '') === (input.to ?? '')) return null;
+    const shown = (v: string | null): string =>
+      v === null || v === '' ? '—' : input.field === 'nationalId' ? maskNationalId(v) : v;
+    const label = DETAIL_LABEL[input.field];
+    const at = new Date();
+    return this.recordSafe({
+      applicantId: input.applicantId,
+      applicantCode: input.applicantCode,
+      type: 'detailsChanged',
+      correlation: { type: 'applicant', id: input.applicantId },
+      actorUserId: input.actorUserId,
+      entity: { type: 'applicant', id: input.applicantId },
+      branchId: input.branchId,
+      at,
+      note: `${label}: ${shown(input.from)} ← ${shown(input.to)} (${input.where})`,
+      discriminator: `${input.field}:${at.toISOString()}`,
+      metadata: { field: input.field, where: input.where, from: shown(input.from), to: shown(input.to) },
     });
   }
 

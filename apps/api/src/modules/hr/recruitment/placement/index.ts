@@ -4,3 +4,9 @@
 // except the HR manifest.
 export { registerPlacementReassignment } from './placement.consumers';
 export { reassignPlacement } from './placement.service';
+export {
+  assignDefaultJob,
+  DEFAULT_FIRST_INTERVIEW_JOB,
+  findDefaultJobTitleId,
+  registerDefaultJobAtFirstInterview,
+} from './default-job';

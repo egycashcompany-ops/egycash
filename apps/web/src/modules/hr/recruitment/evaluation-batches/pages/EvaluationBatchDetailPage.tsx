@@ -7,7 +7,9 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
+  citiesOfGovernorate,
   DRIVING_TEST_GRADES,
+  EGYPT_GOVERNORATES,
   isQuadrupleName,
   type BatchItemDto,
   type DrivingTestGrade,
@@ -18,6 +20,15 @@ import { useAppSelector } from '../../../../../store';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
+import { Can } from '../../../../../platform/rbac/Can';
+import { Combobox } from '../../../../../shared/ui/Combobox';
+
+/** The governorates as the applicant form offers them. */
+const GOVERNORATE_NAMES = EGYPT_GOVERNORATES.map((g) => g.ar);
+
+/** The catalog list, plus a place HR typed that the catalog does not hold, so it stays shown. */
+const withTyped = (options: readonly string[], value: string): string[] =>
+  value.trim() === '' || options.includes(value) ? [...options] : [value, ...options];
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input, Select } from '../../../../../shared/ui/form';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
@@ -29,6 +40,7 @@ import { ErrorState } from '../../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { formatDate, formatDateTime, localized } from '../../../../../shared/lib/format';
 import { fileDownloadTicket } from '../../applicants/api/applicant-api';
+import { IdCardHoverIcon } from '../../applicants/components/IdCardHoverIcon';
 import { BatchItemBadge, BatchPackageBadge, BatchStatusBadge } from '../components/BatchStatusBadge';
 import {
   useBulkBatchItems,
@@ -39,6 +51,7 @@ import {
   useIssueEvaluationBatch,
   useRemoveBatchItem,
   useRetryBatchPackage,
+  useSetBatchItemAddress,
   useSetBatchItemMotherName,
   useUploadBatchResult,
 } from '../api/evaluation-batch-queries';
@@ -80,6 +93,10 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
   const saveMotherName = useSetBatchItemMotherName(id);
   const [motherNameFor, setMotherNameFor] = useState<BatchItemDto | null>(null);
   const [motherName, setMotherName] = useState('');
+  // «بيانات ناقصة» — the address is filled from here too, onto the applicant file.
+  const saveAddress = useSetBatchItemAddress(id);
+  const [addressFor, setAddressFor] = useState<BatchItemDto | null>(null);
+  const [address, setAddress] = useState({ line1: '', city: '', governorate: '' });
 
   const items = useMemo(() => batch?.items ?? [], [batch]);
   const rowIds = useMemo(() => items.filter((i) => i.result !== 'voided').map((i) => i.applicantId), [items]);
@@ -163,6 +180,42 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
     }
   };
 
+  /**
+   * Members whose form would print with a blank the receiving body needs: no address, and — on
+   * the security check — no mother's name. Shown above the list so HR fixes them before printing.
+   */
+  const blank = (v: string | null | undefined): boolean => v === null || v === undefined || v.trim() === '';
+  const incomplete = isSecurityCheck
+    ? items
+        .filter((i) => i.result !== 'voided')
+        .map((i) => ({ item: i, noAddress: blank(i.address), noMother: blank(i.motherName) }))
+        .filter((r) => r.noAddress || r.noMother)
+    : [];
+
+  const openAddress = (item: BatchItemDto): void => {
+    setAddressFor(item);
+    setAddress({ line1: '', city: '', governorate: '' });
+  };
+  const addressReady =
+    address.line1.trim() !== '' && address.city.trim() !== '' && address.governorate.trim() !== '';
+  const submitAddress = async (): Promise<void> => {
+    const target = addressFor;
+    if (target === null || !addressReady) return;
+    try {
+      await saveAddress.mutateAsync({
+        applicantId: target.applicantId,
+        body: {
+          address: { line1: address.line1.trim(), city: address.city.trim(), governorate: address.governorate.trim() },
+          version: batch.version,
+        },
+      });
+      toast.success(t('batches.incomplete.addressSaved'));
+      setAddressFor(null);
+    } catch {
+      // surfaced globally
+    }
+  };
+
   const columns: Column<BatchItemDto>[] = [
     {
       key: 'applicant',
@@ -177,8 +230,11 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
       key: 'nationalId',
       header: t('batches.columns.nationalId'),
       render: (i) => (
-        <span className="font-mono text-xs" dir="ltr">
-          {i.nationalIdMasked ?? '—'}
+        <span className="inline-flex items-center gap-1">
+          <span className="font-mono text-xs" dir="ltr">
+            {i.nationalIdMasked ?? '—'}
+          </span>
+          <IdCardHoverIcon applicantId={i.applicantId} name={i.applicantName || i.applicantCode} />
         </span>
       ),
     },
@@ -370,11 +426,21 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
             <CardHeader
               title={t('batches.package.title')}
               actions={
-                batch.package.status === 'failed' ? (
-                  <Button size="sm" variant="secondary" loading={retry.isPending} onClick={() => void retry.mutateAsync()}>
-                    {t('batches.package.retry')}
+                // «تحديث الكشف» — after editing a name, a mother's name or a card number, build the
+                // list again with the data as it is now. Always offered on a live batch; it is also
+                // the retry after a failure.
+                batch.status === 'cancelled' ? undefined : (
+                  <Button
+                    size="sm"
+                    variant={batch.package.status === 'failed' ? 'primary' : 'secondary'}
+                    loading={retry.isPending || batch.package.status === 'queued' || batch.package.status === 'building'}
+                    onClick={() =>
+                      void retry.mutateAsync().then(() => toast.success(t('batches.package.refreshing')))
+                    }
+                  >
+                    {t(batch.package.status === 'failed' ? 'batches.package.retry' : 'batches.package.refresh')}
                   </Button>
-                ) : undefined
+                )
               }
             />
             <CardBody>
@@ -443,6 +509,52 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
           </Card>
         )}
 
+        {incomplete.length > 0 && !terminal && (
+          <Card>
+            <CardHeader
+              title={t('batches.incomplete.title', { n: incomplete.length })}
+              description={t(isDraft ? 'batches.incomplete.hintDraft' : 'batches.incomplete.hintIssued')}
+            />
+            <CardBody>
+              <ul className="divide-y divide-amber-200/60 rounded-xl border border-amber-300 bg-amber-50/60 dark:divide-amber-900 dark:border-amber-800 dark:bg-amber-950/30">
+                {incomplete.map(({ item, noAddress, noMother }) => (
+                  <li key={item.applicantId} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+                    <Link to={`/applicants/${item.applicantId}`} className="font-medium hover:underline">
+                      {item.applicantName || item.applicantCode}
+                    </Link>
+                    {noAddress && (
+                      <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-900 dark:text-amber-100">
+                        {t('batches.incomplete.noAddress')}
+                      </span>
+                    )}
+                    {noMother && (
+                      <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-900 dark:text-amber-100">
+                        {t('batches.incomplete.noMother')}
+                      </span>
+                    )}
+                    <span className="ms-auto flex gap-1">
+                      {noAddress && (
+                        <Can permission="applicant.edit">
+                          <Button size="sm" variant="secondary" onClick={() => openAddress(item)}>
+                            <EditIcon className="h-4 w-4" />
+                            {t('batches.incomplete.editAddress')}
+                          </Button>
+                        </Can>
+                      )}
+                      {noMother && (
+                        <Button size="sm" variant="secondary" onClick={() => openMotherName(item)}>
+                          <EditIcon className="h-4 w-4" />
+                          {t('batches.motherName.edit')}
+                        </Button>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </CardBody>
+          </Card>
+        )}
+
         {isIssued && (
           <BulkActionBar count={selection.count} onClear={selection.clear}>
             <Button
@@ -505,6 +617,72 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
         <Field label={t('bulk.reason.title')}>
           <Input value={reason} onChange={(e) => setReason(e.target.value)} />
         </Field>
+      </Dialog>
+
+      <Dialog
+        open={addressFor !== null}
+        onClose={() => setAddressFor(null)}
+        title={t('batches.incomplete.editAddress')}
+        description={t('batches.incomplete.addressHint', {
+          name: addressFor?.applicantName || addressFor?.applicantCode || '',
+        })}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setAddressFor(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button loading={saveAddress.isPending} disabled={!addressReady} onClick={() => void submitAddress()}>
+              {t('common.save')}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Field label={t('batches.incomplete.line1')} required>
+            <Input
+              value={address.line1}
+              maxLength={500}
+              onChange={(e) => setAddress((a) => ({ ...a, line1: e.target.value }))}
+            />
+          </Field>
+          {/* The same pickers as the applicant form: governorate first, then its cities. Typing
+              filters to the matching names; a place not on the list is added with «+ إضافة». */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={t('batches.incomplete.governorate')} required>
+              <Combobox
+                id="batch-address-governorate"
+                value={address.governorate}
+                options={withTyped(GOVERNORATE_NAMES, address.governorate)}
+                onChange={(governorate) =>
+                  setAddress((a) => (governorate === a.governorate ? a : { ...a, governorate, city: '' }))
+                }
+                onCreate={(typed) => setAddress((a) => ({ ...a, governorate: typed.trim(), city: '' }))}
+                createLabel={(typed) => t('batches.incomplete.addPlace', { name: typed })}
+                placeholder={t('applicants.form.selectGovernorate')}
+                emptyText={t('common.noResults')}
+                clearLabel={t('common.clear')}
+              />
+            </Field>
+            <Field
+              label={t('batches.incomplete.city')}
+              required
+              hint={address.governorate === '' ? t('applicants.form.cityNeedsGovernorate') : undefined}
+            >
+              <Combobox
+                id="batch-address-city"
+                value={address.city}
+                options={withTyped(citiesOfGovernorate(address.governorate), address.city)}
+                onChange={(city) => setAddress((a) => ({ ...a, city }))}
+                onCreate={(typed) => setAddress((a) => ({ ...a, city: typed.trim() }))}
+                createLabel={(typed) => t('batches.incomplete.addPlace', { name: typed })}
+                disabled={address.governorate === ''}
+                placeholder={t('applicants.form.selectCity')}
+                emptyText={t('common.noResults')}
+                clearLabel={t('common.clear')}
+              />
+            </Field>
+          </div>
+        </div>
       </Dialog>
 
       <Dialog

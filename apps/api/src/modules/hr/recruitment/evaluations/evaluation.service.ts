@@ -15,6 +15,8 @@ import {
   type Paginated,
   type UploadEvaluationFile,
   type SetPlacementRecommendation,
+  type SetEvaluationMotherName,
+  HR_EVALUATION_MOTHER_NAME_SET,
 } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError, ValidationError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
@@ -490,6 +492,73 @@ class EvaluationService {
           new: resolved === null ? null : [resolved.label.position, resolved.label.branch].filter((v) => v !== null).join(' · '),
         },
       ],
+    });
+    return updated;
+  }
+
+  /**
+   * The same «اسم الأم» written from the BATCH screen: keeps the queue and the batch agreeing
+   * without re-emitting (the batch already holds the value). System write; the batch audits it.
+   */
+  async recordMotherName(evaluationId: string, motherName: string): Promise<void> {
+    if (!Types.ObjectId.isValid(evaluationId)) return;
+    await EvaluationModel.updateOne(
+      { _id: new Types.ObjectId(evaluationId) },
+      { $set: { motherName } },
+    ).exec();
+  }
+
+  /** The mother's name typed on a security-check record, or null (system read, for the batch). */
+  async motherNameOf(evaluationId: string): Promise<string | null> {
+    if (!Types.ObjectId.isValid(evaluationId)) return null;
+    const doc = await EvaluationModel.findById(evaluationId, { motherName: 1 })
+      .lean<{ motherName?: string | null }>()
+      .exec();
+    return doc?.motherName ?? null;
+  }
+
+  /**
+   * The security-check queue's «اسم الأم»: HR types or corrects the mother's name on THIS record.
+   * The applicant file is never changed. Open batches holding the applicant follow it through the
+   * event below (evaluation-batches cannot be imported from here).
+   */
+  async setMotherName(
+    ctx: AuthContext,
+    id: string,
+    input: SetEvaluationMotherName,
+    scope: ScopeSelector,
+  ): Promise<EvaluationDoc> {
+    const before = await evaluationRepository.getById(id, scope);
+    if (before.phaseKey !== 'securityCheck') {
+      throw new BusinessRuleError("only the security check form carries a mother's name");
+    }
+    const motherName = input.motherName.trim();
+    const updated = await evaluationRepository.updateById(
+      id,
+      { motherName },
+      { by: ctx.userId, version: input.version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [{ field: 'motherName', old: before.motherName ?? null, new: motherName }],
+    });
+    await recruitmentTimelineService.recordDetailChange({
+      applicantId: String(before.applicantId),
+      applicantCode: before.applicantCode,
+      branchId: before.branchId ?? null,
+      actorUserId: ctx.userId,
+      field: 'motherName',
+      from: before.motherName ?? null,
+      to: motherName,
+      where: 'الفحص الأمني',
+    });
+    await emit(HR_EVALUATION_MOTHER_NAME_SET, {
+      evaluationId: id,
+      applicantId: String(before.applicantId),
+      phaseId: String(before.phaseId),
+      motherName,
+      actorUserId: ctx.userId,
     });
     return updated;
   }

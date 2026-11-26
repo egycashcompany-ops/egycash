@@ -84,6 +84,10 @@ const emptyAddress = (): AddressForm => ({
 
 const GOVERNORATE_NAMES = EGYPT_GOVERNORATES.map((g) => g.ar);
 
+/** The catalog list, plus a place typed in that the catalog does not hold, so it stays shown. */
+const withTyped = (options: readonly string[], value: string): string[] =>
+  value.trim() === '' || options.includes(value) ? [...options] : [value, ...options];
+
 /** A governorate spelled any way the data might carry it, rendered as the catalog spells it.
  *  Empty when the catalog does not know it — callers decide what an unknown place means. */
 const toCatalogGovernorate = (value: string): string => findGovernorate(value)?.ar ?? '';
@@ -513,7 +517,11 @@ export const ApplicantForm = ({
         ...rest,
       } as unknown as RegisterApplicant;
     } else {
-      body = { ...common, version: initial?.version ?? 0 } as unknown as UpdateApplicant;
+      body = {
+        ...common,
+        ...(str(f.motherName) ? { motherName: f.motherName.trim() } : {}),
+        version: initial?.version ?? 0,
+      } as unknown as UpdateApplicant;
     }
 
     try {
@@ -540,7 +548,10 @@ export const ApplicantForm = ({
             <Combobox
               id={`${which}.governorate`}
               value={a.governorate}
-              options={GOVERNORATE_NAMES}
+              options={withTyped(GOVERNORATE_NAMES, a.governorate)}
+              // A place the catalog does not hold can still be written down, as typed.
+              onCreate={(typed) => setAddr(which, { governorate: typed.trim(), city: '' })}
+              createLabel={(typed) => t('batches.incomplete.addPlace', { name: typed })}
               onChange={(governorate) =>
                 // Only a real change invalidates the city; re-picking the same governorate
                 // (or clearing the box and choosing it again) must not throw a valid city away.
@@ -564,7 +575,9 @@ export const ApplicantForm = ({
             <Combobox
               id={`${which}.city`}
               value={a.city}
-              options={cities}
+              options={withTyped(cities, a.city)}
+              onCreate={(typed) => setAddr(which, { city: typed.trim() })}
+              createLabel={(typed) => t('batches.incomplete.addPlace', { name: typed })}
               onChange={(city) => setAddr(which, { city })}
               onBlur={() => check(`${which}.city`, a.city)}
               error={fieldErr[`${which}.city`] !== undefined}
@@ -730,6 +743,17 @@ export const ApplicantForm = ({
               {...bind('fullNameEn', f.fullNameEn)}
             />
           </Field>
+          {mode !== 'create' && (
+            // Editing: the identity block below is read from the card at registration and is not
+            // re-typed here — but the mother's name is entered by hand, so it stays editable.
+            <Field label={t('applicants.form.motherName')} hint={t('applicants.form.motherNameHint')}>
+              <Input
+                value={f.motherName}
+                onChange={(e) => set({ motherName: e.target.value })}
+                maxLength={200}
+              />
+            </Field>
+          )}
           {mode === 'create' && (
             <>
               <Field

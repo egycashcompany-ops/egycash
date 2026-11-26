@@ -11,6 +11,36 @@ its entry here in the same PR.
 
 ### Added
 
+- **HR — security check: ID-card tools, «الوظيفة», «اسم الأم» on the queue, and a PDF that carries
+  the cards.**
+  - **Default job at the first interview:** a candidate whose screening is accepted, and who has no
+    job yet, is placed in «أخصائي نقل أموال» through the ordinary audited reassignment (history,
+    timeline, audit); HR changes it with «اقتراح وظيفة وفرع». A boot catch-up gives it to candidates
+    already interviewing with no job. Nothing happens when the catalog has no such job.
+  - **ID-card images:** HR can rotate, crop (an explicit crop mode with corner handles) or replace
+    («استبدال الصورة», camera on a phone) each side. Every change is a new VERSION of the same file,
+    so every screen, the interview photo and the PDF show the latest; the history under the card
+    lists each version with who/when/what, a thumbnail preview, and «استعادة».
+  - **Security-check queue:** a «الوظيفة» column (the applicant's job now), an editable «اسم الأم»
+    column (saved on that check only, never the applicant file; open batches follow it), and
+    «المرفقات» as an ID icon that shows the card on hover.
+  - **Batch:** «تحديث الكشف بالبيانات الحالية» refreshes each member from the applicant file (name,
+    ID number, mother's name, address, phone) and builds a new PDF; the page follows the build.
+    «بيانات ناقصة» lists members with no address or mother's name, with an address editor
+    (governorate/city pickers, «+ إضافة» for a place not listed) that saves to the applicant file.
+  - **History log:** «تعديل بيانات» timeline entries for a changed mother's name, National-ID
+    number (masked), name or address — who, where, old → new — and the same in the audit log.
+  - **Applicant form:** the mother's name is editable on «تعديل المتقدّم»; the address pickers offer
+    «+ إضافة» for a place not in the list.
+
+### Fixed
+
+- **The security-check PDF printed no ID cards and the ZIP held no attachments.** The worker built
+  the package as a system account with no permissions, and private applicant files need
+  `file.download`, so every image was silently skipped. The package now reads with that grant, finds
+  the cards by their tags, and prints «الوظيفة» from the applicant's current job. Issued batches
+  get their cards with «تحديث الكشف».
+
 - **HR — «اسم الأم» on the security check batch screen, editable per record.** The member list of
   a security-check batch shows the mother's name and an edit button on each row
   (`PATCH /hr/evaluation-batches/:id/items/:applicantId/mother-name`, the phase's `manageBatch`

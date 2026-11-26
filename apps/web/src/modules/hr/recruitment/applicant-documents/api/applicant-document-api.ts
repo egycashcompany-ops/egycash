@@ -11,6 +11,8 @@ import {
   type DeleteApplicantFoldersResultDto,
   type DeletedApplicantFolderDto,
   type DownloadTicketDto,
+  type NationalIdCardHistoryDto,
+  type NationalIdCardSide,
   type ApplicantDocumentSetDto,
   type Paginated,
   type ReviewApplicantDocument,
@@ -87,6 +89,30 @@ export const staffPutDocument = (applicantId: string, typeId: string, file: File
 /** HR takes a paper out; the slot is empty again. */
 export const staffRemoveDocument = (applicantId: string, typeId: string): Promise<ApplicantDocumentSetDto> =>
   del(`${BASE}/${applicantId}/documents/${typeId}`);
+
+/** HR's rotate / crop of one card image: the edited picture becomes the card's next version. */
+export const editCard = (
+  applicantId: string,
+  side: NationalIdCardSide,
+  image: Blob,
+  note: string,
+): Promise<NationalIdCardHistoryDto> => {
+  const form = new FormData();
+  form.append('file', image, `${side}.jpg`);
+  form.append('note', note);
+  return upload(`${BASE}/${applicantId}/card/${side}/edit`, form);
+};
+
+/** Every version of one card image, newest first, with who made it and when. */
+export const cardHistory = (applicantId: string, side: NationalIdCardSide): Promise<NationalIdCardHistoryDto> =>
+  get(`${BASE}/${applicantId}/card/${side}/history`);
+
+/** Bring an earlier version back (as a new version — nothing is lost). */
+export const restoreCard = (
+  applicantId: string,
+  side: NationalIdCardSide,
+  fileId: string,
+): Promise<NationalIdCardHistoryDto> => post(`${BASE}/${applicantId}/card/${side}/restore`, { fileId });
 
 /** HR swaps one side of the National-ID card for a clearer photo. */
 export const staffReplaceCard = (applicantId: string, side: 'front' | 'back' | 'portrait', file: File): Promise<{ fileId: string }> => {

@@ -98,3 +98,16 @@ export const useBulkEvaluations = (onApplied?: () => void) =>
     applyResult: (qc, result) => applyBulkWorkflowResult(qc, FEATURE, result),
     ...(onApplied === undefined ? {} : { onApplied }),
   });
+
+/** «اسم الأم» on one security-check record; the queue (and any open batch) re-reads it. */
+export const useSetEvaluationMotherName = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; motherName: string; version: number }) =>
+      api.setEvaluationMotherName(vars.id, { motherName: vars.motherName, version: vars.version }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: listKey(MODULE, FEATURE) });
+      void qc.invalidateQueries({ queryKey: ['hr', 'evaluationBatches'] });
+    },
+  });
+};

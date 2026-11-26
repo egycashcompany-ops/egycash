@@ -803,6 +803,39 @@ export type NationalIdCardSide = (typeof NATIONAL_ID_CARD_SIDES)[number];
 export const nationalIdCardTag = (side: NationalIdCardSide): string => `national-id-${side}`;
 
 /**
+ * HR's edit of one card image (rotate / crop), sent as multipart beside the edited `file`.
+ *
+ * The edited image becomes a NEW VERSION of the same card file, so every screen that shows the
+ * card shows the edit, and the earlier versions stay restorable. `note` says what was done
+ * («تدوير 90° · قص») and is shown in the card's history.
+ */
+export const EditNationalIdCardSchema = z
+  .object({ note: z.string().trim().min(1).max(200) })
+  .strict();
+export type EditNationalIdCard = z.infer<typeof EditNationalIdCardSchema>;
+
+/** Bring back an earlier version of a card image (the original is version 1). */
+export const RestoreNationalIdCardSchema = z.object({ fileId: objectId() }).strict();
+export type RestoreNationalIdCard = z.infer<typeof RestoreNationalIdCardSchema>;
+
+/** One version in a card image's history — newest first; `isCurrent` is the one shown everywhere. */
+export interface NationalIdCardVersionDto {
+  fileId: string;
+  fileVersion: number;
+  isCurrent: boolean;
+  /** «الأصل» for version 1; otherwise the note written when the version was made. */
+  note: string | null;
+  byUserId: string | null;
+  byName: string | null;
+  at: string;
+}
+
+export interface NationalIdCardHistoryDto {
+  side: NationalIdCardSide;
+  versions: NationalIdCardVersionDto[];
+}
+
+/**
  * The entity type an EMPLOYEE's National-ID card images are filed under. When an applicant is
  * hired, their card (front and back, in the category above) is copied here, so HR can open the
  * card from the employee's profile long after the recruitment file is closed. Its own type, so

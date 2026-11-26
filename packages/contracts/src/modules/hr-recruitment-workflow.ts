@@ -246,6 +246,9 @@ export const RECRUITMENT_TIMELINE_TYPES = [
   'documentReviewed',
   'documentRemoved',
   'idCardReplaced',
+  // A personal detail edited — «اسم الأم», the National-ID number, the name — with who, where,
+  // and the old → new values in the note (the number masked).
+  'detailsChanged',
   'attachmentAdded',
   'attachmentRemoved',
   'portalAccountOpened',

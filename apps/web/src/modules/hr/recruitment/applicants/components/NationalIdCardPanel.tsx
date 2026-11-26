@@ -8,22 +8,32 @@
 // The images are found by their TAG (`national-id-front|back|portrait`), not their name, so a
 // card filed before this panel existed shows here too.
 import { useState } from 'react';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import {
   NATIONAL_ID_CARD_SIDES,
   nationalIdCardTag,
   type ApplicantDto,
   type FileDto,
+  type NationalIdCardHistoryDto,
   type NationalIdCardSide,
 } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
+import { Can } from '../../../../../platform/rbac/Can';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
 import { Spinner } from '../../../../../shared/ui/Spinner';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
-import { DownloadIcon, EyeIcon } from '../../../../../shared/ui/icons';
+import { DownloadIcon, EditIcon, EyeIcon, HistoryIcon, UploadIcon } from '../../../../../shared/ui/icons';
+import { Dialog } from '../../../../../shared/ui/Dialog';
+import { formatDateTime } from '../../../../../shared/lib/format';
+import { detailKey } from '../../../../../shared/lib/query-keys';
 import { useApplicantAttachments } from '../api/applicant-queries';
 import { fileDownloadTicket } from '../api/applicant-api';
+import { cardHistory, restoreCard } from '../../applicant-documents/api/applicant-document-api';
+import { IdCardEditorDialog } from './IdCardEditorDialog';
+import { ReplaceCardInput } from './card-replace';
+import { VersionThumb } from './VersionThumb';
 
 /** Which side a filed image shows, read from its tag. */
 export const cardSideOf = (f: FileDto): NationalIdCardSide | null =>
@@ -39,10 +49,42 @@ export const NationalIdCardPanel = ({ applicant }: { applicant: ApplicantDto }):
   const [urls, setUrls] = useState<Record<string, string | 'loading' | 'failed'>>({});
   const [hovered, setHovered] = useState<string | null>(null);
 
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState<{ file: FileDto; side: NationalIdCardSide } | null>(null);
+  const [restoring, setRestoring] = useState<string | null>(null);
+  /** The history version being looked at before restoring it. */
+  const [viewing, setViewing] = useState<{ side: NationalIdCardSide; fileId: string; label: string; isCurrent: boolean } | null>(null);
+
   const cards = files
     .map((f) => ({ file: f, side: cardSideOf(f) }))
     .filter((c): c is { file: FileDto; side: NationalIdCardSide } => c.side !== null)
     .sort((a, b) => ORDER[a.side] - ORDER[b.side]);
+
+  // Each filed side's version history — who edited it, when, and what was done.
+  const histories = useQueries({
+    queries: cards.map(({ side }) => ({
+      queryKey: ['hr', 'idCardHistory', applicant.id, side],
+      queryFn: () => cardHistory(applicant.id, side),
+    })),
+  });
+  const history: NationalIdCardHistoryDto[] = histories
+    .map((h) => h.data)
+    .filter((h): h is NationalIdCardHistoryDto => h !== undefined && h.versions.length > 1);
+
+  const restore = async (side: NationalIdCardSide, fileId: string): Promise<void> => {
+    setRestoring(fileId);
+    try {
+      await restoreCard(applicant.id, side, fileId);
+      await qc.invalidateQueries({ queryKey: detailKey('hr', 'applicants', applicant.id) });
+      await qc.invalidateQueries({ queryKey: ['hr', 'idCardHistory', applicant.id] });
+      setUrls({});
+      toast.success(t('applicants.idCard.history.restored'));
+    } catch {
+      toast.error(t('applicants.idCard.edit.failed'));
+    } finally {
+      setRestoring(null);
+    }
+  };
 
   if (!isLoading && cards.length === 0) return null;
 
@@ -121,6 +163,36 @@ export const NationalIdCardPanel = ({ applicant }: { applicant: ApplicantDto }):
                   <span className="min-w-0 flex-1 cursor-zoom-in truncate font-medium text-slate-800 dark:text-slate-100" tabIndex={0}>
                     {nameOf(side)}
                   </span>
+                  <Can permission="applicantDocument.review">
+                    <ReplaceCardInput
+                      applicantId={applicant.id}
+                      side={side}
+                      onDone={() => setUrls({})}
+                      trigger={(pick, busy) => (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={busy}
+                          onClick={pick}
+                          aria-label={`${t('applicants.idCard.replace.open')} — ${nameOf(side)}`}
+                          title={t('applicants.idCard.replace.open')}
+                        >
+                          <UploadIcon className="h-4 w-4" />
+                        </Button>
+                      )}
+                    />
+                  </Can>
+                  <Can permission="applicantDocument.review">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setEditing({ file, side })}
+                      aria-label={`${t('applicants.idCard.edit.open')} — ${nameOf(side)}`}
+                      title={t('applicants.idCard.edit.open')}
+                    >
+                      <EditIcon className="h-4 w-4" />
+                    </Button>
+                  </Can>
                   <Button
                     size="sm"
                     variant="ghost"
@@ -148,7 +220,114 @@ export const NationalIdCardPanel = ({ applicant }: { applicant: ApplicantDto }):
             })}
           </ul>
         )}
+
+        {history.length > 0 && (
+          // The edit history, under the images: every version of each side, newest first.
+          <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+            <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+              <HistoryIcon className="h-4 w-4" />
+              {t('applicants.idCard.history.title')}
+            </h4>
+            <div className="space-y-3">
+              {history.map((h) => (
+                <div key={h.side}>
+                  <p className="mb-1 text-xs font-medium text-slate-700 dark:text-slate-200">
+                    {t(`applicants.idCard.side.${h.side}`)}
+                  </p>
+                  <ol className="space-y-1">
+                    {h.versions.map((v) => (
+                      <li
+                        key={v.fileId}
+                        className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs dark:bg-slate-800/60"
+                      >
+                        <VersionThumb
+                          fileId={v.fileId}
+                          alt={`v${v.fileVersion}`}
+                          onOpen={() =>
+                            setViewing({
+                              side: h.side,
+                              fileId: v.fileId,
+                              isCurrent: v.isCurrent,
+                              label: `${t(`applicants.idCard.side.${h.side}`)} — v${v.fileVersion} · ${v.fileVersion === 1 ? t('applicants.idCard.history.original') : (v.note ?? '')}`,
+                            })
+                          }
+                        />
+                        <span className="font-mono text-slate-400">v{v.fileVersion}</span>
+                        <span className="font-medium text-slate-800 dark:text-slate-100">
+                          {v.fileVersion === 1 ? t('applicants.idCard.history.original') : (v.note ?? '—')}
+                        </span>
+                        <span className="text-slate-500">
+                          {t('applicants.idCard.history.by', { name: v.byName ?? t('applicants.idCard.history.unknown') })}
+                        </span>
+                        <span className="text-slate-400" dir="ltr">
+                          {formatDateTime(v.at, locale)}
+                        </span>
+                        <span className="ms-auto">
+                          {v.isCurrent ? (
+                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                              {t('applicants.idCard.history.current')}
+                            </span>
+                          ) : (
+                            <Can permission="applicantDocument.review">
+                              <Button
+                                size="sm"
+                                variant="ghost-brand"
+                                loading={restoring === v.fileId}
+                                onClick={() => void restore(h.side, v.fileId)}
+                              >
+                                {t('applicants.idCard.history.restore')}
+                              </Button>
+                            </Can>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </CardBody>
+      <Dialog
+        open={viewing !== null}
+        onClose={() => setViewing(null)}
+        size="lg"
+        title={viewing?.label ?? ''}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setViewing(null)}>
+              {t('common.close')}
+            </Button>
+            {viewing !== null && !viewing.isCurrent && (
+              <Can permission="applicantDocument.review">
+                <Button
+                  loading={restoring === viewing.fileId}
+                  onClick={() => {
+                    const v = viewing;
+                    void restore(v.side, v.fileId).then(() => setViewing(null));
+                  }}
+                >
+                  {t('applicants.idCard.history.restore')}
+                </Button>
+              </Can>
+            )}
+          </>
+        }
+      >
+        {viewing !== null && <VersionThumb fileId={viewing.fileId} alt={viewing.label} large />}
+      </Dialog>
+      <IdCardEditorDialog
+        open={editing !== null}
+        onClose={() => {
+          setEditing(null);
+          setUrls({});
+        }}
+        applicantId={applicant.id}
+        file={editing?.file ?? null}
+        side={editing?.side ?? null}
+        title={editing === null ? '' : `${t('applicants.idCard.edit.open')} — ${nameOf(editing.side)}`}
+      />
     </Card>
   );
 };

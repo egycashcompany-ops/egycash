@@ -29,6 +29,7 @@ import {
   type ListBatchCandidatesQuery,
   type ListEvaluationBatchesQuery,
   type Paginated,
+  type SetBatchItemAddress,
   type SetBatchItemMotherName,
   type UpdateEvaluationBatch,
   type UploadBatchResult,
@@ -42,6 +43,7 @@ import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { applicantService, type ApplicantDoc } from '../applicants';
 import { evaluationService, evaluationPhaseService, type EvaluationDoc } from '../evaluations';
 import { interviewService } from '../interviews';
+import { recruitmentTimelineService } from '../timeline';
 import { runBulk } from '../workflow';
 import { batchManageScope } from './evaluation-batch.access';
 import { nextBatchNumber } from './batch-sequence';
@@ -355,14 +357,63 @@ class EvaluationBatchService {
   }
 
   /** Re-request the package build after a failure (RW8b — retryable from the UI). */
+  /**
+   * «تحديث الكشف» — build the package again WITH THE DATA AS IT IS NOW.
+   *
+   * Each live member is refreshed from the applicant file first: the name, the National-ID number,
+   * the address and the phone; the mother's name from the security-check record when HR typed one
+   * there, else from the file. A value the file has lost is never blanked — the item keeps what it
+   * had. Then the package is queued; the earlier list.pdf stays in Files as the record of what
+   * went out before. Also the retry after a failure.
+   */
   async retryPackage(ctx: AuthContext, id: string, scope: ScopeSelector): Promise<EvaluationBatchDoc> {
     const before = await evaluationBatchRepository.getById(id, scope);
     if (before.status === 'draft') throw new BusinessRuleError('issue the batch before building its package');
+    if (before.status === 'cancelled') throw new BusinessRuleError('a cancelled batch can no longer be changed');
+    const changes: { field: string; old: string | null; new: string | null }[] = [];
+    const items: BatchItem[] = [];
+    for (const item of before.items) {
+      if (item.result === 'voided') {
+        items.push(item);
+        continue;
+      }
+      const applicant = await applicantService.findByIdSystem(String(item.applicantId));
+      const onRecord =
+        before.phaseKey === SECURITY_CHECK_PHASE_KEY ? await evaluationService.motherNameOf(String(item.evaluationId)) : null;
+      const keep = (fresh: string | null | undefined, old: string | null): string | null =>
+        isBlank(fresh) ? old : (fresh as string).trim();
+      const next: BatchItem = {
+        ...item,
+        applicantName: keep(applicant?.fullNameAr, item.applicantName) ?? '',
+        nationalId: keep(applicant?.nationalId, item.nationalId),
+        motherName: keep(onRecord ?? applicant?.motherName, item.motherName),
+        address:
+          applicant === null
+            ? item.address
+            : keep(formatAddress(applicant.officialAddress ?? applicant.currentAddress), item.address),
+        phone: keep(applicant?.contact?.primaryPhone, item.phone),
+      };
+      for (const field of ['applicantName', 'nationalId', 'motherName', 'address', 'phone'] as const) {
+        if ((item[field] ?? null) !== (next[field] ?? null)) {
+          changes.push({
+            field: `items.${item.applicantCode}.${field}`,
+            old: field === 'nationalId' ? null : (item[field] ?? null),
+            new: field === 'nationalId' ? 'refreshed' : (next[field] ?? null),
+          });
+        }
+      }
+      items.push(next);
+    }
     const after = await evaluationBatchRepository.updateById(
       id,
-      { 'package.status': 'queued', 'package.error': null },
+      { items, 'package.status': 'queued', 'package.error': null },
       { by: ctx.userId, version: before.__v, scope },
     );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [{ field: 'packageRebuilt', old: null, new: before.code }, ...changes],
+    });
     await emit(
       HrEvaluationBatchEvents.BatchGenerated,
       { batchId: id, code: before.code },
@@ -416,6 +467,18 @@ class EvaluationBatchService {
         { field: `items.${item.applicantCode}.motherName`, old: item.motherName ?? null, new: motherName },
       ],
     });
+    await recruitmentTimelineService.recordDetailChange({
+      applicantId,
+      applicantCode: item.applicantCode,
+      branchId: before.branchId ?? null,
+      actorUserId: ctx.userId,
+      field: 'motherName',
+      from: item.motherName ?? null,
+      to: motherName,
+      where: `الدفعة ${before.code}`,
+    });
+    // The security-check queue shows the same record — keep it agreeing with the batch.
+    await evaluationService.recordMotherName(String(item.evaluationId), motherName).catch(() => undefined);
     if (rebuild) {
       await emit(
         HrEvaluationBatchEvents.BatchGenerated,
@@ -423,6 +486,50 @@ class EvaluationBatchService {
         { reliable: true, actorId: ctx.userId },
       );
     }
+    return after;
+  }
+
+  /**
+   * «بيانات ناقصة» — fill in a member's missing address from the batch screen. The address is the
+   * applicant's real one, so it goes on the applicant FILE (fixed once, for every form) and onto
+   * this batch's item at once. The list is rebuilt with «تحديث الكشف» once everything is filled.
+   */
+  async setItemAddress(
+    ctx: AuthContext,
+    id: string,
+    applicantId: string,
+    input: SetBatchItemAddress,
+    scope: ScopeSelector,
+  ): Promise<EvaluationBatchDoc> {
+    const before = await evaluationBatchRepository.getById(id, scope);
+    if (before.status === 'cancelled') throw new BusinessRuleError('a cancelled batch can no longer be changed');
+    const item = before.items.find((i) => String(i.applicantId) === applicantId);
+    if (item === undefined) throw new NotFoundError('no such applicant in this batch');
+    if (item.result === 'voided') throw new BusinessRuleError('a voided item cannot be changed');
+
+    const { before: oldAddress, applicant } = await applicantService.setOfficialAddress(ctx, applicantId, input.address);
+    const line = formatAddress(applicant.officialAddress);
+    const items = before.items.map((i) => (String(i.applicantId) === applicantId ? { ...i, address: line } : i));
+    const after = await evaluationBatchRepository.updateById(
+      id,
+      { items },
+      { by: ctx.userId, version: input.version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [{ field: `items.${item.applicantCode}.address`, old: item.address ?? null, new: line }],
+    });
+    await recruitmentTimelineService.recordDetailChange({
+      applicantId,
+      applicantCode: item.applicantCode,
+      branchId: before.branchId ?? null,
+      actorUserId: ctx.userId,
+      field: 'address',
+      from: formatAddress(oldAddress) ?? item.address ?? null,
+      to: line,
+      where: `الدفعة ${before.code}`,
+    });
     return after;
   }
 
@@ -757,8 +864,9 @@ class EvaluationBatchService {
         placementSnapshot: applicant.placement,
         placementSnapshotLabel: applicant.placementLabel,
         nationalId: applicant.nationalId,
-        // Frozen here, at the moment the applicant joins the batch (RW4) — see the model.
-        motherName: applicant.motherName ?? null,
+        // Frozen here, at the moment the applicant joins the batch (RW4) — see the model. A name
+        // HR typed on the security-check record (the queue's «اسم الأم») wins over the file's.
+        motherName: evaluation.motherName ?? applicant.motherName ?? null,
         address: formatAddress(applicant.officialAddress ?? applicant.currentAddress),
         phone: applicant.contact?.primaryPhone ?? null,
         result: 'pending',
@@ -789,8 +897,9 @@ class EvaluationBatchService {
         items.push(item);
         continue;
       }
-      const applicant = await applicantService.findByIdSystem(String(item.applicantId));
-      const fromApplicant = applicant?.motherName ?? null;
+      const onRecord = await evaluationService.motherNameOf(String(item.evaluationId));
+      const applicant = onRecord !== null ? null : await applicantService.findByIdSystem(String(item.applicantId));
+      const fromApplicant = onRecord ?? applicant?.motherName ?? null;
       if (fromApplicant === null || isBlank(fromApplicant)) {
         items.push(item);
         continue;

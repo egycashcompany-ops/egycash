@@ -243,8 +243,19 @@ class FileService {
     return doc;
   }
 
-  /** Replace = version n+1 in the same group; previous versions stay retrievable. */
-  async replace(ctx: AuthContext, fileId: string, binary: UploadedBinary): Promise<FileDoc> {
+  /**
+   * Replace = version n+1 in the same group; previous versions stay retrievable.
+   *
+   * `description`, when given, is written on the NEW version only (an edit note such as «تدوير
+   * 90°»), so a version list can say what each version changed. Omitted, the version inherits the
+   * current description as before.
+   */
+  async replace(
+    ctx: AuthContext,
+    fileId: string,
+    binary: UploadedBinary,
+    options: { description?: string | null } = {},
+  ): Promise<FileDoc> {
     const current = await fileRepository.getById(fileId);
     await this.assertEntityAccess(ctx, current, 'write');
     if (!current.isLatest) {
@@ -267,7 +278,7 @@ class FileService {
         visibility: current.visibility,
         tags: current.tags,
         displayName: current.displayName,
-        description: current.description,
+        description: options.description === undefined ? current.description : options.description,
       },
       by: ctx.userId,
     });

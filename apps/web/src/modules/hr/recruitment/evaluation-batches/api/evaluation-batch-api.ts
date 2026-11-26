@@ -15,6 +15,7 @@ import {
   type EvaluationBatchSummaryDto,
   type IssueEvaluationBatch,
   type Paginated,
+  type SetBatchItemAddress,
   type SetBatchItemMotherName,
   type UpdateEvaluationBatch,
   type VoidBatchItem,
@@ -87,6 +88,14 @@ export const setBatchItemMotherName = (
   body: SetBatchItemMotherName,
 ): Promise<EvaluationBatchDto> =>
   patch<EvaluationBatchDto>(`/hr/evaluation-batches/${id}/items/${applicantId}/mother-name`, body);
+
+/** «بيانات ناقصة» — a member's address, saved on the applicant file and this batch item. */
+export const setBatchItemAddress = (
+  id: string,
+  applicantId: string,
+  body: SetBatchItemAddress,
+): Promise<EvaluationBatchDto> =>
+  patch<EvaluationBatchDto>('/hr/evaluation-batches/' + id + '/items/' + applicantId + '/address', body);
 
 export const issueEvaluationBatch = (
   id: string,

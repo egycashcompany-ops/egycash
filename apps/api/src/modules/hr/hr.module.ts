@@ -35,6 +35,8 @@ import { buildEvaluationPhasesRouter, buildEvaluationsRouter } from './recruitme
 import {
   buildEvaluationBatchesRouter,
   buildEvaluationBatchPackage,
+  registerBatchMotherNameFollow,
+  registerBatchPositionFollow,
 } from './recruitment/evaluation-batches';
 import { buildRecruitmentCountersRouter } from './recruitment/counters';
 import { buildReturnToStageRouter } from './recruitment/return-to-stage';
@@ -144,7 +146,7 @@ import {
 import { reconcileRecruitmentTimeline } from './recruitment/recruitment.reconciler';
 import { registerQueueMaterializer } from './recruitment/materializer';
 import { registerNationalIdOcrProvider } from './recruitment/applicants';
-import { registerPlacementReassignment } from './recruitment/placement';
+import { registerDefaultJobAtFirstInterview, registerPlacementReassignment } from './recruitment/placement';
 import { buildLeaveTypesRouter } from './leave-management/leave-types';
 import { buildLeaveBalancesRouter, leaveBalanceService } from './leave-management/leave-balances';
 import {
@@ -185,6 +187,11 @@ registerQueueMaterializer();
 registerNationalIdOcrProvider();
 // RW2 — reassignment spans every stage, so it registers itself through the Applicants seam.
 registerPlacementReassignment();
+registerDefaultJobAtFirstInterview();
+// «الوظيفة» on an open security / driving batch follows the applicant's job.
+registerBatchPositionFollow();
+// «اسم الأم» typed on the security-check queue reaches the open batches holding the applicant.
+registerBatchMotherNameFollow();
 
 const applicantPermissions = declarePermissions(
   'hr',

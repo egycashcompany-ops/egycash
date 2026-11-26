@@ -25,6 +25,7 @@ import {
   removeEvaluationFile,
   setEvaluationAppointment,
   setEvaluationRecommendation,
+  setEvaluationMotherName,
   updateEvaluationPhase,
   uploadEvaluationFile,
 } from './evaluation.controller';
@@ -41,6 +42,7 @@ import {
   RemoveEvaluationFileSchema,
   SetEvaluationAppointmentSchema,
   SetPlacementRecommendationSchema,
+  SetEvaluationMotherNameSchema,
   UpdateEvaluationPhaseSchema,
   UploadEvaluationFileSchema,
 } from './evaluation.validation';
@@ -122,6 +124,14 @@ export const buildEvaluationsRouter = (): Router => {
     authorize('evaluation.manage'),
     validate({ body: SetEvaluationAppointmentSchema, params: EvaluationIdParamSchema }),
     asyncHandler(setEvaluationAppointment),
+  );
+  // The security-check queue's «اسم الأم» — typed on this record only, never the applicant file.
+  router.patch(
+    '/:id/mother-name',
+    authenticate,
+    authorize('evaluation.manage'),
+    validate({ body: SetEvaluationMotherNameSchema, params: EvaluationIdParamSchema }),
+    asyncHandler(setEvaluationMotherName),
   );
   // RW5 — advisory placement recommendation from the reviewer.
   router.patch(

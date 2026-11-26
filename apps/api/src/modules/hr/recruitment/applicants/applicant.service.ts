@@ -477,6 +477,60 @@ class ApplicantService {
   }
 
   /**
+   * Set the applicant's OFFICIAL address from another screen (the batch's «بيانات ناقصة»). The
+   * caller has checked `applicant.edit`; this writes the one field and audits it. Returns the
+   * address before, for the history entry.
+   */
+  async setOfficialAddress(
+    ctx: AuthContext,
+    id: string,
+    address: { line1: string; line2?: string | undefined; city: string; governorate: string },
+  ): Promise<{ before: ApplicantDoc['officialAddress'] | null; applicant: ApplicantDoc }> {
+    const before = await ApplicantModel.findOne({ _id: new Types.ObjectId(id), isDeleted: false });
+    if (before === null) throw new NotFoundError();
+    const official = {
+      line1: address.line1,
+      ...(address.line2 === undefined || address.line2 === '' ? {} : { line2: address.line2 }),
+      city: address.city,
+      governorate: address.governorate,
+    };
+    await ApplicantModel.updateOne(
+      { _id: before._id },
+      { $set: { officialAddress: official, updatedBy: new Types.ObjectId(ctx.userId) }, $inc: { __v: 1 } },
+    ).exec();
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [{ field: 'officialAddress', old: null, new: [official.line1, official.city, official.governorate].join(' / ') }],
+    });
+    const applicant = (await this.findByIdSystem(id)) ?? before;
+    return { before: before.officialAddress ?? null, applicant };
+  }
+
+  /** Each applicant's job name as it is now («الوظيفة»), for queue lists — one query for the page. */
+  async currentPositions(ids: readonly string[]): Promise<Map<string, string | null>> {
+    const facts = await this.queueFacts(ids);
+    return new Map([...facts].map(([id, f]) => [id, f.position]));
+  }
+
+  /** What a queue row shows from the applicant file: the job now, and the mother's name on file. */
+  async queueFacts(
+    ids: readonly string[],
+  ): Promise<Map<string, { position: string | null; motherName: string | null }>> {
+    const valid = [...new Set(ids)].filter((id) => Types.ObjectId.isValid(id));
+    if (valid.length === 0) return new Map();
+    const rows = await ApplicantModel.find(
+      { _id: { $in: valid.map((id) => new Types.ObjectId(id)) } },
+      { 'placementLabel.position': 1, motherName: 1 },
+    )
+      .lean<{ _id: Types.ObjectId; placementLabel?: { position?: string | null }; motherName?: string | null }[]>()
+      .exec();
+    return new Map(
+      rows.map((r) => [String(r._id), { position: r.placementLabel?.position ?? null, motherName: r.motherName ?? null }]),
+    );
+  }
+
+  /**
    * Unscoped: live (`new`) applicants holding this national id — the Employee module's
    * direct-registration duplicate guard (frozen design I6) checks applicants AND employees.
    */
@@ -742,8 +796,24 @@ class ApplicantService {
     await auditService.record({
       entityRef: entityRef(id),
       action: 'update',
-      changes: diffChanges({ name: before.fullNameAr }, { name: updated.fullNameAr }),
+      changes: diffChanges(
+        { name: before.fullNameAr, motherName: before.motherName ?? null },
+        { name: updated.fullNameAr, motherName: updated.motherName ?? null },
+      ),
     });
+    // The candidate's history says WHO changed these, and from what to what.
+    for (const field of ['fullNameAr', 'motherName'] as const) {
+      await recruitmentTimelineService.recordDetailChange({
+        applicantId: id,
+        applicantCode: updated.code,
+        branchId: updated.branchId,
+        actorUserId: ctx.userId,
+        field,
+        from: before[field] ?? null,
+        to: updated[field] ?? null,
+        where: 'ملف المتقدم',
+      });
+    }
     await emit(HrEvents.ApplicantUpdated, {
       applicantId: id,
       code: updated.code,
@@ -818,8 +888,29 @@ class ApplicantService {
     await auditService.record({
       entityRef: entityRef(id),
       action: 'statusChange',
-      changes: [{ field: 'identityVerification', old: before.identityVerification, new: 'verified' }],
+      changes: [
+        { field: 'identityVerification', old: before.identityVerification, new: 'verified' },
+        ...(before.nationalId === updated.nationalId
+          ? []
+          : [{ field: 'nationalId', old: before.nationalId, new: updated.nationalId }]),
+        ...(before.fullNameAr === updated.fullNameAr
+          ? []
+          : [{ field: 'fullNameAr', old: before.fullNameAr, new: updated.fullNameAr }]),
+      ],
     });
+    // A corrected card NUMBER or name is its own entry in the history — who, and from what.
+    for (const field of ['nationalId', 'fullNameAr'] as const) {
+      await recruitmentTimelineService.recordDetailChange({
+        applicantId: id,
+        applicantCode: updated.code,
+        branchId: updated.branchId,
+        actorUserId: ctx.userId,
+        field,
+        from: before[field] ?? null,
+        to: updated[field] ?? null,
+        where: 'تأكيد الهوية',
+      });
+    }
     // I5 — verification is a fact about the candidate, not a workflow transition, so it is
     // recorded here or nowhere. The verification instant discriminates the entry, and it is the
     // FIRST one (see `verifiedAt` above), so confirming again lands on the entry already there

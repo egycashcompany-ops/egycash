@@ -10,7 +10,8 @@
 // built without `list.pdf` and the package reports the reason, exactly the graceful degradation
 // contracts uses. The job is retryable from the UI.
 import archiver from 'archiver';
-import { DRIVING_TEST_GRADES, HrEvaluationBatchEvents } from '@ecms/contracts';
+import { DRIVING_TEST_GRADES, HrEvaluationBatchEvents, nationalIdCardTag } from '@ecms/contracts';
+import { applicantService } from '../applicants';
 import { logger } from '../../../../infrastructure/logging/logger';
 import { type AuthContext } from '../../../../shared/types';
 import { emit } from '../../../../platform/kernel/event-bus';
@@ -31,7 +32,11 @@ const systemCtx = (userId: string): AuthContext => ({
   departmentId: null,
   sectionId: null,
   locale: 'ar',
-  permissions: {},
+  // The package READS the members' files (their ID cards for the PDF, every attachment for the
+  // ZIP). Applicant files are private, and `readBuffer` refuses a private file to a caller without
+  // `file.download` — with no permissions at all, every card and attachment was silently skipped
+  // («لا توجد صورة بطاقة مرفقة» on every page, `attachmentCount: 0`).
+  permissions: { 'file.download': 'organization', 'file.view': 'organization' },
   permissionVersion: 0,
   isPrivileged: true,
 });
@@ -315,9 +320,9 @@ const cardsOf = async (
   items: readonly BatchItem[],
   categoryId: string,
 ): Promise<BatchCard[]> => {
-  const out: BatchCard[] = [];
-  for (const item of items) {
-    const files = await fileService
+  const scope = { scope: 'organization' as const, userId: ctx.userId, branchId: null, departmentId: null, sectionId: null };
+  const listFor = (applicantId: string, filter: { tag?: string; categoryId?: string }) =>
+    fileService
       .list(
         {
           page: 1,
@@ -325,14 +330,26 @@ const cardsOf = async (
           sortDir: 'asc',
           moduleId: 'hr',
           entityType: 'applicant',
-          entityId: String(item.applicantId),
-          categoryId,
+          entityId: applicantId,
+          ...filter,
         },
-        { scope: 'organization', userId: ctx.userId, branchId: null, departmentId: null, sectionId: null },
+        scope,
       )
-      .catch(() => null);
+      .then((page) => page.items)
+      .catch(() => []);
+  const out: BatchCard[] = [];
+  for (const item of items) {
+    const applicantId = String(item.applicantId);
+    // A card image is known by its TAG (front, then back), as on the applicant's ID panel —
+    // wherever it was filed. The category is the fallback for cards filed before the tags. Only
+    // the latest version of each file is listed, so an HR rotate/crop is what prints.
+    const tagged = [
+      ...(await listFor(applicantId, { tag: nationalIdCardTag('front') })),
+      ...(await listFor(applicantId, { tag: nationalIdCardTag('back') })),
+    ];
+    const files = tagged.length > 0 ? tagged : await listFor(applicantId, { categoryId });
     const images: string[] = [];
-    for (const file of files?.items ?? []) {
+    for (const file of files) {
       const read = await fileService.readBuffer(ctx, String(file._id)).catch(() => null);
       if (read === null || !read.doc.mime.startsWith('image/')) continue;
       images.push(`data:${read.doc.mime};base64,${read.buffer.toString('base64')}`);
@@ -398,7 +415,22 @@ export const buildEvaluationBatchPackage = async (batchId: string): Promise<void
       doc.phaseKey === 'securityCheck'
         ? await cardsOf(ctx, liveItems(doc), await resolveNationalIdCardCategoryId()).catch(() => [])
         : [];
-    const html = buildListHtml(doc, branding, cards);
+    // «الوظيفة» prints the job the applicant holds NOW; the snapshot taken when they joined the
+    // batch is often empty (no job had been chosen yet) and only fills in when nothing newer exists.
+    const positions = await applicantService
+      .currentPositions(doc.items.map((i) => String(i.applicantId)))
+      .catch(() => new Map<string, string | null>());
+    const printed: EvaluationBatchDoc = {
+      ...doc,
+      items: doc.items.map((i) => ({
+        ...i,
+        placementSnapshotLabel: {
+          ...i.placementSnapshotLabel,
+          position: positions.get(String(i.applicantId)) ?? i.placementSnapshotLabel.position ?? null,
+        },
+      })),
+    } as EvaluationBatchDoc;
+    const html = buildListHtml(printed, branding, cards);
     const pdf = await renderPdfFromHtml(html);
 
     const entries: { name: string; buffer: Buffer }[] = [

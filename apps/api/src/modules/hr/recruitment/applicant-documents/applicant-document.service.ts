@@ -9,6 +9,7 @@ import {
   APPLICANT_DOCUMENT_REVIEW_STATUSES,
   HrApplicantDocumentEvents,
   nationalIdCardTag,
+  type NationalIdCardHistoryDto,
   type NationalIdCardSide,
   type ApplicantDocumentDto,
   type ApplicantDocumentReviewStatus,
@@ -21,6 +22,7 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { auditService } from '../../../../platform/audit';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { jobTitleService } from '../../../../platform/organization';
+import { userService } from '../../../../platform/users';
 import {
   BusinessRuleError,
   ConflictError,
@@ -574,7 +576,7 @@ class ApplicantDocumentService {
             },
             binary,
           )
-        : await fileService.replace(ctx, String(current._id), binary);
+        : await fileService.replace(ctx, String(current._id), binary, { description: 'صورة جديدة (استبدال)' });
     await auditService.record({
       entityRef: { moduleId: 'hr', entityType: 'applicant', entityId: applicantId },
       action: 'update',
@@ -592,6 +594,133 @@ class ApplicantDocumentService {
       metadata: { side, fileVersion: file.fileVersion },
     });
     return { fileId: String(file._id) };
+  }
+
+  /** The current (latest) file of one card side, or null when none is filed. */
+  private async currentCardFile(applicantId: string, side: NationalIdCardSide) {
+    const found = await fileService.list(
+      { moduleId: 'hr', entityType: 'applicant', entityId: applicantId, tag: nationalIdCardTag(side), page: 1, pageSize: 1, sortDir: 'desc' },
+      { scope: 'organization', userId: '', branchId: null, departmentId: null, sectionId: null },
+    );
+    return found.items[0] ?? null;
+  }
+
+  /**
+   * HR's rotate / crop of one card image. The edited picture becomes the next VERSION of the same
+   * file — so every screen, the security-check PDF and the employee file show it — while the
+   * original and every earlier edit stay in the history, each with who made it and when.
+   */
+  async editCard(
+    ctx: AuthContext,
+    applicantId: string,
+    side: NationalIdCardSide,
+    binary: UploadedBinary,
+    note: string,
+  ): Promise<NationalIdCardHistoryDto> {
+    const applicant = await applicantService.findByIdSystem(applicantId);
+    if (applicant === null) throw new NotFoundError();
+    const current = await this.currentCardFile(applicantId, side);
+    if (current === null) throw new NotFoundError('no card image is filed for this side');
+    const file = await fileService.replace(ctx, String(current._id), binary, { description: note });
+    await this.recordCardChange(ctx, applicant, side, file.fileVersion, 'nationalIdCardEdited', note);
+    return this.cardHistory(ctx, applicantId, side);
+  }
+
+  /** Bring an earlier version back as the current one — itself a new version, so nothing is lost. */
+  async restoreCard(
+    ctx: AuthContext,
+    applicantId: string,
+    side: NationalIdCardSide,
+    fileId: string,
+  ): Promise<NationalIdCardHistoryDto> {
+    const applicant = await applicantService.findByIdSystem(applicantId);
+    if (applicant === null) throw new NotFoundError();
+    const current = await this.currentCardFile(applicantId, side);
+    if (current === null) throw new NotFoundError('no card image is filed for this side');
+    const versions = await fileService.listVersions(String(current._id), undefined, ctx);
+    const target = versions.find((v) => String(v._id) === fileId);
+    if (target === undefined) {
+      throw new ValidationError([{ field: 'fileId', code: 'INVALID', message: 'not a version of this card image' }]);
+    }
+    if (target.isLatest) return this.cardHistory(ctx, applicantId, side);
+    const read = await fileService.readBuffer(ctx, fileId);
+    const note =
+      target.fileVersion === 1 ? 'استعادة الصورة الأصلية' : `استعادة الإصدار ${String(target.fileVersion)}`;
+    const file = await fileService.replace(
+      ctx,
+      String(current._id),
+      { originalName: read.doc.originalName, mime: read.doc.mime, size: read.buffer.length, buffer: read.buffer },
+      { description: note },
+    );
+    await this.recordCardChange(ctx, applicant, side, file.fileVersion, 'nationalIdCardRestored', note);
+    return this.cardHistory(ctx, applicantId, side);
+  }
+
+  /** Every version of one card image, newest first, with who made each one. */
+  async cardHistory(
+    ctx: AuthContext,
+    applicantId: string,
+    side: NationalIdCardSide,
+  ): Promise<NationalIdCardHistoryDto> {
+    const current = await this.currentCardFile(applicantId, side);
+    if (current === null) return { side, versions: [] };
+    const versions = await fileService.listVersions(String(current._id), undefined, ctx);
+    const names = new Map<string, string | null>();
+    for (const id of new Set(versions.map((v) => (v.uploadedBy === null ? '' : String(v.uploadedBy))))) {
+      if (id === '') continue;
+      const user = await userService.findByIdSystem(id).catch(() => null);
+      names.set(
+        id,
+        user === null
+          ? null
+          : `${user.profile.firstName.ar} ${user.profile.lastName.ar}`.trim() || user.email,
+      );
+    }
+    return {
+      side,
+      versions: [...versions]
+        .sort((a, b) => b.fileVersion - a.fileVersion)
+        .map((v) => {
+          const by = v.uploadedBy === null ? null : String(v.uploadedBy);
+          return {
+            fileId: String(v._id),
+            fileVersion: v.fileVersion,
+            isCurrent: v.isLatest,
+            note: v.fileVersion === 1 ? 'الصورة الأصلية' : (v.description ?? null),
+            byUserId: by,
+            byName: by === null ? null : (names.get(by) ?? null),
+            at: v.uploadedAt.toISOString(),
+          };
+        }),
+    };
+  }
+
+  private async recordCardChange(
+    ctx: AuthContext,
+    applicant: ApplicantDoc,
+    side: NationalIdCardSide,
+    fileVersion: number,
+    field: 'nationalIdCardEdited' | 'nationalIdCardRestored',
+    note: string,
+  ): Promise<void> {
+    const applicantId = String(applicant._id);
+    await auditService.record({
+      entityRef: { moduleId: 'hr', entityType: 'applicant', entityId: applicantId },
+      action: 'update',
+      changes: [{ field, old: side, new: `v${String(fileVersion)}: ${note}` }],
+    });
+    await recruitmentTimelineService.recordFileEvent({
+      applicantId,
+      applicantCode: applicant.code,
+      branchId: applicant.branchId,
+      actorUserId: ctx.userId,
+      actorKind: 'user',
+      type: 'idCardReplaced',
+      subject: { key: nationalIdCardTag(side) },
+      note,
+      discriminator: `${nationalIdCardTag(side)}:v${String(fileVersion)}`,
+      metadata: { side, fileVersion, edited: true },
+    });
   }
 
   /** The staff-side list. */

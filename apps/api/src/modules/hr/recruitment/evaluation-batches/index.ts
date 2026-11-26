@@ -5,3 +5,4 @@ export { evaluationBatchService } from './evaluation-batch.service';
 export { buildEvaluationBatchPackage } from './evaluation-batch-package';
 export { ensureEvaluationBatchCategory } from './evaluation-batch.files';
 export { type EvaluationBatchDoc, type BatchItem } from './evaluation-batch.model';
+export { registerBatchMotherNameFollow, registerBatchPositionFollow } from './evaluation-batch.consumers';

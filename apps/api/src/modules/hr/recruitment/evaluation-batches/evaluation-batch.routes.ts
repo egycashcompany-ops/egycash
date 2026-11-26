@@ -30,6 +30,7 @@ import {
   listEvaluationBatches,
   removeEvaluationBatchItem,
   retryEvaluationBatchPackage,
+  setEvaluationBatchItemAddress,
   setEvaluationBatchItemMotherName,
   updateEvaluationBatch,
   uploadEvaluationBatchResult,
@@ -49,6 +50,7 @@ import {
   ListBatchCandidatesQuerySchema,
   ListEvaluationBatchesQuerySchema,
   RemoveBatchItemSchema,
+  SetBatchItemAddressSchema,
   SetBatchItemMotherNameSchema,
   UpdateEvaluationBatchSchema,
   UploadBatchResultSchema,
@@ -161,6 +163,13 @@ export const buildEvaluationBatchesRouter = (): Router => {
     authenticate,
     validate({ body: DecideBatchItemSchema, params: EvaluationBatchItemParamSchema }),
     asyncHandler(decideEvaluationBatchItem),
+  );
+  // «بيانات ناقصة» — a member's missing address, saved on the applicant file and this item.
+  router.patch(
+    '/:id/items/:applicantId/address',
+    authenticate,
+    validate({ body: SetBatchItemAddressSchema, params: EvaluationBatchItemParamSchema }),
+    asyncHandler(setEvaluationBatchItemAddress),
   );
   // The security-check form's mother's name, for this one item only (the applicant is untouched).
   router.patch(

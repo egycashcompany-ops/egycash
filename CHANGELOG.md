@@ -11,6 +11,17 @@ its entry here in the same PR.
 
 ### Added
 
+- **HR — «اسم الأم» on the security check batch screen, editable per record.** The member list of
+  a security-check batch shows the mother's name and an edit button on each row
+  (`PATCH /hr/evaluation-batches/:id/items/:applicantId/mother-name`, the phase's `manageBatch`
+  grant). The value starts from the applicant's file. HR types it when it is missing, or corrects
+  it for this form. The edit writes that batch item only; the applicant file is never changed.
+  - **At issue**, a still-blank name is filled from the applicant file (one entered after the
+    member joined the draft). A name typed on the record is never replaced.
+  - **After issue**, a correction queues the package again, so the new `list.pdf` prints it in the
+    «اسم الأم» column beside the name and national ID. The earlier file stays in Files.
+  - Refused on driving-test batches, voided items, and closed or cancelled batches.
+
 - **ATM — «استيراد السجل القديم»: the old system's replenishment and maintenance history, copied
   into each branch** (`docs/12-planning/atm-legacy-history-import.md`). The owner (2026-11-25):
   «تقدر تشوفهم أنت من Mongo مباشرة جوا maintenance و replenishment — وللأفرع كلها مش بس المهندسين

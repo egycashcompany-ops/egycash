@@ -15,6 +15,7 @@ import {
   type EvaluationBatchSummaryDto,
   type IssueEvaluationBatch,
   type Paginated,
+  type SetBatchItemMotherName,
   type UpdateEvaluationBatch,
   type VoidBatchItem,
   type WorkflowEnvelopeDto,
@@ -78,6 +79,14 @@ export const removeBatchItem = (
     method: 'DELETE',
     body: JSON.stringify({ version }),
   });
+
+/** The mother's name on ONE member's security-check form; the applicant record is not changed. */
+export const setBatchItemMotherName = (
+  id: string,
+  applicantId: string,
+  body: SetBatchItemMotherName,
+): Promise<EvaluationBatchDto> =>
+  patch<EvaluationBatchDto>(`/hr/evaluation-batches/${id}/items/${applicantId}/mother-name`, body);
 
 export const issueEvaluationBatch = (
   id: string,

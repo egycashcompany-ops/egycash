@@ -15,6 +15,7 @@ export {
   ListBatchCandidatesQuerySchema,
   ListEvaluationBatchesQuerySchema,
   RemoveBatchItemSchema,
+  SetBatchItemMotherNameSchema,
   UpdateEvaluationBatchSchema,
   UploadBatchResultSchema,
   VoidBatchItemSchema,

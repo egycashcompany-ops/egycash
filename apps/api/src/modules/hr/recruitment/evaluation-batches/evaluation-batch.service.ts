@@ -29,6 +29,7 @@ import {
   type ListBatchCandidatesQuery,
   type ListEvaluationBatchesQuery,
   type Paginated,
+  type SetBatchItemMotherName,
   type UpdateEvaluationBatch,
   type UploadBatchResult,
   type VoidBatchItem,
@@ -58,6 +59,12 @@ import {
 } from './evaluation-batch.repository';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'evaluationBatch', entityId: id });
+
+/** The one phase whose printed form carries a mother's name (see `evaluation-batch-package.ts`). */
+const SECURITY_CHECK_PHASE_KEY = 'securityCheck';
+
+const isBlank = (value: string | null | undefined): boolean =>
+  value === null || value === undefined || value.trim() === '';
 
 /** Catalogs are paged; evaluation phases are a handful, never hundreds. */
 const CANDIDATE_PAGE_SIZE = 500;
@@ -313,9 +320,11 @@ class EvaluationBatchService {
     if (before.status !== 'draft') throw new BusinessRuleError('only a draft batch can be issued');
     if (before.items.length === 0) throw new BusinessRuleError('an empty batch cannot be issued');
     const now = new Date();
+    const filled = await this.fillMissingMotherNames(before);
     const after = await evaluationBatchRepository.updateById(
       id,
       {
+        ...(filled === null ? {} : { items: filled }),
         status: 'issued',
         issuedAt: now,
         issuedBy: new Types.ObjectId(ctx.userId),
@@ -359,6 +368,61 @@ class EvaluationBatchService {
       { batchId: id, code: before.code },
       { reliable: true, actorId: ctx.userId },
     );
+    return after;
+  }
+
+  // ── Form fields ───────────────────────────────────────────────────────────
+
+  /**
+   * Fill in or correct the mother's name on ONE member's security-check form.
+   *
+   * This writes the batch item and nothing else. The applicant record keeps whatever it holds: the
+   * value typed here belongs to this form, for this batch.
+   *
+   * Allowed on a draft and on an issued batch. Once issued, the official list was already built
+   * from the old value, so the package is queued again and the new list.pdf carries the
+   * correction. The earlier file stays in the Files service as the record of what went out.
+   */
+  async setItemMotherName(
+    ctx: AuthContext,
+    id: string,
+    applicantId: string,
+    input: SetBatchItemMotherName,
+    scope: ScopeSelector,
+  ): Promise<EvaluationBatchDoc> {
+    const before = await evaluationBatchRepository.getById(id, scope);
+    if (before.phaseKey !== SECURITY_CHECK_PHASE_KEY) {
+      throw new BusinessRuleError("only the security check form carries a mother's name");
+    }
+    this.assertNotTerminal(before);
+    const item = before.items.find((i) => String(i.applicantId) === applicantId);
+    if (item === undefined) throw new NotFoundError('no such applicant in this batch');
+    if (item.result === 'voided') throw new BusinessRuleError('a voided item cannot be changed');
+
+    const motherName = input.motherName.trim();
+    const items = before.items.map((i) =>
+      String(i.applicantId) === applicantId ? { ...i, motherName } : i,
+    );
+    const rebuild = before.status === 'issued';
+    const after = await evaluationBatchRepository.updateById(
+      id,
+      { items, ...(rebuild ? { 'package.status': 'queued', 'package.error': null } : {}) },
+      { by: ctx.userId, version: input.version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [
+        { field: `items.${item.applicantCode}.motherName`, old: item.motherName ?? null, new: motherName },
+      ],
+    });
+    if (rebuild) {
+      await emit(
+        HrEvaluationBatchEvents.BatchGenerated,
+        { batchId: id, code: before.code },
+        { reliable: true, actorId: ctx.userId },
+      );
+    }
     return after;
   }
 
@@ -706,6 +770,35 @@ class EvaluationBatchService {
       });
     }
     return items;
+  }
+
+  /**
+   * Before a security-check list is printed, fill each BLANK mother's name from the applicant
+   * record. The value was copied when the member joined; this catches one entered on the applicant
+   * afterwards, and items drafted before the field existed.
+   *
+   * Only blanks are filled. A name HR typed on this record (`setItemMotherName`) is never replaced.
+   * Returns null when nothing changed, so the issue write leaves `items` alone.
+   */
+  private async fillMissingMotherNames(doc: EvaluationBatchDoc): Promise<BatchItem[] | null> {
+    if (doc.phaseKey !== SECURITY_CHECK_PHASE_KEY) return null;
+    let changed = false;
+    const items: BatchItem[] = [];
+    for (const item of doc.items) {
+      if (item.result === 'voided' || !isBlank(item.motherName)) {
+        items.push(item);
+        continue;
+      }
+      const applicant = await applicantService.findByIdSystem(String(item.applicantId));
+      const fromApplicant = applicant?.motherName ?? null;
+      if (fromApplicant === null || isBlank(fromApplicant)) {
+        items.push(item);
+        continue;
+      }
+      items.push({ ...item, motherName: fromApplicant.trim() });
+      changed = true;
+    }
+    return changed ? items : null;
   }
 
   /** Stamp the batch attribution onto each member's evaluation record. */

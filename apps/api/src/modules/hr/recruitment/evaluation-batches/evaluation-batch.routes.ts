@@ -30,6 +30,7 @@ import {
   listEvaluationBatches,
   removeEvaluationBatchItem,
   retryEvaluationBatchPackage,
+  setEvaluationBatchItemMotherName,
   updateEvaluationBatch,
   uploadEvaluationBatchResult,
   voidEvaluationBatchItem,
@@ -48,6 +49,7 @@ import {
   ListBatchCandidatesQuerySchema,
   ListEvaluationBatchesQuerySchema,
   RemoveBatchItemSchema,
+  SetBatchItemMotherNameSchema,
   UpdateEvaluationBatchSchema,
   UploadBatchResultSchema,
   VoidBatchItemSchema,
@@ -159,6 +161,13 @@ export const buildEvaluationBatchesRouter = (): Router => {
     authenticate,
     validate({ body: DecideBatchItemSchema, params: EvaluationBatchItemParamSchema }),
     asyncHandler(decideEvaluationBatchItem),
+  );
+  // The security-check form's mother's name, for this one item only (the applicant is untouched).
+  router.patch(
+    '/:id/items/:applicantId/mother-name',
+    authenticate,
+    validate({ body: SetBatchItemMotherNameSchema, params: EvaluationBatchItemParamSchema }),
+    asyncHandler(setEvaluationBatchItemMotherName),
   );
   router.post(
     '/:id/items/:applicantId/void',

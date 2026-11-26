@@ -130,14 +130,19 @@ const passStage = async (applicantId: string, key: string): Promise<void> => {
 };
 
 /** An applicant who has cleared screening + both interview rounds — sitting in the phase queues. */
-const readyApplicant = async (): Promise<ApplicantDto> => {
+const readyApplicant = async (identity: { motherName?: string } = {}): Promise<ApplicantDto> => {
   const registered = await request(app)
     .post('/api/v1/hr/applicants')
     .set('Authorization', `Bearer ${adminToken}`)
     .send({
       sourceId: await sourceId(),
       intakeChannel: 'internal',
-      identity: { nationalId: nextNationalId(), fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
+      identity: {
+        nationalId: nextNationalId(),
+        fullNameAr: 'أحمد محمد',
+        nationality: 'Egyptian',
+        ...identity,
+      },
       contact: { primaryPhone: nextPhone() },
     });
   expect(registered.status).toBe(201);
@@ -425,6 +430,100 @@ describe('issuing a batch', () => {
     // No CHROMIUM_PATH in CI: the ZIP still exists, the missing list.pdf is reported.
     expect(built.package.archiveFileId).not.toBeNull();
     if (built.package.listPdfFileId === null) expect(built.package.error).not.toBeNull();
+  });
+});
+
+describe("the security form's mother's name", () => {
+  const getApplicant = async (id: string): Promise<ApplicantDto> => {
+    const res = await request(app)
+      .get(`/api/v1/hr/applicants/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return res.body.data as ApplicantDto;
+  };
+
+  const setMotherName = (batch: EvaluationBatchDto, applicantId: string, motherName: string) =>
+    request(app)
+      .patch(`/api/v1/hr/evaluation-batches/${batch.id}/items/${applicantId}/mother-name`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ motherName, version: batch.version });
+
+  it("starts from the applicant's own value", async () => {
+    const applicant = await readyApplicant({ motherName: 'فاطمة علي حسن' });
+    const batch = await createBatch([applicant.id]);
+    expect(batch.items[0]!.motherName).toBe('فاطمة علي حسن');
+  });
+
+  it('is entered on this record only — the applicant file is not changed', async () => {
+    const applicant = await readyApplicant();
+    const batch = await createBatch([applicant.id]);
+    expect(batch.items[0]!.motherName).toBeNull();
+
+    const res = await setMotherName(batch, applicant.id, '  سعاد محمود  ');
+    expect(res.status).toBe(200);
+    expect((res.body.data as EvaluationBatchDto).items[0]!.motherName).toBe('سعاد محمود');
+    expect((await getApplicant(applicant.id)).motherName).toBeNull();
+  });
+
+  it('refuses a blank name, a member not in the batch, and a closed batch', async () => {
+    const [member, stranger] = [await readyApplicant(), await readyApplicant()];
+    const batch = await createBatch([member.id]);
+    expect((await setMotherName(batch, member.id, ' ')).status).toBe(400);
+    expect((await setMotherName(batch, stranger.id, 'سعاد محمود')).status).toBe(404);
+
+    const issued = await issue(batch);
+    const approved = await request(app)
+      .patch(`/api/v1/hr/evaluation-batches/${issued.id}/items/${member.id}/decision`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ result: 'approved', version: issued.version });
+    expect(approved.status).toBe(200);
+    const closed = await request(app)
+      .post(`/api/v1/hr/evaluation-batches/${issued.id}/close`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: mutated<EvaluationBatchDto>(approved).version });
+    expect(closed.status).toBe(200);
+    expect((await setMotherName(closed.body.data as EvaluationBatchDto, member.id, 'سعاد محمود')).status).toBe(422);
+  });
+
+  it('fills a blank from the applicant at issue, and never replaces one typed on the record', async () => {
+    const [late, typed] = [await readyApplicant(), await readyApplicant()];
+    const draft = await createBatch([late.id, typed.id]);
+    const typedRes = await setMotherName(draft, typed.id, 'منى السيد');
+    expect(typedRes.status).toBe(200);
+    const withTyped = typedRes.body.data as EvaluationBatchDto;
+
+    // Both applicant files get a mother's name only AFTER the members joined the batch.
+    for (const id of [late.id, typed.id]) {
+      const current = await getApplicant(id);
+      const updated = await request(app)
+        .patch(`/api/v1/hr/applicants/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ motherName: 'هدى إبراهيم', version: current.version });
+      expect(updated.status).toBe(200);
+    }
+
+    const issued = await issue(await getBatch(withTyped.id));
+    const byId = new Map(issued.items.map((i) => [i.applicantId, i.motherName]));
+    expect(byId.get(late.id)).toBe('هدى إبراهيم');
+    expect(byId.get(typed.id)).toBe('منى السيد');
+  });
+
+  it('queues the package again when corrected after issue, so the printed list carries it', async () => {
+    const applicant = await readyApplicant({ motherName: 'فاطمة علي حسن' });
+    const issued = await issue(await createBatch([applicant.id]));
+    await buildEvaluationBatchPackage(issued.id);
+    const built = await settledPackage(issued.id);
+    expect(built.package.status).toBe('ready');
+
+    const res = await setMotherName(built, applicant.id, 'فاطمة علي حسين');
+    expect(res.status).toBe(200);
+    const corrected = res.body.data as EvaluationBatchDto;
+    expect(corrected.items[0]!.motherName).toBe('فاطمة علي حسين');
+    expect(corrected.package.status).toBe('queued');
+    // As above: the worker job runs inline here, racing the outbox's own build of the same batch.
+    await buildEvaluationBatchPackage(issued.id);
+    expect((await settledPackage(issued.id)).package.status).toBe('ready');
+    expect((await getApplicant(applicant.id)).motherName).toBe('فاطمة علي حسن');
   });
 });
 

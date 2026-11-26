@@ -873,6 +873,9 @@ GET    /hr/evaluation-batches?phaseId=&status= list (paged, scoped)
 GET    /hr/evaluation-batches/:id              detail
 POST   /hr/evaluation-batches/:id/items        { applicantIds[] }        (draft only)
 DELETE /hr/evaluation-batches/:id/items/:applicantId                     (draft only)
+PATCH  /hr/evaluation-batches/:id/items/:applicantId/mother-name { motherName, version }
+                                               security check only; this item only, never the
+                                               applicant; after issue it re-queues the package
 POST   /hr/evaluation-batches/:id/issue        { version, sentAt? } → queues the package
 PATCH  /hr/evaluation-batches/:id              { title?, scheduledFor?, sentAt?, expectedReturnAt?, version }
 POST   /hr/evaluation-batches/:id/package/retry

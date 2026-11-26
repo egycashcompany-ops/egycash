@@ -22,6 +22,7 @@ import {
   type ListBatchCandidatesQuery,
   type ListEvaluationBatchesQuery,
   type RemoveBatchItem,
+  type SetBatchItemMotherName,
   type UpdateEvaluationBatch,
   type UploadBatchResult,
   type VoidBatchItem,
@@ -135,6 +136,24 @@ export const removeEvaluationBatchItem = async (req: Request, res: Response): Pr
     params.id,
     params.applicantId,
     body.version,
+    scope,
+  );
+  ok(res, toEvaluationBatchDto(doc));
+};
+
+/**
+ * Form data on one member's item, not a workflow act: the candidate's stage does not move, so
+ * this answers with the batch alone, like removing a member does.
+ */
+export const setEvaluationBatchItemMotherName = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<SetBatchItemMotherName, never, ItemParam>(req);
+  const scope = await batchManageScope(ctx, params.id);
+  const doc = await evaluationBatchService.setItemMotherName(
+    ctx,
+    params.id,
+    params.applicantId,
+    body,
     scope,
   );
   ok(res, toEvaluationBatchDto(doc));

@@ -83,6 +83,21 @@ export type AddBatchItems = z.infer<typeof AddBatchItemsSchema>;
 export const RemoveBatchItemSchema = z.object({ version: z.number().int().min(0) }).strict();
 export type RemoveBatchItem = z.infer<typeof RemoveBatchItemSchema>;
 
+/**
+ * Fill in or correct the mother's name printed on ONE member's security-check form.
+ *
+ * It writes that batch item and nothing else: the applicant record is never changed by it. The
+ * item starts with the applicant's own value when there is one; this is how HR supplies it when
+ * there is not, or fixes it for this form alone. Same bounds as the applicant field.
+ */
+export const SetBatchItemMotherNameSchema = z
+  .object({
+    motherName: z.string().trim().min(2).max(200),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type SetBatchItemMotherName = z.infer<typeof SetBatchItemMotherNameSchema>;
+
 /** Issue the batch: freeze membership, stamp the sent date, queue the package build. */
 export const IssueEvaluationBatchSchema = z
   .object({ sentAt: z.coerce.date().optional(), version: z.number().int().min(0) })

@@ -16,6 +16,7 @@ import {
   type DecideBatchItem,
   type EvaluationBatchDto,
   type IssueEvaluationBatch,
+  type SetBatchItemMotherName,
   type UpdateEvaluationBatch,
   type VoidBatchItem,
 } from '@ecms/contracts';
@@ -95,6 +96,16 @@ export const useRemoveBatchItem = (id: string) => {
   return useMutation({
     mutationFn: (vars: { applicantId: string; version: number }) =>
       api.removeBatchItem(id, vars.applicantId, vars.version),
+    onSuccess: seed,
+  });
+};
+
+/** Form data on one item, not a workflow act — it returns the batch, like removing a member. */
+export const useSetBatchItemMotherName = (id: string) => {
+  const seed = useSeedBatch();
+  return useMutation({
+    mutationFn: (vars: { applicantId: string; body: SetBatchItemMotherName }) =>
+      api.setBatchItemMotherName(id, vars.applicantId, vars.body),
     onSuccess: seed,
   });
 };

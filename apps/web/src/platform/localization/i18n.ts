@@ -944,6 +944,15 @@ const en: Record<string, string> = {
   'batches.columns.result': 'Result',
   'batches.columns.reason': 'Reason',
   'batches.columns.waitingSince': 'Waiting since',
+  'batches.columns.motherName': "Mother's name",
+  'batches.motherName.edit': "Edit mother's name",
+  'batches.motherName.missing': 'Not entered',
+  'batches.motherName.hint':
+    "Printed on the security-check form for {{name}}. Saved on this record only — the applicant's file is not changed.",
+  'batches.motherName.hintIssued':
+    "Printed on the security-check form for {{name}}. Saved on this record only — the applicant's file is not changed. The official list will be built again with the new name.",
+  'batches.motherName.saved': "Mother's name saved",
+  'batches.motherName.savedRebuilding': "Mother's name saved — the official list is being built again",
   'batches.fields.title': 'Title',
   'batches.fields.scheduledFor': 'Scheduled for',
   'batches.summary.title': 'Batch',
@@ -17561,6 +17570,15 @@ const ar: Record<string, string> = {
   'batches.columns.result': 'النتيجة',
   'batches.columns.reason': 'السبب',
   'batches.columns.waitingSince': 'في الانتظار منذ',
+  'batches.columns.motherName': 'اسم الأم',
+  'batches.motherName.edit': 'تعديل اسم الأم',
+  'batches.motherName.missing': 'غير مُدخل',
+  'batches.motherName.hint':
+    'يُطبع في نموذج الفحص الأمني الخاص بـ {{name}}. يُحفظ في هذا السجل فقط — لا يتغير ملف المتقدم.',
+  'batches.motherName.hintIssued':
+    'يُطبع في نموذج الفحص الأمني الخاص بـ {{name}}. يُحفظ في هذا السجل فقط — لا يتغير ملف المتقدم. سيُعاد إنشاء الكشف الرسمي بالاسم الجديد.',
+  'batches.motherName.saved': 'تم حفظ اسم الأم',
+  'batches.motherName.savedRebuilding': 'تم حفظ اسم الأم — جارٍ إعادة إنشاء الكشف الرسمي',
   'batches.fields.title': 'العنوان',
   'batches.fields.scheduledFor': 'موعد التنفيذ',
   'batches.summary.title': 'الدفعة',

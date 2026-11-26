@@ -21,6 +21,7 @@ import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input, Select } from '../../../../../shared/ui/form';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
+import { EditIcon } from '../../../../../shared/ui/icons';
 import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
 import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
 import { LoadingState } from '../../../../../shared/ui/states/LoadingState';
@@ -38,6 +39,7 @@ import {
   useIssueEvaluationBatch,
   useRemoveBatchItem,
   useRetryBatchPackage,
+  useSetBatchItemMotherName,
   useUploadBatchResult,
 } from '../api/evaluation-batch-queries';
 
@@ -72,6 +74,12 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
   const [grade, setGrade] = useState<DrivingTestGrade>('good');
   const decideItem = useDecideBatchItem(id);
   const [reason, setReason] = useState('');
+  // The security-check form asks for the mother's name. The item starts with the applicant's own
+  // value; HR types it here when there is none, or corrects it for this form only.
+  const isSecurityCheck = batch?.phaseKey === 'securityCheck';
+  const saveMotherName = useSetBatchItemMotherName(id);
+  const [motherNameFor, setMotherNameFor] = useState<BatchItemDto | null>(null);
+  const [motherName, setMotherName] = useState('');
 
   const items = useMemo(() => batch?.items ?? [], [batch]);
   const rowIds = useMemo(() => items.filter((i) => i.result !== 'voided').map((i) => i.applicantId), [items]);
@@ -133,6 +141,28 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
     }
   };
 
+  const openMotherName = (item: BatchItemDto): void => {
+    setMotherNameFor(item);
+    setMotherName(item.motherName ?? '');
+  };
+
+  const submitMotherName = async (): Promise<void> => {
+    const target = motherNameFor;
+    const value = motherName.trim();
+    if (target === null || value.length < 2) return;
+    try {
+      await saveMotherName.mutateAsync({
+        applicantId: target.applicantId,
+        body: { motherName: value, version: batch.version },
+      });
+      // An issued batch already has its list printed; the server queues it to be built again.
+      toast.success(t(isIssued ? 'batches.motherName.savedRebuilding' : 'batches.motherName.saved'));
+      setMotherNameFor(null);
+    } catch {
+      // surfaced globally
+    }
+  };
+
   const columns: Column<BatchItemDto>[] = [
     {
       key: 'applicant',
@@ -152,6 +182,36 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
         </span>
       ),
     },
+    ...(isSecurityCheck
+      ? [
+          {
+            key: 'motherName',
+            header: t('batches.columns.motherName'),
+            render: (i: BatchItemDto) => (
+              <div className="flex items-center gap-1">
+                {i.motherName === null || i.motherName.trim() === '' ? (
+                  <span className="text-xs text-amber-600 dark:text-amber-400">
+                    {t('batches.motherName.missing')}
+                  </span>
+                ) : (
+                  <span>{i.motherName}</span>
+                )}
+                {!terminal && i.result !== 'voided' && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label={`${t('batches.motherName.edit')} — ${i.applicantName || i.applicantCode}`}
+                    title={t('batches.motherName.edit')}
+                    onClick={() => openMotherName(i)}
+                  >
+                    <EditIcon className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ),
+          },
+        ]
+      : []),
     { key: 'position', header: t('batches.columns.position'), render: (i) => i.placementLabel.position ?? '—' },
     { key: 'result', header: t('batches.columns.result'), render: (i) => <BatchItemBadge result={i.result} /> },
     ...(isDrivingTest
@@ -444,6 +504,33 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
       >
         <Field label={t('bulk.reason.title')}>
           <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+        </Field>
+      </Dialog>
+
+      <Dialog
+        open={motherNameFor !== null}
+        onClose={() => setMotherNameFor(null)}
+        title={t('batches.motherName.edit')}
+        description={t(isIssued ? 'batches.motherName.hintIssued' : 'batches.motherName.hint', {
+          name: motherNameFor?.applicantName || motherNameFor?.applicantCode || '',
+        })}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setMotherNameFor(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              loading={saveMotherName.isPending}
+              disabled={motherName.trim().length < 2}
+              onClick={() => void submitMotherName()}
+            >
+              {t('common.save')}
+            </Button>
+          </>
+        }
+      >
+        <Field label={t('batches.columns.motherName')}>
+          <Input value={motherName} maxLength={200} onChange={(e) => setMotherName(e.target.value)} />
         </Field>
       </Dialog>
 

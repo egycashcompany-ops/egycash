@@ -898,19 +898,10 @@ class ApplicantService {
           : [{ field: 'fullNameAr', old: before.fullNameAr, new: updated.fullNameAr }]),
       ],
     });
-    // A corrected card NUMBER or name is its own entry in the history — who, and from what.
-    for (const field of ['nationalId', 'fullNameAr'] as const) {
-      await recruitmentTimelineService.recordDetailChange({
-        applicantId: id,
-        applicantCode: updated.code,
-        branchId: updated.branchId,
-        actorUserId: ctx.userId,
-        field,
-        from: before[field] ?? null,
-        to: updated[field] ?? null,
-        where: 'تأكيد الهوية',
-      });
-    }
+    // A corrected card NUMBER or name is recorded by the audit row above (old → new, who, when) and
+    // NOT as a second timeline entry: identity confirmation keeps exactly ONE entry, the
+    // `identityVerified` one below, so the candidate's history stays rebuildable by
+    // `reconcileRecruitmentTimeline` (I5).
     // I5 — verification is a fact about the candidate, not a workflow transition, so it is
     // recorded here or nowhere. The verification instant discriminates the entry, and it is the
     // FIRST one (see `verifiedAt` above), so confirming again lands on the entry already there
